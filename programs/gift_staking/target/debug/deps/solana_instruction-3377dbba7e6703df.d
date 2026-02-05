@@ -1,0 +1,10 @@
+C:\Users\clato\token_website\gift_memecoin\programs\gift_staking\target\debug\deps\solana_instruction-3377dbba7e6703df.d: C:\Users\clato\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\solana-instruction-2.3.3\src\lib.rs C:\Users\clato\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\solana-instruction-2.3.3\src\account_meta.rs C:\Users\clato\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\solana-instruction-2.3.3\src\error.rs C:\Users\clato\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\solana-instruction-2.3.3\src\syscalls.rs
+
+C:\Users\clato\token_website\gift_memecoin\programs\gift_staking\target\debug\deps\libsolana_instruction-3377dbba7e6703df.rlib: C:\Users\clato\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\solana-instruction-2.3.3\src\lib.rs C:\Users\clato\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\solana-instruction-2.3.3\src\account_meta.rs C:\Users\clato\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\solana-instruction-2.3.3\src\error.rs C:\Users\clato\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\solana-instruction-2.3.3\src\syscalls.rs
+
+C:\Users\clato\token_website\gift_memecoin\programs\gift_staking\target\debug\deps\libsolana_instruction-3377dbba7e6703df.rmeta: C:\Users\clato\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\solana-instruction-2.3.3\src\lib.rs C:\Users\clato\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\solana-instruction-2.3.3\src\account_meta.rs C:\Users\clato\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\solana-instruction-2.3.3\src\error.rs C:\Users\clato\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\solana-instruction-2.3.3\src\syscalls.rs
+
+C:\Users\clato\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\solana-instruction-2.3.3\src\lib.rs:
+C:\Users\clato\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\solana-instruction-2.3.3\src\account_meta.rs:
+C:\Users\clato\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\solana-instruction-2.3.3\src\error.rs:
+C:\Users\clato\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\solana-instruction-2.3.3\src\syscalls.rs:

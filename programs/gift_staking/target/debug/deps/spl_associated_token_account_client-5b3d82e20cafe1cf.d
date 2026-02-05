@@ -1,0 +1,9 @@
+C:\Users\clato\token_website\gift_memecoin\programs\gift_staking\target\debug\deps\spl_associated_token_account_client-5b3d82e20cafe1cf.d: C:\Users\clato\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\spl-associated-token-account-client-2.0.0\src\lib.rs C:\Users\clato\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\spl-associated-token-account-client-2.0.0\src\address.rs C:\Users\clato\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\spl-associated-token-account-client-2.0.0\src\instruction.rs
+
+C:\Users\clato\token_website\gift_memecoin\programs\gift_staking\target\debug\deps\libspl_associated_token_account_client-5b3d82e20cafe1cf.rlib: C:\Users\clato\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\spl-associated-token-account-client-2.0.0\src\lib.rs C:\Users\clato\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\spl-associated-token-account-client-2.0.0\src\address.rs C:\Users\clato\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\spl-associated-token-account-client-2.0.0\src\instruction.rs
+
+C:\Users\clato\token_website\gift_memecoin\programs\gift_staking\target\debug\deps\libspl_associated_token_account_client-5b3d82e20cafe1cf.rmeta: C:\Users\clato\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\spl-associated-token-account-client-2.0.0\src\lib.rs C:\Users\clato\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\spl-associated-token-account-client-2.0.0\src\address.rs C:\Users\clato\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\spl-associated-token-account-client-2.0.0\src\instruction.rs
+
+C:\Users\clato\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\spl-associated-token-account-client-2.0.0\src\lib.rs:
+C:\Users\clato\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\spl-associated-token-account-client-2.0.0\src\address.rs:
+C:\Users\clato\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\spl-associated-token-account-client-2.0.0\src\instruction.rs:

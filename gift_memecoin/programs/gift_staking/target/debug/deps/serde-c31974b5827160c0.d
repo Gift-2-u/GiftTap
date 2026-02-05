@@ -1,0 +1,14 @@
+C:\Users\clato\token_website\gift_memecoin\programs\gift_staking\target\debug\deps\serde-c31974b5827160c0.d: C:\Users\clato\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\lib.rs C:\Users\clato\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\integer128.rs C:\Users\clato\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\private\mod.rs C:\Users\clato\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\private\de.rs C:\Users\clato\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\private\ser.rs C:\Users\clato\token_website\gift_memecoin\programs\gift_staking\target\debug\build\serde-49ed553e01a407b0\out/private.rs
+
+C:\Users\clato\token_website\gift_memecoin\programs\gift_staking\target\debug\deps\libserde-c31974b5827160c0.rlib: C:\Users\clato\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\lib.rs C:\Users\clato\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\integer128.rs C:\Users\clato\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\private\mod.rs C:\Users\clato\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\private\de.rs C:\Users\clato\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\private\ser.rs C:\Users\clato\token_website\gift_memecoin\programs\gift_staking\target\debug\build\serde-49ed553e01a407b0\out/private.rs
+
+C:\Users\clato\token_website\gift_memecoin\programs\gift_staking\target\debug\deps\libserde-c31974b5827160c0.rmeta: C:\Users\clato\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\lib.rs C:\Users\clato\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\integer128.rs C:\Users\clato\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\private\mod.rs C:\Users\clato\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\private\de.rs C:\Users\clato\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\private\ser.rs C:\Users\clato\token_website\gift_memecoin\programs\gift_staking\target\debug\build\serde-49ed553e01a407b0\out/private.rs
+
+C:\Users\clato\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\lib.rs:
+C:\Users\clato\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\integer128.rs:
+C:\Users\clato\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\private\mod.rs:
+C:\Users\clato\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\private\de.rs:
+C:\Users\clato\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\private\ser.rs:
+C:\Users\clato\token_website\gift_memecoin\programs\gift_staking\target\debug\build\serde-49ed553e01a407b0\out/private.rs:
+
+# env-dep:OUT_DIR=C:\\Users\\clato\\token_website\\gift_memecoin\\programs\\gift_staking\\target\\debug\\build\\serde-49ed553e01a407b0\\out
