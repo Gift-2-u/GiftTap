@@ -2,10 +2,12 @@ import { useState, useEffect } from 'react'
 import reactLogo from './assets/react.svg'
 import viteLogo from '/vite.svg'
 import './App.css'
-import GiftTap from './components/TapGame/GiftTap'; // Import the new game
+import GiftTap from './components/TapGame/GiftTap.jsx'; // Import the new game
 
 function App() {
   const [view, setView] = useState('staking'); // 'staking' or 'game'
+
+  const tg = window.Telegram?.WebApp;
 
   useEffect(() => {
   if (window.Telegram?.WebApp) {
