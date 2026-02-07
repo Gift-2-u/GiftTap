@@ -1,5 +1,5 @@
 import React from "react";
-import GiftTap from "./components/TapGame/GiftTap.jsx";
+import GiftTap from "./components/TapGame/GiftTap";
 import "./App.css";
 
 function App() {
