@@ -1,30 +1,69 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
+import { supabase } from '../../supabaseClient'; // You'll create this file
 
 const GiftTapGame = () => {
   const [balance, setBalance] = useState(0);
   const [energy, setEnergy] = useState(1000);
-  const [taps, setTaps] = useState([]); // For floating animations
+  const [taps, setTaps] = useState([]);
   const { publicKey, connected } = useWallet();
 
-  if (!connected) {
-      return (
-          <div className="login-screen">
-              <h1>Welcome to Gift Tap</h1>
-              <p>Please connect your Solana wallet to play</p>
-              <WalletMultiButton />
-          </div>
-      );
-  }
-
-  // Energy regeneration logic
+  // 1. LOAD DATA: When wallet connects, get shards from Supabase
   useEffect(() => {
-    const timer = setInterval(() => {
-      setEnergy((prev) => Math.min(prev + 1, 1000));
-    }, 1500); // Regenerate 1 energy every 1.5 seconds
-    return () => clearInterval(timer);
-  }, []);
+    if (connected && publicKey) {
+      loadUserData();
+    }
+  }, [connected, publicKey]);
+
+  const loadUserData = async () => {
+    if (!publicKey) return;
+
+    const { data, error } = await supabase
+      .from('players')
+      .select('*')
+      .eq('wallet_address', publicKey.toBase58())
+      .single();
+
+    if (data) {
+      // 1. For returning players: Load and Calculate
+      setBalance(data.shard_balance);
+      const restoredEnergy = calculateOfflineToEnergy(data.last_energy, data.last_updated);
+      setEnergy(restoredEnergy);
+    } else if (error && error.code === 'PGRST116') { 
+      // 2. For new players: Create and Initialize locally
+      setBalance(0);
+      setEnergy(1000);
+
+      await supabase.from('players').insert([
+        { 
+          wallet_address: publicKey.toBase58(), 
+          shard_balance: 0, 
+          last_energy: 1000,
+          last_updated: new Date().toISOString() 
+        }
+      ]);
+    } else {
+      console.error("Supabase error:", error);
+    }
+  };
+
+  // 2. SAVE DATA: Every 10 seconds or when they tap a lot, update the DB
+  const saveProgress = useCallback(async () => {
+    if (!publicKey) return;
+    await supabase
+      .from('players')
+      .update({ shard_balance: balance, last_energy: energy, last_updated: new Date() })
+      .eq('wallet_address', publicKey.toBase58());
+  }, [balance, energy, publicKey]);
+
+  // Auto-save every 30 seconds
+  useEffect(() => {
+    const interval = setInterval(saveProgress, 30000);
+    return () => clearInterval(interval);
+  }, [saveProgress]);
+
+  // ... rest of your handleTap logic ...
 
   const handleTap = (e) => {
     if (energy <= 0) return;
@@ -43,8 +82,27 @@ const GiftTapGame = () => {
     }, 1000);
   };
 
+  const calculateOfflineToEnergy = (lastEnergy, lastUpdated) => {
+    const now = new Date();
+    const lastUpdate = new Date(lastUpdated);
+    
+    // Calculate seconds passed since the last save
+    const secondsPassed = Math.floor((now - lastUpdate) / 1000);
+    
+    // You earn 1 energy every 1.5 seconds (based on your current logic)
+    const energyGained = Math.floor(secondsPassed / 1.5);
+    
+    // Return the new energy, capped at 1000
+    return Math.min(lastEnergy + energyGained, 1000);
+  };
+
   return (
     <div style={styles.container}>
+      {/* 1. Added Wallet Button at the top */}
+      <div style={styles.walletWrapper}>
+        <WalletMultiButton />
+      </div>
+
       <div style={styles.header}>
         <h1 style={styles.balance}>🎁 {balance} $GIFT</h1>
         <p style={styles.energy}>⚡ {energy} / 1000</p>
@@ -82,6 +140,7 @@ const GiftTapGame = () => {
 
 const styles = {
   container: { height: '100vh', background: '#1a1a1a', color: 'white', display: 'flex', flexDirection: 'column', alignItems: 'center', overflow: 'hidden', fontFamily: 'sans-serif' },
+  walletWrapper: {padding: '20px', width: '100%', display: 'flex', justifyContent: 'flex-end' }, // Puts the button on the top right
   header: { marginTop: '40px', textAlign: 'center' },
   balance: { fontSize: '3rem', margin: '0' },
   energy: { color: '#ffd700', fontWeight: 'bold' },
