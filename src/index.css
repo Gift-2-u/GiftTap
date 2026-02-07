@@ -1,3 +1,7 @@
+@theme {
+  /* This is optional, but good to have for v4 */
+}
+
 @import "tailwindcss";
 
 :root {

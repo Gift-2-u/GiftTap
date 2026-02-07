@@ -4,8 +4,6 @@ if (typeof window !== 'undefined') {
   window.Buffer = Buffer;
   window.global = window;
 }
-
-
 import React, { useMemo, useState, useEffect, useCallback } from 'react';
 import { BrowserRouter as Router, Routes, Route, Link } from 'react-router-dom';
 import { ConnectionProvider, WalletProvider, useAnchorWallet, useConnection, useWallet } from '@solana/wallet-adapter-react';
