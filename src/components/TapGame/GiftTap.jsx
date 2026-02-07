@@ -1,9 +1,22 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
+import { useWallet } from '@solana/wallet-adapter-react';
+import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
 
 const GiftTapGame = () => {
   const [balance, setBalance] = useState(0);
   const [energy, setEnergy] = useState(1000);
   const [taps, setTaps] = useState([]); // For floating animations
+  const { publicKey, connected } = useWallet();
+
+  if (!connected) {
+      return (
+          <div className="login-screen">
+              <h1>Welcome to Gift Tap</h1>
+              <p>Please connect your Solana wallet to play</p>
+              <WalletMultiButton />
+          </div>
+      );
+  }
 
   // Energy regeneration logic
   useEffect(() => {
@@ -39,7 +52,7 @@ const GiftTapGame = () => {
 
       <div onClick={handleTap} style={styles.giftZone}>
         <img 
-          src="https://img.icons8.com/emoji/256/wrapped-gift.png" 
+          src="/Gift2u_logo.png" 
           alt="Gift" 
           style={{ ...styles.giftImage, transform: energy <= 0 ? 'grayscale(1)' : 'none' }}
         />
@@ -57,6 +70,12 @@ const GiftTapGame = () => {
         <button style={styles.btn}>Friends</button>
         <button style={styles.btn}>Boost</button>
       </div>
+
+      <div className="game-container">
+          <p>Wallet: {publicKey.toBase58().slice(0, 6)}...</p>
+          {/* Your Gift Icon and Tapping Logic */}
+      </div>
+
     </div>
   );
 };
