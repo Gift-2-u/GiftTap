@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
-import { supabase } from '../../supabaseClient'; // You'll create this file
+import { supabase } from './supabaseClient'; // You'll create this file
 
 const GiftTapGame = () => {
   const [balance, setBalance] = useState(0);
