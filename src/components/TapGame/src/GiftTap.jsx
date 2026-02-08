@@ -15,7 +15,7 @@ const RootGame = () => {
     <PrivyProvider
       appId="cmle2m75i01dfl20c1n5qfafa" // CHANGE THIS to your actual ID from dashboard.privy.io
       config={{
-        loginMethods: ['telegram', 'google', 'wallet'],
+        loginMethods: ['telegram'],
         appearance: { 
           theme: 'dark',
           accentColor: '#ffd700',
@@ -33,7 +33,7 @@ const RootGame = () => {
 };
 
 const GiftTapGame = () => {
-  const { login, authenticated, user, ready } = usePrivy();
+  const { login, authenticated, ready } = usePrivy();
   const { wallets } = useWallets(); // Privy's way to access wallets
   
   const [balance, setBalance] = useState(0);
@@ -48,11 +48,28 @@ const GiftTapGame = () => {
 
   // --- TELEGRAM SDK INITIALIZATION ---
   useEffect(() => {
-    if (window.Telegram?.WebApp) {
-      window.Telegram.WebApp.ready();
-      window.Telegram.WebApp.expand(); // Opens the game to full height automatically
+  const triggerSeamlessLogin = async () => {
+    // 1. Check if we are inside Telegram and ready
+    if (ready && !authenticated && window.Telegram?.WebApp) {
+      try {
+        // 2. Fetch the 'initData' directly from Telegram
+        const initData = window.Telegram.WebApp.initData;
+        
+        if (initData) {
+          // 3. Use the seamless login method (Privy v3 logic)
+          // This logs them in INSTANTLY using their TG identity
+          await login({
+            telegram: { initData }
+          });
+        }
+      } catch (error) {
+        console.error("Seamless login failed, falling back to manual", error);
+      }
     }
-  }, []);
+  };
+
+  triggerSeamlessLogin();
+}, [ready, authenticated, login]);
 
   // --- REAL-TIME ENERGY TICKER ---
   useEffect(() => {
