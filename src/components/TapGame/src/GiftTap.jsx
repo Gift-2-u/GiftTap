@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { clusterApiUrl } from '@solana/web3.js';
 import { supabase } from './supabaseClient';
 import { PrivyProvider, usePrivy, useWallets } from '@privy-io/react-auth';
-import { toSolanaWalletConnectors, useSolanaWallets } from '@privy-io/react-auth/solana';
+import { toSolanaWalletConnectors } from '@privy-io/react-auth/solana';
 import { Transaction, SystemProgram, PublicKey } from '@solana/web3.js';
 
 // ROOT WRAPPER
@@ -34,7 +34,7 @@ const RootGame = () => {
 
 const GiftTapGame = () => {
   const { login, authenticated, user, ready } = usePrivy();
-  const { wallets } = useSolanaWallets(); // Privy's way to access wallets
+  const { wallets } = useWallets(); // Privy's way to access wallets
   
   const [balance, setBalance] = useState(0);
   const [energy, setEnergy] = useState(1000);
@@ -42,7 +42,8 @@ const GiftTapGame = () => {
 
   // Find the active wallet address
   const activeWallet = useMemo(() => {
-    return wallets.find((w) => w.walletClientType === 'privy') || wallets[0];
+    return wallets.find((w) => w.walletClientType === 'privy' && w.chainType === 'solana') 
+           || wallets.find(w => w.chainType === 'solana');
   }, [wallets]);
 
   // --- TELEGRAM SDK INITIALIZATION ---
