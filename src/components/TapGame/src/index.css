@@ -65,4 +65,9 @@ button:focus-visible {
   button {
     background-color: #f9f9f9;
   }
+
+  @keyframes floatUp {
+  0% { opacity: 1; transform: translateY(0); }
+  100% { opacity: 0; transform: translateY(-100px); }
+  }
 }

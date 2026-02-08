@@ -3,6 +3,14 @@ import { useWallet } from '@solana/wallet-adapter-react';
 import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
 import { supabase } from './supabaseClient'; // You'll create this file
 
+<ConnectionProvider endpoint={endpoint}>
+  <WalletProvider wallets={wallets} autoConnect> 
+    <WalletModalProvider>
+        <GiftTapGame />
+    </WalletModalProvider>
+  </WalletProvider>
+</ConnectionProvider>
+
 const GiftTapGame = () => {
   const [balance, setBalance] = useState(0);
   const [energy, setEnergy] = useState(1000);
@@ -139,14 +147,14 @@ const GiftTapGame = () => {
 };
 
 const styles = {
-  container: { height: '100vh', background: '#1a1a1a', color: 'white', display: 'flex', flexDirection: 'column', alignItems: 'center', overflow: 'hidden', fontFamily: 'sans-serif' },
+  container: { height: '100dvh', width: '100vw', background: '#1a1a1a', position: 'relative', overflow: 'hidden' },
   walletWrapper: {padding: '20px', width: '100%', display: 'flex', justifyContent: 'flex-end' }, // Puts the button on the top right
   header: { marginTop: '40px', textAlign: 'center' },
   balance: { fontSize: '3rem', margin: '0' },
   energy: { color: '#ffd700', fontWeight: 'bold' },
   giftZone: { flex: 1, display: 'flex', justifyContent: 'center', alignItems: 'center', width: '100%', position: 'relative' },
   giftImage: { width: '200px', cursor: 'pointer', transition: 'transform 0.1s active', userSelect: 'none' },
-  floatingText: { position: 'fixed', color: '#ffd700', fontSize: '1.5rem', fontWeight: 'bold', pointerEvents: 'none', animation: 'floatUp 1s forwards' },
+  floatingText: { position: 'absolute', color: '#ffd700', fontSize: '2rem', fontWeight: 'bold', pointerEvents: 'none', animation: 'floatUp 1s forwards', zIndex: 999 },
   nav: { height: '80px', width: '100%', display: 'flex', justifyContent: 'space-around', background: '#333' },
   btn: { background: 'none', border: 'none', color: 'white', fontWeight: 'bold' }
 };
