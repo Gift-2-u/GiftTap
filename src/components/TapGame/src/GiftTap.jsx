@@ -1,33 +1,49 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { useWallet, ConnectionProvider, WalletProvider } from '@solana/wallet-adapter-react';
-import { WalletMultiButton, WalletModalProvider } from '@solana/wallet-adapter-react-ui';
 import { clusterApiUrl } from '@solana/web3.js';
-import { WalletAdapterNetwork } from '@solana/wallet-adapter-base';
 import { supabase } from './supabaseClient';
-import '@solana/wallet-adapter-react-ui/styles.css';
+import { PrivyProvider, usePrivy, useWallets } from '@privy-io/react-auth';
+import { toSolanaWalletConnectors, useSolanaWallets } from '@privy-io/react-auth/solana';
+import { Transaction, SystemProgram, PublicKey } from '@solana/web3.js';
 
 // ROOT WRAPPER
 const RootGame = () => {
-  const network = WalletAdapterNetwork.Mainnet;
-  const endpoint = useMemo(() => clusterApiUrl(network), [network]);
-  const wallets = useMemo(() => [], []); // Auto-detects ALL wallets
+  const solanaConnectors = useMemo(() => toSolanaWalletConnectors({
+    shouldAutoConnect: true,
+  }), []);
 
   return (
-    <ConnectionProvider endpoint={endpoint}>
-      <WalletProvider wallets={wallets} autoConnect>
-        <WalletModalProvider>
-          <GiftTapGame />
-        </WalletModalProvider>
-      </WalletProvider>
-    </ConnectionProvider>
+    <PrivyProvider
+      appId="cmle2m75i01dfl20c1n5qfafa" // CHANGE THIS to your actual ID from dashboard.privy.io
+      config={{
+        loginMethods: ['telegram', 'google', 'wallet'],
+        appearance: { 
+          theme: 'dark',
+          accentColor: '#ffd700',
+        },
+        embeddedWallets: {
+          createOnLogin: 'users-without-wallets',
+        },
+        solanaClusters: [{ name: 'mainnet-beta' }],
+      }}
+      externalWallets={{ solana: solanaConnectors }}
+    >
+      <GiftTapGame />
+    </PrivyProvider>
   );
 };
 
 const GiftTapGame = () => {
+  const { login, authenticated, user, ready } = usePrivy();
+  const { wallets } = useSolanaWallets(); // Privy's way to access wallets
+  
   const [balance, setBalance] = useState(0);
   const [energy, setEnergy] = useState(1000);
   const [taps, setTaps] = useState([]);
-  const { publicKey, connected, connect, select, wallets } = useWallet();
+
+  // Find the active wallet address
+  const activeWallet = useMemo(() => {
+    return wallets.find((w) => w.walletClientType === 'privy') || wallets[0];
+  }, [wallets]);
 
   // --- TELEGRAM SDK INITIALIZATION ---
   useEffect(() => {
@@ -45,64 +61,70 @@ const GiftTapGame = () => {
     return () => clearInterval(ticker);
   }, []);
 
-  // --- DATA SYNC ---
+  // --- DATA SYNC WITH SUPABASE ---
   const loadUserData = useCallback(async () => {
-    if (!publicKey) return;
-    const { data } = await supabase.from('players').select('*').eq('wallet_address', publicKey.toBase58()).single();
+    if (!activeWallet) return;
+    const { data } = await supabase
+      .from('players')
+      .select('*')
+      .eq('wallet_address', activeWallet.address)
+      .single();
+
     if (data) {
       setBalance(data.shard_balance);
       const seconds = Math.floor((new Date() - new Date(data.last_updated)) / 1000);
       setEnergy(Math.min(data.last_energy + Math.floor(seconds / 1.5), 1000));
     }
-  }, [publicKey]);
+  }, [activeWallet]);
 
-  useEffect(() => { if (connected && publicKey) loadUserData(); }, [connected, publicKey, loadUserData]);
+  useEffect(() => {
+    if (authenticated && activeWallet) loadUserData();
+  }, [authenticated, activeWallet, loadUserData]);
 
   const saveProgress = useCallback(async () => {
-    if (!publicKey) return;
+    if (!activeWallet) return;
     await supabase.from('players').upsert({
-      wallet_address: publicKey.toBase58(),
+      wallet_address: activeWallet.address,
       shard_balance: balance,
       last_energy: energy,
       last_updated: new Date().toISOString()
     });
-  }, [balance, energy, publicKey]);
+  }, [balance, energy, activeWallet]);
 
-  // Save on Visibility Change (Closing TG)
+  // Auto-save logic
   useEffect(() => {
     const handleSave = () => { if (document.visibilityState === 'hidden') saveProgress(); };
     window.addEventListener('visibilitychange', handleSave);
     const interval = setInterval(saveProgress, 15000);
-    return () => { window.removeEventListener('visibilitychange', handleSave); clearInterval(interval); };
+    return () => {
+      window.removeEventListener('visibilitychange', handleSave);
+      clearInterval(interval);
+    };
   }, [saveProgress]);
-
-  // --- CUSTOM CONNECTION BRIDGE (The "Anti-Friction" fix) ---
-  const handleUniversalConnect = async () => {
-    if (window.Telegram?.WebApp && /iPhone|Android/i.test(navigator.userAgent)) {
-      const dappUrl = window.location.host;
-      // We use the Universal Link protocol for Phantom/Solflare
-      const link = `https://phantom.app/ul/browse/https://${dappUrl}`;
-      window.Telegram.WebApp.openLink(link);
-    }
-  };
 
   // --- GAMEPLAY ---
   const handleTap = (e) => {
+    if (!authenticated) { login(); return; }
     if (energy <= 0) return;
+    
     setBalance(b => b + 1);
     setEnergy(e => e - 1);
+    
     const id = Date.now();
     setTaps(t => [...t, { id, x: e.clientX, y: e.clientY }]);
     setTimeout(() => setTaps(t => t.filter(tap => tap.id !== id)), 1000);
   };
 
+  if (!ready) return <div style={styles.container}>Loading...</div>;
+
   return (
     <div style={styles.container}>
       <div style={styles.walletWrapper}>
-        {/* If in TG, show our special button, else show standard */}
-        <div onClick={handleUniversalConnect}>
-           <WalletMultiButton />
-        </div>
+        {!authenticated ? (
+          <button style={styles.loginBtn} onClick={login}>Connect Wallet</button>
+        ) : (
+          <p style={styles.walletText}>{activeWallet?.address.slice(0, 6)}...</p>
+        )}
       </div>
 
       <div style={styles.header}>
@@ -127,6 +149,8 @@ const GiftTapGame = () => {
 const styles = {
   container: { position: 'fixed', top: 0, left: 0, height: '100%', width: '100%', background: '#1a1a1a', color: 'white', display: 'flex', flexDirection: 'column', alignItems: 'center', overflow: 'hidden', touchAction: 'manipulation' },
   walletWrapper: { padding: '20px', width: '100%', display: 'flex', justifyContent: 'flex-end' },
+  loginBtn: { background: '#ffd700', color: 'black', border: 'none', padding: '10px 20px', borderRadius: '20px', fontWeight: 'bold' },
+  walletText: { color: '#ffd700', fontWeight: 'bold' },
   header: { marginTop: '10px', textAlign: 'center' },
   balance: { fontSize: '2.5rem', color: '#ffd700', margin: 0 },
   energy: { color: '#ffd700', fontWeight: 'bold' },
