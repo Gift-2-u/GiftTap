@@ -1,19 +1,16 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useWallet, ConnectionProvider, WalletProvider } from '@solana/wallet-adapter-react';
 import { WalletMultiButton, WalletModalProvider } from '@solana/wallet-adapter-react-ui';
-import { supabase } from './supabaseClient'; // You'll create this file
 import { clusterApiUrl } from '@solana/web3.js';
-import { SolanaMobileWalletAdapter, createDefaultAddressSelector, createDefaultAuthorizationResultCache, createDefaultWalletNotFoundHandler } from '@solana-mobile/wallet-adapter-mobile';
 import { WalletAdapterNetwork } from '@solana/wallet-adapter-base';
-
+import { supabase } from './supabaseClient';
 import '@solana/wallet-adapter-react-ui/styles.css';
 
+// ROOT WRAPPER
 const RootGame = () => {
-  const network = WalletAdapterNetwork.Mainnet; // Now the faded text will turn solid
-  // Use 'mainnet-beta' for real money or 'devnet' for testing
-  const endpoint = useMemo(() => clusterApiUrl('mainnet-beta'), []);
-  const wallets = useMemo(
-  () => [], []); 
+  const network = WalletAdapterNetwork.Mainnet;
+  const endpoint = useMemo(() => clusterApiUrl(network), [network]);
+  const wallets = useMemo(() => [], []); // Auto-detects ALL wallets
 
   return (
     <ConnectionProvider endpoint={endpoint}>
@@ -30,148 +27,92 @@ const GiftTapGame = () => {
   const [balance, setBalance] = useState(0);
   const [energy, setEnergy] = useState(1000);
   const [taps, setTaps] = useState([]);
-  const { publicKey, connected } = useWallet();
+  const { publicKey, connected, connect, select, wallets } = useWallet();
 
-  // 1. LOAD DATA: When wallet connects, get shards from Supabase
+  // --- TELEGRAM SDK INITIALIZATION ---
   useEffect(() => {
-    if (connected && publicKey) {
-      console.log("Wallet connected! Loading data for:", publicKey.toBase58());
-      loadUserData();
+    if (window.Telegram?.WebApp) {
+      window.Telegram.WebApp.ready();
+      window.Telegram.WebApp.expand(); // Opens the game to full height automatically
     }
-  }, [connected, publicKey]);
+  }, []);
 
-  const loadUserData = async () => {
+  // --- REAL-TIME ENERGY TICKER ---
+  useEffect(() => {
+    const ticker = setInterval(() => {
+      setEnergy((prev) => (prev < 1000 ? prev + 1 : 1000));
+    }, 1500);
+    return () => clearInterval(ticker);
+  }, []);
+
+  // --- DATA SYNC ---
+  const loadUserData = useCallback(async () => {
     if (!publicKey) return;
-
-    const { data, error } = await supabase
-      .from('players')
-      .select('*')
-      .eq('wallet_address', publicKey.toBase58())
-      .single();
-
+    const { data } = await supabase.from('players').select('*').eq('wallet_address', publicKey.toBase58()).single();
     if (data) {
-      // 1. For returning players: Load and Calculate
       setBalance(data.shard_balance);
-      const restoredEnergy = calculateOfflineToEnergy(data.last_energy, data.last_updated);
-      setEnergy(restoredEnergy);
-    } else if (error && error.code === 'PGRST116') { 
-      // 2. For new players: Create and Initialize locally
-      setBalance(0);
-      setEnergy(1000);
-
-      await supabase.from('players').upsert([
-        { 
-          wallet_address: publicKey.toBase58(), 
-          shard_balance: 0, 
-          last_energy: 1000,
-          last_updated: new Date().toISOString() 
-        }
-      ]);
-    } else {
-      console.error("Supabase error:", error);
+      const seconds = Math.floor((new Date() - new Date(data.last_updated)) / 1000);
+      setEnergy(Math.min(data.last_energy + Math.floor(seconds / 1.5), 1000));
     }
-  };
+  }, [publicKey]);
 
-  // 2. SAVE DATA: Every 10 seconds or when they tap a lot, update the DB
+  useEffect(() => { if (connected && publicKey) loadUserData(); }, [connected, publicKey, loadUserData]);
+
   const saveProgress = useCallback(async () => {
     if (!publicKey) return;
-
-    const { error } = await supabase
-      .from('players')
-      .upsert({ 
-        wallet_address: publicKey.toBase58(), 
-        shard_balance: balance, 
-        last_energy: energy, 
-        last_updated: new Date().toISOString() 
-      }, { onConflict: 'wallet_address' }); // Tells Supabase: "If address exists, just update it"
-
-    if (error) {
-      console.error("Supabase Save Error:", error.message);
-    } else {
-      console.log("Progress saved successfully!");
-    }
+    await supabase.from('players').upsert({
+      wallet_address: publicKey.toBase58(),
+      shard_balance: balance,
+      last_energy: energy,
+      last_updated: new Date().toISOString()
+    });
   }, [balance, energy, publicKey]);
 
+  // Save on Visibility Change (Closing TG)
   useEffect(() => {
-    // Auto-save every 20 seconds
-    const interval = setInterval(saveProgress, 20000);
-
-    // CRITICAL: Save when the user closes the tab or app
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'hidden') {
-        saveProgress();
-      }
-    };
-
-    window.addEventListener('visibilitychange', handleVisibilityChange);
-    return () => {
-      clearInterval(interval);
-      window.removeEventListener('visibilitychange', handleVisibilityChange);
-    };
+    const handleSave = () => { if (document.visibilityState === 'hidden') saveProgress(); };
+    window.addEventListener('visibilitychange', handleSave);
+    const interval = setInterval(saveProgress, 15000);
+    return () => { window.removeEventListener('visibilitychange', handleSave); clearInterval(interval); };
   }, [saveProgress]);
 
-  // ... rest of your handleTap logic ...
-
-  const handleTap = (e) => {
-    if (energy <= 0) return;
-
-    const { clientX, clientY } = e;
-    setBalance(balance + 1);
-    setEnergy(energy - 1);
-    
-    // Add a unique ID for each floating text for React's key prop
-    const id = Date.now();
-    setTaps([...taps, { id, x: clientX, y: clientY }]);
-
-    // Remove the animation element after 1 second
-    setTimeout(() => {
-      setTaps((prev) => prev.filter(t => t.id !== id));
-    }, 1000);
+  // --- CUSTOM CONNECTION BRIDGE (The "Anti-Friction" fix) ---
+  const handleUniversalConnect = async () => {
+    if (window.Telegram?.WebApp && /iPhone|Android/i.test(navigator.userAgent)) {
+      const dappUrl = window.location.host;
+      // We use the Universal Link protocol for Phantom/Solflare
+      const link = `https://phantom.app/ul/browse/https://${dappUrl}`;
+      window.Telegram.WebApp.openLink(link);
+    }
   };
 
-  const calculateOfflineToEnergy = (lastEnergy, lastUpdated) => {
-    const now = new Date();
-    const lastUpdate = new Date(lastUpdated);
-    
-    // DEBUG LOGS
-    console.log("Current Time:", now.toISOString());
-    console.log("Last Saved Time:", lastUpdated);
-    
-    const secondsPassed = Math.floor((now - lastUpdate) / 1000);
-    console.log("Seconds away:", secondsPassed);
-    
-    const energyGained = Math.floor(secondsPassed / 1.5);
-    console.log("Energy to gain:", energyGained);
-    
-    // Return the new energy, capped at 1000
-    return Math.min(lastEnergy + energyGained, 1000);
+  // --- GAMEPLAY ---
+  const handleTap = (e) => {
+    if (energy <= 0) return;
+    setBalance(b => b + 1);
+    setEnergy(e => e - 1);
+    const id = Date.now();
+    setTaps(t => [...t, { id, x: e.clientX, y: e.clientY }]);
+    setTimeout(() => setTaps(t => t.filter(tap => tap.id !== id)), 1000);
   };
 
   return (
     <div style={styles.container}>
-      {/* 1. Added Wallet Button at the top */}
       <div style={styles.walletWrapper}>
-        <WalletMultiButton />
+        {/* If in TG, show our special button, else show standard */}
+        <div onClick={handleUniversalConnect}>
+           <WalletMultiButton />
+        </div>
       </div>
 
       <div style={styles.header}>
-        <h1 style={styles.balance}> {balance} GFTshards</h1>
+        <h1 style={styles.balance}>{balance} GFTshards</h1>
         <p style={styles.energy}>⚡ {energy} / 1000</p>
       </div>
 
       <div onClick={handleTap} style={styles.giftZone}>
-        <img 
-          src="/Gift2u_logo.png" 
-          alt="Gift" 
-          style={{ ...styles.giftImage, transform: energy <= 0 ? 'grayscale(1)' : 'none' }}
-        />
-        
-        {/* Floating +1 Animations */}
-        {taps.map(tap => (
-          <span key={tap.id} style={{ ...styles.floatingText, left: tap.x, top: tap.y }}>
-            +1
-          </span>
-        ))}
+        <img src="/Gift2u_logo.png" alt="Gift" style={{ ...styles.giftImage, filter: energy <= 0 ? 'grayscale(1)' : 'none' }} />
+        {taps.map(t => <span key={t.id} style={{ ...styles.floatingText, left: t.x, top: t.y }}>+1</span>)}
       </div>
 
       <div style={styles.nav}>
@@ -179,35 +120,21 @@ const GiftTapGame = () => {
         <button style={styles.btn}>Friends</button>
         <button style={styles.btn}>Boost</button>
       </div>
-
-      <div className="game-container">
-          <p>Wallet: {publicKey ? publicKey.toBase58().slice(0, 6) : "Not Connected"}...</p>
-          {/* Your Gift Icon and Tapping Logic */}
-      </div>
-
     </div>
   );
 };
 
 const styles = {
   container: { position: 'fixed', top: 0, left: 0, height: '100%', width: '100%', background: '#1a1a1a', color: 'white', display: 'flex', flexDirection: 'column', alignItems: 'center', overflow: 'hidden', touchAction: 'manipulation' },
-  walletWrapper: {padding: '20px', width: '100%', display: 'flex', justifyContent: 'flex-end' }, // Puts the button on the top right
-  header: { marginTop: '40px', textAlign: 'center' },
-  balance: { fontSize: '3rem', margin: '0' },
+  walletWrapper: { padding: '20px', width: '100%', display: 'flex', justifyContent: 'flex-end' },
+  header: { marginTop: '10px', textAlign: 'center' },
+  balance: { fontSize: '2.5rem', color: '#ffd700', margin: 0 },
   energy: { color: '#ffd700', fontWeight: 'bold' },
   giftZone: { flex: 1, display: 'flex', justifyContent: 'center', alignItems: 'center', width: '100%', position: 'relative' },
-  giftImage: { width: '200px', cursor: 'pointer', transition: 'transform 0.1s active', userSelect: 'none' },
-  floatingText: { position: 'absolute', color: '#ffd700', fontSize: '2rem', fontWeight: 'bold', pointerEvents: 'none', animation: 'floatUp 1s forwards', zIndex: 999 },
-  nav: { height: '80px', width: '100%', display: 'flex', justifyContent: 'space-around', background: '#333' },
+  giftImage: { width: '220px', userSelect: 'none' },
+  floatingText: { position: 'fixed', color: '#ffd700', fontSize: '2rem', fontWeight: 'bold', pointerEvents: 'none', animation: 'floatUp 1s forwards', zIndex: 999 },
+  nav: { height: '80px', width: '100%', display: 'flex', justifyContent: 'space-around', background: '#333', borderTop: '2px solid #ffd700' },
   btn: { background: 'none', border: 'none', color: 'white', fontWeight: 'bold' }
 };
-
-// Note: You'll need this CSS in your global stylesheet for the animation
-/*
-@keyframes floatUp {
-  0% { opacity: 1; transform: translateY(0); }
-  100% { opacity: 0; transform: translateY(-100px); }
-}
-*/
 
 export default RootGame;
