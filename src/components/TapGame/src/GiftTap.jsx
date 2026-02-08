@@ -1,15 +1,26 @@
-import { useState, useEffect, useCallback } from 'react';
-import { useWallet } from '@solana/wallet-adapter-react';
-import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useWallet, ConnectionProvider, WalletProvider } from '@solana/wallet-adapter-react';
+import { WalletMultiButton, WalletModalProvider } from '@solana/wallet-adapter-react-ui';
 import { supabase } from './supabaseClient'; // You'll create this file
+import { clusterApiUrl } from '@solana/web3.js';
 
-<ConnectionProvider endpoint={endpoint}>
-  <WalletProvider wallets={wallets} autoConnect> 
-    <WalletModalProvider>
-        <GiftTapGame />
-    </WalletModalProvider>
-  </WalletProvider>
-</ConnectionProvider>
+import '@solana/wallet-adapter-react-ui/styles.css';
+
+const RootGame = () => {
+  // Use 'mainnet-beta' for real money or 'devnet' for testing
+  const endpoint = useMemo(() => clusterApiUrl('mainnet-beta'), []);
+  const wallets = useMemo(() => [], []); 
+
+  return (
+    <ConnectionProvider endpoint={endpoint}>
+      <WalletProvider wallets={wallets} autoConnect>
+        <WalletModalProvider>
+          <GiftTapGame />
+        </WalletModalProvider>
+      </WalletProvider>
+    </ConnectionProvider>
+  );
+};
 
 const GiftTapGame = () => {
   const [balance, setBalance] = useState(0);
@@ -167,4 +178,4 @@ const styles = {
 }
 */
 
-export default GiftTapGame;
+export default RootGame;
