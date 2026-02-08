@@ -5,6 +5,7 @@ import { supabase } from './supabaseClient'; // You'll create this file
 import { clusterApiUrl } from '@solana/web3.js';
 import { SolanaMobileWalletAdapter, createDefaultAddressSelector, createDefaultAuthorizationResultCache, createDefaultWalletNotFoundHandler } from '@solana-mobile/wallet-adapter-mobile';
 import { WalletAdapterNetwork } from '@solana/wallet-adapter-base';
+import { PhantomWalletAdapter,SolflareWalletAdapter } from '@solana/wallet-adapter-wallets';
 
 import '@solana/wallet-adapter-react-ui/styles.css';
 
@@ -24,6 +25,9 @@ const RootGame = () => {
       cluster: 'mainnet-beta', // or 'devnet'
       onWalletNotFound: createDefaultWalletNotFoundHandler(),
     }),
+    // Fallback for standard mobile browsers
+    new PhantomWalletAdapter(),
+    new SolflareWalletAdapter(),
   ],
   []
 ); 
@@ -93,10 +97,22 @@ const GiftTapGame = () => {
       .eq('wallet_address', publicKey.toBase58());
   }, [balance, energy, publicKey]);
 
-  // Auto-save every 30 seconds
   useEffect(() => {
-    const interval = setInterval(saveProgress, 30000);
-    return () => clearInterval(interval);
+    // Auto-save every 20 seconds
+    const interval = setInterval(saveProgress, 20000);
+
+    // CRITICAL: Save when the user closes the tab or app
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        saveProgress();
+      }
+    };
+
+    window.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
   }, [saveProgress]);
 
   // ... rest of your handleTap logic ...
@@ -140,7 +156,7 @@ const GiftTapGame = () => {
       </div>
 
       <div style={styles.header}>
-        <h1 style={styles.balance}>🎁 {balance} $GIFT</h1>
+        <h1 style={styles.balance}> {balance} GFTshards</h1>
         <p style={styles.energy}>⚡ {energy} / 1000</p>
       </div>
 
@@ -175,7 +191,7 @@ const GiftTapGame = () => {
 };
 
 const styles = {
-  container: { height: '100dvh', width: '100vw', background: '#1a1a1a', position: 'relative', overflow: 'hidden' },
+  container: { position: 'fixed', top: 0, left: 0, height: '100%', width: '100%', background: '#1a1a1a', color: 'white', display: 'flex', flexDirection: 'column', alignItems: 'center', overflow: 'hidden', touchAction: 'manipulation' },
   walletWrapper: {padding: '20px', width: '100%', display: 'flex', justifyContent: 'flex-end' }, // Puts the button on the top right
   header: { marginTop: '40px', textAlign: 'center' },
   balance: { fontSize: '3rem', margin: '0' },
