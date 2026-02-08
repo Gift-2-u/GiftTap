@@ -3,13 +3,30 @@ import { useWallet, ConnectionProvider, WalletProvider } from '@solana/wallet-ad
 import { WalletMultiButton, WalletModalProvider } from '@solana/wallet-adapter-react-ui';
 import { supabase } from './supabaseClient'; // You'll create this file
 import { clusterApiUrl } from '@solana/web3.js';
+import { SolanaMobileWalletAdapter, createDefaultAddressSelector, createDefaultAuthorizationResultCache, createDefaultWalletNotFoundHandler } from '@solana-mobile/wallet-adapter-mobile';
+import { WalletAdapterNetwork } from '@solana/wallet-adapter-base';
 
 import '@solana/wallet-adapter-react-ui/styles.css';
 
 const RootGame = () => {
   // Use 'mainnet-beta' for real money or 'devnet' for testing
   const endpoint = useMemo(() => clusterApiUrl('mainnet-beta'), []);
-  const wallets = useMemo(() => [], []); 
+  const wallets = useMemo(
+  () => [
+    new SolanaMobileWalletAdapter({
+      addressSelector: createDefaultAddressSelector(),
+      appIdentity: {
+        name: 'GiftTap',
+        uri: 'https://gift-tap.vercel.app', // MUST match your Vercel URL
+        icon: '/Gift2u_logo.png', // Relative to your URI
+      },
+      authorizationResultCache: createDefaultAuthorizationResultCache(),
+      cluster: 'mainnet-beta', // or 'devnet'
+      onWalletNotFound: createDefaultWalletNotFoundHandler(),
+    }),
+  ],
+  []
+); 
 
   return (
     <ConnectionProvider endpoint={endpoint}>
