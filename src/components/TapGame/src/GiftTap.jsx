@@ -13,16 +13,7 @@ const RootGame = () => {
   // Use 'mainnet-beta' for real money or 'devnet' for testing
   const endpoint = useMemo(() => clusterApiUrl('mainnet-beta'), []);
   const wallets = useMemo(
-  () => [new SolanaMobileWalletAdapter({
-        addressSelector: createDefaultAddressSelector(),
-        appIdentity: {
-          name: 'GiftTap',
-          uri: 'https://gift-tap.vercel.app',
-          icon: '/Gift2u_logo.png',
-        },
-        authorizationResultCache: createDefaultAuthorizationResultCache(),
-        cluster: 'mainnet-beta',
-      }),], []); 
+  () => [], []); 
 
   return (
     <ConnectionProvider endpoint={endpoint}>
@@ -44,6 +35,7 @@ const GiftTapGame = () => {
   // 1. LOAD DATA: When wallet connects, get shards from Supabase
   useEffect(() => {
     if (connected && publicKey) {
+      console.log("Wallet connected! Loading data for:", publicKey.toBase58());
       loadUserData();
     }
   }, [connected, publicKey]);
@@ -83,10 +75,21 @@ const GiftTapGame = () => {
   // 2. SAVE DATA: Every 10 seconds or when they tap a lot, update the DB
   const saveProgress = useCallback(async () => {
     if (!publicKey) return;
-    await supabase
+
+    const { error } = await supabase
       .from('players')
-      .update({ shard_balance: balance, last_energy: energy, last_updated: new Date() })
-      .eq('wallet_address', publicKey.toBase58());
+      .upsert({ 
+        wallet_address: publicKey.toBase58(), 
+        shard_balance: balance, 
+        last_energy: energy, 
+        last_updated: new Date().toISOString() 
+      }, { onConflict: 'wallet_address' }); // Tells Supabase: "If address exists, just update it"
+
+    if (error) {
+      console.error("Supabase Save Error:", error.message);
+    } else {
+      console.log("Progress saved successfully!");
+    }
   }, [balance, energy, publicKey]);
 
   useEffect(() => {
@@ -130,11 +133,15 @@ const GiftTapGame = () => {
     const now = new Date();
     const lastUpdate = new Date(lastUpdated);
     
-    // Calculate seconds passed since the last save
-    const secondsPassed = Math.floor((now - lastUpdate) / 1000);
+    // DEBUG LOGS
+    console.log("Current Time:", now.toISOString());
+    console.log("Last Saved Time:", lastUpdated);
     
-    // You earn 1 energy every 1.5 seconds (based on your current logic)
+    const secondsPassed = Math.floor((now - lastUpdate) / 1000);
+    console.log("Seconds away:", secondsPassed);
+    
     const energyGained = Math.floor(secondsPassed / 1.5);
+    console.log("Energy to gain:", energyGained);
     
     // Return the new energy, capped at 1000
     return Math.min(lastEnergy + energyGained, 1000);
