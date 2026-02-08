@@ -5,32 +5,24 @@ import { supabase } from './supabaseClient'; // You'll create this file
 import { clusterApiUrl } from '@solana/web3.js';
 import { SolanaMobileWalletAdapter, createDefaultAddressSelector, createDefaultAuthorizationResultCache, createDefaultWalletNotFoundHandler } from '@solana-mobile/wallet-adapter-mobile';
 import { WalletAdapterNetwork } from '@solana/wallet-adapter-base';
-import { PhantomWalletAdapter,SolflareWalletAdapter } from '@solana/wallet-adapter-wallets';
 
 import '@solana/wallet-adapter-react-ui/styles.css';
 
 const RootGame = () => {
+  const network = WalletAdapterNetwork.Mainnet; // Now the faded text will turn solid
   // Use 'mainnet-beta' for real money or 'devnet' for testing
   const endpoint = useMemo(() => clusterApiUrl('mainnet-beta'), []);
   const wallets = useMemo(
-  () => [
-    new SolanaMobileWalletAdapter({
-      addressSelector: createDefaultAddressSelector(),
-      appIdentity: {
-        name: 'GiftTap',
-        uri: 'https://gift-tap.vercel.app', // MUST match your Vercel URL
-        icon: '/Gift2u_logo.png', // Relative to your URI
-      },
-      authorizationResultCache: createDefaultAuthorizationResultCache(),
-      cluster: 'mainnet-beta', // or 'devnet'
-      onWalletNotFound: createDefaultWalletNotFoundHandler(),
-    }),
-    // Fallback for standard mobile browsers
-    new PhantomWalletAdapter(),
-    new SolflareWalletAdapter(),
-  ],
-  []
-); 
+  () => [new SolanaMobileWalletAdapter({
+        addressSelector: createDefaultAddressSelector(),
+        appIdentity: {
+          name: 'GiftTap',
+          uri: 'https://gift-tap.vercel.app',
+          icon: '/Gift2u_logo.png',
+        },
+        authorizationResultCache: createDefaultAuthorizationResultCache(),
+        cluster: 'mainnet-beta',
+      }),], []); 
 
   return (
     <ConnectionProvider endpoint={endpoint}>
@@ -75,7 +67,7 @@ const GiftTapGame = () => {
       setBalance(0);
       setEnergy(1000);
 
-      await supabase.from('players').insert([
+      await supabase.from('players').upsert([
         { 
           wallet_address: publicKey.toBase58(), 
           shard_balance: 0, 
