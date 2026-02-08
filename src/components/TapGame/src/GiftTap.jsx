@@ -130,7 +130,7 @@ const GiftTapGame = () => {
       </div>
 
       <div className="game-container">
-          <p>Wallet: {publicKey.toBase58().slice(0, 6)}...</p>
+          <p>Wallet: {publicKey ? publicKey.toBase58().slice(0, 6) : "Not Connected"}...</p>
           {/* Your Gift Icon and Tapping Logic */}
       </div>
 
