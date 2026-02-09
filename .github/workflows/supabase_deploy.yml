@@ -5,7 +5,7 @@ on:
     branches:
       - main
     paths:
-      - 'supabase/functions/**'
+      - 'src/components/TapGame/supabase/**'
   workflow_dispatch: # Allows manual trigger from GitHub UI
 
 jobs:
