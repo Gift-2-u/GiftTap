@@ -26,13 +26,18 @@ serve(async (req) => {
 
     // 3. Save to Database
     // Note: We are saving the secret key. Ensure RLS is tight!
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from('players')
-      .update({ 
-        wallet_address: publicKey,
-        encrypted_key: secretKeyString // For now, we'll store the string. 
-      })
-      .eq('id', userId)
+      .upsert(
+        { 
+          wallet_address: publicKey,
+          encrypted_key: secretKeyString,
+          shard_balance: 0,
+          last_energy: 1000
+        }, 
+        { onConflict: 'wallet_address' } // Tell it exactly which column to use for matching
+      )
+      .select('wallet_address') // Only ask for the wallet back, NOT the whole row (prevents looking for 'id')
 
     if (error) throw error
 
