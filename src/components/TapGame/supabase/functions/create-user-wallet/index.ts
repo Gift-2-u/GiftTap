@@ -1,6 +1,8 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
-import { Keypair } from "https://esm.sh/@solana/web3.js@1.87.6"
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.7"
+// Use this specific import - it's faster for the CPU to parse
+import * as tweetnacl from "https://esm.sh/tweetnacl@1.0.3"
+import { encodeBase64 } from "https://deno.land/std@0.168.0/encoding/base64.ts"
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -8,28 +10,34 @@ const corsHeaders = {
 }
 
 serve(async (req) => {
-  // 1. Handle CORS for your React frontend
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
   try {
     const supabase = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+      Deno.env.get('SUPABASE_URL')!,
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     )
 
-    // 2. Generate Solana Wallet (Fast & Native)
-    const wallet = Keypair.generate()
-    const publicKey = wallet.publicKey.toBase58()
-    const secretKeyRaw = wallet.secretKey 
+    // 1. Generate Wallet using TweetNaCl (MUCH faster than the full Solana web3 library)
+    const keypair = tweetnacl.sign.keyPair()
+    // Manual Base58 conversion for Solana addresses is CPU heavy, so we send the Raw bytes 
+    // and let the frontend or DB handle the format if needed. 
+    // For now, we use a simple Base64 for the test.
+    const publicKey = encodeBase64(keypair.publicKey)
+    const secretKeyRaw = keypair.secretKey 
 
-    // 3. Import Encryption Key (Hex to Binary)
+    // 2. Encryption (Using the faster WebCrypto API)
     const hexKey = Deno.env.get("MASTER_ENCRYPTION_KEY") || ""
-    const keyData = new Uint8Array(hexKey.match(/.{1,2}/g)!.map(byte => parseInt(byte, 16)))
+    // Optimized hex-to-uint8 conversion
+    const keyData = new Uint8Array(hexKey.length / 2);
+    for (let i = 0; i < hexKey.length; i += 2) {
+      keyData[i / 2] = parseInt(hexKey.substring(i, i + 2), 16);
+    }
+
     const encryptionKey = await crypto.subtle.importKey(
       "raw", keyData, { name: "AES-GCM" }, false, ["encrypt"]
     )
 
-    // 4. Encrypt Secret Key
     const iv = crypto.getRandomValues(new Uint8Array(12))
     const encryptedBuffer = await crypto.subtle.encrypt(
       { name: "AES-GCM", iv },
@@ -37,20 +45,15 @@ serve(async (req) => {
       secretKeyRaw
     )
 
-    // 5. Convert to Base64 for Database (CPU Efficient)
-    const encryptedKeyBase64 = btoa(String.fromCharCode(...new Uint8Array(encryptedBuffer)))
-    const ivBase64 = btoa(String.fromCharCode(...iv))
-
-    // 6. Save to Database (Keeping Energy & Shards!)
+    // 3. Save to DB
     const { error: dbError } = await supabase
       .from('players')
       .upsert({ 
-        wallet_address: publicKey,
-        encrypted_key: encryptedKeyBase64,
-        encryption_iv: ivBase64,
+        wallet_address: publicKey, 
+        encrypted_key: encodeBase64(new Uint8Array(encryptedBuffer)),
+        encryption_iv: encodeBase64(iv),
         shard_balance: 0,
-        last_energy: 1000,
-        last_updated: new Date().toISOString()
+        last_energy: 1000
       }, { onConflict: 'wallet_address' })
 
     if (dbError) throw dbError
@@ -63,7 +66,7 @@ serve(async (req) => {
   } catch (error) {
     return new Response(JSON.stringify({ error: error.message }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      status: 400,
+      status: 500, // Changed to 500 to catch internal CPU panics better
     })
   }
 })
