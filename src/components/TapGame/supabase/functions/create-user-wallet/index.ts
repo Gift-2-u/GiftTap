@@ -13,10 +13,9 @@ serve(async (req) => {
   try {
     const { userId } = await req.json()
     
-    // 1. Generate New Solana Wallet
-    const wallet = Keypair.generate()
-    const publicKey = wallet.publicKey.toBase58()
-    const secretKeyString = JSON.stringify(Array.from(wallet.secretKey))
+    const wallet = Keypair.generate();
+    const publicKey = wallet.publicKey.toString();
+    const secretKey = wallet.secretKey; // This is a Uint8Array
 
     // 2. Initialize Supabase Admin
     const supabase = createClient(
@@ -33,7 +32,8 @@ serve(async (req) => {
           wallet_address: publicKey,
           encrypted_key: secretKeyString,
           shard_balance: 0,
-          last_energy: 1000
+          last_energy: 1000,
+          last_updated: new Date().toISOString()
         }, 
         { onConflict: 'wallet_address' } // Tell it exactly which column to use for matching
       )
