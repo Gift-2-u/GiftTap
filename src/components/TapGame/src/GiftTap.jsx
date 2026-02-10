@@ -5,73 +5,57 @@ import { PrivyProvider, usePrivy, useWallets } from '@privy-io/react-auth';
 import { toSolanaWalletConnectors } from '@privy-io/react-auth/solana';
 import { Transaction, SystemProgram, PublicKey } from '@solana/web3.js';
 
-// ROOT WRAPPER
-const RootGame = () => {
-  const solanaConnectors = useMemo(() => toSolanaWalletConnectors({
-    shouldAutoConnect: true,
-  }), []);
-
-  return (
-    <PrivyProvider
-      appId="cmle2m75i01dfl20c1n5qfafa" // CHANGE THIS to your actual ID from dashboard.privy.io
-      config={{
-        loginMethods: ['telegram'],
-        appearance: { 
-          theme: 'dark',
-          accentColor: '#ffd700',
-        },
-        embeddedWallets: {
-          createOnLogin: 'users-without-wallets',
-        },
-        solanaClusters: [{ name: 'mainnet-beta' }],
-      }}
-      externalWallets={{ solana: solanaConnectors }}
-    >
-      <GiftTapGame />
-    </PrivyProvider>
-  );
-};
-
 const GiftTapGame = () => {
-  const { login, authenticated, ready } = usePrivy();
-  const { wallets } = useWallets(); // Privy's way to access wallets
-  
+  // 1. GAME STATE
   const [balance, setBalance] = useState(0);
   const [energy, setEnergy] = useState(1000);
   const [taps, setTaps] = useState([]);
+  const [playerWallet, setPlayerWallet] = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
 
-  // Find the active wallet address
-  const activeWallet = useMemo(() => {
-    return wallets.find((w) => w.walletClientType === 'privy' && w.chainType === 'solana') 
-           || wallets.find(w => w.chainType === 'solana');
-  }, [wallets]);
+  // 2. GET TELEGRAM USER DATA
+  const tgUser = useMemo(() => {
+    return window.Telegram?.WebApp?.initDataUnsafe?.user || { id: "test_local_user" };
+  }, []);
 
-  // --- TELEGRAM SDK INITIALIZATION ---
-  useEffect(() => {
-  const triggerSeamlessLogin = async () => {
-    // 1. Check if we are inside Telegram and ready
-    if (ready && !authenticated && window.Telegram?.WebApp) {
-      try {
-        // 2. Fetch the 'initData' directly from Telegram
-        const initData = window.Telegram.WebApp.initData;
+  // 3. LOAD DATA OR CREATE WALLET
+  const syncPlayer = useCallback(async () => {
+    try {
+      // First, try to find existing player in Supabase
+      const { data: player, error } = await supabase
+        .from('players')
+        .select('*')
+        .eq('telegram_id', tgUser.id) // Assuming you added a telegram_id column
+        .single();
+
+      if (player) {
+        setPlayerWallet(player.wallet_address);
+        setBalance(player.shard_balance);
         
-        if (initData) {
-          // 3. Use the seamless login method (Privy v3 logic)
-          // This logs them in INSTANTLY using their TG identity
-          await login({
-            telegram: { initData }
-          });
-        }
-      } catch (error) {
-        console.error("Seamless login failed, falling back to manual", error);
+        // Calculate recovered energy while they were away
+        const seconds = Math.floor((new Date() - new Date(player.last_updated)) / 1000);
+        setEnergy(Math.min(player.last_energy + Math.floor(seconds / 1.5), 1000));
+      } else {
+        // CALL YOUR NEW EDGE FUNCTION TO CREATE WALLET
+        const { data, error: functionError } = await supabase.functions.invoke('create-user-wallet', {
+          body: { telegram_id: tgUser.id }
+        });
+
+        if (functionError) throw functionError;
+        setPlayerWallet(data.publicKey);
       }
+    } catch (err) {
+      console.error("Sync Error:", err.message);
+    } finally {
+      setIsLoading(false);
     }
-  };
+  }, [tgUser]);
 
-  triggerSeamlessLogin();
-}, [ready, authenticated, login]);
+  useEffect(() => {
+    syncPlayer();
+  }, [syncPlayer]);
 
-  // --- REAL-TIME ENERGY TICKER ---
+  // --- ENERGY TICKER ---
   useEffect(() => {
     const ticker = setInterval(() => {
       setEnergy((prev) => (prev < 1000 ? prev + 1 : 1000));
@@ -79,51 +63,26 @@ const GiftTapGame = () => {
     return () => clearInterval(ticker);
   }, []);
 
-  // --- DATA SYNC WITH SUPABASE ---
-  const loadUserData = useCallback(async () => {
-    if (!activeWallet) return;
-    const { data } = await supabase
-      .from('players')
-      .select('*')
-      .eq('wallet_address', activeWallet.address)
-      .single();
-
-    if (data) {
-      setBalance(data.shard_balance);
-      const seconds = Math.floor((new Date() - new Date(data.last_updated)) / 1000);
-      setEnergy(Math.min(data.last_energy + Math.floor(seconds / 1.5), 1000));
-    }
-  }, [activeWallet]);
-
-  useEffect(() => {
-    if (authenticated && activeWallet) loadUserData();
-  }, [authenticated, activeWallet, loadUserData]);
-
+  // --- SAVE PROGRESS ---
   const saveProgress = useCallback(async () => {
-    if (!activeWallet) return;
+    if (!playerWallet) return;
     await supabase.from('players').upsert({
-      wallet_address: activeWallet.address,
+      wallet_address: playerWallet,
+      telegram_id: tgUser.id,
       shard_balance: balance,
       last_energy: energy,
       last_updated: new Date().toISOString()
-    });
-  }, [balance, energy, activeWallet]);
+    }, { onConflict: 'wallet_address' });
+  }, [balance, energy, playerWallet, tgUser]);
 
-  // Auto-save logic
   useEffect(() => {
-    const handleSave = () => { if (document.visibilityState === 'hidden') saveProgress(); };
-    window.addEventListener('visibilitychange', handleSave);
     const interval = setInterval(saveProgress, 15000);
-    return () => {
-      window.removeEventListener('visibilitychange', handleSave);
-      clearInterval(interval);
-    };
+    return () => clearInterval(interval);
   }, [saveProgress]);
 
   // --- GAMEPLAY ---
   const handleTap = (e) => {
-    if (!authenticated) { login(); return; }
-    if (energy <= 0) return;
+    if (energy <= 0 || isLoading) return;
     
     setBalance(b => b + 1);
     setEnergy(e => e - 1);
@@ -133,16 +92,12 @@ const GiftTapGame = () => {
     setTimeout(() => setTaps(t => t.filter(tap => tap.id !== id)), 1000);
   };
 
-  if (!ready) return <div style={styles.container}>Loading...</div>;
+  if (isLoading) return <div style={styles.container}>Loading Gift...</div>;
 
   return (
     <div style={styles.container}>
       <div style={styles.walletWrapper}>
-        {!authenticated ? (
-          <button style={styles.loginBtn} onClick={login}>Connect Wallet</button>
-        ) : (
-          <p style={styles.walletText}>{activeWallet?.address.slice(0, 6)}...</p>
-        )}
+        <p style={styles.walletText}>{playerWallet?.slice(0, 6)}...</p>
       </div>
 
       <div style={styles.header}>
@@ -151,8 +106,14 @@ const GiftTapGame = () => {
       </div>
 
       <div onClick={handleTap} style={styles.giftZone}>
-        <img src="/Gift2u_logo.png" alt="Gift" style={{ ...styles.giftImage, filter: energy <= 0 ? 'grayscale(1)' : 'none' }} />
-        {taps.map(t => <span key={t.id} style={{ ...styles.floatingText, left: t.x, top: t.y }}>+1</span>)}
+        <img 
+          src="/Gift2u_logo.png" 
+          alt="Gift" 
+          style={{ ...styles.giftImage, filter: energy <= 0 ? 'grayscale(1)' : 'none' }} 
+        />
+        {taps.map(t => (
+          <span key={t.id} style={{ ...styles.floatingText, left: t.x, top: t.y }}>+1</span>
+        ))}
       </div>
 
       <div style={styles.nav}>
@@ -163,6 +124,8 @@ const GiftTapGame = () => {
     </div>
   );
 };
+
+// ... keep your styles the same ...
 
 const styles = {
   container: { position: 'fixed', top: 0, left: 0, height: '100%', width: '100%', background: '#1a1a1a', color: 'white', display: 'flex', flexDirection: 'column', alignItems: 'center', overflow: 'hidden', touchAction: 'manipulation' },
@@ -179,4 +142,4 @@ const styles = {
   btn: { background: 'none', border: 'none', color: 'white', fontWeight: 'bold' }
 };
 
-export default RootGame;
+export default GiftTapGame;
