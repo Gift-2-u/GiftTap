@@ -1,4 +1,4 @@
-name: Vercel Production Deployment
+name: Deploy Gift Project
 env:
   VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
   VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
@@ -32,7 +32,8 @@ jobs:
           version: latest
 
       - name: Deploy Wallet Function
-        # We use --no-verify-jwt because this is a public-facing auth function
-        run: supabase functions deploy create-user-wallet --project-ref ${{ secrets.ncwlbwzxfpcnxkyrmdck }} --no-verify-jwt
+        # We point to the subfolder where your supabase folder is
+        working-directory: src/components/TapGame
+        run: supabase functions deploy create-user-wallet --project-ref ${{ secrets.SUPABASE_PROJECT_ID }} --no-verify-jwt
         env:
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.sbp_be7e81a1932cbcdec57ca371f10ec2cdf6d92195 }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
