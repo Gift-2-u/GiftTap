@@ -2,7 +2,8 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.7"
 // Use this specific import - it's faster for the CPU to parse
 import * as tweetnacl from "https://esm.sh/tweetnacl@1.0.3"
-import { encodeBase64 } from "https://deno.land/std@0.168.0/encoding/base64.ts"
+import { encode as encodeBase64 } from "https://deno.land/std@0.168.0/encoding/base64.ts"
+import { encode as encodeBase58 } from "https://deno.land/x/base58@v1.0.2/mod.ts"
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
