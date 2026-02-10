@@ -1,8 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { clusterApiUrl } from '@solana/web3.js';
 import { supabase } from './supabaseClient';
-import { PrivyProvider, usePrivy, useWallets } from '@privy-io/react-auth';
-import { toSolanaWalletConnectors } from '@privy-io/react-auth/solana';
 import { Transaction, SystemProgram, PublicKey } from '@solana/web3.js';
 
 const GiftTapGame = () => {
@@ -12,6 +10,7 @@ const GiftTapGame = () => {
   const [taps, setTaps] = useState([]);
   const [playerWallet, setPlayerWallet] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isDataLoaded, setIsDataLoaded] = useState(false);
 
   // 2. GET TELEGRAM USER DATA
   const tgUser = useMemo(() => {
@@ -20,6 +19,7 @@ const GiftTapGame = () => {
 
   // 3. LOAD DATA OR CREATE WALLET
   const syncPlayer = useCallback(async () => {
+    setIsLoading(true);
     try {
       // First, try to find existing player in Supabase
       const { data: player, error } = await supabase
@@ -30,19 +30,26 @@ const GiftTapGame = () => {
 
       if (player) {
         setPlayerWallet(player.wallet_address);
-        setBalance(player.shard_balance);
+        setBalance(Number(player.shard_balance)); // Ensure it's a number
         
-        // Calculate recovered energy while they were away
-        const seconds = Math.floor((new Date() - new Date(player.last_updated)) / 1000);
-        setEnergy(Math.min(player.last_energy + Math.floor(seconds / 1.5), 1000));
+        // Energy Recovery Calculation
+        const lastDate = new Date(player.last_updated).getTime();
+        const now = new Date().getTime();
+        const secondsPassed = Math.floor((now - lastDate) / 1000);
+        const recovered = Math.floor(secondsPassed / 1.5);
+        
+        setEnergy(Math.min(player.last_energy + recovered, 1000));
+        setIsDataLoaded(true); // LOCK OPEN: We have the real data now
       } else {
         // CALL YOUR NEW EDGE FUNCTION TO CREATE WALLET
         const { data, error: functionError } = await supabase.functions.invoke('create-user-wallet', {
           body: { telegram_id: tgUser.id }
         });
 
-        if (functionError) throw functionError;
         setPlayerWallet(data.publicKey);
+        setBalance(0);
+        setEnergy(1000);
+        setIsDataLoaded(true); // NEW PLAYER: Start at 0/1000
       }
     } catch (err) {
       console.error("Sync Error:", err.message);
@@ -65,7 +72,8 @@ const GiftTapGame = () => {
 
   // --- SAVE PROGRESS ---
   const saveProgress = useCallback(async () => {
-    if (!playerWallet) return;
+    if (!isDataLoaded || !playerWallet) return;
+
     await supabase.from('players').upsert({
       wallet_address: playerWallet,
       telegram_id: tgUser.id,
@@ -73,7 +81,7 @@ const GiftTapGame = () => {
       last_energy: energy,
       last_updated: new Date().toISOString()
     }, { onConflict: 'wallet_address' });
-  }, [balance, energy, playerWallet, tgUser]);
+  }, [balance, energy, playerWallet, tgUser, isDataLoaded]);
 
   useEffect(() => {
     const interval = setInterval(saveProgress, 15000);
