@@ -1,9 +1,11 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.7"
 // Use this specific import - it's faster for the CPU to parse
-import * as tweetnacl from "https://esm.sh/tweetnacl@1.0.3"
-import { encode as encodeBase64 } from "https://deno.land/std@0.168.0/encoding/base64.ts"
-import { b58 } from "https://deno.land/x/b58@v1.0.2/mod.ts"
+import tweetnacl from "https://esm.sh/tweetnacl@1.0.3"
+import bs58 from "https://esm.sh/bs58@5.0.0"
+
+// Standard library for Base64 is usually safe, but let's use the older stable version
+import { encode as encodeBase64 } from "https://deno.land/std@0.145.0/encoding/base64.ts"
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -24,7 +26,7 @@ serve(async (req) => {
     // Manual Base58 conversion for Solana addresses is CPU heavy, so we send the Raw bytes 
     // and let the frontend or DB handle the format if needed. 
     // For now, we use a simple Base64 for the test.
-    const publicKey = b58.encode(keypair.publicKey)
+    const publicKey = bs58.encode(keypair.publicKey)
     const secretKeyRaw = keypair.secretKey 
 
     // 2. Encryption (Using the faster WebCrypto API)
