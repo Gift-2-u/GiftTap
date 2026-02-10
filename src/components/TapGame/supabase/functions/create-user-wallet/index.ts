@@ -24,7 +24,7 @@ serve(async (req) => {
     // Manual Base58 conversion for Solana addresses is CPU heavy, so we send the Raw bytes 
     // and let the frontend or DB handle the format if needed. 
     // For now, we use a simple Base64 for the test.
-    const publicKey = encodeBase64(keypair.publicKey)
+    const publicKey = b58.encode(keypair.publicKey)
     const secretKeyRaw = keypair.secretKey 
 
     // 2. Encryption (Using the faster WebCrypto API)

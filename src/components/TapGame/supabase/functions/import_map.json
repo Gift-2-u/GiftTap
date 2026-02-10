@@ -1,6 +1,0 @@
-{
-  "imports": {
-    "std/": "https://deno.land/std@0.177.0/",
-    "solana/": "https://esm.sh/@solana/web3.js@1.87.6"
-  }
-}
