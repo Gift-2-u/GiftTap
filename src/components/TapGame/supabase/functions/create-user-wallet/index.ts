@@ -1,6 +1,6 @@
-import { serve } from "https://deno.land/std@0.177.0/http/server.ts"
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
-import { Keypair } from 'https://esm.sh/@solana/web3.js@1.87.6'
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
+import { Keypair } from "https://esm.sh/@solana/web3.js@1.87.6"
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -8,47 +8,62 @@ const corsHeaders = {
 }
 
 serve(async (req) => {
+  // 1. Handle CORS for your React frontend
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
   try {
-    const { userId } = await req.json()
-    
-    const wallet = Keypair.generate();
-    const publicKey = wallet.publicKey.toString();
-    const secretKey = wallet.secretKey; // This is a Uint8Array
-
-    // 2. Initialize Supabase Admin
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     )
 
-    // 3. Save to Database
-    // Note: We are saving the secret key. Ensure RLS is tight!
-    const { data, error } = await supabase
-      .from('players')
-      .upsert(
-        { 
-          wallet_address: publicKey,
-          encrypted_key: secretKeyString,
-          shard_balance: 0,
-          last_energy: 1000,
-          last_updated: new Date().toISOString()
-        }, 
-        { onConflict: 'wallet_address' } // Tell it exactly which column to use for matching
-      )
-      .select('wallet_address') // Only ask for the wallet back, NOT the whole row (prevents looking for 'id')
+    // 2. Generate Solana Wallet (Fast & Native)
+    const wallet = Keypair.generate()
+    const publicKey = wallet.publicKey.toBase58()
+    const secretKeyRaw = wallet.secretKey 
 
-    if (error) throw error
+    // 3. Import Encryption Key (Hex to Binary)
+    const hexKey = Deno.env.get("MASTER_ENCRYPTION_KEY") || ""
+    const keyData = new Uint8Array(hexKey.match(/.{1,2}/g)!.map(byte => parseInt(byte, 16)))
+    const encryptionKey = await crypto.subtle.importKey(
+      "raw", keyData, { name: "AES-GCM" }, false, ["encrypt"]
+    )
+
+    // 4. Encrypt Secret Key
+    const iv = crypto.getRandomValues(new Uint8Array(12))
+    const encryptedBuffer = await crypto.subtle.encrypt(
+      { name: "AES-GCM", iv },
+      encryptionKey,
+      secretKeyRaw
+    )
+
+    // 5. Convert to Base64 for Database (CPU Efficient)
+    const encryptedKeyBase64 = btoa(String.fromCharCode(...new Uint8Array(encryptedBuffer)))
+    const ivBase64 = btoa(String.fromCharCode(...iv))
+
+    // 6. Save to Database (Keeping Energy & Shards!)
+    const { error: dbError } = await supabase
+      .from('players')
+      .upsert({ 
+        wallet_address: publicKey,
+        encrypted_key: encryptedKeyBase64,
+        encryption_iv: ivBase64,
+        shard_balance: 0,
+        last_energy: 1000,
+        last_updated: new Date().toISOString()
+      }, { onConflict: 'wallet_address' })
+
+    if (dbError) throw dbError
 
     return new Response(JSON.stringify({ publicKey }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      status: 200,
     })
 
-  } catch (err) {
-    return new Response(JSON.stringify({ error: err.message }), {
-      status: 400,
+  } catch (error) {
+    return new Response(JSON.stringify({ error: error.message }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      status: 400,
     })
   }
 })
