@@ -1,7 +1,10 @@
+import { Buffer } from 'buffer';
+window.Buffer = window.Buffer || Buffer;
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { clusterApiUrl } from '@solana/web3.js';
+import { Connection, PublicKey, clusterApiUrl } from '@solana/web3.js';
 import { supabase } from './supabaseClient';
 import { Transaction, SystemProgram, PublicKey } from '@solana/web3.js';
+import { getAssociatedTokenAddressSync } from '@solana/spl-token';
 
 const GiftTapGame = () => {
   // 1. GAME STATE
@@ -162,7 +165,7 @@ const GiftTapGame = () => {
       
       // 2. Fetch GFT & USDC (Using their Mint Addresses)
       // Replace with your actual GFT Mint: 3UL9MdHnmtAh6KBdDwLtyxFWVEgGQHLiwN2cg3FPWEis
-      const gftMint = new PublicKey("3UL9MdHnmtAh6KBdDwLtyxFWVEgGQHLiwN2cg3FPWEis");
+      const gftMint = new PublicKey("");
       const usdcMint = new PublicKey("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v");
 
       // Helper to get token balance safely
