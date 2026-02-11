@@ -195,22 +195,6 @@ const GiftTapGame = () => {
     setLeaderboard(data || []);
   };
 
-  // Inside your Leaderboard Modal
-  <div style={styles.tabContainer}>
-    <button 
-      style={leaderboardType === 'all_time' ? styles.activeTab : styles.tab}
-      onClick={() => setLeaderboardType('all_time')}
-    >
-      🌎 All-Time
-    </button>
-    <button 
-      style={leaderboardType === 'season' ? styles.activeTab : styles.tab}
-      onClick={() => setLeaderboardType('season')}
-    >
-      ⏳ Season 1
-    </button>
-  </div>
-
   if (isLoading) return <div style={styles.container}>Loading Gift...</div>;
 
   return (
@@ -221,6 +205,22 @@ const GiftTapGame = () => {
           style={styles.walletBtn}
         >
           {playerWallet?.slice(0, 4)}...{playerWallet?.slice(-4)}
+        </button>
+      </div>
+
+      // Inside your Leaderboard Modal
+      <div style={styles.tabContainer}>
+        <button 
+          style={leaderboardType === 'all_time' ? styles.activeTab : styles.tab}
+          onClick={() => setLeaderboardType('all_time')}
+        >
+          🌎 All-Time
+        </button>
+        <button 
+          style={leaderboardType === 'season' ? styles.activeTab : styles.tab}
+          onClick={() => setLeaderboardType('season')}
+        >
+          ⏳ Season 1
         </button>
       </div>
 
