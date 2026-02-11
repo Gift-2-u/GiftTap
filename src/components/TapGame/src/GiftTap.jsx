@@ -111,6 +111,7 @@ const GiftTapGame = () => {
           wallet_address: playerWallet,
           telegram_id: tgUser.id,
           shard_balance: b,
+          season_shards: b,
           last_energy: e,
           last_updated: new Date().toISOString()
         }, { onConflict: 'wallet_address' }); // THIS IS CRITICAL
@@ -185,6 +186,30 @@ const GiftTapGame = () => {
       console.error("Balance fetch failed", err);
     }
   }, [playerWallet, connection]);
+
+  const [leaderboardType, setLeaderboardType] = useState('all_time'); // 'all_time' or 'season'
+
+  const fetchLeaderboard = async () => {
+    const tableName = leaderboardType === 'all_time' ? 'leaderboard_all_time' : 'leaderboard_season';
+    const { data } = await supabase.from(tableName).select('*');
+    setLeaderboard(data || []);
+  };
+
+  // Inside your Leaderboard Modal
+  <div style={styles.tabContainer}>
+    <button 
+      style={leaderboardType === 'all_time' ? styles.activeTab : styles.tab}
+      onClick={() => setLeaderboardType('all_time')}
+    >
+      🌎 All-Time
+    </button>
+    <button 
+      style={leaderboardType === 'season' ? styles.activeTab : styles.tab}
+      onClick={() => setLeaderboardType('season')}
+    >
+      ⏳ Season 1
+    </button>
+  </div>
 
   if (isLoading) return <div style={styles.container}>Loading Gift...</div>;
 
