@@ -1,9 +1,8 @@
 import { Buffer } from 'buffer';
 window.Buffer = window.Buffer || Buffer;
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { Connection, PublicKey, clusterApiUrl } from '@solana/web3.js';
+import { Connection, PublicKey, clusterApiUrl, Transaction, SystemProgram } from '@solana/web3.js';
 import { supabase } from './supabaseClient';
-import { Transaction, SystemProgram, PublicKey } from '@solana/web3.js';
 import { getAssociatedTokenAddressSync } from '@solana/spl-token';
 
 const GiftTapGame = () => {
