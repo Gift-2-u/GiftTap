@@ -164,7 +164,7 @@ const GiftTapGame = () => {
       
       // 2. Fetch GFT & USDC (Using their Mint Addresses)
       // Replace with your actual GFT Mint: 3UL9MdHnmtAh6KBdDwLtyxFWVEgGQHLiwN2cg3FPWEis
-      const gftMint = new PublicKey("");
+      const gftMint = new PublicKey();
       const usdcMint = new PublicKey("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v");
 
       // Helper to get token balance safely
