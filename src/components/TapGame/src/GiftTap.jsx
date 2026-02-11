@@ -96,18 +96,32 @@ const GiftTapGame = () => {
   }, [playerWallet]);
 
   // 2. Throttled Instant Save Function
-  const saveToDatabase = useCallback((newB, newE) => {
-    clearTimeout(window.saveTimer);
-    window.saveTimer = setTimeout(async () => {
-      await supabase.from('players').upsert({
-        wallet_address: playerWallet,
-        telegram_id: tgUser.id,
-        shard_balance: newB,
-        last_energy: newE,
-        last_updated: new Date().toISOString()
-      }, { onConflict: 'wallet_address' });
-    }, 500); // Saves 0.5s after you STOP tapping
-  }, [balance, energy, playerWallet, tgUser, isDataLoaded]);
+  const saveToDatabase = async (b, e) => {
+    // Clear any existing timer to restart the "wait"
+    clearTimeout(window.saveTimeout);
+
+    window.saveTimeout = setTimeout(async () => {
+      console.log("🚀 Attempting to save...", { b, e });
+
+      const { data, error } = await supabase
+        .from('players')
+        .upsert({
+          wallet_address: playerWallet,
+          telegram_id: tgUser.id,
+          shard_balance: b,
+          last_energy: e,
+          last_updated: new Date().toISOString()
+        }, { onConflict: 'wallet_address' }); // THIS IS CRITICAL
+
+      if (error) {
+        console.error("❌ Save failed:", error.message);
+        // If it fails, try a simple update as fallback
+        await supabase.from('players').update({ shard_balance: b }).eq('wallet_address', playerWallet);
+      } else {
+        console.log("✅ Saved successfully!");
+      }
+    }, 1000); // Wait 1 second after last tap
+  };
 
   useEffect(() => {
     const interval = setInterval(saveProgress, 15000);
@@ -132,12 +146,55 @@ const GiftTapGame = () => {
     setTimeout(() => setTaps(t => t.filter(tap => tap.id !== id)), 1000);
   };
 
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [balances, setBalances] = useState({ sol: 0, gft: 0, usdc: 0 });
+
+  // Use your existing connection logic
+  const connection = useMemo(() => new Connection(clusterApiUrl('mainnet-beta')), []);
+
+  const fetchBalances = useCallback(async () => {
+    if (!playerWallet) return;
+    try {
+      const pubKey = new PublicKey(playerWallet);
+      
+      // 1. Fetch SOL
+      const solBalance = await connection.getBalance(pubKey);
+      
+      // 2. Fetch GFT & USDC (Using their Mint Addresses)
+      // Replace with your actual GFT Mint: 3UL9MdHnmtAh6KBdDwLtyxFWVEgGQHLiwN2cg3FPWEis
+      const gftMint = new PublicKey("3UL9MdHnmtAh6KBdDwLtyxFWVEgGQHLiwN2cg3FPWEis");
+      const usdcMint = new PublicKey("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v");
+
+      // Helper to get token balance safely
+      const getTokenBal = async (mint) => {
+        try {
+          const ata = getAssociatedTokenAddressSync(mint, pubKey);
+          const bal = await connection.getTokenAccountBalance(ata);
+          return bal.value.uiAmount || 0;
+        } catch { return 0; }
+      };
+
+      setBalances({
+        sol: solBalance / 1e9,
+        gft: await getTokenBal(gftMint),
+        usdc: await getTokenBal(usdcMint)
+      });
+    } catch (err) {
+      console.error("Balance fetch failed", err);
+    }
+  }, [playerWallet, connection]);
+
   if (isLoading) return <div style={styles.container}>Loading Gift...</div>;
 
   return (
     <div style={styles.container}>
       <div style={styles.walletWrapper}>
-        <p style={styles.walletText}>{playerWallet?.slice(0, 6)}...</p>
+        <button 
+          onClick={() => { setIsModalOpen(true); fetchBalances(); }} 
+          style={styles.walletBtn}
+        >
+          {playerWallet?.slice(0, 4)}...{playerWallet?.slice(-4)}
+        </button>
       </div>
 
       <div style={styles.header}>
@@ -161,6 +218,25 @@ const GiftTapGame = () => {
         <button style={styles.btn}>Friends</button>
         <button style={styles.btn}>Boost</button>
       </div>
+
+      {isModalOpen && (
+        <div style={styles.modalOverlay} onClick={() => setIsModalOpen(false)}>
+          <div style={styles.modalContent} onClick={e => e.stopPropagation()}>
+            <h3>Wallet Dashboard</h3>
+            <div style={styles.balanceRow}><span>SOL:</span> <span>{balances.sol.toFixed(4)}</span></div>
+            <div style={styles.balanceRow}><span>GFT:</span> <span>{balances.gft.toLocaleString()}</span></div>
+            <div style={styles.balanceRow}><span>GFT Shards:</span> <span>{balance.toLocaleString()}</span></div>
+            <div style={styles.balanceRow}><span>USDC:</span> <span>${balances.usdc.toFixed(2)}</span></div>
+            
+            <div style={styles.actionRow}>
+              <button style={styles.actionBtn}>Withdraw</button>
+              <button style={styles.actionBtn}>Swap</button>
+            </div>
+            
+            <button onClick={() => setIsModalOpen(false)} style={styles.closeBtn}>Close</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -179,7 +255,14 @@ const styles = {
   giftImage: { width: '220px', userSelect: 'none' },
   floatingText: { position: 'fixed', color: '#ffd700', fontSize: '2rem', fontWeight: 'bold', pointerEvents: 'none', animation: 'floatUp 1s forwards', zIndex: 999 },
   nav: { height: '80px', width: '100%', display: 'flex', justifyContent: 'space-around', background: '#333', borderTop: '2px solid #ffd700' },
-  btn: { background: 'none', border: 'none', color: 'white', fontWeight: 'bold' }
+  btn: { background: 'none', border: 'none', color: 'white', fontWeight: 'bold' },
+  modalOverlay: { position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', background: 'rgba(0,0,0,0.8)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000 },
+  modalContent: { background: '#222', padding: '25px', borderRadius: '15px', width: '85%', maxWidth: '400px', border: '2px solid #ffd700', textAlign: 'center' },
+  balanceRow: { display: 'flex', justifyContent: 'space-between', padding: '10px 0', borderBottom: '1px solid #333' },
+  actionRow: { display: 'flex', gap: '10px', marginTop: '20px' },
+  actionBtn: { flex: 1, padding: '12px', borderRadius: '10px', background: '#ffd700', color: '#000', fontWeight: 'bold', border: 'none' },
+  closeBtn: { marginTop: '20px', background: 'none', color: '#888', border: 'none', cursor: 'pointer' },
+  walletBtn: { background: 'rgba(255, 215, 0, 0.1)', color: '#ffd700', border: '1px solid #ffd700', padding: '8px 15px', borderRadius: '20px', fontWeight: 'bold' }
 };
 
 export default GiftTapGame;
