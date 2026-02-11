@@ -195,6 +195,27 @@ const GiftTapGame = () => {
     setLeaderboard(data || []);
   };
 
+  const [topLeader, setTopLeader] = useState({ name: '...', score: 0 });
+
+  const fetchTopLeader = useCallback(async () => {
+    const { data, error } = await supabase
+      .from('leaderboard_all_time')
+      .select('*')
+      .limit(1) // Just get the #1 spot
+      .single();
+
+    if (data) {
+      setTopLeader({
+        name: data.telegram_id || data.wallet_address.slice(0, 6),
+        score: data.shard_balance
+      });
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchTopLeader();
+  }, [fetchTopLeader]);
+
   if (isLoading) return <div style={styles.container}>Loading Gift...</div>;
 
   return (
@@ -208,13 +229,16 @@ const GiftTapGame = () => {
         </button>
       </div>
 
-      // Inside your Leaderboard Modal
+        Tap Leaderboard
       <div style={styles.tabContainer}>
         <button 
           style={leaderboardType === 'all_time' ? styles.activeTab : styles.tab}
           onClick={() => setLeaderboardType('all_time')}
         >
           🌎 All-Time
+          <span style={styles.leaderBadge}>
+            🏆 {topLeader.name}: {topLeader.score.toLocaleString()}
+          </span>
         </button>
         <button 
           style={leaderboardType === 'season' ? styles.activeTab : styles.tab}
@@ -289,7 +313,38 @@ const styles = {
   actionRow: { display: 'flex', gap: '10px', marginTop: '20px' },
   actionBtn: { flex: 1, padding: '12px', borderRadius: '10px', background: '#ffd700', color: '#000', fontWeight: 'bold', border: 'none' },
   closeBtn: { marginTop: '20px', background: 'none', color: '#888', border: 'none', cursor: 'pointer' },
-  walletBtn: { background: 'rgba(255, 215, 0, 0.1)', color: '#ffd700', border: '1px solid #ffd700', padding: '8px 15px', borderRadius: '20px', fontWeight: 'bold' }
+  walletBtn: { background: 'rgba(255, 215, 0, 0.1)', color: '#ffd700', border: '1px solid #ffd700', padding: '8px 15px', borderRadius: '20px', fontWeight: 'bold' },
+  leaderBadge: {
+    display: 'block',
+    fontSize: '0.7rem',
+    color: '#ffd700',
+    marginTop: '4px',
+    fontWeight: 'normal',
+    opacity: 0.9
+  },
+  activeTab: {
+    background: '#ffd700',
+    color: '#000',
+    padding: '10px 20px',
+    borderRadius: '10px',
+    border: 'none',
+    fontWeight: 'bold',
+    flex: 1
+  },
+  tab: {
+    background: '#333',
+    color: '#fff',
+    padding: '10px 20px',
+    borderRadius: '10px',
+    border: 'none',
+    flex: 1
+  },
+  tabContainer: {
+    display: 'flex',
+    gap: '10px',
+    width: '100%',
+    marginBottom: '20px'
+  }
 };
 
 export default GiftTapGame;
