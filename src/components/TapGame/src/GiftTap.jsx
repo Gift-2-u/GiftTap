@@ -74,13 +74,39 @@ const GiftTapGame = () => {
   const saveProgress = useCallback(async () => {
     if (!isDataLoaded || !playerWallet) return;
 
-    await supabase.from('players').upsert({
-      wallet_address: playerWallet,
-      telegram_id: tgUser.id,
-      shard_balance: balance,
-      last_energy: energy,
-      last_updated: new Date().toISOString()
-    }, { onConflict: 'wallet_address' });
+    const channel = supabase
+      .channel('realtime_players')
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'players',
+          filter: `wallet_address=eq.${playerWallet}`, 
+        },
+        (payload) => {
+          // This updates your laptop when you tap on your phone
+          setBalance(Number(payload.new.shard_balance));
+          setEnergy(payload.new.last_energy);
+        }
+      )
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, [playerWallet]);
+
+  // 2. Throttled Instant Save Function
+  const saveToDatabase = useCallback((newB, newE) => {
+    clearTimeout(window.saveTimer);
+    window.saveTimer = setTimeout(async () => {
+      await supabase.from('players').upsert({
+        wallet_address: playerWallet,
+        telegram_id: tgUser.id,
+        shard_balance: newB,
+        last_energy: newE,
+        last_updated: new Date().toISOString()
+      }, { onConflict: 'wallet_address' });
+    }, 500); // Saves 0.5s after you STOP tapping
   }, [balance, energy, playerWallet, tgUser, isDataLoaded]);
 
   useEffect(() => {
@@ -90,10 +116,16 @@ const GiftTapGame = () => {
 
   // --- GAMEPLAY ---
   const handleTap = (e) => {
-    if (energy <= 0 || isLoading) return;
+    if (energy <= 0 || !isDataLoaded) return;
     
-    setBalance(b => b + 1);
-    setEnergy(e => e - 1);
+    const nextBalance = balance + 1;
+    const nextEnergy = energy - 1;
+
+    setBalance(nextBalance);
+    setEnergy(nextEnergy);
+    
+    // Trigger the instant (throttled) save
+    saveToDatabase(nextBalance, nextEnergy);
     
     const id = Date.now();
     setTaps(t => [...t, { id, x: e.clientX, y: e.clientY }]);
