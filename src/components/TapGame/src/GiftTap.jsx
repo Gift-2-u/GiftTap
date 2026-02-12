@@ -23,6 +23,27 @@ const GiftTapGame = () => {
     return window.Telegram?.WebApp?.initDataUnsafe?.user || { id: "test_local_user", first_name: "Local" };
   }, []);
 
+  // 3. FETCH TOP LEADER FUNCTION
+  const fetchTopLeader = useCallback(async () => {
+    try {
+      const { data, error } = await supabase
+        .from('leaderboard_all_time')
+        .select('*')
+        .limit(1)
+        .maybeSingle();
+
+      if (data) {
+        setTopLeader({
+          // This uses the username if it exists, otherwise slices the ID/Wallet
+          name: data.username || (data.telegram_id ? `ID:..${String(data.telegram_id).slice(-4)}` : 
+          data.wallet_address?.slice(0, 6)) || 'Anon', score: data.shard_balance
+        });
+      }
+    } catch (err) {
+      console.error("Leaderboard fetch error:", err);
+    }
+  }, []);
+
   // 3. LOAD DATA OR CREATE WALLET
   const syncPlayer = useCallback(async () => {
     setIsLoading(true);
@@ -68,27 +89,6 @@ const GiftTapGame = () => {
       } finally {
         setIsLoading(false);
       }
-
-    // 3. FETCH TOP LEADER FUNCTION
-    const fetchTopLeader = useCallback(async () => {
-      try {
-        const { data, error } = await supabase
-          .from('leaderboard_all_time')
-          .select('*')
-          .limit(1)
-          .maybeSingle();
-
-        if (data) {
-          setTopLeader({
-            // This uses the username if it exists, otherwise slices the ID/Wallet
-            name: data.username || (data.telegram_id ? `ID:..${String(data.telegram_id).slice(-4)}` : 
-            data.wallet_address?.slice(0, 6)) || 'Anon', score: data.shard_balance
-          });
-        }
-      } catch (err) {
-        console.error("Leaderboard fetch error:", err);
-      }
-    }, []);
 
     useEffect(() => {
       fetchTopLeader();
