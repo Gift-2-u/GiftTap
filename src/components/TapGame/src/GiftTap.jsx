@@ -185,9 +185,6 @@ const GiftTapGame = () => {
     setTimeout(() => setTaps(t => t.filter(tap => tap.id !== id)), 1000);
   };
 
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [balances, setBalances] = useState({ sol: 0, gft: 0, usdc: 0 });
-
   // Use your existing connection logic
   const connection = useMemo(() => new Connection(clusterApiUrl('mainnet-beta')), []);
 
@@ -222,8 +219,6 @@ const GiftTapGame = () => {
       console.error("Balance fetch failed", err);
     }
   }, [playerWallet, connection]);
-
-  const [leaderboardType, setLeaderboardType] = useState('all_time'); // 'all_time' or 'season'
 
   const fetchLeaderboard = async () => {
     const tableName = leaderboardType === 'all_time' ? 'leaderboard_all_time' : 'leaderboard_season';
