@@ -17,6 +17,7 @@ const GiftTapGame = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [balances, setBalances] = useState({ sol: 0, gft: 0, usdc: 0 });
   const [leaderboardType, setLeaderboardType] = useState('all_time');
+  const [isLeaderboardOpen, setIsLeaderboardOpen] = useState(false);
 
   // 2. GET TELEGRAM USER DATA
   const tgUser = useMemo(() => {
@@ -44,12 +45,19 @@ const GiftTapGame = () => {
     }
   }, []);
 
+  const fetchFullLeaderboard = async () => {
+    const tableName = leaderboardType === 'all_time' ? 'leaderboard_all_time' : 'leaderboard_season';
+    const { data } = await supabase.from(tableName).select('*').limit(20);
+    setLeaderboard(data || []);
+    setIsLeaderboardOpen(true);
+  };
+
   // 3. LOAD DATA OR CREATE WALLET
   const syncPlayer = useCallback(async () => {
     setIsLoading(true);
     try {
       // First, try to find existing player in Supabase
-      const { data: player, error: upsertError } = await supabase
+      const { data: existingPlayer, error: upsertError } = await supabase
         .from('players')
         .upsert({ 
           telegram_id: String(tgUser.id),
@@ -71,19 +79,23 @@ const GiftTapGame = () => {
         setEnergy(Math.min(player.last_energy + recovered, 500));
         setIsDataLoaded(true); // LOCK OPEN: We have the real data now
 
-        await fetchTopLeader();
+        await supabase.from('players').update({ 
+          username: tgUser.username || tgUser.first_name 
+        }).eq('telegram_id', String(tgUser.id));
 
       } else {
         // CALL YOUR NEW EDGE FUNCTION TO CREATE WALLET
-        const { data, error: functionError } = await supabase.functions.invoke('create-user-wallet', {
-          body: { telegram_id: tgUser.id }
+        const { data: newWallet, error: functionError } = await supabase.functions.invoke('create-user-wallet', {
+          body: { telegram_id: String(tgUser.id) }
         });
 
-        setPlayerWallet(data.publicKey);
-        setBalance(0);
-        setEnergy(500);
-        setIsDataLoaded(true); // NEW PLAYER: Start at 0/1000
-      }
+        if (newWallet) {
+          setPlayerWallet(newWallet.publicKey);
+          setBalance(0);
+          setEnergy(500);
+          setIsDataLoaded(true); // NEW PLAYER: Start at 0/1000
+        }
+        await fetchTopLeader();
       } catch (err) {
         console.error("Sync Error:", err.message);
       } finally {
@@ -243,7 +255,10 @@ const GiftTapGame = () => {
       <div style={styles.tabContainer}>
         <button 
           style={leaderboardType === 'all_time' ? styles.activeTab : styles.tab}
-          onClick={() => setLeaderboardType('all_time')}
+          onClick={() => {
+            setLeaderboardType('all_time');
+            fetchFullLeaderboard(); // This opens the list
+          }}
         >
           🌎 All-Time
           <span style={styles.leaderBadge}>
@@ -279,6 +294,23 @@ const GiftTapGame = () => {
         <button style={styles.btn}>Friends</button>
         <button style={styles.btn}>Boost</button>
       </div>
+
+      {isLeaderboardOpen && (
+        <div style={styles.modalOverlay} onClick={() => setIsLeaderboardOpen(false)}>
+          <div style={styles.modalContent} onClick={e => e.stopPropagation()}>
+            <h3>🏆 Top Players</h3>
+            <div style={{ maxHeight: '300px', overflowY: 'auto' }}>
+              {leaderboard.map((player, index) => (
+                <div key={index} style={styles.balanceRow}>
+                  <span>{index + 1}. {player.username || 'Anon'}</span>
+                  <span style={{color: '#ffd700'}}>{player.shard_balance?.toLocaleString()}</span>
+                </div>
+              ))}
+            </div>
+            <button onClick={() => setIsLeaderboardOpen(false)} style={styles.closeBtn}>Close</button>
+          </div>
+        </div>
+      )}
 
       {isModalOpen && (
         <div style={styles.modalOverlay} onClick={() => setIsModalOpen(false)}>
