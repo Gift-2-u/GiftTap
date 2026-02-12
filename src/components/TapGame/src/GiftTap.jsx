@@ -90,15 +90,15 @@ const GiftTapGame = () => {
         setIsLoading(false);
       }
 
-    useEffect(() => {
-      fetchTopLeader();
-    }, [fetchTopLeader]);
-
   }, [tgUser, fetchTopLeader]);
 
   useEffect(() => {
     syncPlayer();
   }, [syncPlayer]);
+
+  useEffect(() => {
+      fetchTopLeader();
+    }, [fetchTopLeader]);
 
   // --- ENERGY TICKER ---
   useEffect(() => {
