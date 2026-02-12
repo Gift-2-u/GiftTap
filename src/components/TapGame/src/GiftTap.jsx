@@ -8,15 +8,16 @@ import { getAssociatedTokenAddressSync } from '@solana/spl-token';
 const GiftTapGame = () => {
   // 1. GAME STATE
   const [balance, setBalance] = useState(0);
-  const [energy, setEnergy] = useState(1000);
+  const [energy, setEnergy] = useState(500);
   const [taps, setTaps] = useState([]);
   const [playerWallet, setPlayerWallet] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isDataLoaded, setIsDataLoaded] = useState(false);
+  const [topLeader, setTopLeader] = useState({ name: '...', score: 0 });
 
   // 2. GET TELEGRAM USER DATA
   const tgUser = useMemo(() => {
-    return window.Telegram?.WebApp?.initDataUnsafe?.user || { id: "test_local_user" };
+    return window.Telegram?.WebApp?.initDataUnsafe?.user || { id: "test_local_user", first_name: "Local" };
   }, []);
 
   // 3. LOAD DATA OR CREATE WALLET
@@ -24,12 +25,15 @@ const GiftTapGame = () => {
     setIsLoading(true);
     try {
       // First, try to find existing player in Supabase
-      const { data: player, error } = await supabase
+      const { data: player, error: upsertError } = await supabase
         .from('players')
-        .select('*')
-        .eq('telegram_id', tgUser.id) // Assuming you added a telegram_id column
+        .upsert({ 
+          telegram_id: String(tgUser.id),
+          username: tgUser.username || tgUser.first_name, // Saves your name!
+          last_updated: new Date().toISOString()
+        }, { onConflict: 'telegram_id' })
+        .select()
         .single();
-
       if (player) {
         setPlayerWallet(player.wallet_address);
         setBalance(Number(player.shard_balance)); // Ensure it's a number
@@ -37,11 +41,14 @@ const GiftTapGame = () => {
         // Energy Recovery Calculation
         const lastDate = new Date(player.last_updated).getTime();
         const now = new Date().getTime();
-        const secondsPassed = Math.floor((now - lastDate) / 1000);
-        const recovered = Math.floor(secondsPassed / 1.5);
+        const secondsPassed = Math.floor((now - lastDate) / 500);
+        const recovered = Math.floor(secondsPassed / 1.8);
         
-        setEnergy(Math.min(player.last_energy + recovered, 1000));
+        setEnergy(Math.min(player.last_energy + recovered, 500));
         setIsDataLoaded(true); // LOCK OPEN: We have the real data now
+
+        await fetchTopLeader();
+
       } else {
         // CALL YOUR NEW EDGE FUNCTION TO CREATE WALLET
         const { data, error: functionError } = await supabase.functions.invoke('create-user-wallet', {
@@ -50,15 +57,41 @@ const GiftTapGame = () => {
 
         setPlayerWallet(data.publicKey);
         setBalance(0);
-        setEnergy(1000);
+        setEnergy(500);
         setIsDataLoaded(true); // NEW PLAYER: Start at 0/1000
       }
-    } catch (err) {
-      console.error("Sync Error:", err.message);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [tgUser]);
+      } catch (err) {
+        console.error("Sync Error:", err.message);
+      } finally {
+        setIsLoading(false);
+      }
+
+    // 3. FETCH TOP LEADER FUNCTION
+    const fetchTopLeader = useCallback(async () => {
+      try {
+        const { data, error } = await supabase
+          .from('leaderboard_all_time')
+          .select('*')
+          .limit(1)
+          .maybeSingle();
+
+        if (data) {
+          setTopLeader({
+            // This uses the username if it exists, otherwise slices the ID/Wallet
+            name: data.username || (data.telegram_id ? `ID:..${String(data.telegram_id).slice(-4)}` : 
+            data.wallet_address?.slice(0, 6)) || 'Anon', score: data.shard_balance
+          });
+        }
+      } catch (err) {
+        console.error("Leaderboard fetch error:", err);
+      }
+    }, []);
+
+    useEffect(() => {
+      fetchTopLeader();
+    }, [fetchTopLeader]);
+
+  }, [tgUser, fetchTopLeader]);
 
   useEffect(() => {
     syncPlayer();
@@ -67,7 +100,7 @@ const GiftTapGame = () => {
   // --- ENERGY TICKER ---
   useEffect(() => {
     const ticker = setInterval(() => {
-      setEnergy((prev) => (prev < 1000 ? prev + 1 : 1000));
+      setEnergy((prev) => (prev < 1000 ? prev + 1 : 500));
     }, 1500);
     return () => clearInterval(ticker);
   }, []);
@@ -194,27 +227,6 @@ const GiftTapGame = () => {
     const { data } = await supabase.from(tableName).select('*');
     setLeaderboard(data || []);
   };
-
-  const [topLeader, setTopLeader] = useState({ name: '...', score: 0 });
-
-  const fetchTopLeader = useCallback(async () => {
-    const { data, error } = await supabase
-      .from('leaderboard_all_time')
-      .select('*')
-      .limit(1) // Just get the #1 spot
-      .single();
-
-    if (data) {
-      setTopLeader({
-        name: data.telegram_id || data.wallet_address.slice(0, 6),
-        score: data.shard_balance
-      });
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchTopLeader();
-  }, [fetchTopLeader]);
 
   if (isLoading) return <div style={styles.container}>Loading Gift...</div>;
 
