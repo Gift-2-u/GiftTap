@@ -8,12 +8,15 @@ import { getAssociatedTokenAddressSync } from '@solana/spl-token';
 const GiftTapGame = () => {
   // 1. GAME STATE
   const [balance, setBalance] = useState(0);
-  const [energy, setEnergy] = useState(500);
+  const [energy, setEnergy] = useState(1000);
   const [taps, setTaps] = useState([]);
   const [playerWallet, setPlayerWallet] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isDataLoaded, setIsDataLoaded] = useState(false);
   const [topLeader, setTopLeader] = useState({ name: '...', score: 0 });
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [balances, setBalances] = useState({ sol: 0, gft: 0, usdc: 0 });
+  const [leaderboardType, setLeaderboardType] = useState('all_time');
 
   // 2. GET TELEGRAM USER DATA
   const tgUser = useMemo(() => {
