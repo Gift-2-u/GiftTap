@@ -40,8 +40,11 @@ const GiftTapGame = () => {
   }, []);
 
   // 3. FETCH FULL LEADERBOARD (Modal)
-  const fetchFullLeaderboard = async () => {
-    const tableName = leaderboardType === 'all_time' ? 'leaderboard_all_time' : 'leaderboard_season';
+  const fetchFullLeaderboard = async (typeOverride) => {
+    // Use the override if provided, otherwise fallback to state
+    const targetType = typeOverride || leaderboardType; 
+    const tableName = targetType === 'all_time' ? 'leaderboard_all_time' : 'leaderboard_season';
+    
     const { data } = await supabase.from(tableName).select('*').limit(20);
     setLeaderboard(data || []);
     setIsLeaderboardOpen(true);
@@ -107,15 +110,21 @@ const GiftTapGame = () => {
   const saveToDatabase = async (b, e) => {
     clearTimeout(window.saveTimeout);
     window.saveTimeout = setTimeout(async () => {
-      await supabase.from('players').upsert({
+      const { error } = await supabase.from('players').upsert({
         telegram_id: String(tgUser.id),
         username: tgUser.username || tgUser.first_name,
         shard_balance: b,
         season_shards: b,
         last_energy: e,
+        wallet_address: playerWallet, // Ensure this is included
         last_updated: new Date().toISOString()
       }, { onConflict: 'telegram_id' });
-    }, 500);
+      if (error) {
+        console.error("❌ SAVE ERROR:", error.message);
+        // Fallback: Try saving by wallet if TG ID fails
+        await supabase.from('players').update({ shard_balance: b, last_energy: e }).eq('wallet_address', playerWallet);
+      }
+    }, 800); // Slightly faster save
   };
 
   const handleTap = (e) => {
@@ -129,6 +138,30 @@ const GiftTapGame = () => {
     setTaps(t => [...t, { id, x: e.clientX, y: e.clientY }]);
     setTimeout(() => setTaps(t => t.filter(tap => tap.id !== id)), 1000);
   };
+
+  const saveProgress = useCallback(async () => {
+    if (!isDataLoaded || !tgUser.id) return;
+
+    const channel = supabase
+      .channel('realtime_players')
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'players',
+          filter: `telegram_id=eq.${String(tgUser.id)}`, // Fix: Listen for TG ID, not wallet
+        },
+        (payload) => {
+          // This is the "Magic": it updates your laptop when you tap on your phone
+          setBalance(Number(payload.new.shard_balance));
+          setEnergy(payload.new.last_energy);
+        }
+      )
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, [isDataLoaded, tgUser.id]);
 
   const fetchBalances = useCallback(async () => {
     if (!playerWallet) return;
@@ -166,7 +199,7 @@ const GiftTapGame = () => {
       <div style={styles.tabContainer}>
         <button 
           style={leaderboardType === 'all_time' ? styles.activeTab : styles.tab}
-          onClick={() => { setLeaderboardType('all_time'); fetchFullLeaderboard(); }}
+          onClick={() => { setLeaderboardType('all_time'); fetchFullLeaderboard('all_time'); }}
         >
           🌎 All-Time
           <span style={styles.leaderBadge}>🏆 {topLeader.name}: {topLeader.score.toLocaleString()}</span>
@@ -247,7 +280,7 @@ const styles = {
   closeBtn: { marginTop: '20px', background: 'none', color: '#888', border: 'none', cursor: 'pointer' },
   walletBtn: { background: 'rgba(255, 215, 0, 0.1)', color: '#ffd700', border: '1px solid #ffd700', padding: '8px 15px', borderRadius: '20px', fontWeight: 'bold' },
   leaderBadge: { display: 'block', fontSize: '0.7rem', color: '#ffd700', marginTop: '4px', fontWeight: 'normal', opacity: 0.9 },
-  activeTab: { background: '#ffd700', color: '#000', padding: '10px 20px', borderRadius: '10px', border: 'none', fontWeight: 'bold', flex: 1 },
+  activeTab: { background: '#ffffff', color: '#000', padding: '10px 20px', borderRadius: '10px', border: 'none', fontWeight: 'bold', flex: 1 },
   tab: { background: '#333', color: '#fff', padding: '10px 20px', borderRadius: '10px', border: 'none', flex: 1 },
   tabContainer: { display: 'flex', gap: '10px', width: '90%', marginBottom: '20px', marginTop: '10px' }
 };
