@@ -104,12 +104,13 @@ const GiftTapGame = () => {
           setIsDataLoaded(true); // NEW PLAYER: Start at 0/1000
         }
         await fetchTopLeader();
-      } catch (err) { //
+
+      } catch (err) { // This catch is now correctly associated with the try block
         console.error("Sync Error:", err.message);
       } finally {
         setIsLoading(false);
       }
-
+    }
   }, [tgUser, fetchTopLeader]);
 
   useEffect(() => {
@@ -118,7 +119,7 @@ const GiftTapGame = () => {
 
   useEffect(() => {
       fetchTopLeader();
-    }, [fetchTopLeader]);
+  }, [fetchTopLeader]);
 
   // --- ENERGY TICKER ---
   useEffect(() => {
