@@ -8,7 +8,7 @@ import { getAssociatedTokenAddressSync } from '@solana/spl-token';
 const GiftTapGame = () => {
   // 1. GAME STATE
   const [balance, setBalance] = useState(0);
-  const [energy, setEnergy] = useState(1000);
+  const [energy, setEnergy] = useState(500);
   const [taps, setTaps] = useState([]);
   const [playerWallet, setPlayerWallet] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -23,6 +23,9 @@ const GiftTapGame = () => {
   const tgUser = useMemo(() => {
     return window.Telegram?.WebApp?.initDataUnsafe?.user || { id: "test_local_user", first_name: "Local" };
   }, []);
+
+  // Use your existing connection logic
+  const connection = useMemo(() => new Connection(clusterApiUrl('mainnet-beta')), []);
 
   // 3. FETCH TOP LEADER FUNCTION
   const fetchTopLeader = useCallback(async () => {
@@ -56,17 +59,16 @@ const GiftTapGame = () => {
   const syncPlayer = useCallback(async () => {
     setIsLoading(true);
     try {
-      // First, try to find existing player in Supabase
+      const userId = String(tgUser.id);
+      console.log("Checking for user ID:", userId);
+
       const { data: existingPlayer, error: upsertError } = await supabase
-        .from('players')
-        .upsert({ 
-          telegram_id: String(tgUser.id),
-          username: tgUser.username || tgUser.first_name, // Saves your name!
-          last_updated: new Date().toISOString()
-        }, { onConflict: 'telegram_id' })
-        .select()
-        .single();
-      if (player) {
+        const { data: player, error: fetchError } = await supabase
+          .from('players')
+          .select('*')
+          .eq('telegram_id', userId)
+          .maybeSingle();
+      if (player && player.wallet_address) {
         setPlayerWallet(player.wallet_address);
         setBalance(Number(player.shard_balance)); // Ensure it's a number
         
@@ -80,13 +82,19 @@ const GiftTapGame = () => {
         setIsDataLoaded(true); // LOCK OPEN: We have the real data now
 
         await supabase.from('players').update({ 
-          username: tgUser.username || tgUser.first_name 
+          username: tgUser.username || tgUser.first_name
+          last_updated: new Date().toISOString() 
         }).eq('telegram_id', String(tgUser.id));
 
+        setIsDataLoaded(true);
       } else {
-        // CALL YOUR NEW EDGE FUNCTION TO CREATE WALLET
+        // ❌ NO USER FOUND: Create new wallet
+        console.log("No account found, calling Edge Function...");
         const { data: newWallet, error: functionError } = await supabase.functions.invoke('create-user-wallet', {
-          body: { telegram_id: String(tgUser.id) }
+          body: { 
+            telegram_id: userId,
+            username: tgUser.username || tgUser.first_name 
+          }
         });
 
         if (newWallet) {
@@ -153,16 +161,16 @@ const GiftTapGame = () => {
     window.saveTimeout = setTimeout(async () => {
       console.log("🚀 Attempting to save...", { b, e });
 
-      const { data, error } = await supabase
+      await supabase
         .from('players')
         .upsert({
-          wallet_address: playerWallet,
-          telegram_id: tgUser.id,
+          telegram_id: String(tgUser.id),
+          username: tgUser.username || tgUser.first_name,
           shard_balance: b,
           season_shards: b,
           last_energy: e,
           last_updated: new Date().toISOString()
-        }, { onConflict: 'wallet_address' }); // THIS IS CRITICAL
+        }, { onConflict: 'telegram_id' }); // THIS IS CRITICAL
 
       if (error) {
         console.error("❌ Save failed:", error.message);
@@ -171,7 +179,7 @@ const GiftTapGame = () => {
       } else {
         console.log("✅ Saved successfully!");
       }
-    }, 1000); // Wait 1 second after last tap
+    }, 500); // Wait 1 second after last tap
   };
 
   useEffect(() => {
@@ -196,9 +204,6 @@ const GiftTapGame = () => {
     setTaps(t => [...t, { id, x: e.clientX, y: e.clientY }]);
     setTimeout(() => setTaps(t => t.filter(tap => tap.id !== id)), 1000);
   };
-
-  // Use your existing connection logic
-  const connection = useMemo(() => new Connection(clusterApiUrl('mainnet-beta')), []);
 
   const fetchBalances = useCallback(async () => {
     if (!playerWallet) return;
