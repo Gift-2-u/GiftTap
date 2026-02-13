@@ -56,7 +56,7 @@ serve(async (req) => {
         encrypted_key: encodeBase64(new Uint8Array(encryptedBuffer)),
         encryption_iv: encodeBase64(iv),
         shard_balance: 0,
-        last_energy: 1000
+        last_energy: 500
       }, { onConflict: 'wallet_address' })
 
     if (dbError) throw dbError

@@ -1,7 +1,7 @@
 import { Buffer } from 'buffer';
 window.Buffer = window.Buffer || Buffer;
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { Connection, PublicKey, clusterApiUrl, Transaction, SystemProgram } from '@solana/web3.js';
+import { Connection, PublicKey, clusterApiUrl } from '@solana/web3.js';
 import { supabase } from './supabaseClient';
 import { getAssociatedTokenAddressSync } from '@solana/spl-token';
 
@@ -14,40 +14,32 @@ const GiftTapGame = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [isDataLoaded, setIsDataLoaded] = useState(false);
   const [topLeader, setTopLeader] = useState({ name: '...', score: 0 });
+  const [leaderboard, setLeaderboard] = useState([]); // Fixed: Added missing state
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [balances, setBalances] = useState({ sol: 0, gft: 0, usdc: 0 });
   const [leaderboardType, setLeaderboardType] = useState('all_time');
   const [isLeaderboardOpen, setIsLeaderboardOpen] = useState(false);
 
-  // 2. GET TELEGRAM USER DATA
   const tgUser = useMemo(() => {
     return window.Telegram?.WebApp?.initDataUnsafe?.user || { id: "test_local_user", first_name: "Local" };
   }, []);
 
-  // Use your existing connection logic
   const connection = useMemo(() => new Connection(clusterApiUrl('mainnet-beta')), []);
 
-  // 3. FETCH TOP LEADER FUNCTION
+  // 2. FETCH TOP LEADER (Individual Badge)
   const fetchTopLeader = useCallback(async () => {
     try {
-      const { data, error } = await supabase
-        .from('leaderboard_all_time')
-        .select('*')
-        .limit(1)
-        .maybeSingle();
-
+      const { data } = await supabase.from('leaderboard_all_time').select('*').limit(1).maybeSingle();
       if (data) {
         setTopLeader({
-          // This uses the username if it exists, otherwise slices the ID/Wallet
-          name: data.username || (data.telegram_id ? `ID:..${String(data.telegram_id).slice(-4)}` : 
-          data.wallet_address?.slice(0, 6)) || 'Anon', score: data.shard_balance
+          name: data.username || (data.telegram_id ? `ID:..${String(data.telegram_id).slice(-4)}` : 'Anon'),
+          score: data.shard_balance
         });
       }
-    } catch (err) {
-      console.error("Leaderboard fetch error:", err);
-    }
+    } catch (err) { console.error("Badge fetch error:", err); }
   }, []);
 
+  // 3. FETCH FULL LEADERBOARD (Modal)
   const fetchFullLeaderboard = async () => {
     const tableName = leaderboardType === 'all_time' ? 'leaderboard_all_time' : 'leaderboard_season';
     const { data } = await supabase.from(tableName).select('*').limit(20);
@@ -55,32 +47,26 @@ const GiftTapGame = () => {
     setIsLeaderboardOpen(true);
   };
 
-  // 3. LOAD DATA OR CREATE WALLET
+  // 4. SYNC PLAYER LOGIC (Fixed Brackets)
   const syncPlayer = useCallback(async () => {
     setIsLoading(true);
     try {
       const userId = String(tgUser.id);
-      console.log("Checking for user ID:", userId);
+      
+      const { data: player } = await supabase
+        .from('players')
+        .select('*')
+        .eq('telegram_id', userId)
+        .maybeSingle();
 
-      const { data: existingPlayer, error: upsertError } = await supabase
-        const { data: player, error: fetchError } = await supabase
-          .from('players')
-          .select('*')
-          .eq('telegram_id', userId)
-          .maybeSingle();
       if (player && player.wallet_address) {
         setPlayerWallet(player.wallet_address);
-        setBalance(Number(player.shard_balance)); // Ensure it's a number
+        setBalance(Number(player.shard_balance));
         
-        // Energy Recovery Calculation
         const lastDate = new Date(player.last_updated).getTime();
-        const now = new Date().getTime();
-        const secondsPassed = Math.floor((now - lastDate) / 500);
-        const recovered = Math.floor(secondsPassed / 1.8);
-        
+        const recovered = Math.floor((Date.now() - lastDate) / 1500);
         setEnergy(Math.min(player.last_energy + recovered, 500));
-        setIsDataLoaded(true); // LOCK OPEN: We have the real data now
-
+        
         await supabase.from('players').update({ 
           username: tgUser.username || tgUser.first_name,
           last_updated: new Date().toISOString()
@@ -88,119 +74,57 @@ const GiftTapGame = () => {
 
         setIsDataLoaded(true);
       } else {
-        // ❌ NO USER FOUND: Create new wallet
-        console.log("No account found, calling Edge Function...");
-        const { data: newWallet, error: functionError } = await supabase.functions.invoke('create-user-wallet', {
-          body: { 
-            telegram_id: userId,
-            username: tgUser.username || tgUser.first_name 
-          }
+        const { data: newWallet } = await supabase.functions.invoke('create-user-wallet', {
+          body: { telegram_id: userId, username: tgUser.username || tgUser.first_name }
         });
 
         if (newWallet) {
           setPlayerWallet(newWallet.publicKey);
           setBalance(0);
           setEnergy(500);
-          setIsDataLoaded(true); // NEW PLAYER: Start at 0/1000
+          setIsDataLoaded(true);
         }
-        await fetchTopLeader();
-
-      } catch (err) { // This catch is now correctly associated with the try block
-        console.error("Sync Error:", err.message);
-      } finally {
-        setIsLoading(false);
       }
+      await fetchTopLeader();
+    } catch (err) {
+      console.error("Sync Error:", err.message);
+    } finally {
+      setIsLoading(false);
     }
   }, [tgUser, fetchTopLeader]);
 
-  useEffect(() => {
-    syncPlayer();
-  }, [syncPlayer]);
+  // 5. EFFECTS
+  useEffect(() => { syncPlayer(); }, [syncPlayer]);
 
-  useEffect(() => {
-      fetchTopLeader();
-  }, [fetchTopLeader]);
-
-  // --- ENERGY TICKER ---
   useEffect(() => {
     const ticker = setInterval(() => {
-      setEnergy((prev) => (prev < 1000 ? prev + 1 : 500));
+      setEnergy((prev) => (prev < 500 ? prev + 1 : 500));
     }, 1500);
     return () => clearInterval(ticker);
   }, []);
 
-  // --- SAVE PROGRESS ---
-  const saveProgress = useCallback(async () => {
-    if (!isDataLoaded || !playerWallet) return;
-
-    const channel = supabase
-      .channel('realtime_players')
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'players',
-          filter: `wallet_address=eq.${playerWallet}`, 
-        },
-        (payload) => {
-          // This updates your laptop when you tap on your phone
-          setBalance(Number(payload.new.shard_balance));
-          setEnergy(payload.new.last_energy);
-        }
-      )
-      .subscribe();
-
-    return () => { supabase.removeChannel(channel); };
-  }, [playerWallet]);
-
-  // 2. Throttled Instant Save Function
+  // 6. SAVE PROGRESS
   const saveToDatabase = async (b, e) => {
-    // Clear any existing timer to restart the "wait"
     clearTimeout(window.saveTimeout);
-
     window.saveTimeout = setTimeout(async () => {
-      console.log("🚀 Attempting to save...", { b, e });
-
-      await supabase
-        .from('players')
-        .upsert({
-          telegram_id: String(tgUser.id),
-          username: tgUser.username || tgUser.first_name,
-          shard_balance: b,
-          season_shards: b,
-          last_energy: e,
-          last_updated: new Date().toISOString()
-        }, { onConflict: 'telegram_id' }); // THIS IS CRITICAL
-
-      if (error) {
-        console.error("❌ Save failed:", error.message);
-        // If it fails, try a simple update as fallback
-        await supabase.from('players').update({ shard_balance: b }).eq('wallet_address', playerWallet);
-      } else {
-        console.log("✅ Saved successfully!");
-      }
-    }, 500); // Wait 1 second after last tap
+      await supabase.from('players').upsert({
+        telegram_id: String(tgUser.id),
+        username: tgUser.username || tgUser.first_name,
+        shard_balance: b,
+        season_shards: b,
+        last_energy: e,
+        last_updated: new Date().toISOString()
+      }, { onConflict: 'telegram_id' });
+    }, 500);
   };
 
-  useEffect(() => {
-    const interval = setInterval(saveProgress, 15000);
-    return () => clearInterval(interval);
-  }, [saveProgress]);
-
-  // --- GAMEPLAY ---
   const handleTap = (e) => {
     if (energy <= 0 || !isDataLoaded) return;
-    
     const nextBalance = balance + 1;
     const nextEnergy = energy - 1;
-
     setBalance(nextBalance);
     setEnergy(nextEnergy);
-    
-    // Trigger the instant (throttled) save
     saveToDatabase(nextBalance, nextEnergy);
-    
     const id = Date.now();
     setTaps(t => [...t, { id, x: e.clientX, y: e.clientY }]);
     setTimeout(() => setTaps(t => t.filter(tap => tap.id !== id)), 1000);
@@ -210,16 +134,9 @@ const GiftTapGame = () => {
     if (!playerWallet) return;
     try {
       const pubKey = new PublicKey(playerWallet);
-      
-      // 1. Fetch SOL
       const solBalance = await connection.getBalance(pubKey);
-      
-      // 2. Fetch GFT & USDC (Using their Mint Addresses)
-      // Replace with your actual GFT Mint: 3UL9MdHnmtAh6KBdDwLtyxFWVEgGQHLiwN2cg3FPWEis
-      const gftMint = new PublicKey();
       const usdcMint = new PublicKey("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v");
 
-      // Helper to get token balance safely
       const getTokenBal = async (mint) => {
         try {
           const ata = getAssociatedTokenAddressSync(mint, pubKey);
@@ -230,69 +147,43 @@ const GiftTapGame = () => {
 
       setBalances({
         sol: solBalance / 1e9,
-        gft: await getTokenBal(gftMint),
+        gft: 0,
         usdc: await getTokenBal(usdcMint)
       });
-    } catch (err) {
-      console.error("Balance fetch failed", err);
-    }
+    } catch (err) { console.error("Balance fetch failed", err); }
   }, [playerWallet, connection]);
-
-  const fetchLeaderboard = async () => {
-    const tableName = leaderboardType === 'all_time' ? 'leaderboard_all_time' : 'leaderboard_season';
-    const { data } = await supabase.from(tableName).select('*');
-    setLeaderboard(data || []);
-  };
 
   if (isLoading) return <div style={styles.container}>Loading Gift...</div>;
 
   return (
     <div style={styles.container}>
       <div style={styles.walletWrapper}>
-        <button 
-          onClick={() => { setIsModalOpen(true); fetchBalances(); }} 
-          style={styles.walletBtn}
-        >
+        <button onClick={() => { setIsModalOpen(true); fetchBalances(); }} style={styles.walletBtn}>
           {playerWallet?.slice(0, 4)}...{playerWallet?.slice(-4)}
         </button>
       </div>
 
-        Tap Leaderboard
       <div style={styles.tabContainer}>
         <button 
           style={leaderboardType === 'all_time' ? styles.activeTab : styles.tab}
-          onClick={() => {
-            setLeaderboardType('all_time');
-            fetchFullLeaderboard(); // This opens the list
-          }}
+          onClick={() => { setLeaderboardType('all_time'); fetchFullLeaderboard(); }}
         >
           🌎 All-Time
-          <span style={styles.leaderBadge}>
-            🏆 {topLeader.name}: {topLeader.score.toLocaleString()}
-          </span>
+          <span style={styles.leaderBadge}>🏆 {topLeader.name}: {topLeader.score.toLocaleString()}</span>
         </button>
-        <button 
-          style={leaderboardType === 'season' ? styles.activeTab : styles.tab}
-          onClick={() => setLeaderboardType('season')}
-        >
+        <button style={leaderboardType === 'season' ? styles.activeTab : styles.tab} onClick={() => setLeaderboardType('season')}>
           ⏳ Season 1
         </button>
       </div>
 
       <div style={styles.header}>
         <h1 style={styles.balance}>{balance} GFTshards</h1>
-        <p style={styles.energy}>⚡ {energy} / 1000</p>
+        <p style={styles.energy}>⚡ {energy} / 500</p>
       </div>
 
       <div onClick={handleTap} style={styles.giftZone}>
-        <img 
-          src="/Gift2u_logo.png" 
-          alt="Gift" 
-          style={{ ...styles.giftImage, filter: energy <= 0 ? 'grayscale(1)' : 'none' }} 
-        />
-        {taps.map(t => (
-          <span key={t.id} style={{ ...styles.floatingText, left: t.x, top: t.y }}>+1</span>
-        ))}
+        <img src="/Gift2u_logo.png" alt="Gift" style={{ ...styles.giftImage, filter: energy <= 0 ? 'grayscale(1)' : 'none' }} />
+        {taps.map(t => <span key={t.id} style={{ ...styles.floatingText, left: t.x, top: t.y }}>+1</span>)}
       </div>
 
       <div style={styles.nav}>
@@ -323,15 +214,12 @@ const GiftTapGame = () => {
           <div style={styles.modalContent} onClick={e => e.stopPropagation()}>
             <h3>Wallet Dashboard</h3>
             <div style={styles.balanceRow}><span>SOL:</span> <span>{balances.sol.toFixed(4)}</span></div>
-            <div style={styles.balanceRow}><span>GFT:</span> <span>{balances.gft.toLocaleString()}</span></div>
             <div style={styles.balanceRow}><span>GFT Shards:</span> <span>{balance.toLocaleString()}</span></div>
             <div style={styles.balanceRow}><span>USDC:</span> <span>${balances.usdc.toFixed(2)}</span></div>
-            
             <div style={styles.actionRow}>
               <button style={styles.actionBtn}>Withdraw</button>
               <button style={styles.actionBtn}>Swap</button>
             </div>
-            
             <button onClick={() => setIsModalOpen(false)} style={styles.closeBtn}>Close</button>
           </div>
         </div>
@@ -340,13 +228,9 @@ const GiftTapGame = () => {
   );
 };
 
-// ... keep your styles the same ...
-
 const styles = {
   container: { position: 'fixed', top: 0, left: 0, height: '100%', width: '100%', background: '#1a1a1a', color: 'white', display: 'flex', flexDirection: 'column', alignItems: 'center', overflow: 'hidden', touchAction: 'manipulation' },
   walletWrapper: { padding: '20px', width: '100%', display: 'flex', justifyContent: 'flex-end' },
-  loginBtn: { background: '#ffd700', color: 'black', border: 'none', padding: '10px 20px', borderRadius: '20px', fontWeight: 'bold' },
-  walletText: { color: '#ffd700', fontWeight: 'bold' },
   header: { marginTop: '10px', textAlign: 'center' },
   balance: { fontSize: '2.5rem', color: '#ffd700', margin: 0 },
   energy: { color: '#ffd700', fontWeight: 'bold' },
@@ -362,37 +246,10 @@ const styles = {
   actionBtn: { flex: 1, padding: '12px', borderRadius: '10px', background: '#ffd700', color: '#000', fontWeight: 'bold', border: 'none' },
   closeBtn: { marginTop: '20px', background: 'none', color: '#888', border: 'none', cursor: 'pointer' },
   walletBtn: { background: 'rgba(255, 215, 0, 0.1)', color: '#ffd700', border: '1px solid #ffd700', padding: '8px 15px', borderRadius: '20px', fontWeight: 'bold' },
-  leaderBadge: {
-    display: 'block',
-    fontSize: '0.7rem',
-    color: '#ffd700',
-    marginTop: '4px',
-    fontWeight: 'normal',
-    opacity: 0.9
-  },
-  activeTab: {
-    background: '#ffd700',
-    color: '#000',
-    padding: '10px 20px',
-    borderRadius: '10px',
-    border: 'none',
-    fontWeight: 'bold',
-    flex: 1
-  },
-  tab: {
-    background: '#333',
-    color: '#fff',
-    padding: '10px 20px',
-    borderRadius: '10px',
-    border: 'none',
-    flex: 1
-  },
-  tabContainer: {
-    display: 'flex',
-    gap: '10px',
-    width: '100%',
-    marginBottom: '20px'
-  }
+  leaderBadge: { display: 'block', fontSize: '0.7rem', color: '#ffd700', marginTop: '4px', fontWeight: 'normal', opacity: 0.9 },
+  activeTab: { background: '#ffd700', color: '#000', padding: '10px 20px', borderRadius: '10px', border: 'none', fontWeight: 'bold', flex: 1 },
+  tab: { background: '#333', color: '#fff', padding: '10px 20px', borderRadius: '10px', border: 'none', flex: 1 },
+  tabContainer: { display: 'flex', gap: '10px', width: '90%', marginBottom: '20px', marginTop: '10px' }
 };
 
 export default GiftTapGame;
