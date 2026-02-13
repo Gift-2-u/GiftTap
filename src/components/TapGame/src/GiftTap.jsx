@@ -96,34 +96,6 @@ const GiftTapGame = () => {
     }
   }, [tgUser, fetchTopLeader]);
 
-  // This function listens for any changes in the database for THIS player
-  const subscribeToChanges = useCallback(() => {
-    if (!isDataLoaded || !tgUser.id) return;
-
-    const channel = supabase
-      .channel(`sync-${tgUser.id}`) // Unique channel for this user
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'players',
-          filter: `telegram_id=eq.${String(tgUser.id)}`,
-        },
-        (payload) => {
-          console.log("🔄 Realtime Update Received:", payload.new);
-          // Only update state if the data is newer than what we have
-          setBalance(Number(payload.new.shard_balance));
-          setEnergy(payload.new.last_energy);
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [isDataLoaded, tgUser.id]);
-
   // Hook to start the listener
   useEffect(() => {
     const unsubscribe = saveProgress();
