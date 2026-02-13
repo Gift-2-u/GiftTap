@@ -82,9 +82,9 @@ const GiftTapGame = () => {
         setIsDataLoaded(true); // LOCK OPEN: We have the real data now
 
         await supabase.from('players').update({ 
-          username: tgUser.username || tgUser.first_name
-          last_updated: new Date().toISOString() 
-        }).eq('telegram_id', String(tgUser.id));
+          username: tgUser.username || tgUser.first_name,
+          last_updated: new Date().toISOString()
+        }).eq('telegram_id', userId);
 
         setIsDataLoaded(true);
       } else {
