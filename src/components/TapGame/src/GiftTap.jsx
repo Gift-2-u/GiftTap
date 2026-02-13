@@ -96,6 +96,41 @@ const GiftTapGame = () => {
     }
   }, [tgUser, fetchTopLeader]);
 
+  // This function listens for any changes in the database for THIS player
+  const subscribeToChanges = useCallback(() => {
+    if (!isDataLoaded || !tgUser.id) return;
+
+    const channel = supabase
+      .channel(`sync-${tgUser.id}`) // Unique channel for this user
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'players',
+          filter: `telegram_id=eq.${String(tgUser.id)}`,
+        },
+        (payload) => {
+          console.log("🔄 Realtime Update Received:", payload.new);
+          // Only update state if the data is newer than what we have
+          setBalance(Number(payload.new.shard_balance));
+          setEnergy(payload.new.last_energy);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [isDataLoaded, tgUser.id]);
+
+  // Hook to start the listener
+  useEffect(() => {
+    const unsubscribe = saveProgress();
+    // This part shuts it down when you close the app to prevent memory leaks
+    return () => { if (unsubscribe) unsubscribe(); };
+  }, [saveProgress]);
+
   // 5. EFFECTS
   useEffect(() => { syncPlayer(); }, [syncPlayer]);
 
@@ -233,7 +268,7 @@ const GiftTapGame = () => {
               {leaderboard.map((player, index) => (
                 <div key={index} style={styles.balanceRow}>
                   <span>{index + 1}. {player.username || 'Anon'}</span>
-                  <span style={{color: '#ffd700'}}>{player.shard_balance?.toLocaleString()}</span>
+                  <span style={{color: '#5578da'}}>{player.shard_balance?.toLocaleString()}</span>
                 </div>
               ))}
             </div>
