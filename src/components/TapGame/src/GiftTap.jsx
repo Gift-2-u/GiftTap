@@ -108,7 +108,11 @@ const GiftTapGame = () => {
 
   // 6. SAVE PROGRESS
   const saveToDatabase = async (b, e) => {
+    // 1. Don't save if we don't have a valid user ID
+    if (!tgUser?.id || tgUser.id === "test_local_user") return;
+
     clearTimeout(window.saveTimeout);
+
     window.saveTimeout = setTimeout(async () => {
       const { error } = await supabase.from('players').upsert({
         telegram_id: String(tgUser.id),
@@ -119,6 +123,7 @@ const GiftTapGame = () => {
         wallet_address: playerWallet, // Ensure this is included
         last_updated: new Date().toISOString()
       }, { onConflict: 'telegram_id' });
+
       if (error) {
         console.error("❌ SAVE ERROR:", error.message);
         // Fallback: Try saving by wallet if TG ID fails
@@ -141,38 +146,44 @@ const GiftTapGame = () => {
 
   // --- SEAMLESS SYNC (Instant Phone-to-Laptop) ---
   useEffect(() => {
-    // Only start if data is ready and we have a user
     if (!isDataLoaded || !tgUser?.id || tgUser.id === "test_local_user") return;
 
-    console.log("🔗 Attempting to connect Sync for ID:", tgUser.id);
-
     const channel = supabase
-      .channel(`sync-${tgUser.id}`)
+      .channel(`main-page-sync-${tgUser.id}`)
       .on(
         'postgres_changes',
         {
           event: 'UPDATE',
           schema: 'public',
           table: 'players',
-          filter: `telegram_id=eq.${String(tgUser.id)}`,
         },
-        (payload) => {
-          console.log("⚡ Received Sync from other device:", payload.new.shard_balance);
-          // Directly update the numbers on the screen
-          setBalance(Number(payload.new.shard_balance));
-          setEnergy(Number(payload.new.last_energy));
+        async (payload) => {
+          // 1. Update your personal balance (Seamless Sync)
+          if (payload.new.telegram_id === String(tgUser.id)) {
+            setBalance(Number(payload.new.shard_balance));
+            setEnergy(Number(payload.new.last_energy));
+          }
+
+          // 2. Update the Top Leader Badge (The fix for the main page)
+          // We check the 'leaderboard_all_time' view to see who the new #1 is
+          const { data } = await supabase
+            .from('leaderboard_all_time')
+            .select('*')
+            .limit(1)
+            .maybeSingle();
+          
+          if (data) {
+            setTopLeader({
+              name: data.username || `ID:..${String(data.telegram_id).slice(-4)}`,
+              score: data.shard_balance
+            });
+          }
         }
       )
-      .subscribe((status) => {
-        console.log("📡 Sync Status:", status);
-      });
+      .subscribe();
 
-    // This is the "Cleanup" - it prevents the white screen/memory leaks
-    return () => {
-      console.log("🔌 Disconnecting Sync...");
-      supabase.removeChannel(channel);
-    };
-  }, [isDataLoaded, tgUser.id]); // Only restarts if the user changes
+    return () => { supabase.removeChannel(channel); };
+  }, [isDataLoaded, tgUser.id]);
 
   const fetchBalances = useCallback(async () => {
     if (!playerWallet) return;
