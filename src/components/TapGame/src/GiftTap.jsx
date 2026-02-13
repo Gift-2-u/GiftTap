@@ -104,7 +104,7 @@ const GiftTapGame = () => {
           setIsDataLoaded(true); // NEW PLAYER: Start at 0/1000
         }
         await fetchTopLeader();
-      } catch (err) {
+      } catch (err) { //
         console.error("Sync Error:", err.message);
       } finally {
         setIsLoading(false);
