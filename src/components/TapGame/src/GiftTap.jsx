@@ -96,13 +96,6 @@ const GiftTapGame = () => {
     }
   }, [tgUser, fetchTopLeader]);
 
-  // Hook to start the listener
-  useEffect(() => {
-    const unsubscribe = saveProgress();
-    // This part shuts it down when you close the app to prevent memory leaks
-    return () => { if (unsubscribe) unsubscribe(); };
-  }, [saveProgress]);
-
   // 5. EFFECTS
   useEffect(() => { syncPlayer(); }, [syncPlayer]);
 
@@ -146,29 +139,40 @@ const GiftTapGame = () => {
     setTimeout(() => setTaps(t => t.filter(tap => tap.id !== id)), 1000);
   };
 
-  const saveProgress = useCallback(async () => {
-    if (!isDataLoaded || !tgUser.id) return;
+  // --- SEAMLESS SYNC (Instant Phone-to-Laptop) ---
+  useEffect(() => {
+    // Only start if data is ready and we have a user
+    if (!isDataLoaded || !tgUser?.id || tgUser.id === "test_local_user") return;
+
+    console.log("🔗 Attempting to connect Sync for ID:", tgUser.id);
 
     const channel = supabase
-      .channel('realtime_players')
+      .channel(`sync-${tgUser.id}`)
       .on(
         'postgres_changes',
         {
           event: 'UPDATE',
           schema: 'public',
           table: 'players',
-          filter: `telegram_id=eq.${String(tgUser.id)}`, // Fix: Listen for TG ID, not wallet
+          filter: `telegram_id=eq.${String(tgUser.id)}`,
         },
         (payload) => {
-          // This is the "Magic": it updates your laptop when you tap on your phone
+          console.log("⚡ Received Sync from other device:", payload.new.shard_balance);
+          // Directly update the numbers on the screen
           setBalance(Number(payload.new.shard_balance));
-          setEnergy(payload.new.last_energy);
+          setEnergy(Number(payload.new.last_energy));
         }
       )
-      .subscribe();
+      .subscribe((status) => {
+        console.log("📡 Sync Status:", status);
+      });
 
-    return () => { supabase.removeChannel(channel); };
-  }, [isDataLoaded, tgUser.id]);
+    // This is the "Cleanup" - it prevents the white screen/memory leaks
+    return () => {
+      console.log("🔌 Disconnecting Sync...");
+      supabase.removeChannel(channel);
+    };
+  }, [isDataLoaded, tgUser.id]); // Only restarts if the user changes
 
   const fetchBalances = useCallback(async () => {
     if (!playerWallet) return;
