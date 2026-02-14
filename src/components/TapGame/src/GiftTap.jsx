@@ -49,6 +49,7 @@ const GiftTapGame = () => {
   const [hasAccess, setHasAccess] = useState(false);
   const [dailyTaps, setDailyTaps] = useState(0);
   const [lastTapDate, setLastTapDate] = useState(null);
+  const [isPressed, setIsPressed] = useState(false);
 
 
   const tgUser = useMemo(() => {
@@ -249,6 +250,9 @@ const GiftTapGame = () => {
     const nextEnergy = energy - 1;
     const nextDaily = currentDailyTaps + 1;
 
+    setIsPressed(true);
+    setTimeout(() => setIsPressed(false), 100); // Reset after 100ms
+
     setBalance(nextBalance);
     setEnergy(nextEnergy);
     setDailyTaps(nextDaily);
@@ -372,7 +376,7 @@ const GiftTapGame = () => {
           </div>
 
           <div onClick={handleTap} style={styles.giftZone}>
-            <img src="/Gift2u_logo.png" alt="Gift"  draggable="false" style={{ ...styles.giftImage, filter: energy <= 0 ? 'grayscale(1)' : 'none', touchAction: 'manipulation' }} />
+            <img src="/Gift2u_logo.png" alt="Gift"  draggable="false" style={{ ...styles.giftImage, filter: isPressed ? 'drop-shadow(0 0 15px rgba(255, 215, 0, 0.8)) brightness(1.1)' : 'drop-shadow(0 0 5px rgba(255, 215, 0, 0.2))', transform: isPressed ? 'scale(0.95)' : 'scale(1)', userSelect: 'none', cursor: 'pointer', transition: 'transform 0.1s cubic-bezier(0.34, 1.56, 0.64, 1)', touchAction: 'manipulation' }} />
             {taps.map(t => <span key={t.id} style={{ ...styles.floatingText, left: t.x, top: t.y }}>+1</span>)}
           </div>
 
