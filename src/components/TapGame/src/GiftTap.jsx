@@ -213,7 +213,6 @@ const GiftTapGame = () => {
         last_energy: e,
         daily_taps: daily, // Make sure these columns exist in Supabase!
         last_tap_date: date,
-        wallet_address: playerWallet, // Ensure this is included
         last_updated: new Date().toISOString()
       }, { onConflict: 'telegram_id' });
 
@@ -224,6 +223,11 @@ const GiftTapGame = () => {
       }
     }, 800); // Slightly faster save
   };
+
+  useEffect(() => {
+    const interval = setInterval(saveProgress, 15000);
+    return () => clearInterval(interval);
+  }, [saveProgress]);
 
   const handleTap = (e) => {
     const today = new Date().toISOString().split('T')[0];
@@ -256,7 +260,7 @@ const GiftTapGame = () => {
     
     const id = Date.now();
     setTaps(t => [...t, { id, x: e.clientX, y: e.clientY }]);
-    setTimeout(() => setTaps(t => t.filter(tap => tap.id !== id)), 1000);
+    setTimeout(() => setTaps(t => t.filter(tap => tap.id !== id)), 500);
   };
 
   // --- SEAMLESS SYNC (Instant Phone-to-Laptop) ---
