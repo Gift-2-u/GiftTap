@@ -16,7 +16,7 @@ const GiftTapGame = () => {
     balance: { fontSize: '2.5rem', color: '#ffd700', margin: 0 },
     energy: { color: '#ffd700', fontWeight: 'bold' },
     giftZone: { flex: 1, display: 'flex', justifyContent: 'center', alignItems: 'center', width: '100%', position: 'relative' },
-    giftImage: { width: '220px', userSelect: 'none' },
+    giftImage: { width: '220px', userSelect: 'none', WebkitUserDrag: 'none', pointerEvents: 'auto' },
     floatingText: { position: 'fixed', color: '#ffd700', fontSize: '2rem', fontWeight: 'bold', pointerEvents: 'none', animation: 'floatUp 1s forwards', zIndex: 999 },
     nav: { height: '80px', width: '100%', display: 'flex', justifyContent: 'space-around', background: '#333', borderTop: '2px solid #ffd700' },
     btn: { background: 'none', border: 'none', color: 'white', fontWeight: 'bold' },
@@ -372,7 +372,7 @@ const GiftTapGame = () => {
           </div>
 
           <div onClick={handleTap} style={styles.giftZone}>
-            <img src="/Gift2u_logo.png" alt="Gift" style={{ ...styles.giftImage, filter: energy <= 0 ? 'grayscale(1)' : 'none' }} />
+            <img src="/Gift2u_logo.png" alt="Gift"  draggable="false" style={{ ...styles.giftImage, filter: energy <= 0 ? 'grayscale(1)' : 'none', touchAction: 'manipulation' }} />
             {taps.map(t => <span key={t.id} style={{ ...styles.floatingText, left: t.x, top: t.y }}>+1</span>)}
           </div>
 
