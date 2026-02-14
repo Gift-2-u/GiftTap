@@ -2,22 +2,20 @@ import React, { useState } from 'react';
 import { supabase } from './supabaseClient'; // Ensure this path is correct
 
 const BetaGate = ({ telegramId, onAccessGranted }) => {
+  // 1. We define 'loading' here so the HTML can find it
+  const [loading, setLoading] = useState(false);
   const [code, setCode] = useState('');
-  const [status, setStatus] = useState('IDLE'); // IDLE, CHECKING, ERROR
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!code) return;
 
-    setStatus('CHECKING');
+    setLoading(true); // Turn ON loading
     
-    // 1. We just pass the code up to GiftTap.jsx
-    // We do NOT touch Supabase here.
+    // Pass the code up to the main game
     await onAccessGranted(code);
     
-    // If onAccessGranted fails, it will alert. 
-    // If it succeeds, this component will disappear anyway.
-    setStatus('IDLE');
+    setLoading(false); // Turn OFF loading (if it failed)
   };
 
   return (
