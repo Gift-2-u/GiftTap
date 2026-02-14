@@ -4,6 +4,8 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Connection, PublicKey, clusterApiUrl } from '@solana/web3.js';
 import { supabase } from './supabaseClient';
 import { getAssociatedTokenAddressSync } from '@solana/spl-token';
+import BetaGate from './BetaGate';
+import Upgrades from './Upgrades';
 
 const GiftTapGame = () => {
   // 1. GAME STATE
