@@ -124,17 +124,11 @@ const GiftTapGame = () => {
   }, [tgUser, fetchTopLeader]);
 
   const initializeNewPlayer = async (inputCode) => {
-      setIsLoading(true);
+      
       try {
 
         // --- STEP 1: VERIFY BETA CODE ---
-        if (!inputCode) {
-            alert("Please enter a beta code.");
-            setIsLoading(false);
-            return;
-        }
-
-        const { data: codeData, error: codeError } = await supabase
+        const { data: codeData, error } = await supabase
             .from('invite_codes')
             .select('*')
             .eq('code', inputCode)
@@ -146,6 +140,8 @@ const GiftTapGame = () => {
             setIsLoading(false);
             return; // Stop here if code is bad
         }
+
+        setIsLoading(true); // Show main loading screen
 
         const userId = String(tgUser.id);
         const userName = tgUser.username || tgUser.first_name || 'Player';
