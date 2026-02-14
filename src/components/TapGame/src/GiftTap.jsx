@@ -20,7 +20,6 @@ const GiftTapGame = () => {
   const [leaderboardType, setLeaderboardType] = useState('all_time');
   const [isLeaderboardOpen, setIsLeaderboardOpen] = useState(false);
   const [hasAccess, setHasAccess] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
 
   const tgUser = useMemo(() => {
     return window.Telegram?.WebApp?.initDataUnsafe?.user || { id: "test_local_user", first_name: "Local" };
@@ -366,7 +365,7 @@ const styles = {
   actionBtn: { flex: 1, padding: '12px', borderRadius: '10px', background: '#ffd700', color: '#000', fontWeight: 'bold', border: 'none' },
   closeBtn: { marginTop: '20px', background: 'none', color: '#888', border: 'none', cursor: 'pointer' },
   walletBtn: { background: 'rgba(255, 215, 0, 0.1)', color: '#ffd700', border: '1px solid #ffd700', padding: '8px 15px', borderRadius: '20px', fontWeight: 'bold' },
-  leaderBadge: { display: 'block', fontSize: '0.7rem', color: '#ffd700', marginTop: '4px', fontWeight: 'normal', opacity: 0.9 },
+  leaderBadge: { display: 'block', fontSize: '0.7rem', color: '#5578da', marginTop: '4px', fontWeight: 'normal', opacity: 0.9 },
   activeTab: { background: '#ffffff', color: '#000', padding: '10px 20px', borderRadius: '10px', border: 'none', fontWeight: 'bold', flex: 1 },
   tab: { background: '#333', color: '#fff', padding: '10px 20px', borderRadius: '10px', border: 'none', flex: 1 },
   tabContainer: { display: 'flex', gap: '10px', width: '90%', marginBottom: '20px', marginTop: '10px' }
