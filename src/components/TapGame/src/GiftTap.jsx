@@ -123,9 +123,30 @@ const GiftTapGame = () => {
     }
   }, [tgUser, fetchTopLeader]);
 
-  const initializeNewPlayer = async () => {
+  const initializeNewPlayer = async (inputCode) => {
       setIsLoading(true);
       try {
+
+        // --- STEP 1: VERIFY BETA CODE ---
+        if (!inputCode) {
+            alert("Please enter a beta code.");
+            setIsLoading(false);
+            return;
+        }
+
+        const { data: codeData, error: codeError } = await supabase
+            .from('invite_codes')
+            .select('*')
+            .eq('code', inputCode)
+            .eq('is_used', false)
+            .maybeSingle();
+
+        if (codeError || !codeData) {
+            alert("❌ Invalid or already used code!");
+            setIsLoading(false);
+            return; // Stop here if code is bad
+        }
+
         const userId = String(tgUser.id);
         const userName = tgUser.username || tgUser.first_name || 'Player';
 
@@ -138,6 +159,11 @@ const GiftTapGame = () => {
         });
 
         if (newWallet) {
+          // We link the code to the Telegram ID for tracking
+          await supabase
+              .from('invite_codes')
+              .update({ is_used: true, used_by: userId })
+              .eq('code', inputCode);
           // 2. Use UPSERT instead of UPDATE. 
           // This is the fix for the "Null ID" bug. 
           // If the Edge Function made a row with a null ID, this creates a GOOD row with your real ID.
@@ -146,6 +172,8 @@ const GiftTapGame = () => {
             username: userName,
             wallet_address: newWallet.publicKey,
             has_beta_access: true,
+            last_energy: 500,
+            shard_balance: 0,
             last_updated: new Date().toISOString()
           }, { onConflict: 'telegram_id' });
 
@@ -228,6 +256,10 @@ const GiftTapGame = () => {
     const interval = setInterval(saveProgress, 15000);
     return () => clearInterval(interval);
   }, [saveProgress]);
+
+  if (!userHasAccess) {
+    return <BetaGate onAccessGranted={() => setUserHasAccess(true)} />;
+  }
 
   const handleTap = (e) => {
     const today = new Date().toISOString().split('T')[0];
@@ -344,7 +376,7 @@ const GiftTapGame = () => {
         /* 1. Show ONLY the BetaGate if they aren't authorized */
         <BetaGate 
           telegramId={tgUser?.id} 
-          onAccessGranted={initializeNewPlayer} 
+          onAccessGranted={(code) => initializeNewPlayer(code)} 
         />
       ) : (
         /* 2. Show the ACTUAL GAME if they have access */
