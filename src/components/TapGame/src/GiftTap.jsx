@@ -55,7 +55,9 @@ const GiftTapGame = () => {
 
   // 4. SYNC PLAYER LOGIC (Fixed Brackets)
   const syncPlayer = useCallback(async () => {
+    if (!tgUser) return;
     setIsLoading(true);
+
     try {
       const userId = String(tgUser.id);
       
@@ -69,7 +71,7 @@ const GiftTapGame = () => {
       if (player && player.wallet_address && player.has_beta_access) {
         setPlayerWallet(player.wallet_address);
         setBalance(Number(player.shard_balance));
-        setHasAccess(true); // You need to add this state: const [hasAccess, setHasAccess] = useState(false);
+        setHasAccess(player.has_beta_access);
         
         const lastDate = new Date(player.last_updated).getTime();
         const recovered = Math.floor((Date.now() - lastDate) / 1500);
@@ -100,9 +102,10 @@ const GiftTapGame = () => {
     setIsLoading(true);
     try {
       const userId = String(tgUser.id);
+      const userName = tgUser.username || tgUser.first_name || 'Anon';
 
       // 1. Call your Edge Function to generate the Solana wallet
-      const { data: newWallet, error } = await supabase.functions.invoke('create-user-wallet', {
+      const { data: newWallet, error, edgeError } = await supabase.functions.invoke('create-user-wallet', {
         body: { 
           telegram_id: userId, 
           username: tgUser.username || tgUser.first_name 
@@ -113,7 +116,7 @@ const GiftTapGame = () => {
         // 2. Explicitly set has_beta_access to true for this new player
         await supabase
           .from('players')
-          .update({ has_beta_access: true })
+          .update({ has_beta_access: true, username: tgUser.username || tgUser.first_name })
           .eq('telegram_id', userId);
 
         // 3. Update local state to launch the game
