@@ -124,7 +124,7 @@ const GiftTapGame = () => {
   const initializeNewPlayer = async (inputCode) => {
       
       try {
-
+        const userId = String(tgUser.id);
         // --- STEP 1: VERIFY BETA CODE ---
         const { data: codeData, error: codeError } = await supabase
             .from('invite_codes')
@@ -152,11 +152,6 @@ const GiftTapGame = () => {
         });
 
         if (newWallet) {
-          // We link the code to the Telegram ID for tracking
-          await supabase
-              .from('invite_codes')
-              .update({ is_used: true, used_by: userId })
-              .eq('code', inputCode);
           // 2. Use UPSERT instead of UPDATE. 
           // This is the fix for the "Null ID" bug. 
           // If the Edge Function made a row with a null ID, this creates a GOOD row with your real ID.
@@ -172,6 +167,14 @@ const GiftTapGame = () => {
 
           if (upsertError) {
               console.error("UPSERT ERROR:", upsertError);
+          }
+
+          // 3. Mark Code as Used (If you are using the Gate)
+          if (inputCode) {
+            await supabase
+              .from('invite_codes')
+              .update({ is_used: true, used_by: userId })
+              .eq('code', inputCode);
           }
 
           setPlayerWallet(newWallet.publicKey);

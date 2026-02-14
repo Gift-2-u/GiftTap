@@ -68,6 +68,8 @@ serve(async (req) => {
         encryption_iv: encodeBase64(iv),
         shard_balance: 0,
         last_energy: 500
+        has_beta_access: true, // <--- ADD THIS LINE (Safety Net)
+        last_updated: new Date().toISOString() // <--- ADD THIS LINE (Good practice)
       }, { onConflict: 'telegram_id' })
 
     if (dbError) throw dbError
