@@ -257,8 +257,8 @@ const GiftTapGame = () => {
     return () => clearInterval(interval);
   }, [saveProgress]);
 
-  if (!userHasAccess) {
-    return <BetaGate onAccessGranted={() => setUserHasAccess(true)} />;
+  if (!hasAccess) {
+    return <BetaGate onAccessGranted={() => hasAccess(true)} />;
   }
 
   const handleTap = (e) => {
