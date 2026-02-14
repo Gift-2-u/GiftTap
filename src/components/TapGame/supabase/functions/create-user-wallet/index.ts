@@ -12,14 +12,19 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-// get body data
-const { telegram_id, username } = await req.json()
-
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
   try {
+    
+    const { telegram_id, username } = await req.json()
+
+    // Validate inputs
+    if (!telegram_id) {
+      throw new Error("Missing telegram_id")
+    }
+
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL')!,
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
@@ -56,7 +61,8 @@ serve(async (req) => {
     const { error: dbError } = await supabase
       .from('players')
       .upsert({ 
-        telegram_id: username,
+        telegram_id: String(telegram_id), // FIXED: Use the ID, not the username!
+        username: username,
         wallet_address: publicKey, 
         encrypted_key: encodeBase64(new Uint8Array(encryptedBuffer)),
         encryption_iv: encodeBase64(iv),
