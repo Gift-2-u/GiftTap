@@ -12,6 +12,10 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
+// get body data
+const { telegram_id, username } = await req.json()
+
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
@@ -52,12 +56,13 @@ serve(async (req) => {
     const { error: dbError } = await supabase
       .from('players')
       .upsert({ 
+        telegram_id: username,
         wallet_address: publicKey, 
         encrypted_key: encodeBase64(new Uint8Array(encryptedBuffer)),
         encryption_iv: encodeBase64(iv),
         shard_balance: 0,
         last_energy: 500
-      }, { onConflict: 'wallet_address' })
+      }, { onConflict: 'telegram_id' })
 
     if (dbError) throw dbError
 

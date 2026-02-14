@@ -122,7 +122,6 @@ const GiftTapGame = () => {
       console.error("Sync Error:", err.message);
     } finally {
       setIsLoading(false);
-      setIsDataLoaded(true); // Ensure this is true so tapping works
     }
   }, [tgUser, fetchTopLeader]);
 
@@ -131,7 +130,7 @@ const GiftTapGame = () => {
       try {
 
         // --- STEP 1: VERIFY BETA CODE ---
-        const { data: codeData, codeError } = await supabase
+        const { data: codeData, error: codeError } = await supabase
             .from('invite_codes')
             .select('*')
             .eq('code', inputCode)
@@ -166,17 +165,10 @@ const GiftTapGame = () => {
           // 2. Use UPSERT instead of UPDATE. 
           // This is the fix for the "Null ID" bug. 
           // If the Edge Function made a row with a null ID, this creates a GOOD row with your real ID.
-          await supabase.from('players').update({
-            telegram_id: userId,
-            username: userName,
-            wallet_address: newWallet.publicKey,
-            has_beta_access: true,
-            last_energy: 500,
-            shard_balance: 0,
-            last_updated: new Date().toISOString()
-          })
-          .eq('wallet_address', newWallet.publicKey);
 
+          if (upsertError) {
+            console.error("UPSERT ERROR:", upsertError);
+          }
           setPlayerWallet(newWallet.publicKey);
           setBalance(0);
           setEnergy(500);
@@ -226,11 +218,6 @@ const GiftTapGame = () => {
       }
     }, 800); // Slightly faster save
   };
-
-  useEffect(() => {
-    const interval = setInterval(saveProgress, 15000);
-    return () => clearInterval(interval);
-  }, [saveProgress]);
 
   const handleTap = (e) => {
     const today = new Date().toISOString().split('T')[0];
