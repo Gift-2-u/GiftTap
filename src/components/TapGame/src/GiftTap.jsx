@@ -47,6 +47,9 @@ const GiftTapGame = () => {
   const [leaderboardType, setLeaderboardType] = useState('all_time');
   const [isLeaderboardOpen, setIsLeaderboardOpen] = useState(false);
   const [hasAccess, setHasAccess] = useState(false);
+  const [dailyTaps, setDailyTaps] = useState(0);
+  const [lastTapDate, setLastTapDate] = useState(null);
+
 
   const tgUser = useMemo(() => {
     return window.Telegram?.WebApp?.initDataUnsafe?.user || { id: "test_local_user", first_name: "Local" };
@@ -128,7 +131,7 @@ const GiftTapGame = () => {
       try {
 
         // --- STEP 1: VERIFY BETA CODE ---
-        const { data: codeData, error } = await supabase
+        const { data: codeData, codeError } = await supabase
             .from('invite_codes')
             .select('*')
             .eq('code', inputCode)
@@ -163,7 +166,7 @@ const GiftTapGame = () => {
           // 2. Use UPSERT instead of UPDATE. 
           // This is the fix for the "Null ID" bug. 
           // If the Edge Function made a row with a null ID, this creates a GOOD row with your real ID.
-          await supabase.from('players').upsert({
+          await supabase.from('players').update({
             telegram_id: userId,
             username: userName,
             wallet_address: newWallet.publicKey,
@@ -171,7 +174,8 @@ const GiftTapGame = () => {
             last_energy: 500,
             shard_balance: 0,
             last_updated: new Date().toISOString()
-          }, { onConflict: 'telegram_id' });
+          })
+          .eq('wallet_address', newWallet.publicKey);
 
           setPlayerWallet(newWallet.publicKey);
           setBalance(0);
@@ -197,31 +201,6 @@ const GiftTapGame = () => {
   }, []);
 
   // 6. SAVE PROGRESS
-  const saveProgress = useCallback(async () => {
-    if (!isDataLoaded || !playerWallet) return;
-
-    const channel = supabase
-      .channel('realtime_players')
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'players',
-          filter: `wallet_address=eq.${playerWallet}`, 
-        },
-        (payload) => {
-          // This updates your laptop when you tap on your phone
-          setBalance(Number(payload.new.shard_balance));
-          setEnergy(payload.new.last_energy);
-        }
-      )
-      .subscribe();
-
-    return () => { supabase.removeChannel(channel); };
-  }, [playerWallet]);
-
-
   const saveToDatabase = async (b, e, daily, date) => {
     // 1. Don't save if we don't have a valid user ID
     if (!tgUser?.id || tgUser.id === "test_local_user") return;
@@ -252,10 +231,6 @@ const GiftTapGame = () => {
     const interval = setInterval(saveProgress, 15000);
     return () => clearInterval(interval);
   }, [saveProgress]);
-
-  if (!hasAccess) {
-    return <BetaGate onAccessGranted={() => hasAccess(true)} />;
-  }
 
   const handleTap = (e) => {
     const today = new Date().toISOString().split('T')[0];
