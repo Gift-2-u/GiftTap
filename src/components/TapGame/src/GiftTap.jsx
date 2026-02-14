@@ -55,46 +55,46 @@ const GiftTapGame = () => {
 
   // 4. SYNC PLAYER LOGIC (Fixed Brackets)
   const syncPlayer = useCallback(async () => {
-    if (!tgUser) return;
     setIsLoading(true);
-
     try {
       const userId = String(tgUser.id);
       
+      // Your original fetch logic
       const { data: player } = await supabase
         .from('players')
         .select('*')
         .eq('telegram_id', userId)
         .maybeSingle();
 
-      // CASE 1: Returning player with access
-      if (player && player.wallet_address && player.has_beta_access) {
-        setPlayerWallet(player.wallet_address);
-        setBalance(Number(player.shard_balance));
-        setHasAccess(player.has_beta_access);
-        
-        const lastDate = new Date(player.last_updated).getTime();
-        const recovered = Math.floor((Date.now() - lastDate) / 1500);
-        setEnergy(Math.min(player.last_energy + recovered, 500));
-        
-        await supabase.from('players').update({ 
-          username: tgUser.username || tgUser.first_name,
-          last_updated: new Date().toISOString()
-        }).eq('telegram_id', userId);
-
-        setIsDataLoaded(true);
-      } 
-      // CASE 2: New player or player without access flag
-      else {
-        setHasAccess(false); 
-        setIsDataLoaded(true); // Data check is done, but they stay at the Gate
+      if (player && player.wallet_address) {
+        // Check if they have the beta flag
+        if (player.has_beta_access) {
+          setHasAccess(true);
+          setPlayerWallet(player.wallet_address);
+          setBalance(Number(player.shard_balance));
+          
+          // Your original Energy Recovery Calculation
+          const lastDate = new Date(player.last_updated).getTime();
+          const now = new Date().getTime();
+          const secondsPassed = Math.floor((now - lastDate) / 1000);
+          const recovered = Math.floor(secondsPassed / 1.5); // Back to your 1.5s logic
+          
+          setEnergy(Math.min(player.last_energy + recovered, 500));
+          setIsDataLoaded(true);
+        } else {
+          // Exists but needs to enter a code
+          setHasAccess(false);
+        }
+      } else {
+        // NEW USER: Show Beta Gate
+        setHasAccess(false);
       }
-
       await fetchTopLeader();
     } catch (err) {
       console.error("Sync Error:", err.message);
     } finally {
       setIsLoading(false);
+      setIsDataLoaded(true); // Ensure this is true so tapping works
     }
   }, [tgUser, fetchTopLeader]);
 
@@ -102,24 +102,22 @@ const GiftTapGame = () => {
     setIsLoading(true);
     try {
       const userId = String(tgUser.id);
-      const userName = tgUser.username || tgUser.first_name || 'Anon';
+      const userName = tgUser.username || tgUser.first_name;
 
-      // 1. Call your Edge Function to generate the Solana wallet
+      // YOUR ORIGINAL WORKING CALL
       const { data: newWallet } = await supabase.functions.invoke('create-user-wallet', {
         body: { 
-          telegram_id: userId, 
-          username: tgUser.username || tgUser.first_name 
+          telegram_id: userId,
+          username: userName 
         }
       });
 
       if (newWallet) {
-        // 2. Explicitly set has_beta_access to true for this new player
-        await supabase
-          .from('players')
-          .update({ has_beta_access: true, username: tgUser.username || tgUser.first_name })
+        // Grant access in DB
+        await supabase.from('players')
+          .update({ has_beta_access: true })
           .eq('telegram_id', userId);
 
-        // 3. Update local state to launch the game
         setPlayerWallet(newWallet.publicKey);
         setBalance(0);
         setEnergy(500);
@@ -127,7 +125,7 @@ const GiftTapGame = () => {
         setIsDataLoaded(true);
       }
     } catch (err) {
-      console.error("Initialization Error:", err.message);
+      console.error("Init Error:", err);
     } finally {
       setIsLoading(false);
     }
