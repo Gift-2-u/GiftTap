@@ -19,6 +19,8 @@ const GiftTapGame = () => {
   const [balances, setBalances] = useState({ sol: 0, gft: 0, usdc: 0 });
   const [leaderboardType, setLeaderboardType] = useState('all_time');
   const [isLeaderboardOpen, setIsLeaderboardOpen] = useState(false);
+  const [hasAccess, setHasAccess] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
 
   const tgUser = useMemo(() => {
     return window.Telegram?.WebApp?.initDataUnsafe?.user || { id: "test_local_user", first_name: "Local" };
@@ -62,9 +64,11 @@ const GiftTapGame = () => {
         .eq('telegram_id', userId)
         .maybeSingle();
 
-      if (player && player.wallet_address) {
+      // CASE 1: Returning player with access
+      if (player && player.wallet_address && player.has_beta_access) {
         setPlayerWallet(player.wallet_address);
         setBalance(Number(player.shard_balance));
+        setHasAccess(true); // You need to add this state: const [hasAccess, setHasAccess] = useState(false);
         
         const lastDate = new Date(player.last_updated).getTime();
         const recovered = Math.floor((Date.now() - lastDate) / 1500);
@@ -76,18 +80,13 @@ const GiftTapGame = () => {
         }).eq('telegram_id', userId);
 
         setIsDataLoaded(true);
-      } else {
-        const { data: newWallet } = await supabase.functions.invoke('create-user-wallet', {
-          body: { telegram_id: userId, username: tgUser.username || tgUser.first_name }
-        });
-
-        if (newWallet) {
-          setPlayerWallet(newWallet.publicKey);
-          setBalance(0);
-          setEnergy(500);
-          setIsDataLoaded(true);
-        }
+      } 
+      // CASE 2: New player or player without access flag
+      else {
+        setHasAccess(false); 
+        setIsDataLoaded(true); // Data check is done, but they stay at the Gate
       }
+
       await fetchTopLeader();
     } catch (err) {
       console.error("Sync Error:", err.message);
@@ -95,6 +94,39 @@ const GiftTapGame = () => {
       setIsLoading(false);
     }
   }, [tgUser, fetchTopLeader]);
+
+  const initializeNewPlayer = async () => {
+    setIsLoading(true);
+    try {
+      const userId = String(tgUser.id);
+
+      // 1. Call your Edge Function to generate the Solana wallet
+      const { data: newWallet, error } = await supabase.functions.invoke('create-user-wallet', {
+        body: { 
+          telegram_id: userId, 
+          username: tgUser.username || tgUser.first_name 
+        }
+      });
+
+      if (newWallet) {
+        // 2. Explicitly set has_beta_access to true for this new player
+        await supabase
+          .from('players')
+          .update({ has_beta_access: true })
+          .eq('telegram_id', userId);
+
+        // 3. Update local state to launch the game
+        setPlayerWallet(newWallet.publicKey);
+        setBalance(0);
+        setEnergy(500);
+        setHasAccess(true);
+      }
+    } catch (err) {
+      console.error("Initialization Error:", err.message);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   // 5. EFFECTS
   useEffect(() => { syncPlayer(); }, [syncPlayer]);
@@ -133,12 +165,34 @@ const GiftTapGame = () => {
   };
 
   const handleTap = (e) => {
+    const today = new Date().toISOString().split('T')[0];
+  
+    // 1. Reset logic if it's a new day
+    let currentDailyTaps = dailyTaps;
+    if (lastTapDate !== today) {
+      currentDailyTaps = 0;
+      setDailyTaps(0);
+      setLastTapDate(today);
+    }
+
+    // 2. CHECK LIMIT (2500)
+    if (currentDailyTaps >= 2500) {
+      alert("Daily limit reached! Upgrade your boost to tap more.");
+      return;
+    }
+
     if (energy <= 0 || !isDataLoaded) return;
+
     const nextBalance = balance + 1;
     const nextEnergy = energy - 1;
+    const nextDaily = currentDailyTaps + 1;
+
     setBalance(nextBalance);
     setEnergy(nextEnergy);
-    saveToDatabase(nextBalance, nextEnergy);
+    setDailyTaps(nextDaily);
+
+    saveToDatabase(nextBalance, nextEnergy, nextDaily, today);
+    
     const id = Date.now();
     setTaps(t => [...t, { id, x: e.clientX, y: e.clientY }]);
     setTimeout(() => setTaps(t => t.filter(tap => tap.id !== id)), 1000);
@@ -208,9 +262,20 @@ const GiftTapGame = () => {
     } catch (err) { console.error("Balance fetch failed", err); }
   }, [playerWallet, connection]);
 
+  const inviteLink = `https://t.me/YourBotName?start=${tgUser.id}`;
+
+  const handleInvite = () => {
+    const text = "🎁 Join me on Gift! Tap to earn shards and share the prize pool!";
+    const url = `https://t.me/share/url?url=${encodeURIComponent(inviteLink)}&text=${encodeURIComponent(text)}`;
+    window.Telegram.WebApp.openTelegramLink(url);
+  };
+
   if (isLoading) return <div style={styles.container}>Loading Gift...</div>;
 
   return (
+
+    
+
     <div style={styles.container}>
       <div style={styles.walletWrapper}>
         <button onClick={() => { setIsModalOpen(true); fetchBalances(); }} style={styles.walletBtn}>
