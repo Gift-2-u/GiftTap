@@ -165,10 +165,20 @@ const GiftTapGame = () => {
           // 2. Use UPSERT instead of UPDATE. 
           // This is the fix for the "Null ID" bug. 
           // If the Edge Function made a row with a null ID, this creates a GOOD row with your real ID.
+          const { error: upsertError } = await supabase.from('players').upsert({
+              telegram_id: userId,
+              username: userName,
+              wallet_address: newWallet.publicKey,
+              has_beta_access: true,
+              shard_balance: 0,
+              last_energy: 500,
+              last_updated: new Date().toISOString()
+          }, { onConflict: 'telegram_id' });
 
           if (upsertError) {
-            console.error("UPSERT ERROR:", upsertError);
+              console.error("UPSERT ERROR:", upsertError);
           }
+
           setPlayerWallet(newWallet.publicKey);
           setBalance(0);
           setEnergy(500);
