@@ -382,4 +382,4 @@ const styles = {
   tabContainer: { display: 'flex', gap: '10px', width: '90%', marginBottom: '20px', marginTop: '10px' }
 };
 
-export default GiftTapGame;
+export default GiftTapGame};
