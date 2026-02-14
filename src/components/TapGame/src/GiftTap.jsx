@@ -94,25 +94,21 @@ const GiftTapGame = () => {
         .eq('telegram_id', userId)
         .maybeSingle();
 
-      if (player && player.wallet_address) {
+      if (player && player.wallet_address, player.has_beta_access) {
         // Check if they have the beta flag
-        if (player.has_beta_access) {
-          setHasAccess(player.has_beta_access || false);
-          setPlayerWallet(player.wallet_address);
-          setBalance(Number(player.shard_balance));
+        setHasAccess(player.has_beta_access || false);
+        setPlayerWallet(player.wallet_address);
+        setBalance(Number(player.shard_balance));
           
-          // Your original Energy Recovery Calculation
-          const lastDate = new Date(player.last_updated).getTime();
-          const now = new Date().getTime();
-          const secondsPassed = Math.floor((now - lastDate) / 1000);
-          const recovered = Math.floor(secondsPassed / 1.5); // Back to your 1.5s logic
+        // Your original Energy Recovery Calculation
+        const lastDate = new Date(player.last_updated).getTime();
+        const now = new Date().getTime();
+        const secondsPassed = Math.floor((now - lastDate) / 1000);
+        const recovered = Math.floor(secondsPassed / 1.5); // Back to your 1.5s logic
           
-          setEnergy(Math.min(player.last_energy + recovered, 500));
-          setIsDataLoaded(true);
-        } else {
-          // Exists but needs to enter a code
-          setHasAccess(false);
-        }
+        setEnergy(Math.min(player.last_energy + recovered, 500));
+        setIsDataLoaded(true);
+        
       } else {
         // NEW USER: Show Beta Gate
         setHasAccess(false);

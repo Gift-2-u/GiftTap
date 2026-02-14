@@ -3,31 +3,21 @@ import { supabase } from './supabaseClient'; // Ensure this path is correct
 
 const BetaGate = ({ telegramId, onAccessGranted }) => {
   const [code, setCode] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [status, setStatus] = useState('IDLE'); // IDLE, CHECKING, ERROR
 
-  const checkCode = async (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    setLoading(true);
+    if (!code) return;
 
-    // 1. Check if code exists and isn't used
-    const { data, error } = await supabase
-      .from('invite_codes')
-      .select('*')
-      .eq('code', code.toUpperCase())
-      .eq('is_used', false)
-      .single();
-
-    if (data) {
-      // 2. Mark code as used
-      await supabase.from('invite_codes').update({ is_used: true, used_by: telegramId }).eq('code', code.toUpperCase());
-      // 3. Grant player permanent access
-      await supabase.from('players').update({ has_beta_access: true }).eq('telegram_id', telegramId);
-      
-      onAccessGranted();
-    } else {
-      alert("Invalid or Expired Code");
-    }
-    setLoading(false);
+    setStatus('CHECKING');
+    
+    // 1. We just pass the code up to GiftTap.jsx
+    // We do NOT touch Supabase here.
+    await onAccessGranted(code);
+    
+    // If onAccessGranted fails, it will alert. 
+    // If it succeeds, this component will disappear anyway.
+    setStatus('IDLE');
   };
 
   return (
