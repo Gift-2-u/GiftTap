@@ -69,7 +69,7 @@ const GiftTapGame = () => {
       if (player && player.wallet_address) {
         // Check if they have the beta flag
         if (player.has_beta_access) {
-          setHasAccess(true);
+          setHasAccess(player.has_beta_access || false);
           setPlayerWallet(player.wallet_address);
           setBalance(Number(player.shard_balance));
           
@@ -99,36 +99,42 @@ const GiftTapGame = () => {
   }, [tgUser, fetchTopLeader]);
 
   const initializeNewPlayer = async () => {
-    setIsLoading(true);
-    try {
-      const userId = String(tgUser.id);
-      const userName = tgUser.username || tgUser.first_name;
+      setIsLoading(true);
+      try {
+        const userId = String(tgUser.id);
+        const userName = tgUser.username || tgUser.first_name || 'Player';
 
-      // YOUR ORIGINAL WORKING CALL
-      const { data: newWallet } = await supabase.functions.invoke('create-user-wallet', {
-        body: { 
-          telegram_id: userId,
-          username: userName 
+        // 1. Keep your original working call
+        const { data: newWallet } = await supabase.functions.invoke('create-user-wallet', {
+          body: { 
+            telegram_id: userId,
+            username: userName 
+          }
+        });
+
+        if (newWallet) {
+          // 2. Use UPSERT instead of UPDATE. 
+          // This is the fix for the "Null ID" bug. 
+          // If the Edge Function made a row with a null ID, this creates a GOOD row with your real ID.
+          await supabase.from('players').upsert({
+            telegram_id: userId,
+            username: userName,
+            wallet_address: newWallet.publicKey,
+            has_beta_access: true,
+            last_updated: new Date().toISOString()
+          }, { onConflict: 'telegram_id' });
+
+          setPlayerWallet(newWallet.publicKey);
+          setBalance(0);
+          setEnergy(500);
+          setHasAccess(true);
+          setIsDataLoaded(true);
         }
-      });
-
-      if (newWallet) {
-        // Grant access in DB
-        await supabase.from('players')
-          .update({ has_beta_access: true })
-          .eq('telegram_id', userId);
-
-        setPlayerWallet(newWallet.publicKey);
-        setBalance(0);
-        setEnergy(500);
-        setHasAccess(true);
-        setIsDataLoaded(true);
+      } catch (err) {
+        console.error("Init Error:", err);
+      } finally {
+        setIsLoading(false);
       }
-    } catch (err) {
-      console.error("Init Error:", err);
-    } finally {
-      setIsLoading(false);
-    }
   };
 
   // 5. EFFECTS
@@ -142,7 +148,7 @@ const GiftTapGame = () => {
   }, []);
 
   // 6. SAVE PROGRESS
-  const saveToDatabase = async (b, e) => {
+  const saveToDatabase = async (b, e, daily, date) => {
     // 1. Don't save if we don't have a valid user ID
     if (!tgUser?.id || tgUser.id === "test_local_user") return;
 
@@ -155,6 +161,8 @@ const GiftTapGame = () => {
         shard_balance: b,
         season_shards: b,
         last_energy: e,
+        daily_taps: daily, // Make sure these columns exist in Supabase!
+        last_tap_date: date,
         wallet_address: playerWallet, // Ensure this is included
         last_updated: new Date().toISOString()
       }, { onConflict: 'telegram_id' });
