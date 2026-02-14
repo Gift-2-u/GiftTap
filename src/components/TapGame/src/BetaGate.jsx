@@ -24,7 +24,7 @@ const BetaGate = ({ telegramId, onAccessGranted }) => {
     <div style={{ textAlign: 'center', padding: '50px', color: '#00f2ff', background: '#000', height: '100vh' }}>
       <h1>BETA ACCESS REQUIRED</h1>
       <p>Gift Tap is currently Invite-Only.</p>
-      <form onSubmit={checkCode}>
+      <form onSubmit={handleSubmit}>
         <input 
           value={code} 
           onChange={(e) => setCode(e.target.value)} 
