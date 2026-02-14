@@ -134,7 +134,6 @@ const GiftTapGame = () => {
             .from('invite_codes')
             .select('*')
             .eq('code', inputCode)
-            .eq('is_used', false)
             .maybeSingle();
 
         if (codeError || !codeData) {
