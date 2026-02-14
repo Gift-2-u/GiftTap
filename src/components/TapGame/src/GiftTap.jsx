@@ -272,80 +272,91 @@ const GiftTapGame = () => {
   if (isLoading) return <div style={styles.container}>Loading Gift...</div>;
 
   return (
+    <div style={{ backgroundColor: '#000', minHeight: '100vh', width: '100%' }}>
+      
+      {!hasAccess ? (
+        /* 1. Show ONLY the BetaGate if they aren't authorized */
+        <BetaGate 
+          telegramId={tgUser?.id} 
+          onAccessGranted={initializeNewPlayer} 
+        />
+      ) : (
+        /* 2. Show the ACTUAL GAME if they have access */
+        <div style={styles.container}>
+          
+          <div style={styles.walletWrapper}>
+            <button onClick={() => { setIsModalOpen(true); fetchBalances(); }} style={styles.walletBtn}>
+              {playerWallet?.slice(0, 4)}...{playerWallet?.slice(-4)}
+            </button>
+          </div>
 
-    
+          <div style={styles.tabContainer}>
+            <button 
+              style={leaderboardType === 'all_time' ? styles.activeTab : styles.tab}
+              onClick={() => { setLeaderboardType('all_time'); fetchFullLeaderboard('all_time'); }}
+            >
+              🌎 All-Time
+              <span style={styles.leaderBadge}>🏆 {topLeader.name}: {topLeader.score.toLocaleString()}</span>
+            </button>
+            <button style={leaderboardType === 'season' ? styles.activeTab : styles.tab} onClick={() => setLeaderboardType('season')}>
+              ⏳ Season 1
+            </button>
+          </div>
 
-    <div style={styles.container}>
-      <div style={styles.walletWrapper}>
-        <button onClick={() => { setIsModalOpen(true); fetchBalances(); }} style={styles.walletBtn}>
-          {playerWallet?.slice(0, 4)}...{playerWallet?.slice(-4)}
-        </button>
-      </div>
+          <div style={styles.header}>
+            <h1 style={styles.balance}>{balance} GFTshards</h1>
+            <p style={styles.energy}>⚡ {energy} / 500</p>
+          </div>
 
-      <div style={styles.tabContainer}>
-        <button 
-          style={leaderboardType === 'all_time' ? styles.activeTab : styles.tab}
-          onClick={() => { setLeaderboardType('all_time'); fetchFullLeaderboard('all_time'); }}
-        >
-          🌎 All-Time
-          <span style={styles.leaderBadge}>🏆 {topLeader.name}: {topLeader.score.toLocaleString()}</span>
-        </button>
-        <button style={leaderboardType === 'season' ? styles.activeTab : styles.tab} onClick={() => setLeaderboardType('season')}>
-          ⏳ Season 1
-        </button>
-      </div>
+          <div onClick={handleTap} style={styles.giftZone}>
+            <img src="/Gift2u_logo.png" alt="Gift" style={{ ...styles.giftImage, filter: energy <= 0 ? 'grayscale(1)' : 'none' }} />
+            {taps.map(t => <span key={t.id} style={{ ...styles.floatingText, left: t.x, top: t.y }}>+1</span>)}
+          </div>
 
-      <div style={styles.header}>
-        <h1 style={styles.balance}>{balance} GFTshards</h1>
-        <p style={styles.energy}>⚡ {energy} / 500</p>
-      </div>
+          <div style={styles.nav}>
+            <button style={styles.btn}>Tasks</button>
+            <button style={styles.btn}>Friends</button>
+            <button style={styles.btn}>Boost</button>
+          </div>
 
-      <div onClick={handleTap} style={styles.giftZone}>
-        <img src="/Gift2u_logo.png" alt="Gift" style={{ ...styles.giftImage, filter: energy <= 0 ? 'grayscale(1)' : 'none' }} />
-        {taps.map(t => <span key={t.id} style={{ ...styles.floatingText, left: t.x, top: t.y }}>+1</span>)}
-      </div>
-
-      <div style={styles.nav}>
-        <button style={styles.btn}>Tasks</button>
-        <button style={styles.btn}>Friends</button>
-        <button style={styles.btn}>Boost</button>
-      </div>
-
-      {isLeaderboardOpen && (
-        <div style={styles.modalOverlay} onClick={() => setIsLeaderboardOpen(false)}>
-          <div style={styles.modalContent} onClick={e => e.stopPropagation()}>
-            <h3>🏆 Top Players</h3>
-            <div style={{ maxHeight: '300px', overflowY: 'auto' }}>
-              {leaderboard.map((player, index) => (
-                <div key={index} style={styles.balanceRow}>
-                  <span>{index + 1}. {player.username || 'Anon'}</span>
-                  <span style={{color: '#5578da'}}>{player.shard_balance?.toLocaleString()}</span>
+          {/* Leaderboard Modal */}
+          {isLeaderboardOpen && (
+            <div style={styles.modalOverlay} onClick={() => setIsLeaderboardOpen(false)}>
+              <div style={styles.modalContent} onClick={e => e.stopPropagation()}>
+                <h3>🏆 Top Players</h3>
+                <div style={{ maxHeight: '300px', overflowY: 'auto' }}>
+                  {leaderboard.map((player, index) => (
+                    <div key={index} style={styles.balanceRow}>
+                      <span>{index + 1}. {player.username || 'Anon'}</span>
+                      <span style={{color: '#5578da'}}>{player.shard_balance?.toLocaleString()}</span>
+                    </div>
+                  ))}
                 </div>
-              ))}
+                <button onClick={() => setIsLeaderboardOpen(false)} style={styles.closeBtn}>Close</button>
+              </div>
             </div>
-            <button onClick={() => setIsLeaderboardOpen(false)} style={styles.closeBtn}>Close</button>
-          </div>
-        </div>
-      )}
+          )}
 
-      {isModalOpen && (
-        <div style={styles.modalOverlay} onClick={() => setIsModalOpen(false)}>
-          <div style={styles.modalContent} onClick={e => e.stopPropagation()}>
-            <h3>Wallet Dashboard</h3>
-            <div style={styles.balanceRow}><span>SOL:</span> <span>{balances.sol.toFixed(4)}</span></div>
-            <div style={styles.balanceRow}><span>GFT Shards:</span> <span>{balance.toLocaleString()}</span></div>
-            <div style={styles.balanceRow}><span>USDC:</span> <span>${balances.usdc.toFixed(2)}</span></div>
-            <div style={styles.actionRow}>
-              <button style={styles.actionBtn}>Withdraw</button>
-              <button style={styles.actionBtn}>Swap</button>
+          {/* Wallet Modal */}
+          {isModalOpen && (
+            <div style={styles.modalOverlay} onClick={() => setIsModalOpen(false)}>
+              <div style={styles.modalContent} onClick={e => e.stopPropagation()}>
+                <h3>Wallet Dashboard</h3>
+                <div style={styles.balanceRow}><span>SOL:</span> <span>{balances.sol.toFixed(4)}</span></div>
+                <div style={styles.balanceRow}><span>GFT Shards:</span> <span>{balance.toLocaleString()}</span></div>
+                <div style={styles.balanceRow}><span>USDC:</span> <span>${balances.usdc.toFixed(2)}</span></div>
+                <div style={styles.actionRow}>
+                  <button style={styles.actionBtn}>Withdraw</button>
+                  <button style={styles.actionBtn}>Swap</button>
+                </div>
+                <button onClick={() => setIsModalOpen(false)} style={styles.closeBtn}>Close</button>
+              </div>
             </div>
-            <button onClick={() => setIsModalOpen(false)} style={styles.closeBtn}>Close</button>
-          </div>
+          )}
         </div>
       )}
     </div>
   );
-};
 
 const styles = {
   container: { position: 'fixed', top: 0, left: 0, height: '100%', width: '100%', background: '#1a1a1a', color: 'white', display: 'flex', flexDirection: 'column', alignItems: 'center', overflow: 'hidden', touchAction: 'manipulation' },
