@@ -173,6 +173,31 @@ const GiftTapGame = () => {
   }, []);
 
   // 6. SAVE PROGRESS
+  const saveProgress = useCallback(async () => {
+    if (!isDataLoaded || !playerWallet) return;
+
+    const channel = supabase
+      .channel('realtime_players')
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'players',
+          filter: `wallet_address=eq.${playerWallet}`, 
+        },
+        (payload) => {
+          // This updates your laptop when you tap on your phone
+          setBalance(Number(payload.new.shard_balance));
+          setEnergy(payload.new.last_energy);
+        }
+      )
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, [playerWallet]);
+
+
   const saveToDatabase = async (b, e, daily, date) => {
     // 1. Don't save if we don't have a valid user ID
     if (!tgUser?.id || tgUser.id === "test_local_user") return;
