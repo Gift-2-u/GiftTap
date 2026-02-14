@@ -124,7 +124,6 @@ const GiftTapGame = () => {
   const initializeNewPlayer = async (inputCode) => {
       
       try {
-        const userId = String(tgUser.id);
         // --- STEP 1: VERIFY BETA CODE ---
         const { data: codeData, error: codeError } = await supabase
             .from('invite_codes')
