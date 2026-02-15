@@ -1,33 +1,56 @@
 import React from 'react';
+import { supabase } from './supabaseClient';
 
-const Upgrades = ({ balance, setBalance, ppt, setPpt }) => {
+const Upgrades = ({ balance, setBalance, stats, setStats, tgUser }) => {
   const upgradeList = [
-    { id: 'tape', name: 'Stronger Tape', cost: 10, bonus: 1, icon: '🩹' },
-    { id: 'scissors', name: 'Golden Scissors', cost: 100, bonus: 5, icon: '✂️' },
-    { id: 'elf', name: 'Helper Elf', cost: 500, bonus: 20, icon: '🧝' },
+    { id: 'tap_power', name: 'Stronger Tape', cost: 500, bonus: 1, icon: '🩹', desc: '+1 Shard per tap' },
+    { id: 'max_daily_limit', name: 'Limit Buster', cost: 1000, bonus: 1000, icon: '🚀', desc: '+1000 Daily Limit' },
+    { id: 'energy_level', name: 'Helper Elf', cost: 2000, bonus: 500, icon: '🧝', desc: '+500 Max Energy' },
   ];
 
-  const buyUpgrade = (upgrade) => {
+  const buyUpgrade = async (upgrade) => {
     if (balance >= upgrade.cost) {
-      setBalance(balance - upgrade.cost);
-      setPpt(ppt + upgrade.bonus);
-      alert(`Level Up! Taps now worth +${upgrade.bonus}`);
+      const newBalance = balance - upgrade.cost;
+      const currentValue = stats[upgrade.id] || (upgrade.id === 'tap_power' ? 1 : (upgrade.id === 'max_daily_limit' ? 1000 : 500));
+      
+      // 1. Update the database using telegram_id
+      const { error } = await supabase
+        .from('players')
+        .update({
+          [upgrade.id]: currentValue + upgrade.bonus,
+          shard_balance: newBalance,
+          last_updated: new Date().toISOString()
+        })
+        .eq('telegram_id', String(tgUser.id));
+
+      if (!error) {
+        // 2. Update local state instantly
+        setBalance(newBalance);
+        setStats(prev => ({
+          ...prev,
+          [upgrade.id]: currentValue + upgrade.bonus
+        }));
+        alert(`Success! ${upgrade.name} activated!`);
+      } else {
+        alert("Transaction failed. Check connection.");
+      }
     } else {
-      alert("Not enough $GIFT!");
+      alert("Not enough GFTshards!");
     }
   };
 
   return (
     <div style={styles.menu}>
-      <h2 style={{ textAlign: 'center' }}>Shop</h2>
+      <div style={styles.handle}></div>
+      <h2 style={{ textAlign: 'center', color: '#ffd700', margin: '10px 0' }}>Gift Shop</h2>
       {upgradeList.map((item) => (
         <div key={item.id} style={styles.card} onClick={() => buyUpgrade(item)}>
-          <span style={{ fontSize: '24px' }}>{item.icon}</span>
+          <span style={{ fontSize: '30px' }}>{item.icon}</span>
           <div style={{ flex: 1, marginLeft: '15px' }}>
-            <div style={{ fontWeight: 'bold' }}>{item.name}</div>
-            <div style={{ fontSize: '12px', color: '#aaa' }}>Cost: {item.cost} $GIFT</div>
+            <div style={{ fontWeight: 'bold', color: '#fff' }}>{item.name}</div>
+            <div style={{ fontSize: '12px', color: '#ffd700' }}>{item.desc}</div>
           </div>
-          <div style={{ color: '#ffd700' }}>+{item.bonus} PPT</div>
+          <div style={styles.priceTag}>{item.cost.toLocaleString()} 💰</div>
         </div>
       ))}
     </div>
@@ -35,8 +58,10 @@ const Upgrades = ({ balance, setBalance, ppt, setPpt }) => {
 };
 
 const styles = {
-  menu: { padding: '20px', background: '#222', borderRadius: '20px 20px 0 0', position: 'absolute', bottom: 0, width: '100%', boxSizing: 'border-box' },
-  card: { display: 'flex', alignItems: 'center', padding: '15px', background: '#333', marginBottom: '10px', borderRadius: '12px', cursor: 'pointer' }
+  menu: { padding: '20px', background: '#1a1a1a', borderTop: '2px solid #ffd700', borderRadius: '30px 30px 0 0', position: 'absolute', bottom: 0, width: '100%', boxSizing: 'border-box', zIndex: 100 },
+  handle: { width: '40px', height: '5px', background: '#333', borderRadius: '10px', margin: '0 auto 15px' },
+  card: { display: 'flex', alignItems: 'center', padding: '15px', background: '#262626', marginBottom: '12px', borderRadius: '16px', border: '1px solid #333', cursor: 'pointer', transition: 'transform 0.1s' },
+  priceTag: { background: '#ffd700', color: '#000', padding: '5px 10px', borderRadius: '10px', fontWeight: 'bold', fontSize: '14px' }
 };
 
 export default Upgrades;

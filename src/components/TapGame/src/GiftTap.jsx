@@ -239,7 +239,7 @@ const GiftTapGame = () => {
     }
 
     // 2. CHECK LIMIT (2500)
-    if (currentDailyTaps >= 2500) {
+    if (currentDailyTaps >= 1000) {
       alert("Daily limit reached! Upgrade your boost to tap more.");
       return;
     }
@@ -328,10 +328,10 @@ const GiftTapGame = () => {
     } catch (err) { console.error("Balance fetch failed", err); }
   }, [playerWallet, connection]);
 
-  const inviteLink = `https://t.me/YourBotName?start=${tgUser.id}`;
+  const inviteLink = `https://t.me/Gift2uTapBot?start=${tgUser.id}`;
 
   const handleInvite = () => {
-    const text = "🎁 Join me on Gift! Tap to earn shards and share the prize pool!";
+    const text = "🎁 Join me on Gift! Tap to earn shards and move your way up the leaderboard!";
     const url = `https://t.me/share/url?url=${encodeURIComponent(inviteLink)}&text=${encodeURIComponent(text)}`;
     window.Telegram.WebApp.openTelegramLink(url);
   };
@@ -376,7 +376,7 @@ const GiftTapGame = () => {
           </div>
 
           <div onClick={handleTap} style={styles.giftZone}>
-            <img src="/Gift2u_logo.png" alt="Gift"  draggable="false" style={{ ...styles.giftImage, filter: isPressed ? 'drop-shadow(0 0 15px rgba(255, 215, 0, 0.8)) brightness(1.1)' : 'drop-shadow(0 0 5px rgba(255, 215, 0, 0.2))', transform: isPressed ? 'scale(0.95)' : 'scale(1)', userSelect: 'none', cursor: 'pointer', transition: 'transform 0.1s cubic-bezier(0.34, 1.56, 0.64, 1)', touchAction: 'manipulation' }} />
+            <img src="/Gift2u_logo.png" alt="Gift"  draggable="false" style={{ ...styles.giftImage, filter: isPressed ? 'drop-shadow(0 0 15px rgba(255, 215, 0, 0.8)) brightness(1.1)' : 'drop-shadow(0 0 5px rgba(255, 215, 0, 0.2))', transform: isPressed ? 'scale(0.95)' : 'scale(1)', userSelect: 'none', transition: 'transform 0.1s cubic-bezier(0.34, 1.56, 0.64, 1)', touchAction: 'manipulation' }} />
             {taps.map(t => <span key={t.id} style={{ ...styles.floatingText, left: t.x, top: t.y }}>+1</span>)}
           </div>
 
@@ -420,6 +420,33 @@ const GiftTapGame = () => {
               </div>
             </div>
           )}
+
+          {isBoostOpen && (
+            <div style={styles.modalOverlay} onClick={() => setIsBoostOpen(false)}>
+              <div style={styles.modalContent} onClick={e => e.stopPropagation()}>
+                <h2 style={{color: '#ffd700'}}>🚀 Boosters</h2>
+                
+                <div style={styles.boostItem}>
+                  <div>
+                    <p style={styles.boostTitle}>Multitap</p>
+                    <p style={styles.boostDesc}>+1 Shard per tap</p>
+                  </div>
+                  <button onClick={() => buyBoost('multitap')} style={styles.buyBtn}>500 💰</button>
+                </div>
+
+                <div style={styles.boostItem}>
+                  <div>
+                    <p style={styles.boostTitle}>Energy Cap</p>
+                    <p style={styles.boostDesc}>Increase max energy</p>
+                  </div>
+                  <button onClick={() => buyBoost('energy')} style={styles.buyBtn}>1,000 💰</button>
+                </div>
+
+                <button onClick={() => setIsBoostOpen(false)} style={styles.closeBtn}>Close</button>
+              </div>
+            </div>
+          )}
+
         </div>
       )}
     </div>
