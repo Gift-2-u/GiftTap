@@ -10,7 +10,7 @@ import Upgrades from './Upgrades';
 const GiftTapGame = () => {
 
   const styles = {
-    container: { position: 'fixed', top: 0, left: 0, height: '100vh', width: '100vw', background: '#1a1a1a', color: 'white', display: 'flex', flexDirection: 'column', alignItems: 'center', overflow: 'hidden', touchAction: 'manipulation' },
+    container: { position: 'fixed', top: 0, left: 0, height: '100%', width: '100%', background: '#1a1a1a', color: 'white', display: 'flex', flexDirection: 'column', alignItems: 'center', overflow: 'hidden', touchAction: 'manipulation' },
     walletWrapper: { padding: '20px', width: '100%', display: 'flex', justifyContent: 'flex-end' },
     header: { marginTop: '10px', textAlign: 'center' },
     balance: { fontSize: '2.5rem', color: '#ffd700', margin: 0 },
@@ -35,7 +35,7 @@ const GiftTapGame = () => {
     tabContainer: { display: 'flex', gap: '10px', width: '90%', marginBottom: '20px', marginTop: '10px' },
     progressContainer: { width: '200px', height: '10px', background: '#333', borderRadius: '5px', margin: '10px auto', overflow: 'hidden', border: '1px solid #444' },
     progressBar: { height: '100%', transition: 'width 0.3s ease-in-out', boxShadow: '0 0 10px rgba(255, 215, 0, 0.3)' },
-    mainContent: { flex: 1, width: '100%', display: 'flex', flexDirection: 'column', overflowY: 'auto' },
+    mainContent: { flex: 1, width: '100%', display: 'flex', flexDirection: 'column', overflowY: 'auto', alignItems: 'center' },
     shopPage: { width: '100%', padding: '20px', boxSizing: 'border-box' }
   };
 
@@ -260,7 +260,7 @@ const GiftTapGame = () => {
     }
 
     // 2. CHECK LIMIT (1000)
-    if (currentDailyTaps >= 500) {
+    if (currentDailyTaps >= 1000) {
       alert("Daily limit reached! Upgrade your boost to tap more.");
       return;
     }
@@ -450,14 +450,26 @@ const GiftTapGame = () => {
               />
             )}
 
-              {/* 3. Navigation Bar (Always at bottom) */}
-              <div style={styles.nav}>
-                <button style={currentPage === 'tasks' ? styles.activeBtn : styles.btn} onClick={() => setCurrentPage('tasks')}>Tasks</button>
-                <button style={currentPage === 'friends' ? styles.activeBtn : styles.btn} onClick={() => setCurrentPage('friends')}>Friends</button>
-                <button style={currentPage === 'home' ? styles.activeBtn : styles.btn} onClick={() => setCurrentPage('home')}>Home</button>
-                <button style={currentPage === 'shop' ? styles.activeBtn : styles.btn} onClick={() => setCurrentPage('shop')}>Shop</button>
+            {activeTab === 'tasks' && (
+              <div style={{ flex: 1, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+                <h2 style={{ color: '#888' }}>Tasks Coming Soon...</h2>
               </div>
+            )}
+
+            {activeTab === 'friends' && (
+              <div style={{ flex: 1, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+                <h2 style={{ color: '#888' }}>Friends Coming Soon...</h2>
+              </div>
+            )}
+
+            {/* 3. Navigation Bar (Always at bottom) */}
+            <div style={styles.nav}>
+              <button style={currentPage === 'home' ? styles.activeBtn : styles.btn} onClick={() => setCurrentPage('home')}>Home</button>
+              <button style={currentPage === 'tasks' ? styles.activeBtn : styles.btn} onClick={() => setCurrentPage('tasks')}>Tasks</button>
+              <button style={currentPage === 'friends' ? styles.activeBtn : styles.btn} onClick={() => setCurrentPage('friends')}>Friends</button>
+              <button style={currentPage === 'shop' ? styles.activeBtn : styles.btn} onClick={() => setCurrentPage('shop')}>Shop</button>
             </div>
+          </div>
 
           {/* Leaderboard Modal */}
           {isLeaderboardOpen && (
