@@ -6,6 +6,7 @@ import { supabase } from './supabaseClient';
 import { getAssociatedTokenAddressSync } from '@solana/spl-token';
 import BetaGate from './BetaGate';
 import Upgrades from './Upgrades';
+import Tasks from './Tasks';
 
 const GiftTapGame = () => {
 
@@ -394,48 +395,54 @@ const GiftTapGame = () => {
         />
       ) : (
         /* 2. Show the ACTUAL GAME if they have access */
-        <div style={styles.container}>
+        <div style={{ ...styles.container, display: 'flex', flexDirection: 'column', height: '100vh', width: '100vw', overflow: 'hidden' }}>
           
-          <div style={styles.walletWrapper}>
-            <button onClick={() => { setIsModalOpen(true); fetchBalances(); }} style={styles.walletBtn}>
-              {playerWallet?.slice(0, 4)}...{playerWallet?.slice(-4)}
-            </button>
-          </div>
+          {/* 1. TOP HEADER (Leaderboard & Wallet) - Consistent across all pages */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 20px' }}>
+            <div style={styles.walletWrapper}>
+              <button onClick={() => { setIsModalOpen(true); fetchBalances(); }} style={styles.walletBtn}>
+                {playerWallet?.slice(0, 4)}...{playerWallet?.slice(-4)}
+              </button>
+            </div>
 
-          <div style={styles.tabContainer}>
-            <button 
-              style={leaderboardType === 'all_time' ? styles.activeTab : styles.tab}
-              onClick={() => { setLeaderboardType('all_time'); fetchFullLeaderboard('all_time'); }}
-            >
-              🌎 All-Time
-              <span style={styles.leaderBadge}>🏆 {topLeader.name}: {topLeader.score.toLocaleString()}</span>
-            </button>
-            <button style={leaderboardType === 'season' ? styles.activeTab : styles.tab} onClick={() => setLeaderboardType('season')}>
-              ⏳ Season 1
-            </button>
-          </div>
-
-          <div style={styles.header}>
-            <h1 style={styles.balance}>{balance} GFTshards</h1>
-            <p style={styles.energy}>⚡ {energy} / 500</p>
-            <div style={styles.progressContainer}>
-              <div 
-                style={{ 
-                  ...styles.progressBar, 
-                  width: `${Math.min((dailyTaps / maxDailyLimit) * 100, 100)}%`,
-                  background: dailyTaps >= maxDailyLimit ? '#ff4d4d' : '#ffd700'
-                }} 
-              />
+            <div style={styles.tabContainer}>
+              <button 
+                style={leaderboardType === 'all_time' ? styles.activeTab : styles.tab}
+                onClick={() => { setLeaderboardType('all_time'); fetchFullLeaderboard('all_time'); }}
+              >
+                🌎 All-Time
+                <span style={styles.leaderBadge}>🏆 {topLeader.name}: {topLeader.score.toLocaleString()}</span>
+              </button>
+              <button style={leaderboardType === 'season' ? styles.activeTab : styles.tab} onClick={() => setLeaderboardType('season')}>
+                ⏳ Season 1
+              </button>
             </div>
           </div>
 
           {/* 2. DYNAMIC CONTENT (This is your "Pages") */}
           <div style={styles.mainContent}>
             {currentPage === 'home' && (
-              <div onClick={handleTap} style={styles.giftZone}>
-                <img src="/Gift2u_logo.png" alt="Gift"  onDragStart={(e) => e.preventDefault()} onContextMenu={(e) => e.preventDefault()} style={{ ...styles.giftImage, filter: isPressed ? 'drop-shadow(0 0 15px rgba(255, 215, 0, 0.8)) brightness(1.1)' : 'drop-shadow(0 0 5px rgba(255, 215, 0, 0.2))', transform: isPressed ? 'scale(0.95)' : 'scale(1)', transition: 'transform 0.05s cubic-bezier(0.34, 1.56, 0.64, 1)' }} />
-                {taps.map(t => <span key={t.id} style={{ ...styles.floatingText, left: t.x, top: t.y }}>+1</span>)}
-              </div>
+              <>
+                <div style={styles.header}>
+                  <h1 style={styles.balance}>{balance} GFTshards</h1>
+                  <p style={styles.energy}>⚡ {energy} / 500</p>
+                  <div style={styles.progressContainer}>
+                    <div 
+                      style={{ 
+                        ...styles.progressBar, 
+                        width: `${Math.min((dailyTaps / maxDailyLimit) * 100, 100)}%`,
+                        background: dailyTaps >= maxDailyLimit ? '#ff4d4d' : '#ffd700'
+                      }} 
+                    />
+                  </div>
+                </div>
+              
+
+                <div onClick={handleTap} style={styles.giftZone}>
+                  <img src="/Gift2u_logo.png" alt="Gift"  onDragStart={(e) => e.preventDefault()} onContextMenu={(e) => e.preventDefault()} style={{ ...styles.giftImage, filter: isPressed ? 'drop-shadow(0 0 15px rgba(255, 215, 0, 0.8)) brightness(1.1)' : 'drop-shadow(0 0 5px rgba(255, 215, 0, 0.2))', transform: isPressed ? 'scale(0.95)' : 'scale(1)', transition: 'transform 0.05s cubic-bezier(0.34, 1.56, 0.64, 1)' }} />
+                  {taps.map(t => <span key={t.id} style={{ ...styles.floatingText, left: t.x, top: t.y }}>+1</span>)}
+                </div>
+              </>
             )}
 
             {currentPage === 'shop' && (
@@ -451,13 +458,15 @@ const GiftTapGame = () => {
               />
             )}
 
-            {activeTab === 'tasks' && (
-              <div style={{ flex: 1, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-                <h2 style={{ color: '#888' }}>Tasks Coming Soon...</h2>
-              </div>
+            {currentPage === 'tasks' && (
+              <Tasks 
+                balance={balance} 
+                setBalance={setBalance} 
+                tgUser={tgUser} 
+              />
             )}
 
-            {activeTab === 'friends' && (
+            {currentPage === 'friends' && (
               <div style={{ flex: 1, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
                 <h2 style={{ color: '#888' }}>Friends Coming Soon...</h2>
               </div>
