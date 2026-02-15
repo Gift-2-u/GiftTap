@@ -32,7 +32,9 @@ const GiftTapGame = () => {
     tab: { background: '#333', color: '#fff', padding: '10px 20px', borderRadius: '10px', border: 'none', flex: 1 },
     shopItem: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '15px 0', borderBottom: '1px solid #333' },
     buyBtn: { background: '#ffd700', color: '#000', border: 'none', padding: '8px 12px', borderRadius: '10px', fontWeight: 'bold' },
-    tabContainer: { display: 'flex', gap: '10px', width: '90%', marginBottom: '20px', marginTop: '10px' }
+    tabContainer: { display: 'flex', gap: '10px', width: '90%', marginBottom: '20px', marginTop: '10px' },
+    progressContainer: { width: '200px', height: '10px', background: '#333', borderRadius: '5px', margin: '10px auto', overflow: 'hidden', border: '1px solid #444' },
+    progressBar: { height: '100%', transition: 'width 0.3s ease-in-out', boxShadow: '0 0 10px rgba(255, 215, 0, 0.3)' },
   };
 
   // 1. GAME STATE
@@ -54,6 +56,7 @@ const GiftTapGame = () => {
   const [isPressed, setIsPressed] = useState(false);
   const [isShopOpen, setIsShopOpen] = useState(false);
   const [maxDailyLimit, setMaxDailyLimit] = useState(1000);
+  const [tapPower, setTapPower] = useState(1);
 
   const tgUser = useMemo(() => {
     return window.Telegram?.WebApp?.initDataUnsafe?.user || { id: "test_local_user", first_name: "Local" };
@@ -369,6 +372,8 @@ const GiftTapGame = () => {
       if (type === 'power') setTapPower(prev => prev + bonus);
       else setMaxDailyLimit(prev => prev + bonus);
       alert("Upgrade successful!");
+    } else {
+      console.error("Upgrade Error:", error.message);
     }
   };
 
@@ -409,6 +414,15 @@ const GiftTapGame = () => {
           <div style={styles.header}>
             <h1 style={styles.balance}>{balance} GFTshards</h1>
             <p style={styles.energy}>⚡ {energy} / 500</p>
+            <div style={styles.progressContainer}>
+              <div 
+                style={{ 
+                  ...styles.progressBar, 
+                  width: `${Math.min((dailyTaps / maxDailyLimit) * 100, 100)}%`,
+                  background: dailyTaps >= maxDailyLimit ? '#ff4d4d' : '#ffd700'
+                }} 
+              />
+            </div>
           </div>
 
           <div onClick={handleTap} style={styles.giftZone}>
@@ -419,7 +433,7 @@ const GiftTapGame = () => {
           <div style={styles.nav}>
             <button style={styles.btn}>Tasks</button>
             <button style={styles.btn}>Friends</button>
-            <button style={styles.btn} onClick={() => setIsShopOpen(true)}>🚀 Shop</button>
+            <button style={styles.btn} onClick={() => setIsShopOpen(true)}>Shop</button>
           </div>
 
           {/* Leaderboard Modal */}
@@ -470,7 +484,7 @@ const GiftTapGame = () => {
                   <span>Limit Buster (+1k)</span>
                   <button style={styles.buyBtn} onClick={() => buyUpgrade('limit', 1000, 1000)}>1k 💰</button>
                 </div>
-                <button onClick={() => setIsShopOpen(false)} style={styles.closeBtn}>Close</button>
+                <button onClick={() => setIsShopOpen(true)} style={styles.closeBtn}>Close</button>
               </div>
             </div>
           )}
