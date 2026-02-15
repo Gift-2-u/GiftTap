@@ -58,7 +58,7 @@ const Upgrades = ({ balance, setBalance, stats, setStats, tgUser }) => {
 };
 
 const styles = {
-  menu: { padding: '20px', background: '#1a1a1a', borderTop: '2px solid #ffd700', borderRadius: '30px 30px 0 0', position: 'absolute', bottom: 0, width: '100%', boxSizing: 'border-box', zIndex: 100 },
+  menu: { flex: 1,  width: '100%',  padding: '20px',  background: '#1a1a1a', // Match the main background overflowY: 'auto' },
   handle: { width: '40px', height: '5px', background: '#333', borderRadius: '10px', margin: '0 auto 15px' },
   card: { display: 'flex', alignItems: 'center', padding: '15px', background: '#262626', marginBottom: '12px', borderRadius: '16px', border: '1px solid #333', cursor: 'pointer', transition: 'transform 0.1s' },
   priceTag: { background: '#ffd700', color: '#000', padding: '5px 10px', borderRadius: '10px', fontWeight: 'bold', fontSize: '14px' }

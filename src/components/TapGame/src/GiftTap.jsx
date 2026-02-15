@@ -57,6 +57,7 @@ const GiftTapGame = () => {
   const [isShopOpen, setIsShopOpen] = useState(false);
   const [maxDailyLimit, setMaxDailyLimit] = useState(1000);
   const [tapPower, setTapPower] = useState(1);
+  const [currentPage, setCurrentPage] = useState('home'); // 'home', 'shop', 'tasks', 'friends'
 
   const tgUser = useMemo(() => {
     return window.Telegram?.WebApp?.initDataUnsafe?.user || { id: "test_local_user", first_name: "Local" };
@@ -425,16 +426,38 @@ const GiftTapGame = () => {
             </div>
           </div>
 
-          <div onClick={handleTap} style={styles.giftZone}>
-            <img src="/Gift2u_logo.png" alt="Gift"  draggable="false" style={{ ...styles.giftImage, filter: isPressed ? 'drop-shadow(0 0 15px rgba(255, 215, 0, 0.8)) brightness(1.1)' : 'drop-shadow(0 0 5px rgba(255, 215, 0, 0.2))', transform: isPressed ? 'scale(0.95)' : 'scale(1)', userSelect: 'none', transition: 'transform 0.1s cubic-bezier(0.34, 1.56, 0.64, 1)', touchAction: 'manipulation' }} />
-            {taps.map(t => <span key={t.id} style={{ ...styles.floatingText, left: t.x, top: t.y }}>+1</span>)}
-          </div>
+          {/* 2. DYNAMIC CONTENT (This is your "Pages") */}
+          <div style={styles.mainContent}>
+            {currentPage === 'home' && (
+              <div onClick={handleTap} style={styles.giftZone}>
+                <img src="/Gift2u_logo.png" alt="Gift"  draggable="false" style={{ ...styles.giftImage, filter: isPressed ? 'drop-shadow(0 0 15px rgba(255, 215, 0, 0.8)) brightness(1.1)' : 'drop-shadow(0 0 5px rgba(255, 215, 0, 0.2))', transform: isPressed ? 'scale(0.95)' : 'scale(1)', userSelect: 'none', transition: 'transform 0.1s cubic-bezier(0.34, 1.56, 0.64, 1)', touchAction: 'manipulation' }} />
+                {taps.map(t => <span key={t.id} style={{ ...styles.floatingText, left: t.x, top: t.y }}>+1</span>)}
+              </div>
+            )}
 
-          <div style={styles.nav}>
-            <button style={styles.btn}>Tasks</button>
-            <button style={styles.btn}>Friends</button>
-            <button style={styles.btn} onClick={() => setIsShopOpen(true)}>Shop</button>
-          </div>
+            {currentPage === 'shop' && (
+              <Upgrades 
+                balance={balance} 
+                setBalance={setBalance}
+                stats={{ tap_power: tapPower, max_daily_limit: maxDailyLimit }}
+                setStats={(newStats) => {
+                  if (newStats.tap_power) setTapPower(newStats.tap_power);
+                  if (newStats.max_daily_limit) setMaxDailyLimit(newStats.max_daily_limit);
+                }}
+                tgUser={tgUser}
+              />
+            )}
+
+              {/* 3. Navigation Bar (Always at bottom) */}
+              <div style={styles.nav}>
+                <button style={currentPage === 'tasks' ? styles.activeBtn : styles.btn} onClick={() => setCurrentPage('tasks')}>Tasks</button>
+                <button style={currentPage === 'friends' ? styles.activeBtn : styles.btn} onClick={() => setCurrentPage('friends')}>Friends</button>
+                <button style={currentPage === 'home' ? styles.activeBtn : styles.btn} onClick={() => setCurrentPage('home')}>Home</button>
+                <button style={currentPage === 'shop' ? styles.activeBtn : styles.btn} onClick={() => setCurrentPage('shop')}>Shop</button>
+              </div>
+            </div>
+          
+          
 
           {/* Leaderboard Modal */}
           {isLeaderboardOpen && (
@@ -467,24 +490,6 @@ const GiftTapGame = () => {
                   <button style={styles.actionBtn}>Swap</button>
                 </div>
                 <button onClick={() => setIsModalOpen(false)} style={styles.closeBtn}>Close</button>
-              </div>
-            </div>
-          )}
-
-          {/* Shop Modal */}
-          {isShopOpen && (
-            <div style={styles.modalOverlay} onClick={() => setIsShopOpen(false)}>
-              <div style={styles.modalContent} onClick={e => e.stopPropagation()}>
-                <h2 style={{color: '#ffd700'}}>Gift Shop</h2>
-                <div style={styles.shopItem}>
-                  <span>Multitap (+{tapPower})</span>
-                  <button style={styles.buyBtn} onClick={() => buyUpgrade('power', 500, 1)}>500 💰</button>
-                </div>
-                <div style={styles.shopItem}>
-                  <span>Limit Buster (+1k)</span>
-                  <button style={styles.buyBtn} onClick={() => buyUpgrade('limit', 1000, 1000)}>1k 💰</button>
-                </div>
-                <button onClick={() => setIsShopOpen(true)} style={styles.closeBtn}>Close</button>
               </div>
             </div>
           )}
