@@ -354,7 +354,7 @@ const GiftTapGame = () => {
     window.Telegram.WebApp.openTelegramLink(url);
   };
 
-  / 5. SHOP LOGIC
+  // 5. SHOP LOGIC
   const buyUpgrade = async (type, cost, bonus) => {
     if (balance < cost) return alert("Not enough Shards!");
     
