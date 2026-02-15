@@ -30,6 +30,8 @@ const GiftTapGame = () => {
     leaderBadge: { display: 'block', fontSize: '0.7rem', color: '#5578da', marginTop: '4px', fontWeight: 'normal', opacity: 0.9 },
     activeTab: { background: '#ffffff', color: '#000', padding: '10px 20px', borderRadius: '10px', border: 'none', fontWeight: 'bold', flex: 1 },
     tab: { background: '#333', color: '#fff', padding: '10px 20px', borderRadius: '10px', border: 'none', flex: 1 },
+    shopItem: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '15px 0', borderBottom: '1px solid #333' },
+    buyBtn: { background: '#ffd700', color: '#000', border: 'none', padding: '8px 12px', borderRadius: '10px', fontWeight: 'bold' },
     tabContainer: { display: 'flex', gap: '10px', width: '90%', marginBottom: '20px', marginTop: '10px' }
   };
 
@@ -51,6 +53,7 @@ const GiftTapGame = () => {
   const [lastTapDate, setLastTapDate] = useState(null);
   const [isPressed, setIsPressed] = useState(false);
   const [isShopOpen, setIsShopOpen] = useState(false);
+  const [maxDailyLimit, setMaxDailyLimit] = useState(1000);
 
   const tgUser = useMemo(() => {
     return window.Telegram?.WebApp?.initDataUnsafe?.user || { id: "test_local_user", first_name: "Local" };
@@ -100,6 +103,18 @@ const GiftTapGame = () => {
         setHasAccess(player.has_beta_access || false);
         setPlayerWallet(player.wallet_address);
         setBalance(Number(player.shard_balance));
+        setTapPower(player.tap_power || 1);
+        setMaxDailyLimit(player.max_daily_limit || 1000);
+
+        // Handle Daily Reset
+        const today = new Date().toISOString().split('T')[0];
+        if (player.last_tap_date !== today) {
+          setDailyTaps(0);
+          setLastTapDate(today);
+        } else {
+          setDailyTaps(player.daily_taps || 0);
+          setLastTapDate(player.last_tap_date);
+        }
           
         // Your original Energy Recovery Calculation
         const lastDate = new Date(player.last_updated).getTime();
@@ -214,8 +229,8 @@ const GiftTapGame = () => {
         shard_balance: b,
         season_shards: b,
         last_energy: e,
-        daily_taps: daily, // Make sure these columns exist in Supabase!
-        last_tap_date: date,
+        daily_taps: dt, // Make sure these columns exist in Supabase!
+        last_tap_date: ltd,
         last_updated: new Date().toISOString()
       }, { onConflict: 'telegram_id' });
 
@@ -256,6 +271,7 @@ const GiftTapGame = () => {
     setBalance(nextBalance);
     setEnergy(nextEnergy);
     setDailyTaps(nextDaily);
+    saveToDatabase(nextBalance, nextEnergy, nextDaily, lastTapDate);
 
     saveToDatabase(nextBalance, nextEnergy, nextDaily, today);
     
@@ -282,6 +298,8 @@ const GiftTapGame = () => {
           if (payload.new.telegram_id === String(tgUser.id)) {
             setBalance(Number(payload.new.shard_balance));
             setEnergy(Number(payload.new.last_energy));
+            setTapPower(payload.new.tap_power);
+            setMaxDailyLimit(payload.new.max_daily_limit);
           }
 
           // 2. Update the Top Leader Badge (The fix for the main page)
@@ -336,6 +354,24 @@ const GiftTapGame = () => {
     window.Telegram.WebApp.openTelegramLink(url);
   };
 
+  / 5. SHOP LOGIC
+  const buyUpgrade = async (type, cost, bonus) => {
+    if (balance < cost) return alert("Not enough Shards!");
+    
+    const updates = type === 'power' 
+      ? { tap_power: tapPower + bonus, shard_balance: balance - cost }
+      : { max_daily_limit: maxDailyLimit + bonus, shard_balance: balance - cost };
+
+    const { error } = await supabase.from('players').update(updates).eq('telegram_id', String(tgUser.id));
+    
+    if (!error) {
+      setBalance(prev => prev - cost);
+      if (type === 'power') setTapPower(prev => prev + bonus);
+      else setMaxDailyLimit(prev => prev + bonus);
+      alert("Upgrade successful!");
+    }
+  };
+
   if (isLoading) return <div style={styles.container}>Loading Gift...</div>;
 
   return (
@@ -383,7 +419,7 @@ const GiftTapGame = () => {
           <div style={styles.nav}>
             <button style={styles.btn}>Tasks</button>
             <button style={styles.btn}>Friends</button>
-            <button style={styles.btn}>Boost</button>
+            <button style={styles.btn} onClick={() => setIsShopOpen(true)}>🚀 Shop</button>
           </div>
 
           {/* Leaderboard Modal */}
@@ -421,28 +457,20 @@ const GiftTapGame = () => {
             </div>
           )}
 
+          {/* Shop Modal */}
           {isShopOpen && (
-            <div style={styles.modalOverlay} onClick={() => setIsShopOpen(true)}>
+            <div style={styles.modalOverlay} onClick={() => setIsShopOpen(false)}>
               <div style={styles.modalContent} onClick={e => e.stopPropagation()}>
-                <h2 style={{color: '#ffd700'}}>🚀 Boosters</h2>
-                
-                <div style={styles.boostItem}>
-                  <div>
-                    <p style={styles.boostTitle}>Multitap</p>
-                    <p style={styles.boostDesc}>+1 Shard per tap</p>
-                  </div>
-                  <button onClick={() => buyBoost('multitap')} style={styles.buyBtn}>500 💰</button>
+                <h2 style={{color: '#ffd700'}}>Gift Shop</h2>
+                <div style={styles.shopItem}>
+                  <span>Multitap (+{tapPower})</span>
+                  <button style={styles.buyBtn} onClick={() => buyUpgrade('power', 500, 1)}>500 💰</button>
                 </div>
-
-                <div style={styles.boostItem}>
-                  <div>
-                    <p style={styles.boostTitle}>Energy Cap</p>
-                    <p style={styles.boostDesc}>Increase max energy</p>
-                  </div>
-                  <button onClick={() => buyBoost('energy')} style={styles.buyBtn}>1,000 💰</button>
+                <div style={styles.shopItem}>
+                  <span>Limit Buster (+1k)</span>
+                  <button style={styles.buyBtn} onClick={() => buyUpgrade('limit', 1000, 1000)}>1k 💰</button>
                 </div>
-
-                <button onClick={() => setIsShopOpen(true)} style={styles.closeBtn}>Close</button>
+                <button onClick={() => setIsShopOpen(false)} style={styles.closeBtn}>Close</button>
               </div>
             </div>
           )}
