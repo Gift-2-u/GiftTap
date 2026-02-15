@@ -12,7 +12,7 @@ const GiftTapGame = () => {
 
   const styles = {
     container: { position: 'fixed', top: 0, left: 0, height: '100%', width: '100%', background: '#1a1a1a', color: 'white', display: 'flex', flexDirection: 'column', alignItems: 'center', overflow: 'hidden', touchAction: 'manipulation' },
-    walletWrapper: { padding: '20px', width: '100%', display: 'flex', justifyContent: 'flex-end', textAlign: 'right' },
+    walletWrapper: { padding: '0', width: '100%', display: 'flex', justifyContent: 'flex-end', alignItems: 'flex-start', textAlign: 'right', flexShrink: 0 },
     header: { marginTop: '10px', textAlign: 'center' },
     balance: { fontSize: '2.5rem', color: '#ffd700', margin: 0 },
     energy: { color: '#ffd700', fontWeight: 'bold' },
@@ -29,11 +29,11 @@ const GiftTapGame = () => {
     closeBtn: { marginTop: '20px', background: 'none', color: '#888', border: 'none', cursor: 'pointer' },
     walletBtn: { background: '#111)', color: '#fff', border: '1px solid #444', padding: '8px 15px', borderRadius: '15px', cursor: 'pointer', fontWeight: 'bold', minWidth: '100px' },
     leaderBadge: { display: 'block', fontSize: '0.7rem', color: '#5578da', marginTop: '4px', fontWeight: 'normal', opacity: 0.9 },
-    activeTab: { background: 'rgba(255, 215, 0, 0.1)', color: '#000', whiteSpace: 'nowrap', fontSize: '12px', padding: '8px 12px', borderRadius: '12px',  border: '1px solid #ffd700', fontWeight: 'bold', flex: 1 },
-    tab: { background: '#222', color: '#fff', whiteSpace: 'nowrap', padding: '8px 12px', borderRadius: '12px', fontSize: '12px', border: '1px solid #333', display: 'flex', alignItems: 'center' },
+    activeTab: { background: '#000', color: '#5578da', whiteSpace: 'nowrap', fontSize: '11px', padding: '8px 10px', borderRadius: '12px',  border: '1px solid #ffd700', fontWeight: 'bold', display: 'flex', flexDirection: 'column', alignItems: 'center', minWidth: '0' },
+    tab: { background: '#222', color: '#fff', whiteSpace: 'nowrap', padding: '8px 10px', borderRadius: '12px', fontSize: '11px', border: '1px solid #333', display: 'flex', alignItems: 'center', flexDirection: 'column' },
     shopItem: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '15px 0', borderBottom: '1px solid #333' },
     buyBtn: { background: '#ffd700', color: '#000', border: 'none', padding: '8px 12px', borderRadius: '10px', fontWeight: 'bold' },
-    tabContainer: { display: 'flex', gap: '10px', width: '90%', marginBottom: '20px', marginTop: '10px' },
+    tabContainer: { display: 'flex', gap: '5px', flex: 1, marginRight: '10px', alignItems: 'flex-start' },
     progressContainer: { width: '200px', height: '10px', background: '#333', borderRadius: '5px', margin: '10px auto', overflow: 'hidden', border: '1px solid #444' },
     progressBar: { height: '100%', transition: 'width 0.3s ease-in-out', boxShadow: '0 0 10px rgba(255, 215, 0, 0.3)' },
     mainContent: { flex: 1, width: '100%', display: 'flex', flexDirection: 'column', overflowY: 'auto', alignItems: 'center' },
@@ -398,13 +398,13 @@ const GiftTapGame = () => {
         <div style={{ ...styles.container, display: 'flex', flexDirection: 'column', height: '100vh', width: '100vw', overflow: 'hidden' }}>
           
           {/* 1. TOP HEADER (Leaderboard & Wallet) - Consistent across all pages */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 20px', width: '100%', boxSizing: 'border-box' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', padding: '10px 15px', width: '100vw', boxSizing: 'border-box', position: 'relative' }}>
             <div style={styles.tabContainer}>
               <button 
                 style={leaderboardType === 'all_time' ? styles.activeTab : styles.tab}
                 onClick={() => { setLeaderboardType('all_time'); fetchFullLeaderboard('all_time'); }}
               >
-                🌎 All-Time
+                All-Time Leader
                 <span style={styles.leaderBadge}>🏆 {topLeader.name}: {topLeader.score.toLocaleString()}</span>
               </button>
               <button style={leaderboardType === 'season' ? styles.activeTab : styles.tab} onClick={() => setLeaderboardType('season')}>

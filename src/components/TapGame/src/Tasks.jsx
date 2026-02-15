@@ -6,7 +6,7 @@ const Tasks = ({ balance, setBalance, tgUser }) => {
 
   const taskList = [
     { id: 'sub_tg', name: 'Join telegram', reward: 250, link: 'https://t.me/Gift2u_GiftTap_official', icon: 'https://upload.wikimedia.org/wikipedia/commons/8/82/Telegram_logo.svg' },
-    { id: 'follow_x', name: 'Follow us on X', reward: 250, link: 'https://x.com/gift2utoken', icon: 'https://upload.wikimedia.org/wikipedia/commons/5/53/X_logo_2023_white.svg' },
+    { id: 'follow_x', name: 'Follow us on X', reward: 250, link: 'https://x.com/gift2utoken', icon: '/logo-white.png' },
   ];
 
   const doTask = async (task) => {
