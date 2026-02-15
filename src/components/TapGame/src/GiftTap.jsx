@@ -16,7 +16,7 @@ const GiftTapGame = () => {
     balance: { fontSize: '2.5rem', color: '#ffd700', margin: 0 },
     energy: { color: '#ffd700', fontWeight: 'bold' },
     giftZone: { flex: 1, display: 'flex', justifyContent: 'center', alignItems: 'center', width: '100%', position: 'relative' },
-    giftImage: { width: '220px', userSelect: 'none', WebkitUserDrag: 'none', pointerEvents: 'auto' },
+    giftImage: { width: '220px', userSelect: 'none', WebkitUserSelect: 'none', WebkitTouchCallout: 'none', touchAction: 'manipulation' },
     floatingText: { position: 'fixed', color: '#ffd700', fontSize: '2rem', fontWeight: 'bold', pointerEvents: 'none', animation: 'floatUp 1s forwards', zIndex: 999 },
     nav: { height: '80px', width: '100%', display: 'flex', justifyContent: 'space-around', background: '#333', borderTop: '2px solid #ffd700' },
     btn: { background: 'none', border: 'none', color: 'white', fontWeight: 'bold' },
@@ -430,7 +430,7 @@ const GiftTapGame = () => {
           <div style={styles.mainContent}>
             {currentPage === 'home' && (
               <div onClick={handleTap} style={styles.giftZone}>
-                <img src="/Gift2u_logo.png" alt="Gift"  draggable="false" style={{ ...styles.giftImage, filter: isPressed ? 'drop-shadow(0 0 15px rgba(255, 215, 0, 0.8)) brightness(1.1)' : 'drop-shadow(0 0 5px rgba(255, 215, 0, 0.2))', transform: isPressed ? 'scale(0.95)' : 'scale(1)', userSelect: 'none', transition: 'transform 0.1s cubic-bezier(0.34, 1.56, 0.64, 1)', touchAction: 'manipulation' }} />
+                <img src="/Gift2u_logo.png" alt="Gift"  onDragStart={(e) => e.preventDefault()} onContextMenu={(e) => e.preventDefault()} style={{ ...styles.giftImage, filter: isPressed ? 'drop-shadow(0 0 15px rgba(255, 215, 0, 0.8)) brightness(1.1)' : 'drop-shadow(0 0 5px rgba(255, 215, 0, 0.2))', transform: isPressed ? 'scale(0.95)' : 'scale(1)', transition: 'transform 0.05s cubic-bezier(0.34, 1.56, 0.64, 1)' }} />
                 {taps.map(t => <span key={t.id} style={{ ...styles.floatingText, left: t.x, top: t.y }}>+1</span>)}
               </div>
             )}
@@ -456,8 +456,6 @@ const GiftTapGame = () => {
                 <button style={currentPage === 'shop' ? styles.activeBtn : styles.btn} onClick={() => setCurrentPage('shop')}>Shop</button>
               </div>
             </div>
-          
-          
 
           {/* Leaderboard Modal */}
           {isLeaderboardOpen && (
