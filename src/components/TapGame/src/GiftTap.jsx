@@ -12,7 +12,7 @@ const GiftTapGame = () => {
 
   const styles = {
     container: { position: 'fixed', top: 0, left: 0, height: '100%', width: '100%', background: '#1a1a1a', color: 'white', display: 'flex', flexDirection: 'column', alignItems: 'center', overflow: 'hidden', touchAction: 'manipulation' },
-    walletWrapper: { padding: '20px', width: '100%', display: 'flex', justifyContent: 'flex-end' },
+    walletWrapper: { padding: '20px', width: '100%', display: 'flex', justifyContent: 'flex-end', textAlign: 'right' },
     header: { marginTop: '10px', textAlign: 'center' },
     balance: { fontSize: '2.5rem', color: '#ffd700', margin: 0 },
     energy: { color: '#ffd700', fontWeight: 'bold' },
@@ -27,10 +27,10 @@ const GiftTapGame = () => {
     actionRow: { display: 'flex', gap: '10px', marginTop: '20px' },
     actionBtn: { flex: 1, padding: '12px', borderRadius: '10px', background: '#ffd700', color: '#000', fontWeight: 'bold', border: 'none' },
     closeBtn: { marginTop: '20px', background: 'none', color: '#888', border: 'none', cursor: 'pointer' },
-    walletBtn: { background: 'rgba(255, 215, 0, 0.1)', color: '#ffd700', border: '1px solid #ffd700', padding: '8px 15px', borderRadius: '20px', fontWeight: 'bold' },
+    walletBtn: { background: '#111)', color: '#fff', border: '1px solid #444', padding: '8px 15px', borderRadius: '15px', cursor: 'pointer', fontWeight: 'bold', minWidth: '100px' },
     leaderBadge: { display: 'block', fontSize: '0.7rem', color: '#5578da', marginTop: '4px', fontWeight: 'normal', opacity: 0.9 },
-    activeTab: { background: '#ffffff', color: '#000', padding: '10px 20px', borderRadius: '10px', border: 'none', fontWeight: 'bold', flex: 1 },
-    tab: { background: '#333', color: '#fff', padding: '10px 20px', borderRadius: '10px', border: 'none', flex: 1 },
+    activeTab: { background: 'rgba(255, 215, 0, 0.1)', color: '#000', whiteSpace: 'nowrap', fontSize: '12px', padding: '8px 12px', borderRadius: '12px',  border: '1px solid #ffd700', fontWeight: 'bold', flex: 1 },
+    tab: { background: '#222', color: '#fff', whiteSpace: 'nowrap', padding: '8px 12px', borderRadius: '12px', fontSize: '12px', border: '1px solid #333', display: 'flex', alignItems: 'center' },
     shopItem: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '15px 0', borderBottom: '1px solid #333' },
     buyBtn: { background: '#ffd700', color: '#000', border: 'none', padding: '8px 12px', borderRadius: '10px', fontWeight: 'bold' },
     tabContainer: { display: 'flex', gap: '10px', width: '90%', marginBottom: '20px', marginTop: '10px' },
@@ -398,13 +398,7 @@ const GiftTapGame = () => {
         <div style={{ ...styles.container, display: 'flex', flexDirection: 'column', height: '100vh', width: '100vw', overflow: 'hidden' }}>
           
           {/* 1. TOP HEADER (Leaderboard & Wallet) - Consistent across all pages */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 20px' }}>
-            <div style={styles.walletWrapper}>
-              <button onClick={() => { setIsModalOpen(true); fetchBalances(); }} style={styles.walletBtn}>
-                {playerWallet?.slice(0, 4)}...{playerWallet?.slice(-4)}
-              </button>
-            </div>
-
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 20px', width: '100%', boxSizing: 'border-box' }}>
             <div style={styles.tabContainer}>
               <button 
                 style={leaderboardType === 'all_time' ? styles.activeTab : styles.tab}
@@ -415,6 +409,12 @@ const GiftTapGame = () => {
               </button>
               <button style={leaderboardType === 'season' ? styles.activeTab : styles.tab} onClick={() => setLeaderboardType('season')}>
                 ⏳ Season 1
+              </button>
+            </div>
+
+            <div style={styles.walletWrapper}>
+              <button onClick={() => { setIsModalOpen(true); fetchBalances(); }} style={styles.walletBtn}>
+                {playerWallet?.slice(0, 4)}...{playerWallet?.slice(-4)}
               </button>
             </div>
           </div>
@@ -504,10 +504,16 @@ const GiftTapGame = () => {
             <div style={styles.modalOverlay} onClick={() => setIsModalOpen(false)}>
               <div style={styles.modalContent} onClick={e => e.stopPropagation()}>
                 <h3>Wallet Dashboard</h3>
+                <p style={{ fontSize: '12px', color: '#888', marginBottom: '15px' }}>
+                  Wallet Balance.
+                </p>
                 <div style={styles.balanceRow}><span>SOL:</span> <span>{balances.sol.toFixed(4)}</span></div>
                 <div style={styles.balanceRow}><span>GFT Shards:</span> <span>{balance.toLocaleString()}</span></div>
                 <div style={styles.balanceRow}><span>USDC:</span> <span>${balances.usdc.toFixed(2)}</span></div>
                 <div style={styles.actionRow}>
+                  <button style={{ ...styles.actionBtn, background: '#4CAF50' }} 
+                  onClick={() => { navigator.clipboard.writeText(playerWallet); alert("Wallet Address Copied! Send SOL or Tokens to this address."); }}
+                  >Deposit</button>
                   <button style={styles.actionBtn}>Withdraw</button>
                   <button style={styles.actionBtn}>Swap</button>
                 </div>
