@@ -54,12 +54,13 @@ const GiftTapGame = () => {
   const [isLeaderboardOpen, setIsLeaderboardOpen] = useState(false);
   const [hasAccess, setHasAccess] = useState(false);
   const [dailyTaps, setDailyTaps] = useState(0);
-  const [lastTapDate, setLastTapDate] = useState(null);
+  const [lastTapDate, setLastTapDate] = useState(new Date().toISOString().split('T')[0]);
   const [isPressed, setIsPressed] = useState(false);
   const [isShopOpen, setIsShopOpen] = useState(false);
   const [maxDailyLimit, setMaxDailyLimit] = useState(1000);
   const [tapPower, setTapPower] = useState(1);
   const [currentPage, setCurrentPage] = useState('home'); // 'home', 'shop', 'tasks', 'friends'
+  const [activeTab, setActiveTab] = useState('home'); // Use this for page switching
 
   const tgUser = useMemo(() => {
     return window.Telegram?.WebApp?.initDataUnsafe?.user || { id: "test_local_user", first_name: "Local" };
@@ -222,7 +223,7 @@ const GiftTapGame = () => {
   }, []);
 
   // 6. SAVE PROGRESS
-  const saveToDatabase = async (b, e, daily, date) => {
+  const saveToDatabase = async (b, e, dt, ltd) => {
     // 1. Don't save if we don't have a valid user ID
     if (!tgUser?.id || tgUser.id === "test_local_user") return;
 
