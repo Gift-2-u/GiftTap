@@ -50,7 +50,7 @@ const GiftTapGame = () => {
   const [dailyTaps, setDailyTaps] = useState(0);
   const [lastTapDate, setLastTapDate] = useState(null);
   const [isPressed, setIsPressed] = useState(false);
-
+  const [isShopOpen, setIsShopOpen] = useState(false);
 
   const tgUser = useMemo(() => {
     return window.Telegram?.WebApp?.initDataUnsafe?.user || { id: "test_local_user", first_name: "Local" };
@@ -421,8 +421,8 @@ const GiftTapGame = () => {
             </div>
           )}
 
-          {isBoostOpen && (
-            <div style={styles.modalOverlay} onClick={() => setIsBoostOpen(false)}>
+          {isShopOpen && (
+            <div style={styles.modalOverlay} onClick={() => setIsShopOpen(true)}>
               <div style={styles.modalContent} onClick={e => e.stopPropagation()}>
                 <h2 style={{color: '#ffd700'}}>🚀 Boosters</h2>
                 
@@ -442,7 +442,7 @@ const GiftTapGame = () => {
                   <button onClick={() => buyBoost('energy')} style={styles.buyBtn}>1,000 💰</button>
                 </div>
 
-                <button onClick={() => setIsBoostOpen(false)} style={styles.closeBtn}>Close</button>
+                <button onClick={() => setIsShopOpen(true)} style={styles.closeBtn}>Close</button>
               </div>
             </div>
           )}

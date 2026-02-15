@@ -3,7 +3,7 @@ import { supabase } from './supabaseClient';
 
 const Upgrades = ({ balance, setBalance, stats, setStats, tgUser }) => {
   const upgradeList = [
-    { id: 'tap_power', name: 'Stronger Tape', cost: 500, bonus: 1, icon: '🩹', desc: '+1 Shard per tap' },
+    { id: 'tap_power', name: 'Multitap', cost: 500, bonus: 1, icon: '⚡', desc: '+1 Shard per tap' },
     { id: 'max_daily_limit', name: 'Limit Buster', cost: 1000, bonus: 1000, icon: '🚀', desc: '+1000 Daily Limit' },
     { id: 'energy_level', name: 'Helper Elf', cost: 2000, bonus: 500, icon: '🧝', desc: '+500 Max Energy' },
   ];
