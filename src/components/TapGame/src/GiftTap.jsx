@@ -10,7 +10,7 @@ import Upgrades from './Upgrades';
 const GiftTapGame = () => {
 
   const styles = {
-    container: { position: 'fixed', top: 0, left: 0, height: '100%', width: '100%', background: '#1a1a1a', color: 'white', display: 'flex', flexDirection: 'column', alignItems: 'center', overflow: 'hidden', touchAction: 'manipulation' },
+    container: { position: 'fixed', top: 0, left: 0, height: '100vh', width: '100vw', background: '#1a1a1a', color: 'white', display: 'flex', flexDirection: 'column', alignItems: 'center', overflow: 'hidden', touchAction: 'manipulation' },
     walletWrapper: { padding: '20px', width: '100%', display: 'flex', justifyContent: 'flex-end' },
     header: { marginTop: '10px', textAlign: 'center' },
     balance: { fontSize: '2.5rem', color: '#ffd700', margin: 0 },
@@ -18,7 +18,7 @@ const GiftTapGame = () => {
     giftZone: { flex: 1, display: 'flex', justifyContent: 'center', alignItems: 'center', width: '100%', position: 'relative' },
     giftImage: { width: '220px', userSelect: 'none', WebkitUserSelect: 'none', WebkitTouchCallout: 'none', touchAction: 'manipulation' },
     floatingText: { position: 'fixed', color: '#ffd700', fontSize: '2rem', fontWeight: 'bold', pointerEvents: 'none', animation: 'floatUp 1s forwards', zIndex: 999 },
-    nav: { height: '80px', width: '100%', display: 'flex', justifyContent: 'space-around', background: '#333', borderTop: '2px solid #ffd700' },
+    nav: { height: '80px', width: '100%', display: 'flex', justifyContent: 'space-around', background: '#333', borderTop: '2px solid #ffd700', paddingBottom: 'env(safe-area-inset-bottom)' },
     btn: { background: 'none', border: 'none', color: 'white', fontWeight: 'bold' },
     modalOverlay: { position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', background: 'rgba(0,0,0,0.8)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000 },
     modalContent: { background: '#222', padding: '25px', borderRadius: '15px', width: '85%', maxWidth: '400px', border: '2px solid #ffd700', textAlign: 'center' },
@@ -35,6 +35,8 @@ const GiftTapGame = () => {
     tabContainer: { display: 'flex', gap: '10px', width: '90%', marginBottom: '20px', marginTop: '10px' },
     progressContainer: { width: '200px', height: '10px', background: '#333', borderRadius: '5px', margin: '10px auto', overflow: 'hidden', border: '1px solid #444' },
     progressBar: { height: '100%', transition: 'width 0.3s ease-in-out', boxShadow: '0 0 10px rgba(255, 215, 0, 0.3)' },
+    mainContent: { flex: 1, width: '100%', display: 'flex', flexDirection: 'column', overflowY: 'auto' },
+    shopPage: { width: '100%', padding: '20px', boxSizing: 'border-box' }
   };
 
   // 1. GAME STATE
@@ -257,8 +259,8 @@ const GiftTapGame = () => {
       setLastTapDate(today);
     }
 
-    // 2. CHECK LIMIT (2500)
-    if (currentDailyTaps >= 1000) {
+    // 2. CHECK LIMIT (1000)
+    if (currentDailyTaps >= 500) {
       alert("Daily limit reached! Upgrade your boost to tap more.");
       return;
     }
