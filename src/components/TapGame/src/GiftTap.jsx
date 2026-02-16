@@ -395,7 +395,7 @@ const GiftTapGame = () => {
         />
       ) : (
         /* 2. Show the ACTUAL GAME if they have access */
-        <div style={{ ...styles.container, flex: 1, flexDirection: 'column', height: '100%', width: '100%', overflow: 'hidden' }}>
+        <div style={{ ...styles.container, flexDirection: 'column', height: '100%', width: '100%', overflow: 'hidden' }}>
           
           {/* 1. TOP HEADER (Leaderboard & Wallet) - Consistent across all pages */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', padding: '10px 15px', width: '100%', boxSizing: 'border-box' }}>
