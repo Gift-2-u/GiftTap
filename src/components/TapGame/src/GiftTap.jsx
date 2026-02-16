@@ -27,7 +27,7 @@ const GiftTapGame = () => {
     actionRow: { display: 'flex', gap: '10px', marginTop: '20px' },
     actionBtn: { flex: 1, padding: '12px', borderRadius: '10px', background: '#ffd700', color: '#000', fontWeight: 'bold', border: 'none' },
     closeBtn: { marginTop: '20px', background: 'none', color: '#888', border: 'none', cursor: 'pointer' },
-    walletBtn: { background: '#111)', color: '#fff', border: '1px solid #ffd700', padding: '8px 12px', borderRadius: '15px', cursor: 'pointer', fontWeight: 'bold', minWidth: '100px', display: 'flex', flexDirection: 'column', alignItems: 'center', LineHeight: '1.1' },
+    walletBtn: { background: '#222)', color: '', border: '1px solid #ffd700', padding: '8px 12px', borderRadius: '15px', cursor: 'pointer', fontWeight: 'bold', minWidth: '100px', display: 'flex', flexDirection: 'column', alignItems: 'center', LineHeight: '1.1' },
     leaderBadge: { display: 'block', fontSize: '0.7rem', color: '#5578da', marginTop: '2px', fontWeight: 'normal', opacity: 0.9, maxWidth: '100px', overflow: 'hidden', textOverflow: 'ellipsis' },
     activeTab: { background: 'rgba(255, 215, 0, 0.1)', color: '#5578da', width: '110px', height: '50px', whiteSpace: 'nowrap', fontSize: '11px', padding: '5px', borderRadius: '12px', justifyContent: 'center', border: '1px solid #ffd700', fontWeight: 'bold', display: 'flex', flexDirection: 'column', alignItems: 'center', minWidth: '0' },
     tab: { background: '#222', width: '110px', height: '50px', color: '#fff', whiteSpace: 'nowrap', padding: '5px', borderRadius: '12px',justifyContent: 'center', fontSize: '11px', border: '1px solid #333', display: 'flex', alignItems: 'center', flexDirection: 'column' },
