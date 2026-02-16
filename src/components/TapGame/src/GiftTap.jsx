@@ -27,13 +27,13 @@ const GiftTapGame = () => {
     actionRow: { display: 'flex', gap: '10px', marginTop: '20px' },
     actionBtn: { flex: 1, padding: '12px', borderRadius: '10px', background: '#ffd700', color: '#000', fontWeight: 'bold', border: 'none' },
     closeBtn: { marginTop: '20px', background: 'none', color: '#888', border: 'none', cursor: 'pointer' },
-    walletBtn: { background: '#111)', color: '#fff', border: '1px solid #444', padding: '8px 15px', borderRadius: '15px', cursor: 'pointer', fontWeight: 'bold', minWidth: '100px' },
-    leaderBadge: { display: 'block', fontSize: '0.7rem', color: '#5578da', marginTop: '4px', fontWeight: 'normal', opacity: 0.9 },
-    activeTab: { background: '#000', color: '#5578da', whiteSpace: 'nowrap', fontSize: '11px', padding: '8px 10px', borderRadius: '12px',  border: '1px solid #ffd700', fontWeight: 'bold', display: 'flex', flexDirection: 'column', alignItems: 'center', minWidth: '0' },
-    tab: { background: '#222', color: '#fff', whiteSpace: 'nowrap', padding: '8px 10px', borderRadius: '12px', fontSize: '11px', border: '1px solid #333', display: 'flex', alignItems: 'center', flexDirection: 'column' },
+    walletBtn: { background: '#111)', color: '#fff', border: '1px solid #ffd700', padding: '8px 12px', borderRadius: '15px', cursor: 'pointer', fontWeight: 'bold', minWidth: '100px', display: 'flex', flexDirection: 'column', alignItems: 'center', LineHeight: '1.1' },
+    leaderBadge: { display: 'block', fontSize: '0.7rem', color: '#5578da', marginTop: '2px', fontWeight: 'normal', opacity: 0.9, maxWidth: '100px', overflow: 'hidden', textOverflow: 'ellipsis' },
+    activeTab: { background: 'rgba(255, 215, 0, 0.1)', color: '#5578da', width: '110px', height: '50px', whiteSpace: 'nowrap', fontSize: '11px', padding: '5px', borderRadius: '12px', justifyContent: 'center', border: '1px solid #ffd700', fontWeight: 'bold', display: 'flex', flexDirection: 'column', alignItems: 'center', minWidth: '0' },
+    tab: { background: '#222', width: '110px', height: '50px', color: '#fff', whiteSpace: 'nowrap', padding: '5px', borderRadius: '12px',justifyContent: 'center', fontSize: '11px', border: '1px solid #333', display: 'flex', alignItems: 'center', flexDirection: 'column' },
     shopItem: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '15px 0', borderBottom: '1px solid #333' },
     buyBtn: { background: '#ffd700', color: '#000', border: 'none', padding: '8px 12px', borderRadius: '10px', fontWeight: 'bold' },
-    tabContainer: { display: 'flex', gap: '5px', flex: 1, marginRight: '10px', alignItems: 'flex-start' },
+    tabContainer: { display: 'flex', gap: '8px', flexShrink: 0 },
     progressContainer: { width: '200px', height: '10px', background: '#333', borderRadius: '5px', margin: '10px auto', overflow: 'hidden', border: '1px solid #444' },
     progressBar: { height: '100%', transition: 'width 0.3s ease-in-out', boxShadow: '0 0 10px rgba(255, 215, 0, 0.3)' },
     mainContent: { flex: 1, width: '100%', display: 'flex', flexDirection: 'column', overflowY: 'auto', alignItems: 'center' },
@@ -395,10 +395,10 @@ const GiftTapGame = () => {
         />
       ) : (
         /* 2. Show the ACTUAL GAME if they have access */
-        <div style={{ ...styles.container, display: 'flex', flexDirection: 'column', height: '100vh', width: '100vw', overflow: 'hidden' }}>
+        <div style={{ ...styles.container, flex: 1, flexDirection: 'column', height: '100%', width: '100%', overflow: 'hidden' }}>
           
           {/* 1. TOP HEADER (Leaderboard & Wallet) - Consistent across all pages */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', padding: '10px 15px', width: '100vw', boxSizing: 'border-box', position: 'relative' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', padding: '10px 15px', width: '100%', boxSizing: 'border-box' }}>
             <div style={styles.tabContainer}>
               <button 
                 style={leaderboardType === 'all_time' ? styles.activeTab : styles.tab}
@@ -511,7 +511,7 @@ const GiftTapGame = () => {
                 <div style={styles.balanceRow}><span>GFT Shards:</span> <span>{balance.toLocaleString()}</span></div>
                 <div style={styles.balanceRow}><span>USDC:</span> <span>${balances.usdc.toFixed(2)}</span></div>
                 <div style={styles.actionRow}>
-                  <button style={{ ...styles.actionBtn, background: '#4CAF50' }} 
+                  <button style={{ ...styles.actionBtn }} 
                   onClick={() => { navigator.clipboard.writeText(playerWallet); alert("Wallet Address Copied! Send SOL or Tokens to this address."); }}
                   >Deposit</button>
                   <button style={styles.actionBtn}>Withdraw</button>
