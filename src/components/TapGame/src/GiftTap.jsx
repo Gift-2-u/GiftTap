@@ -27,7 +27,7 @@ const GiftTapGame = () => {
     actionRow: { display: 'flex', gap: '10px', marginTop: '20px' },
     actionBtn: { flex: 1, padding: '12px', borderRadius: '10px', background: '#ffd700', color: '#000', fontWeight: 'bold', border: 'none' },
     closeBtn: { marginTop: '20px', background: 'none', color: '#888', border: 'none', cursor: 'pointer' },
-    walletBtn: { background: '#222', color: '#fff', border: '1px solid #ffd700', padding: '8px 12px', borderRadius: '15px', cursor: 'pointer', fontWeight: 'bold', minWidth: '100px', display: 'flex', flexDirection: 'column', alignItems: 'center', LineHeight: '1.1' },
+    walletBtn: { background: '#222', color: '#fff', border: '1px solid #ffd700', padding: '8px 12px', borderRadius: '12px', cursor: 'pointer', fontWeight: 'bold', minWidth: '100px', display: 'flex', flexDirection: 'column', alignItems: 'center', LineHeight: '1.1' },
     leaderBadge: { display: 'block', fontSize: '0.7rem', color: '#528db0', marginTop: '2px', fontWeight: 'normal', opacity: 0.9, maxWidth: '100px', overflow: 'hidden', textOverflow: 'ellipsis' },
     activeTab: { background: '#222', color: '#528db0', width: '110px', height: '50px', whiteSpace: 'nowrap', fontSize: '11px', padding: '5px', borderRadius: '12px', justifyContent: 'center', border: '1px solid #ffd700', fontWeight: 'bold', display: 'flex', flexDirection: 'column', alignItems: 'center', minWidth: '0' },
     tab: { background: '#222', width: '110px', height: '50px', color: '#fff', whiteSpace: 'nowrap', padding: '5px', borderRadius: '12px',justifyContent: 'center', fontSize: '11px', border: '1px solid #333', display: 'flex', alignItems: 'center', flexDirection: 'column' },
@@ -37,7 +37,10 @@ const GiftTapGame = () => {
     progressContainer: { width: '200px', height: '10px', background: '#333', borderRadius: '5px', margin: '10px auto', overflow: 'hidden', border: '1px solid #444' },
     progressBar: { height: '100%', transition: 'width 0.3s ease-in-out', boxShadow: '0 0 10px rgba(255, 215, 0, 0.3)' },
     mainContent: { flex: 1, width: '100%', display: 'flex', flexDirection: 'column', overflowY: 'auto', alignItems: 'center' },
-    shopPage: { width: '100%', padding: '20px', boxSizing: 'border-box' }
+    shopPage: { width: '100%', padding: '20px', boxSizing: 'border-box' },
+    depositBox: { background: '#111', padding: '15px', borderRadius: '12px', marginTop: '15px', border: '1px solid #333' },
+    addressRow: { display: 'flex', justifyContent: 'space-between',  alignItems: 'center', marginTop: '8px', background: '#000', padding: '10px', borderRadius: '8px' },
+    copyBtn: { background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.2rem', color: '#ffd700' }
   };
 
   // 1. GAME STATE
@@ -62,6 +65,7 @@ const GiftTapGame = () => {
   const [tapPower, setTapPower] = useState(1);
   const [currentPage, setCurrentPage] = useState('home'); // 'home', 'shop', 'tasks', 'friends'
   const [activeTab, setActiveTab] = useState('home'); // Use this for page switching
+  const [isReceiveOpen, setIsReceiveOpen] = useState(false);
 
   const tgUser = useMemo(() => {
     return window.Telegram?.WebApp?.initDataUnsafe?.user || { id: "test_local_user", first_name: "Local" };
