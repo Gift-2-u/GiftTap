@@ -12,7 +12,7 @@ const GiftTapGame = () => {
 
   const styles = {
     container: { position: 'fixed', top: 0, left: 0, height: '100%', width: '100%', background: '#1a1a1a', color: 'white', display: 'flex', flexDirection: 'column', alignItems: 'center', overflow: 'hidden', touchAction: 'manipulation' },
-    walletWrapper: { padding: '0', width: '100%', display: 'flex', justifyContent: 'flex-end', alignItems: 'flex-start', textAlign: 'right', flexShrink: 0 },
+    walletWrapper: { display: 'flex', justifyContent: 'flex-end', alignItems: 'flex-start', flexShrink: 0 },
     header: { marginTop: '10px', textAlign: 'center' },
     balance: { fontSize: '2.5rem', color: '#ffd700', margin: 0 },
     energy: { color: '#ffd700', fontWeight: 'bold' },
@@ -259,6 +259,7 @@ const GiftTapGame = () => {
       currentDailyTaps = 0;
       setDailyTaps(0);
       setLastTapDate(today);
+      saveToDatabase(balance, energy, 0, today);
     }
 
     // 2. CHECK LIMIT (1000)
@@ -398,7 +399,7 @@ const GiftTapGame = () => {
         <div style={{ ...styles.container, flexDirection: 'column', height: '100%', width: '100%', overflow: 'hidden' }}>
           
           {/* 1. TOP HEADER (Leaderboard & Wallet) - Consistent across all pages */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', padding: '10px 15px', width: '100%', boxSizing: 'border-box' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 15px', width: '100%', boxSizing: 'border-box' }}>
             <div style={styles.tabContainer}>
               <button 
                 style={leaderboardType === 'all_time' ? styles.activeTab : styles.tab}
