@@ -33,7 +33,7 @@ const GiftTapGame = () => {
     tab: { background: '#222', width: '110px', height: '50px', color: '#fff', whiteSpace: 'nowrap', padding: '5px', borderRadius: '12px',justifyContent: 'center', fontSize: '11px', border: '1px solid #333', display: 'flex', alignItems: 'center', flexDirection: 'column' },
     shopItem: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '15px 0', borderBottom: '1px solid #333' },
     buyBtn: { background: '#ffd700', color: '#000', border: 'none', padding: '8px 12px', borderRadius: '10px', fontWeight: 'bold' },
-    tabContainer: { display: 'flex', gap: '8px', flexShrink: 0 },
+    tabContainer: { display: 'flex', gap: '8px'},
     progressContainer: { width: '200px', height: '10px', background: '#333', borderRadius: '5px', margin: '10px auto', overflow: 'hidden', border: '1px solid #444' },
     progressBar: { height: '100%', transition: 'width 0.3s ease-in-out', boxShadow: '0 0 10px rgba(255, 215, 0, 0.3)' },
     mainContent: { flex: 1, width: '100%', display: 'flex', flexDirection: 'column', overflowY: 'auto', alignItems: 'center' },
