@@ -527,6 +527,49 @@ const GiftTapGame = () => {
             </div>
           )}
 
+          {/* Receive Pop-up */}
+          {isReceiveOpen && (
+            <div style={styles.modalOverlay} onClick={() => setIsReceiveOpen(false)}>
+              <div style={styles.modalContent} onClick={e => e.stopPropagation()}>
+                <h3 style={{ color: '#ffd700', marginBottom: '10px' }}>Receive Assets</h3>
+                
+                {/* QR Code Section */}
+                <div style={{ background: '#fff', padding: '10px', borderRadius: '10px', display: 'inline-block' }}>
+                  <img 
+                    src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${playerWallet}`} 
+                    alt="Wallet QR Code" 
+                    style={{ width: '150px', height: '150px' }}
+                  />
+                </div>
+
+                {/* Address Section */}
+                <div style={styles.depositBox}>
+                  <div style={{ fontSize: '12px', color: '#888', textAlign: 'left' }}>Your Wallet Address</div>
+                  <div style={styles.addressRow}>
+                    <span style={{ fontSize: '11px', color: '#fff', wordBreak: 'break-all', marginRight: '10px' }}>
+                      {playerWallet}
+                    </span>
+                    <button 
+                      style={styles.copyBtn} 
+                      onClick={() => {
+                        navigator.clipboard.writeText(playerWallet);
+                        alert("Address copied!");
+                      }}
+                    >
+                      ❐ {/* The "two squares" copy icon */}
+                    </button>
+                  </div>
+                </div>
+
+                <p style={{ fontSize: '10px', color: '#666', marginTop: '15px' }}>
+                  Only send Solana (SOL) or SPL tokens (like GFT) to this address.
+                </p>
+                
+                <button onClick={() => setIsReceiveOpen(false)} style={styles.closeBtn}>Close</button>
+              </div>
+            </div>
+          )}
+
         </div>
       )}
     </div>
