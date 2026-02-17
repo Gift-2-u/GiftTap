@@ -66,6 +66,9 @@ const GiftTapGame = () => {
   const [currentPage, setCurrentPage] = useState('home'); // 'home', 'shop', 'tasks', 'friends'
   const [activeTab, setActiveTab] = useState('home'); // Use this for page switching
   const [isReceiveOpen, setIsReceiveOpen] = useState(false);
+  const [isWithdrawOpen, setIsWithdrawOpen] = useState(false);
+  const [withdrawAddress, setWithdrawAddress] = useState('');
+  const [withdrawAmount, setWithdrawAmount] = useState('');
 
   const tgUser = useMemo(() => {
     return window.Telegram?.WebApp?.initDataUnsafe?.user || { id: "test_local_user", first_name: "Local" };
@@ -517,9 +520,11 @@ const GiftTapGame = () => {
                 <div style={styles.balanceRow}><span>USDC:</span> <span>${balances.usdc.toFixed(2)}</span></div>
                 <div style={styles.actionRow}>
                   <button style={{ ...styles.actionBtn }} 
-                  onClick={() => { navigator.clipboard.writeText(playerWallet); alert("Wallet Address Copied! Send SOL or Tokens to this address."); }}
-                  >Deposit</button>
-                  <button style={styles.actionBtn}>Withdraw</button>
+                  onClick={() => { setIsModalOpen(false); setIsReceiveOpen(true); }}
+                  >Receive</button>
+                  <button style={styles.actionBtn}
+                  onClick={() => { setIsModalOpen(false); setIsWithdrawOpen(true); }}
+                  >Withdraw</button>
                   <button style={styles.actionBtn}>Swap</button>
                 </div>
                 <button onClick={() => setIsModalOpen(false)} style={styles.closeBtn}>Close</button>
@@ -566,6 +571,65 @@ const GiftTapGame = () => {
                 </p>
                 
                 <button onClick={() => setIsReceiveOpen(false)} style={styles.closeBtn}>Close</button>
+              </div>
+            </div>
+          )}
+
+          {/* Withdraw Pop-up */}
+          {isWithdrawOpen && (
+            <div style={styles.modalOverlay} onClick={() => setIsWithdrawOpen(false)}>
+              <div style={{ ...styles.modalContent, background: '#131517', border: 'none', width: '90%', maxWidth: '360px' }} onClick={e => e.stopPropagation()}>
+                
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '20px' }}>
+                  <h3 style={{ color: '#fff', margin: 0 }}>Withdraw</h3>
+                  <button onClick={() => setIsWithdrawOpen(false)} style={{ background: 'none', border: 'none', color: '#888', fontSize: '20px' }}>✕</button>
+                </div>
+
+                <div style={{ textAlign: 'left', marginBottom: '15px' }}>
+                  <label style={{ color: '#888', fontSize: '12px', display: 'block', marginBottom: '5px' }}>Destination Address</label>
+                  <input 
+                    type="text" 
+                    placeholder="Enter Solana address"
+                    value={withdrawAddress}
+                    onChange={(e) => setWithdrawAddress(e.target.value)}
+                    style={{ width: '100%', background: '#1c1e22', border: '1px solid #333', borderRadius: '12px', padding: '12px', color: '#fff', boxSizing: 'border-box' }}
+                  />
+                </div>
+
+                <div style={{ textAlign: 'left', marginBottom: '20px' }}>
+                  <label style={{ color: '#888', fontSize: '12px', display: 'block', marginBottom: '5px' }}>Amount (SOL)</label>
+                  <div style={{ position: 'relative' }}>
+                    <input 
+                      type="number" 
+                      placeholder="0.00"
+                      value={withdrawAmount}
+                      onChange={(e) => setWithdrawAmount(e.target.value)}
+                      style={{ width: '100%', background: '#1c1e22', border: '1px solid #333', borderRadius: '12px', padding: '12px', color: '#fff', boxSizing: 'border-box' }}
+                    />
+                    <span style={{ position: 'absolute', right: '12px', top: '12px', color: '#ffd700', fontSize: '12px', cursor: 'pointer' }}>MAX</span>
+                  </div>
+                  <div style={{ color: '#555', fontSize: '10px', marginTop: '5px' }}>Available balance: {balances.sol.toFixed(4)} SOL</div>
+                </div>
+
+                <button 
+                  style={{ 
+                    width: '100%', 
+                    background: '#fbef43', 
+                    color: '#000', 
+                    border: 'none', 
+                    padding: '16px', 
+                    borderRadius: '30px', 
+                    fontWeight: 'bold', 
+                    fontSize: '16px',
+                    cursor: withdrawAmount > 0 ? 'pointer' : 'not-allowed',
+                    opacity: withdrawAmount > 0 ? 1 : 0.5
+                  }}
+                  onClick={() => {
+                    alert(`Withdraw request for ${withdrawAmount} SOL sent to ${withdrawAddress.slice(0,4)}...`);
+                  }}
+                >
+                  Confirm Withdrawal
+                </button>
               </div>
             </div>
           )}
