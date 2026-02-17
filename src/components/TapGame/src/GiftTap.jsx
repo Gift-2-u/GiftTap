@@ -69,6 +69,9 @@ const GiftTapGame = () => {
   const [isWithdrawOpen, setIsWithdrawOpen] = useState(false);
   const [withdrawAddress, setWithdrawAddress] = useState('');
   const [withdrawAmount, setWithdrawAmount] = useState('');
+  const [isSwapOpen, setIsSwapOpen] = useState(false);
+  const [swapFromAmount, setSwapFromAmount] = useState('');
+  const [swapToAmount, setSwapToAmount] = useState('');
 
   const tgUser = useMemo(() => {
     return window.Telegram?.WebApp?.initDataUnsafe?.user || { id: "test_local_user", first_name: "Local" };
@@ -525,7 +528,9 @@ const GiftTapGame = () => {
                   <button style={styles.actionBtn}
                   onClick={() => { setIsModalOpen(false); setIsWithdrawOpen(true); }}
                   >Withdraw</button>
-                  <button style={styles.actionBtn}>Swap</button>
+                  <button style={styles.actionBtn}
+                  onClick={() => { setIsModalOpen(false); setIsSwapOpen(true); }}
+                  >Swap</button>
                 </div>
                 <button onClick={() => setIsModalOpen(false)} style={styles.closeBtn}>Close</button>
               </div>
@@ -629,6 +634,91 @@ const GiftTapGame = () => {
                   }}
                 >
                   Confirm Withdrawal
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Swap Pop-up */}
+          {isSwapOpen && (
+            <div style={styles.modalOverlay} onClick={() => setIsSwapOpen(false)}>
+              <div style={{ ...styles.modalContent, background: '#131517', border: 'none', width: '90%', maxWidth: '360px' }} onClick={e => e.stopPropagation()}>
+                
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '20px' }}>
+                  <h3 style={{ color: '#fff', margin: 0 }}>Swap</h3>
+                  <button onClick={() => setIsSwapOpen(false)} style={{ background: 'none', border: 'none', color: '#888', fontSize: '20px' }}>✕</button>
+                </div>
+
+                {/* From Section */}
+                <div style={{ background: '#1c1e22', borderRadius: '16px', padding: '15px', textAlign: 'left', marginBottom: '5px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', color: '#888', fontSize: '12px' }}>
+                    <span>You pay</span>
+                    <span>Balance: {balances.sol.toFixed(4)}</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '10px' }}>
+                    <input 
+                      type="number" 
+                      placeholder="0.00"
+                      value={swapFromAmount}
+                      onChange={(e) => setSwapFromAmount(e.target.value)}
+                      style={{ background: 'none', border: 'none', color: '#fff', fontSize: '24px', width: '60%', outline: 'none' }}
+                    />
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#fff' }}>
+                      <span>SOL</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Swap Arrow Icon */}
+                <div style={{ height: '30px', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 2, position: 'relative', margin: '-15px 0' }}>
+                  <div style={{ background: '#131517', border: '2px solid #333', borderRadius: '50%', padding: '5px', color: '#fbef43' }}>
+                    ↓
+                  </div>
+                </div>
+
+                {/* To Section */}
+                <div style={{ background: '#1c1e22', borderRadius: '16px', padding: '15px', textAlign: 'left', marginTop: '5px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', color: '#888', fontSize: '12px' }}>
+                    <span>You receive</span>
+                    <span>Balance: {balance.toLocaleString()}</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '10px' }}>
+                    <input 
+                      type="number" 
+                      placeholder="0.00"
+                      value={swapToAmount}
+                      readOnly
+                      style={{ background: 'none', border: 'none', color: '#fff', fontSize: '24px', width: '60%', outline: 'none' }}
+                    />
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#fff' }}>
+                      <span>GFT</span>
+                    </div>
+                  </div>
+                </div>
+
+                <p style={{ fontSize: '12px', color: '#888', marginTop: '20px' }}>
+                  1 SOL ≈ 1,000,000 GFT
+                </p>
+
+                <button 
+                  style={{ 
+                    width: '100%', 
+                    background: '#fbef43', 
+                    color: '#000', 
+                    border: 'none', 
+                    padding: '16px', 
+                    borderRadius: '30px', 
+                    fontWeight: 'bold', 
+                    fontSize: '16px',
+                    marginTop: '20px',
+                    cursor: swapFromAmount > 0 ? 'pointer' : 'not-allowed',
+                    opacity: swapFromAmount > 0 ? 1 : 0.5
+                  }}
+                  onClick={() => {
+                    alert(`Swapping ${swapFromAmount} SOL for GFT...`);
+                  }}
+                >
+                  Review Swap
                 </button>
               </div>
             </div>
