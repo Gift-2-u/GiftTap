@@ -349,6 +349,14 @@ const GiftTapGame = () => {
       const solBalance = await connection.getBalance(pubKey);
       const usdcMint = new PublicKey("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v");
 
+      // 1. Fetch the real-time Solana network fee
+      const { feeCalculator } = await connection.getRecentBlockhash('confirmed');
+      const baseFee = feeCalculator.lamportsPerSignature / 1e9;
+      const bufferedFee = baseFee * 1.25; // Your 25% safety buffer
+
+      // 2. Fixed Project Fee (Your 0.0005 SOL contribution)
+      const projectFee = 0.0005;
+
       const getTokenBal = async (mint) => {
         try {
           const ata = getAssociatedTokenAddressSync(mint, pubKey);
@@ -359,11 +367,14 @@ const GiftTapGame = () => {
 
       setBalances({
         sol: solBalance / 1e9,
-        gft: 0,
-        usdc: await getTokenBal(usdcMint)
+        GFT: 0,
+        GFTshards: balance, // Pulls from your 'balance' state
+        usdc: await getTokenBal(usdcMint),
       });
-    } catch (err) { console.error("Balance fetch failed", err); }
-  }, [playerWallet, connection]);
+    } catch (err) { 
+      console.error("Balance/Fee fetch failed", err); 
+    }
+  }, [playerWallet, connection, balance]); // Added 'balance' to dependencies
 
   const inviteLink = `https://t.me/Gift2uTapBot?start=${tgUser.id}`;
 
@@ -599,6 +610,23 @@ const GiftTapGame = () => {
                     onChange={(e) => setWithdrawAddress(e.target.value)}
                     style={{ width: '100%', background: '#1c1e22', border: '1px solid #333', borderRadius: '12px', padding: '12px', color: '#fff', boxSizing: 'border-box' }}
                   />
+                </div>
+
+                <div style={{ marginTop: '15px', padding: '10px', background: 'rgba(255, 255, 255, 0.05)', borderRadius: '10px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#888' }}>
+                    <span>Amount requested</span>
+                    <span>{Number(withdrawAmount).toFixed(4)} SOL</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#ff4d4d', marginTop: '5px' }}>
+                    <span>Network Fee (incl. buffer)</span>
+                    <span>- {balances.estFee.toFixed(6)} SOL</span>
+                  </div>
+                  <div style={{ borderTop: '1px solid #333', marginTop: '10px', paddingTop: '10px', display: 'flex', justifyContent: 'space-between', fontWeight: 'bold' }}>
+                    <span>You will receive</span>
+                    <span style={{ color: '#ffd700' }}>
+                      {withdrawAmount > balances.estFee ? (withdrawAmount - balances.estFee).toFixed(6) : '0.0000'} SOL
+                    </span>
+                  </div>
                 </div>
 
                 <div style={{ textAlign: 'left', marginBottom: '20px' }}>
