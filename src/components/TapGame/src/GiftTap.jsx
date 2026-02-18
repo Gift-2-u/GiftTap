@@ -352,13 +352,13 @@ const GiftTapGame = () => {
       const solBalance = await connection.getBalance(pubKey);
       const usdcMint = new PublicKey("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v");
 
-      // 1. Fetch the real-time Solana network fee
-      const { feeCalculator } = await connection.getRecentBlockhash('confirmed');
+      // Use Promise.all to fetch everything in parallel (faster)
+      const [solBalance, { feeCalculator }] = await Promise.all([
+        connection.getBalance(pubKey),
+        connection.getRecentBlockhash('confirmed')
+      ]);
       const baseFee = feeCalculator.lamportsPerSignature / 1e9;
       const baseFeeWithBuffer = baseFee * 1.25; // Your 25% safety buffer
-
-      // 2. Fixed Project Fee (Your 0.0005 SOL contribution)
-      const projectFee = 0.0005;
 
       const getTokenBal = async (mint) => {
         try {
@@ -625,20 +625,23 @@ const GiftTapGame = () => {
                 <div style={{ marginTop: '15px', padding: '10px', background: 'rgba(255, 255, 255, 0.05)', borderRadius: '10px' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#888' }}>
                     <span>Amount requested</span>
-                    <span>{Number(withdrawAmount).toFixed(4)} SOL</span>
+                    <span>{(Number(withdrawAmount) || 0).toFixed(4)} SOL</span>
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#ff4d4d', marginTop: '5px' }}>
-                    <span>Network Fee (incl. buffer)</span>
-                    <span>- {balances.estFee.toFixed(6)} SOL</span>
+                    <span>Network Fee</span>
+                    <span>- {transactionCosts.baseFeeWithBuffer?.toFixed(6) ?? '0.000000'} SOL</span>
                   </div>
+
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#fbef43', marginTop: '5px' }}>
                     <span>Gift Launch Support</span>
-                    <span>- {projectFee.toFixed(4)} SOL</span>
+                    <span>- {(transactionCosts.projectFee || 0.0005).toFixed(4)} SOL</span>
                   </div>
                   <div style={{ borderTop: '1px solid #333', marginTop: '10px', paddingTop: '10px', display: 'flex', justifyContent: 'space-between', fontWeight: 'bold' }}>
                     <span>You will receive</span>
                     <span style={{ color: '#ffd700' }}>
-                      {withdrawAmount > balances.estFee ? (withdrawAmount - balances.estFee).toFixed(6) : '0.0000'} SOL
+                      {withdrawAmount > (transactionCosts.baseFeeWithBuffer + transactionCosts.projectFee) 
+                        ? (withdrawAmount - transactionCosts.baseFeeWithBuffer - transactionCosts.projectFee).toFixed(6) 
+                        : '0.000000'} SOL
                     </span>
                   </div>
                 </div>
