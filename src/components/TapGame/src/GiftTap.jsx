@@ -354,7 +354,6 @@ const GiftTapGame = () => {
     if (!playerWallet) return;
     try {
       const pubKey = new PublicKey(playerWallet);
-      const solBalance = await connection.getBalance(pubKey);
       const usdcMint = new PublicKey("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v");
 
       // Use Promise.all to fetch everything in parallel (faster)
