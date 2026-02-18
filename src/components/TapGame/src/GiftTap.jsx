@@ -40,7 +40,8 @@ const GiftTapGame = () => {
     shopPage: { width: '100%', padding: '20px', boxSizing: 'border-box' },
     depositBox: { background: '#111', padding: '15px', borderRadius: '12px', marginTop: '15px', border: '1px solid #333' },
     addressRow: { display: 'flex', justifyContent: 'space-between',  alignItems: 'center', marginTop: '8px', background: '#000', padding: '10px', borderRadius: '8px' },
-    copyBtn: { background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.2rem', color: '#ffd700' }
+    copyBtn: { background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.2rem', color: '#ffd700' },
+    toast: { position: 'fixed', bottom: '100px', left: '50%', transform: 'translateX(-50%)', background: '#333', color: '#ffd700', padding: '12px 24px', borderRadius: '25px', border: '1px solid #ffd700', zIndex: 2000, boxShadow: '0 4px 15px rgba(0,0,0,0.5)', fontSize: '14px', fontWeight: 'bold', transition: 'all 0.3s ease' }
   };
 
   // 1. GAME STATE
@@ -73,6 +74,7 @@ const GiftTapGame = () => {
   const [swapFromAmount, setSwapFromAmount] = useState('');
   const [swapToAmount, setSwapToAmount] = useState('');
   const [transactionCosts, setTransactionCosts] = useState({ baseFeeWithBuffer: 0, projectFee: 0.0005 });
+  const [txStatus, setTxStatus] = useState({ loading: false, message: '' });
 
   const tgUser = useMemo(() => {
     return window.Telegram?.WebApp?.initDataUnsafe?.user || { id: "test_local_user", first_name: "Local" };
@@ -398,6 +400,27 @@ const GiftTapGame = () => {
     window.Telegram.WebApp.openTelegramLink(url);
   };
 
+  // 2. Create the execution function
+  const handleWithdrawExecution = async () => {
+    setTxStatus({ loading: true, message: 'Processing withdrawal...' });
+    
+    try {
+      // This is where your actual Supabase / Web3 call goes
+      // const signature = await sendWithdrawTransaction(...);
+      
+      setTxStatus({ loading: false, message: '✅ Success! Your SOL is on the way.' });
+      
+      // Auto-close after 3 seconds
+      setTimeout(() => {
+        setTxStatus({ loading: false, message: '' });
+        setIsWithdrawOpen(false);
+      }, 3000);
+      
+    } catch (err) {
+      setTxStatus({ loading: false, message: `❌ Error: ${err.message}` });
+    }
+  };
+
   // 5. SHOP LOGIC
   const buyUpgrade = async (type, cost, bonus) => {
     if (balance < cost) return alert("Not enough Shards!");
@@ -667,15 +690,13 @@ const GiftTapGame = () => {
 
                 <button 
                   style={{ width: '100%',  background: '#fbef43', color: '#000', border: 'none', padding: '16px', borderRadius: '30px', fontWeight: 'bold', fontSize: '16px', cursor: withdrawAmount > 0 ? 'pointer' : 'not-allowed', opacity: withdrawAmount > 0 ? 1 : 0.5 }}
-                  onClick={() => {
-                    alert(`Withdraw request for ${withdrawAmount} SOL sent to ${withdrawAddress.slice(0,4)}...`);
-                  }}
+                  onClick={() => { handleWithdraw }}
                 >
                   Confirm Withdrawal
                 </button>
               </div>
             </div>
-        )}
+          )}
 
           {/* Swap Pop-up */}
           {isSwapOpen && (
@@ -762,8 +783,16 @@ const GiftTapGame = () => {
             </div>
           )}
 
+          {status.show && (
+            <div style={styles.toast}>
+              {status.message}
+            </div>
+          )}
+
         </div>
+        
       )}
+      
     </div>
   );
 };
