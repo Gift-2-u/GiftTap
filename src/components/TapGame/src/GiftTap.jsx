@@ -78,7 +78,12 @@ const GiftTapGame = () => {
     return window.Telegram?.WebApp?.initDataUnsafe?.user || { id: "test_local_user", first_name: "Local" };
   }, []);
 
-  const connection = useMemo(() => new Connection(clusterApiUrl('mainnet-beta')), []);
+  const connection = useMemo(() => {
+    // Pull the URL from the .env file. Fallback to public if the key is missing.
+    const rpcUrl = import.meta.env.VITE_SOLANA_RPC_URL || clusterApiUrl('mainnet-beta');
+    
+    return new Connection(rpcUrl, 'confirmed');
+  }, []);
   // This is where all project fees will be sent to fund the Gift launch
   const GIFT_TREASURY_WALLET = new PublicKey("8G7uEcPS6dwA5wW9bGoqi98EzBunF8trjbbFJkgkvBPm");
 
