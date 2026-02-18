@@ -53,7 +53,7 @@ const GiftTapGame = () => {
   const [topLeader, setTopLeader] = useState({ name: '...', score: 0 });
   const [leaderboard, setLeaderboard] = useState([]); // Fixed: Added missing state
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [balances, setBalances] = useState({ sol: 0, gft: 0, usdc: 0 });
+  const [balances, setBalances] = useState({ sol: 0, GFT: 0, GFTshards: 0, usdc: 0 });
   const [leaderboardType, setLeaderboardType] = useState('all_time');
   const [isLeaderboardOpen, setIsLeaderboardOpen] = useState(false);
   const [hasAccess, setHasAccess] = useState(false);
@@ -72,6 +72,7 @@ const GiftTapGame = () => {
   const [isSwapOpen, setIsSwapOpen] = useState(false);
   const [swapFromAmount, setSwapFromAmount] = useState('');
   const [swapToAmount, setSwapToAmount] = useState('');
+  const [transactionCosts, setTransactionCosts] = useState({ baseFeeWithBuffer: 0, projectFee: 0.0005 });
 
   const tgUser = useMemo(() => {
     return window.Telegram?.WebApp?.initDataUnsafe?.user || { id: "test_local_user", first_name: "Local" };
@@ -371,6 +372,13 @@ const GiftTapGame = () => {
         GFTshards: balance, // Pulls from your 'balance' state
         usdc: await getTokenBal(usdcMint),
       });
+
+      // Set Fees separately
+      setTransactionCosts({
+        baseFeeWithBuffer: baseFeeWithBuffer, 
+        projectFee: 0.0005 // Your fixed Gift launch fee
+      });
+      
     } catch (err) { 
       console.error("Balance/Fee fetch failed", err); 
     }
@@ -593,78 +601,80 @@ const GiftTapGame = () => {
 
           {/* Withdraw Pop-up */}
           {isWithdrawOpen && (
-            <div style={styles.modalOverlay} onClick={() => setIsWithdrawOpen(false)}>
-              <div style={{ ...styles.modalContent, background: '#131517', border: 'none', width: '90%', maxWidth: '360px' }} onClick={e => e.stopPropagation()}>
-                
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '20px' }}>
-                  <h3 style={{ color: '#fff', margin: 0 }}>Withdraw</h3>
-                  <button onClick={() => setIsWithdrawOpen(false)} style={{ background: 'none', border: 'none', color: '#888', fontSize: '20px' }}>✕</button>
-                </div>
+            // 1. CALCULATIONS (At the top of the block)
+            const baseFee = transactionCosts.baseFeeWithBuffer; // Base Fee + 25% Buffer
+            const projectFee = transactionCosts.projectFee;      // Your 0.0005 SOL fee
+            const totalDeduction = networkFee + projectFee;
+            const netAmount = withdrawAmount > totalDeduction ? (withdrawAmount - totalDeduction) : 0;
 
-                <div style={{ textAlign: 'left', marginBottom: '15px' }}>
-                  <label style={{ color: '#888', fontSize: '12px', display: 'block', marginBottom: '5px' }}>Destination Address</label>
-                  <input 
-                    type="text" 
-                    placeholder="Enter Solana address"
-                    value={withdrawAddress}
-                    onChange={(e) => setWithdrawAddress(e.target.value)}
-                    style={{ width: '100%', background: '#1c1e22', border: '1px solid #333', borderRadius: '12px', padding: '12px', color: '#fff', boxSizing: 'border-box' }}
-                  />
-                </div>
+            // 2. VISUAL LAYOUT (The return starts here)
+            return (
+              <div style={styles.modalOverlay} onClick={() => setIsWithdrawOpen(false)}>
+                <div style={{ ...styles.modalContent, background: '#131517', border: 'none', width: '90%', maxWidth: '360px' }} onClick={e => e.stopPropagation()}>
+                  
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '20px' }}>
+                    <h3 style={{ color: '#fff', margin: 0 }}>Withdraw</h3>
+                    <button onClick={() => setIsWithdrawOpen(false)} style={{ background: 'none', border: 'none', color: '#888', fontSize: '20px' }}>✕</button>
+                  </div>
 
-                <div style={{ marginTop: '15px', padding: '10px', background: 'rgba(255, 255, 255, 0.05)', borderRadius: '10px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#888' }}>
-                    <span>Amount requested</span>
-                    <span>{Number(withdrawAmount).toFixed(4)} SOL</span>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#ff4d4d', marginTop: '5px' }}>
-                    <span>Network Fee (incl. buffer)</span>
-                    <span>- {balances.estFee.toFixed(6)} SOL</span>
-                  </div>
-                  <div style={{ borderTop: '1px solid #333', marginTop: '10px', paddingTop: '10px', display: 'flex', justifyContent: 'space-between', fontWeight: 'bold' }}>
-                    <span>You will receive</span>
-                    <span style={{ color: '#ffd700' }}>
-                      {withdrawAmount > balances.estFee ? (withdrawAmount - balances.estFee).toFixed(6) : '0.0000'} SOL
-                    </span>
-                  </div>
-                </div>
-
-                <div style={{ textAlign: 'left', marginBottom: '20px' }}>
-                  <label style={{ color: '#888', fontSize: '12px', display: 'block', marginBottom: '5px' }}>Amount (SOL)</label>
-                  <div style={{ position: 'relative' }}>
+                  <div style={{ textAlign: 'left', marginBottom: '15px' }}>
+                    <label style={{ color: '#888', fontSize: '12px', display: 'block', marginBottom: '5px' }}>Destination Address</label>
                     <input 
-                      type="number" 
-                      placeholder="0.00"
-                      value={withdrawAmount}
-                      onChange={(e) => setWithdrawAmount(e.target.value)}
+                      type="text" 
+                      placeholder="Enter Solana address"
+                      value={withdrawAddress}
+                      onChange={(e) => setWithdrawAddress(e.target.value)}
                       style={{ width: '100%', background: '#1c1e22', border: '1px solid #333', borderRadius: '12px', padding: '12px', color: '#fff', boxSizing: 'border-box' }}
                     />
-                    <span style={{ position: 'absolute', right: '12px', top: '12px', color: '#ffd700', fontSize: '12px', cursor: 'pointer' }}>MAX</span>
                   </div>
-                  <div style={{ color: '#555', fontSize: '10px', marginTop: '5px' }}>Available balance: {balances.sol.toFixed(4)} SOL</div>
-                </div>
 
-                <button 
-                  style={{ 
-                    width: '100%', 
-                    background: '#fbef43', 
-                    color: '#000', 
-                    border: 'none', 
-                    padding: '16px', 
-                    borderRadius: '30px', 
-                    fontWeight: 'bold', 
-                    fontSize: '16px',
-                    cursor: withdrawAmount > 0 ? 'pointer' : 'not-allowed',
-                    opacity: withdrawAmount > 0 ? 1 : 0.5
-                  }}
-                  onClick={() => {
-                    alert(`Withdraw request for ${withdrawAmount} SOL sent to ${withdrawAddress.slice(0,4)}...`);
-                  }}
-                >
-                  Confirm Withdrawal
-                </button>
+                  <div style={{ marginTop: '15px', padding: '10px', background: 'rgba(255, 255, 255, 0.05)', borderRadius: '10px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#888' }}>
+                      <span>Amount requested</span>
+                      <span>{Number(withdrawAmount).toFixed(4)} SOL</span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#ff4d4d', marginTop: '5px' }}>
+                      <span>Network Fee (incl. buffer)</span>
+                      <span>- {balances.estFee.toFixed(6)} SOL</span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#fbef43', marginTop: '5px' }}>
+                      <span>Gift Launch Support</span>
+                      <span>- {projectFee.toFixed(4)} SOL</span>
+                    </div>
+                    <div style={{ borderTop: '1px solid #333', marginTop: '10px', paddingTop: '10px', display: 'flex', justifyContent: 'space-between', fontWeight: 'bold' }}>
+                      <span>You will receive</span>
+                      <span style={{ color: '#ffd700' }}>
+                        {withdrawAmount > balances.estFee ? (withdrawAmount - balances.estFee).toFixed(6) : '0.0000'} SOL
+                      </span>
+                    </div>
+                  </div>
+
+                  <div style={{ textAlign: 'left', marginBottom: '20px' }}>
+                    <label style={{ color: '#888', fontSize: '12px', display: 'block', marginBottom: '5px' }}>Amount (SOL)</label>
+                    <div style={{ position: 'relative' }}>
+                      <input 
+                        type="number" 
+                        placeholder="0.00"
+                        value={withdrawAmount}
+                        onChange={(e) => setWithdrawAmount(e.target.value)}
+                        style={{ width: '100%', background: '#1c1e22', border: '1px solid #333', borderRadius: '12px', padding: '12px', color: '#fff', boxSizing: 'border-box' }}
+                      />
+                      <span style={{ position: 'absolute', right: '12px', top: '12px', color: '#ffd700', fontSize: '12px', cursor: 'pointer' }}>MAX</span>
+                    </div>
+                    <div style={{ color: '#555', fontSize: '10px', marginTop: '5px' }}>Available balance: {balances.sol.toFixed(4)} SOL</div>
+                  </div>
+
+                  <button 
+                    style={{ width: '100%',  background: '#fbef43', color: '#000', border: 'none', padding: '16px', borderRadius: '30px', fontWeight: 'bold', fontSize: '16px', cursor: withdrawAmount > 0 ? 'pointer' : 'not-allowed', opacity: withdrawAmount > 0 ? 1 : 0.5 }}
+                    onClick={() => {
+                      alert(`Withdraw request for ${withdrawAmount} SOL sent to ${withdrawAddress.slice(0,4)}...`);
+                    }}
+                  >
+                    Confirm Withdrawal
+                  </button>
+                </div>
               </div>
-            </div>
+            ); 
           )}
 
           {/* Swap Pop-up */}
