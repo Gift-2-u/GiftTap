@@ -404,11 +404,14 @@ const GiftTapGame = () => {
 
   // 2. Create the execution function
   const handleWithdraw = async () => {
+    if (!withdrawAddress || !withdrawAmount) return;
+
     setTxStatus({ loading: true, message: 'Processing withdrawal...' });
     
     try {
-      // This is where your actual Supabase / Web3 call goes
-      // const signature = await sendWithdrawTransaction(...);
+      // This is where you will eventually call your Supabase function
+      // For now, we simulate the 2-second on-chain delay
+      await new Promise(resolve => setTimeout(resolve, 2500));
       
       setTxStatus({ loading: false, message: '✅ Success! Your SOL is on the way.' });
       
@@ -416,6 +419,7 @@ const GiftTapGame = () => {
       setTimeout(() => {
         setTxStatus({ loading: false, message: '' });
         setIsWithdrawOpen(false);
+        setWithdrawAmount('');
       }, 3000);
       
     } catch (err) {
