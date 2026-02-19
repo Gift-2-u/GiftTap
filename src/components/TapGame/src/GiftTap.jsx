@@ -1,5 +1,3 @@
-import { Buffer } from 'buffer';
-window.Buffer = window.Buffer || Buffer;
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Connection, PublicKey, clusterApiUrl } from '@solana/web3.js';
 import { supabase } from './supabaseClient';
@@ -378,11 +376,11 @@ const GiftTapGame = () => {
       const usdcMint = new PublicKey("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v");
 
       // Use Promise.all to fetch everything in parallel (faster)
-      const [solBalance, { feeCalculator }] = await Promise.all([
+      const [solBalance, latestBlock ] = await Promise.all([
         connection.getBalance(pubKey),
-        connection.getRecentBlockhash('confirmed')
+        connection.getLatestBlockhash('confirmed')
       ]);
-      const baseFee = feeCalculator.lamportsPerSignature / 1e9;
+      const baseFee = 5000 / 1e9;
       const baseFeeWithBuffer = baseFee * 1.25; // Your 25% safety buffer
 
       const getTokenBal = async (mint) => {
