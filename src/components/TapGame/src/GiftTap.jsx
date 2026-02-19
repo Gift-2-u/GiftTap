@@ -83,8 +83,11 @@ const GiftTapGame = () => {
   const connection = useMemo(() => {
     const rpcUrl = import.meta.env.VITE_SOLANA_RPC_URL;
     
-    // LOG THIS: If it says "Using Fallback", your .env is not being read!
-    console.log(rpcUrl ? "Using Private RPC" : "Using Fallback (Public Node)");
+    if (!rpcUrl) {
+      console.error("DEBUG: VITE_SOLANA_RPC_URL is UNDEFINED. Falling back to public node (Expect 403).");
+    } else {
+      console.log("DEBUG: Connecting to Private RPC:", rpcUrl.substring(0, 20) + "...");
+    }
     
     return new Connection(rpcUrl || clusterApiUrl('mainnet-beta'), 'confirmed');
   }, []);
