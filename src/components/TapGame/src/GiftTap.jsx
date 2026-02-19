@@ -354,6 +354,20 @@ const GiftTapGame = () => {
     return () => { supabase.removeChannel(channel); };
   }, [isDataLoaded, tgUser.id]);
 
+  // --- PLACE THIS AROUND LINE 200 (Above fetchBalances) ---
+
+  // 1. Logic to check if fees are actually loaded from the blockchain
+  const isFeeLoaded = useMemo(() => {
+    return transactionCosts.baseFeeWithBuffer > 0;
+  }, [transactionCosts.baseFeeWithBuffer]);
+
+  // 2. Logic to calculate exactly what the user gets after all fees
+  const netReceiveAmount = useMemo(() => {
+    const amount = Number(withdrawAmount) || 0;
+    const fees = (transactionCosts.baseFeeWithBuffer || 0) + (transactionCosts.projectFee || 0);
+    return amount > fees ? (amount - fees).toFixed(6) : "0.000000";
+  }, [withdrawAmount, transactionCosts]);
+
   const fetchBalances = useCallback(async () => {
     if (!playerWallet) return;
     try {
@@ -672,9 +686,7 @@ const GiftTapGame = () => {
                   <div style={{ borderTop: '1px solid #333', marginTop: '10px', paddingTop: '10px', display: 'flex', justifyContent: 'space-between', fontWeight: 'bold' }}>
                     <span>You will receive</span>
                     <span style={{ color: '#ffd700' }}>
-                      {withdrawAmount > (transactionCosts.baseFeeWithBuffer + transactionCosts.projectFee) 
-                        ? (withdrawAmount - transactionCosts.baseFeeWithBuffer - transactionCosts.projectFee).toFixed(6) 
-                        : '0.000000'} SOL
+                      {netReceiveAmount} SOL
                     </span>
                   </div>
                 </div>
@@ -695,10 +707,11 @@ const GiftTapGame = () => {
                 </div>
 
                 <button 
-                  style={{ width: '100%',  background: '#fbef43', color: '#000', border: 'none', padding: '16px', borderRadius: '30px', fontWeight: 'bold', fontSize: '16px', cursor: withdrawAmount > 0 ? 'pointer' : 'not-allowed', opacity: withdrawAmount > 0 ? 1 : 0.5 }}
+                  disabled={!withdrawAmount || withdrawAmount <= 0 || !withdrawAddress || !isFeeLoaded}
+                  style={{ width: '100%',  background: '#fbef43', color: '#000', border: 'none', padding: '16px', borderRadius: '30px', fontWeight: 'bold', fontSize: '16px', cursor: (withdrawAmount > 0 && isFeeLoaded) ? 'pointer' : 'not-allowed', opacity: (withdrawAmount > 0 && isFeeLoaded) ? 1 : 0.5 }}
                   onClick={() => { handleWithdraw }}
                 >
-                  Confirm Withdrawal
+                  {isFeeLoaded ? "Confirm Withdrawal" : "Loading Network Fees..."}
                 </button>
               </div>
             </div>
