@@ -403,7 +403,7 @@ const GiftTapGame = () => {
   };
 
   // 2. Create the execution function
-  const handleWithdrawExecution = async () => {
+  const handleWithdraw = async () => {
     setTxStatus({ loading: true, message: 'Processing withdrawal...' });
     
     try {
