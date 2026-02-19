@@ -81,10 +81,12 @@ const GiftTapGame = () => {
   }, []);
 
   const connection = useMemo(() => {
-    // Pull the URL from the .env file. Fallback to public if the key is missing.
-    const rpcUrl = import.meta.env.VITE_SOLANA_RPC_URL || clusterApiUrl('mainnet-beta');
+    const rpcUrl = import.meta.env.VITE_SOLANA_RPC_URL;
     
-    return new Connection(rpcUrl, 'confirmed');
+    // LOG THIS: If it says "Using Fallback", your .env is not being read!
+    console.log(rpcUrl ? "Using Private RPC" : "Using Fallback (Public Node)");
+    
+    return new Connection(rpcUrl || clusterApiUrl('mainnet-beta'), 'confirmed');
   }, []);
   // This is where all project fees will be sent to fund the Gift launch
   const GIFT_TREASURY_WALLET = new PublicKey("8G7uEcPS6dwA5wW9bGoqi98EzBunF8trjbbFJkgkvBPm");
