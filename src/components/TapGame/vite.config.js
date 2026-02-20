@@ -7,7 +7,7 @@ export default defineConfig({
     react(),
     // This magically fixes Buffer, Crypto, and Stream errors for Web3 apps
     nodePolyfills({
-      include: ['buffer', 'crypto', 'stream', 'util'],
+      include: ['buffer', 'crypto', 'stream', 'util'], 
       globals: {
         Buffer: true, 
         global: true,
