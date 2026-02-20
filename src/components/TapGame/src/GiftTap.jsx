@@ -380,7 +380,7 @@ const GiftTapGame = () => {
         connection.getBalance(pubKey),
         connection.getLatestBlockhash('confirmed')
       ]);
-      const baseFee = 5000 / 1e9;
+      const baseFee = 20000 / 1e9;
       const baseFeeWithBuffer = baseFee * 1.25; // Your 25% safety buffer
 
       const getTokenBal = async (mint) => {
