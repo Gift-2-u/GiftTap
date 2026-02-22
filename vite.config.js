@@ -18,5 +18,10 @@ export default defineConfig(({ mode }) => {
         },
       }),
     ],
+    // THIS IS THE FIX: It forces Vite to replace the variable name 
+    // with the actual URL string during the build process.
+    define: {
+      'import.meta.env.VITE_SOLANA_RPC_URL': JSON.stringify(env.VITE_SOLANA_RPC_URL),
+    },
   }
 })
