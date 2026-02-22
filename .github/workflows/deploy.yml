@@ -18,8 +18,8 @@ jobs:
         run: vercel pull --yes --environment=production --token=${{ secrets.VERCEL_TOKEN }}
 
       - name: Build Project Artifacts
-        # We switched to the -e flag which is more reliable for Vite builds via CLI
-        run: vercel build --prod --token=${{ secrets.VERCEL_TOKEN }} -e VITE_SOLANA_RPC_URL="${{ secrets.VITE_SOLANA_RPC_URL }}"
+        # We inject the variable directly into the shell environment before running the build
+        run: VITE_SOLANA_RPC_URL="${{ secrets.VITE_SOLANA_RPC_URL }}" vercel build --prod --token=${{ secrets.VERCEL_TOKEN }}
 
       - name: Deploy Project Artifacts to Vercel
         run: vercel deploy --prebuilt --prod --token=${{ secrets.VERCEL_TOKEN }}
