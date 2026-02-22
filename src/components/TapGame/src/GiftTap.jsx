@@ -78,15 +78,9 @@ const GiftTapGame = () => {
     return window.Telegram?.WebApp?.initDataUnsafe?.user || { id: "test_local_user", first_name: "Local" };
   }, []);
 
-  const connection = useMemo(() => {
-    const rpcUrl = import.meta.env.VITE_SOLANA_RPC_URL;
-    
-    console.log("DEBUG RPC URL:", rpcUrl); 
-    // If this prints "undefined" as a string, the build failed to find the secret.
-    
-    return new Connection(rpcUrl || clusterApiUrl('mainnet-beta'), 'confirmed');
-  }, []);
+  const connection = new Connection("/solana-rpc", 'confirmed');
   // This is where all project fees will be sent to fund the Gift launch
+  
   const GIFT_TREASURY_WALLET = new PublicKey("8G7uEcPS6dwA5wW9bGoqi98EzBunF8trjbbFJkgkvBPm");
 
   // 2. FETCH TOP LEADER (Individual Badge)
