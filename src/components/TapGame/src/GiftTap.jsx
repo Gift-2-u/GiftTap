@@ -81,11 +81,8 @@ const GiftTapGame = () => {
   const connection = useMemo(() => {
     const rpcUrl = import.meta.env.VITE_SOLANA_RPC_URL;
     
-    if (!rpcUrl) {
-      console.error("DEBUG: VITE_SOLANA_RPC_URL is UNDEFINED. Falling back to public node (Expect 403).");
-    } else {
-      console.log("DEBUG: Connecting to Private RPC:", rpcUrl.substring(0, 20) + "...");
-    }
+    console.log("DEBUG RPC URL:", rpcUrl); 
+    // If this prints "undefined" as a string, the build failed to find the secret.
     
     return new Connection(rpcUrl || clusterApiUrl('mainnet-beta'), 'confirmed');
   }, []);
