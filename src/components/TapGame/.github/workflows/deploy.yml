@@ -17,7 +17,7 @@ jobs:
         run: vercel pull --yes --environment=production --token=${{ secrets.VERCEL_TOKEN }}
       - name: Force Vite to see the Variable
         # THE FIX: This physically writes the secret into the Vite folder so it cannot be ignored
-        run: echo "VITE_SOLANA_RPC_URL=${{ secrets.VITE_SOLANA_RPC_URL }}" > src/components/TapGame/.env.production
+        run: echo "VITE_SOLANA_RPC_URL=${{ secrets.VITE_SOLANA_RPC_URL }}" > src/components/TapGame/.env
       - name: Build Project Artifacts
         run: vercel build --prod --token=${{ secrets.VERCEL_TOKEN }}
       - name: Deploy Project Artifacts to Vercel
