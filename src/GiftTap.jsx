@@ -419,7 +419,7 @@ const GiftTapGame = () => {
     console.log("Withdrawal initiated for:", withdrawAmount, "to:", withdrawAddress);
     if (!withdrawAddress || !withdrawAmount) return;
 
-    setTxStatus({ loading: true, message: 'Processing withdrawal...' });
+    setTxStatus({ loading: false, message: 'Processing withdrawal...' });
     
     try {
         // Replace this URL with your actual Supabase Project URL
