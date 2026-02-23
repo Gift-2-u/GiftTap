@@ -723,7 +723,7 @@ const GiftTapGame = () => {
                 <button 
                   disabled={!withdrawAmount || withdrawAmount <= 0 || !withdrawAddress || !isFeeLoaded}
                   style={{ width: '100%',  background: '#fbef43', color: '#000', border: 'none', padding: '16px', borderRadius: '30px', fontWeight: 'bold', fontSize: '16px', cursor: (withdrawAmount > 0 && isFeeLoaded) ? 'pointer' : 'not-allowed', opacity: (withdrawAmount > 0 && isFeeLoaded) ? 1 : 0.5 }}
-                  onClick={() => handleWithdraw()}
+                  onClick={handleWithdraw}
                 >
                   {isFeeLoaded ? "Confirm Withdrawal" : "Loading Network Fees..."}
                 </button>
