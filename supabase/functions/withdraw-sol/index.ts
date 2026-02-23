@@ -83,7 +83,7 @@ serve(async (req) => {
     // 5. Sign and Send
     const signature = await connection.sendTransaction(transaction, [fromWallet])
     
-    return new Response(JSON.stringify({ success: true, signature }), { headers: { "Content-Type": "application/json" } })
+    return new Response(JSON.stringify({ success: true, signature }), { headers: { ...corsHeaders, "Content-Type": "application/json" } })
 
   } catch (err) {
     return new Response(JSON.stringify({ error: err.message }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } })
