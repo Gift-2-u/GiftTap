@@ -1,36 +1,18 @@
-name: Deploy Gift Project
-env:
-  VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
-  VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+name: Deploy Gift Tap
 on:
   push:
     branches:
       - main
 jobs:
-  Deploy-Production:
+  deploy:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Install Vercel CLI
-        run: npm install --global vercel@latest
 
       - name: Deploy to Vercel
-        # This one command replaces 'pull', 'build', and 'prebuilt deploy'
-        # It triggers Vercel's own cloud build system which is much more stable
-        run: vercel --prod --token=${{ secrets.VERCEL_TOKEN }} --yes
-
-  supabase-deploy:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout Repo
-        uses: actions/checkout@v4
-
-      - name: Setup Supabase CLI
-        uses: supabase/setup-cli@v1
+        uses: amondnet/vercel-action@v20
         with:
-          version: latest
-
-      - name: Deploy Wallet Function
-        run: supabase functions deploy create-user-wallet --project-ref ${{ secrets.SUPABASE_PROJECT_ID }} --no-verify-jwt
-        env:
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          vercel-token: ${{ secrets.VERCEL_TOKEN }}
+          vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
+          vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
+          vercel-args: '--prod' # This tells Vercel: "Build this using YOUR dashboard secrets"
