@@ -1,1 +1,16 @@
-{"projectId":"prj_llgfKZoZAAQUIiClWjKTDkAQx6h7","orgId":"team_NHBbgcyjFilTHxmKATOHyAn6","projectName":"gift-tap"}
+{
+  "projectId": "prj_llgfKZoZAAQUIiClWjKTDkAQx6h7",
+  "orgId": "team_NHBbgcyjFilTHxmKATOHyAn6",
+  "projectName": "gift-tap",
+  "settings": {
+    "createdAt": 1770201765569,
+    "framework": "vite",
+    "devCommand": null,
+    "installCommand": null,
+    "buildCommand": null,
+    "outputDirectory": null,
+    "rootDirectory": null,
+    "directoryListing": false,
+    "nodeVersion": "24.x"
+  }
+}

@@ -593,7 +593,7 @@ const GiftTapGame = () => {
                   >Receive</button>
                   <button style={styles.actionBtn}
                   onClick={() => { setIsModalOpen(false); setIsWithdrawOpen(true); }}
-                  >Withdraw</button>
+                  >Send</button>
                   <button style={styles.actionBtn}
                   onClick={() => { setIsModalOpen(false); setIsSwapOpen(true); }}
                   >Swap</button>
@@ -699,7 +699,7 @@ const GiftTapGame = () => {
                       onChange={(e) => setWithdrawAmount(e.target.value)}
                       style={{ width: '100%', background: '#1c1e22', border: '1px solid #333', borderRadius: '12px', padding: '12px', color: '#fff', boxSizing: 'border-box' }}
                     />
-                    <span style={{ position: 'absolute', right: '12px', top: '12px', color: '#ffd700', fontSize: '12px', cursor: 'pointer' }}>MAX</span>
+                    <span onClick={() => setWithdrawAmount(balances.sol)} style={{ position: 'absolute', right: '12px', top: '12px', color: '#ffd700', fontSize: '12px', cursor: 'pointer', zIndex: 10 }}> MAX</span>
                   </div>
                   <div style={{ color: '#555', fontSize: '10px', marginTop: '5px' }}>Available balance: {balances.sol.toFixed(4)} SOL</div>
                 </div>
@@ -707,7 +707,7 @@ const GiftTapGame = () => {
                 <button 
                   disabled={!withdrawAmount || withdrawAmount <= 0 || !withdrawAddress || !isFeeLoaded}
                   style={{ width: '100%',  background: '#fbef43', color: '#000', border: 'none', padding: '16px', borderRadius: '30px', fontWeight: 'bold', fontSize: '16px', cursor: (withdrawAmount > 0 && isFeeLoaded) ? 'pointer' : 'not-allowed', opacity: (withdrawAmount > 0 && isFeeLoaded) ? 1 : 0.5 }}
-                  onClick={() => { handleWithdraw }}
+                  onClick={() => handleWithdraw()}
                 >
                   {isFeeLoaded ? "Confirm Withdrawal" : "Loading Network Fees..."}
                 </button>
