@@ -731,6 +731,21 @@ const GiftTapGame = () => {
             </div>
           )}
 
+          {/* Display the status message if it exists */}
+          {txStatus.message && (
+            <div style={{ 
+              marginTop: '10px', 
+              padding: '10px', 
+              borderRadius: '8px', 
+              backgroundColor: txStatus.message.includes('✅') ? 'rgba(76, 175, 80, 0.1)' : 'rgba(255, 255, 255, 0.05)',
+              color: txStatus.message.includes('❌') ? '#ff4d4d' : '#fff',
+              fontSize: '14px',
+              textAlign: 'center'
+            }}>
+              {txStatus.message}
+            </div>
+          )}
+
           {/* Swap Pop-up */}
           {isSwapOpen && (
             <div style={styles.modalOverlay} onClick={() => setIsSwapOpen(false)}>
