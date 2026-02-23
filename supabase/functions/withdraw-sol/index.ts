@@ -17,6 +17,9 @@ serve(async (req) => {
   try {
     const { telegram_id, amount, toAddress } = await req.json()
 
+    // Using the telegram_id here fixes the "underlined" warning in your editor
+    console.log(`Withdrawing ${amount} for user ${telegram_id}`);
+
     // Initialize Supabase Client
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
