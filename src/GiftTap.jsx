@@ -423,7 +423,7 @@ const GiftTapGame = () => {
     
     try {
         // Replace this URL with your actual Supabase Project URL
-        const response = await fetch('https://YOUR_PROJECT_ID.supabase.co/functions/v1/withdraw-sol', {
+        const response = await fetch('https://ncwlbwzxfpcnxkyrmdck.supabase.co/functions/v1/withdraw-sol', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
