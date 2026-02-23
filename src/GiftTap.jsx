@@ -416,23 +416,39 @@ const GiftTapGame = () => {
 
   // 2. Create the execution function
   const handleWithdraw = async () => {
+    console.log("Withdrawal initiated for:", withdrawAmount, "to:", withdrawAddress);
     if (!withdrawAddress || !withdrawAmount) return;
 
     setTxStatus({ loading: true, message: 'Processing withdrawal...' });
     
     try {
-      // This is where you will eventually call your Supabase function
-      // For now, we simulate the 2-second on-chain delay
-      await new Promise(resolve => setTimeout(resolve, 2500));
+        // Replace this URL with your actual Supabase Project URL
+        const response = await fetch('https://YOUR_PROJECT_ID.supabase.co/functions/v1/withdraw-sol', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                // If you use a JWT/Anon Key, add it here:
+                'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
+            },
+            body: JSON.stringify({
+                telegram_id: userTelegramId, // Make sure you have this variable
+                amount: parseFloat(withdrawAmount),
+                toAddress: withdrawAddress
+            })
+        });
+
+        const result = await response.json();
+
+        if (result.error) throw new Error(result.error);
       
-      setTxStatus({ loading: false, message: '✅ Success! Your SOL is on the way.' });
-      
-      // Auto-close after 3 seconds
-      setTimeout(() => {
-        setTxStatus({ loading: false, message: '' });
-        setIsWithdrawOpen(false);
-        setWithdrawAmount('');
-      }, 3000);
+        setTxStatus({ loading: false, message: '✅ Success! Your SOL is on the way.' });
+          
+        // Auto-close after 3 seconds
+        setTimeout(() => {
+          setTxStatus({ loading: false, message: '' });
+          setIsWithdrawOpen(false);
+          setWithdrawAmount('');
+        }, 3000);
       
     } catch (err) {
       setTxStatus({ loading: false, message: `❌ Error: ${err.message}` });
