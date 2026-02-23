@@ -416,6 +416,12 @@ const GiftTapGame = () => {
 
   // 2. Create the execution function
   const handleWithdraw = async () => {
+    const tgId = window.Telegram?.WebApp?.initDataUnsafe?.user?.id;
+
+    if (!tgId) {
+        setTxStatus({ loading: false, message: "❌ Error: Could not verify Telegram ID." });
+        return;
+    }
     console.log("Withdrawal initiated for:", withdrawAmount, "to:", withdrawAddress);
     if (!withdrawAddress || !withdrawAmount) return;
 
@@ -431,7 +437,7 @@ const GiftTapGame = () => {
                 'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
             },
             body: JSON.stringify({
-                telegram_id: userTelegramId, // Make sure you have this variable
+                telegram_id: window.Telegram?.WebApp?.initDataUnsafe?.user?.id,
                 amount: parseFloat(withdrawAmount),
                 toAddress: withdrawAddress
             })
