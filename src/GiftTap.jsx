@@ -122,7 +122,7 @@ const GiftTapGame = () => {
       // Your original fetch logic
       const { data: player } = await supabase
         .from('players')
-        .select('*')
+        .select('*, sol_balance, usdc_balance, gft_token_balance')
         .eq('telegram_id', userId)
         .maybeSingle();
 
@@ -130,6 +130,7 @@ const GiftTapGame = () => {
         // Check if they have the beta flag
         setHasAccess(player.has_beta_access || false);
         setPlayerWallet(player.wallet_address);
+        setBalances({ sol: player.sol_balance || 0, GFT: player.gft_token_balance || 0, GFTshards: Number(player.shard_balance) || 0, usdc: player.usdc_balance || 0 });
         setBalance(Number(player.shard_balance));
         setTapPower(player.tap_power || 1);
         setMaxDailyLimit(player.max_daily_limit || 1000);

@@ -87,7 +87,7 @@ serve(async (req) => {
     // 2. Deduct the SOL from the database after the transaction succeeds
     await supabase
       .from('players')
-      .update({ sol_balance: user.balance - amount })
+      .update({ balance: user.balance - amount })
       .eq('telegram_id', telegram_id)
     
     return new Response(JSON.stringify({ success: true, signature }), { headers: { ...corsHeaders, "Content-Type": "application/json" } })
