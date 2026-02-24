@@ -73,6 +73,7 @@ const GiftTapGame = () => {
   const [swapToAmount, setSwapToAmount] = useState('');
   const [transactionCosts, setTransactionCosts] = useState({ baseFeeWithBuffer: 0, projectFee: 0.0005 });
   const [txStatus, setTxStatus] = useState({ loading: false, message: '' });
+  const [lastSignature, setLastSignature] = useState(null);
 
   const tgUser = useMemo(() => {
     return window.Telegram?.WebApp?.initDataUnsafe?.user || { id: "test_local_user", first_name: "Local" };
@@ -448,14 +449,26 @@ const GiftTapGame = () => {
 
         if (result.error) throw new Error(result.error);
       
-        setTxStatus({ loading: false, message: '✅ Success! Your SOL is on the way.' });
+        setTxStatus({ loading: false, message: (
+            <span>
+                ✅ Success! <br />
+                <a 
+                    href={`https://solscan.io/tx/${result.signature}`} 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    style={{ color: '#ffd700', textDecoration: 'underline', fontSize: '12px' }}
+                >
+                    View on Solscan
+                </a>
+            </span>
+        ) });
           
         // Auto-close after 3 seconds
         setTimeout(() => {
           setTxStatus({ loading: false, message: '' });
           setIsWithdrawOpen(false);
           setWithdrawAmount('');
-        }, 3000);
+        }, syncPlayer, 2000);
       
     } catch (err) {
       setTxStatus({ loading: false, message: `❌ Error: ${err.message}` });
@@ -607,9 +620,18 @@ const GiftTapGame = () => {
                 <p style={{ fontSize: '12px', color: '#888', marginBottom: '15px' }}>
                   Wallet Balance.
                 </p>
-                <div style={styles.balanceRow}><span>SOL:</span> <span>{balances.sol.toFixed(4)}</span></div>
-                <div style={styles.balanceRow}><span>GFT Shards:</span> <span>{balance.toLocaleString()}</span></div>
-                <div style={styles.balanceRow}><span>USDC:</span> <span>${balances.usdc.toFixed(2)}</span></div>
+                {/* PASTE THE LOOP HERE - REPLACING THE OLD STATIC ROWS */}
+                <div style={{ marginTop: '10px' }}>
+                  {Object.entries(balances).map(([key, value]) => (
+                    <div key={key} style={styles.balanceRow}>
+                      <span style={{ textTransform: 'uppercase', color: '#888', fontSize: '12px' }}>{key}:</span>
+                      <span style={{ fontWeight: 'bold' }}>
+                        {/* Note: Added a check for 'GFTshards' vs 'sol' formatting */}
+                        {key === 'GFTshards' ? value.toLocaleString() : value.toFixed(4)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
                 <div style={styles.actionRow}>
                   <button style={{ ...styles.actionBtn }} 
                   onClick={() => { setIsModalOpen(false); setIsReceiveOpen(true); }}
