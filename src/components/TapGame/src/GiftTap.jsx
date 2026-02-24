@@ -73,6 +73,7 @@ const GiftTapGame = () => {
   const [swapToAmount, setSwapToAmount] = useState('');
   const [transactionCosts, setTransactionCosts] = useState({ baseFeeWithBuffer: 0, projectFee: 0.0005 });
   const [txStatus, setTxStatus] = useState({ loading: false, message: '' });
+  const [lastSignature, setLastSignature] = useState(null);
 
   const tgUser = useMemo(() => {
     return window.Telegram?.WebApp?.initDataUnsafe?.user || { id: "test_local_user", first_name: "Local" };
@@ -122,7 +123,7 @@ const GiftTapGame = () => {
       // Your original fetch logic
       const { data: player } = await supabase
         .from('players')
-        .select('*')
+        .select('*, sol_balance, usdc_balance, gft_token_balance')
         .eq('telegram_id', userId)
         .maybeSingle();
 
@@ -130,6 +131,7 @@ const GiftTapGame = () => {
         // Check if they have the beta flag
         setHasAccess(player.has_beta_access || false);
         setPlayerWallet(player.wallet_address);
+        setBalances({ sol: player.sol_balance || 0, GFT: player.gft_token_balance || 0, GFTshards: Number(player.shard_balance) || 0, usdc: player.usdc_balance || 0 });
         setBalance(Number(player.shard_balance));
         setTapPower(player.tap_power || 1);
         setMaxDailyLimit(player.max_daily_limit || 1000);
@@ -373,10 +375,11 @@ const GiftTapGame = () => {
       const usdcMint = new PublicKey("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v");
 
       // Use Promise.all to fetch everything in parallel (faster)
-      const [solBalance, latestBlock ] = await Promise.all([
+      const [solLamports, latestBlock ] = await Promise.all([
         connection.getBalance(pubKey),
         connection.getLatestBlockhash('confirmed')
       ]);
+      const realSol = solLamports / 1e9;
       const baseFee = 20000 / 1e9;
       const baseFeeWithBuffer = baseFee * 1.25; // Your 25% safety buffer
 
@@ -388,12 +391,21 @@ const GiftTapGame = () => {
         } catch { return 0; }
       };
 
+      const realUsdc = await getTokenBal(usdcMint);
+
       setBalances({
-        sol: solBalance / 1e9,
+        sol: realSol,
         GFT: 0,
         GFTshards: balance, // Pulls from your 'balance' state
-        usdc: await getTokenBal(usdcMint),
+        usdc: realUsdc,
       });
+
+      // 3. IMPORTANT: Sync the Real Values to Supabase
+      // This ensures the Edge Function sees the real amount for the withdrawal check.
+      await supabase.from('players').update({
+          sol_balance: realSol,
+          usdc_balance: realUsdc
+      }).eq('telegram_id', String(tgUser.id));
 
       // Set Fees separately
       setTransactionCosts({
@@ -404,7 +416,7 @@ const GiftTapGame = () => {
     } catch (err) { 
       console.error("Balance/Fee fetch failed", err); 
     }
-  }, [playerWallet, connection, balance]); // Added 'balance' to dependencies
+  }, [playerWallet, connection, balance, tgUser.id]); // Added 'balance' to dependencies
 
   const inviteLink = `https://t.me/Gift2uTapBot?start=${tgUser.id}`;
 
@@ -416,23 +428,57 @@ const GiftTapGame = () => {
 
   // 2. Create the execution function
   const handleWithdraw = async () => {
+    const tgId = window.Telegram?.WebApp?.initDataUnsafe?.user?.id;
+
+    if (!tgId) {
+        setTxStatus({ loading: false, message: "❌ Error: Could not verify Telegram ID." });
+        return;
+    }
+    console.log("Withdrawal initiated for:", withdrawAmount, "to:", withdrawAddress);
     if (!withdrawAddress || !withdrawAmount) return;
 
-    setTxStatus({ loading: true, message: 'Processing withdrawal...' });
+    setTxStatus({ loading: false, message: 'Processing withdrawal...' });
     
     try {
-      // This is where you will eventually call your Supabase function
-      // For now, we simulate the 2-second on-chain delay
-      await new Promise(resolve => setTimeout(resolve, 2500));
+        // Replace this URL with your actual Supabase Project URL
+        const response = await fetch('https://ncwlbwzxfpcnxkyrmdck.supabase.co/functions/v1/withdraw-sol', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                // If you use a JWT/Anon Key, add it here:
+                'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
+            },
+            body: JSON.stringify({
+                telegram_id: window.Telegram?.WebApp?.initDataUnsafe?.user?.id,
+                amount: parseFloat(withdrawAmount),
+                toAddress: withdrawAddress
+            })
+        });
+
+        const result = await response.json();
+
+        if (result.error) throw new Error(result.error);
       
-      setTxStatus({ loading: false, message: '✅ Success! Your SOL is on the way.' });
-      
-      // Auto-close after 3 seconds
-      setTimeout(() => {
-        setTxStatus({ loading: false, message: '' });
-        setIsWithdrawOpen(false);
-        setWithdrawAmount('');
-      }, 3000);
+        setTxStatus({ loading: false, message: (
+            <span>
+                ✅ Success! <br />
+                <a 
+                    href={`https://solscan.io/tx/${result.signature}`} 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    style={{ color: '#ffd700', textDecoration: 'underline', fontSize: '12px' }}
+                >
+                    View on Solscan
+                </a>
+            </span>
+        ) });
+          
+        // Auto-close after 3 seconds
+        setTimeout(() => {
+          setTxStatus({ loading: false, message: '' });
+          setIsWithdrawOpen(false);
+          setWithdrawAmount('');
+        }, syncPlayer, 2000);
       
     } catch (err) {
       setTxStatus({ loading: false, message: `❌ Error: ${err.message}` });
@@ -584,16 +630,25 @@ const GiftTapGame = () => {
                 <p style={{ fontSize: '12px', color: '#888', marginBottom: '15px' }}>
                   Wallet Balance.
                 </p>
-                <div style={styles.balanceRow}><span>SOL:</span> <span>{balances.sol.toFixed(4)}</span></div>
-                <div style={styles.balanceRow}><span>GFT Shards:</span> <span>{balance.toLocaleString()}</span></div>
-                <div style={styles.balanceRow}><span>USDC:</span> <span>${balances.usdc.toFixed(2)}</span></div>
+                {/* PASTE THE LOOP HERE - REPLACING THE OLD STATIC ROWS */}
+                <div style={{ marginTop: '10px' }}>
+                  {Object.entries(balances).map(([key, value]) => (
+                    <div key={key} style={styles.balanceRow}>
+                      <span style={{ textTransform: 'uppercase', color: '#888', fontSize: '12px' }}>{key}:</span>
+                      <span style={{ fontWeight: 'bold' }}>
+                        {/* Note: Added a check for 'GFTshards' vs 'sol' formatting */}
+                        {key === 'GFTshards' ? value.toLocaleString() : value.toFixed(4)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
                 <div style={styles.actionRow}>
                   <button style={{ ...styles.actionBtn }} 
                   onClick={() => { setIsModalOpen(false); setIsReceiveOpen(true); }}
                   >Receive</button>
                   <button style={styles.actionBtn}
                   onClick={() => { setIsModalOpen(false); setIsWithdrawOpen(true); }}
-                  >Withdraw</button>
+                  >Send</button>
                   <button style={styles.actionBtn}
                   onClick={() => { setIsModalOpen(false); setIsSwapOpen(true); }}
                   >Swap</button>
@@ -699,7 +754,7 @@ const GiftTapGame = () => {
                       onChange={(e) => setWithdrawAmount(e.target.value)}
                       style={{ width: '100%', background: '#1c1e22', border: '1px solid #333', borderRadius: '12px', padding: '12px', color: '#fff', boxSizing: 'border-box' }}
                     />
-                    <span style={{ position: 'absolute', right: '12px', top: '12px', color: '#ffd700', fontSize: '12px', cursor: 'pointer' }}>MAX</span>
+                    <span onClick={() => setWithdrawAmount(balances.sol)} style={{ position: 'absolute', right: '12px', top: '12px', color: '#ffd700', fontSize: '12px', cursor: 'pointer', zIndex: 10 }}> MAX</span>
                   </div>
                   <div style={{ color: '#555', fontSize: '10px', marginTop: '5px' }}>Available balance: {balances.sol.toFixed(4)} SOL</div>
                 </div>
@@ -707,11 +762,26 @@ const GiftTapGame = () => {
                 <button 
                   disabled={!withdrawAmount || withdrawAmount <= 0 || !withdrawAddress || !isFeeLoaded}
                   style={{ width: '100%',  background: '#fbef43', color: '#000', border: 'none', padding: '16px', borderRadius: '30px', fontWeight: 'bold', fontSize: '16px', cursor: (withdrawAmount > 0 && isFeeLoaded) ? 'pointer' : 'not-allowed', opacity: (withdrawAmount > 0 && isFeeLoaded) ? 1 : 0.5 }}
-                  onClick={() => { handleWithdraw }}
+                  onClick={handleWithdraw}
                 >
                   {isFeeLoaded ? "Confirm Withdrawal" : "Loading Network Fees..."}
                 </button>
               </div>
+            </div>
+          )}
+
+          {/* Display the status message if it exists */}
+          {txStatus.message && (
+            <div style={{ 
+              marginTop: '10px', 
+              padding: '10px', 
+              borderRadius: '8px', 
+              backgroundColor: txStatus.message.includes('✅') ? 'rgba(76, 175, 80, 0.1)' : 'rgba(255, 255, 255, 0.05)',
+              color: txStatus.message.includes('❌') ? '#ff4d4d' : '#fff',
+              fontSize: '14px',
+              textAlign: 'center'
+            }}>
+              {txStatus.message}
             </div>
           )}
 

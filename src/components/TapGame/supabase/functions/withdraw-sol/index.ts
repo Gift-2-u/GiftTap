@@ -1,10 +1,42 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 // 1. ADDED ComputeBudgetProgram to the imports!
 import { Connection, Keypair, PublicKey, Transaction, SystemProgram, LAMPORTS_PER_SOL, ComputeBudgetProgram } from "https://esm.sh/@solana/web3.js@1.78.0"
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS', // Add this line
+}
 
 serve(async (req) => {
+  // Handle CORS preflight requests
+  if (req.method === 'OPTIONS') {
+    return new Response('ok', { status: 200, headers: corsHeaders })
+  }
+
   try {
     const { telegram_id, amount, toAddress } = await req.json()
+
+    // Using the telegram_id here fixes the "underlined" warning in your editor
+    console.log(`Withdrawing ${amount} for user ${telegram_id}`);
+
+    // Initialize Supabase Client
+    const supabase = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+    )
+
+    // USE THE TELEGRAM_ID: Check user balance
+    const { data: user, error: userError } = await supabase
+      .from('users') // Replace with your actual table name
+      .select('balance')
+      .eq('telegram_id', telegram_id)
+      .single()
+
+    if (userError || !user || user.balance < amount) {
+      throw new Error("Insufficient sol in game account.");
+    }
     
     // Setup Connection using your Private RPC
     const connection = new Connection(Deno.env.get("VITE_SOLANA_RPC_URL")!, "confirmed")
@@ -51,10 +83,16 @@ serve(async (req) => {
 
     // 5. Sign and Send
     const signature = await connection.sendTransaction(transaction, [fromWallet])
+
+    // 2. Deduct the SOL from the database after the transaction succeeds
+    await supabase
+      .from('players')
+      .update({ balance: user.balance - amount })
+      .eq('telegram_id', telegram_id)
     
-    return new Response(JSON.stringify({ success: true, signature }), { headers: { "Content-Type": "application/json" } })
+    return new Response(JSON.stringify({ success: true, signature }), { headers: { ...corsHeaders, "Content-Type": "application/json" } })
 
   } catch (err) {
-    return new Response(JSON.stringify({ error: err.message }), { status: 400 })
+    return new Response(JSON.stringify({ error: err.message }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } })
   }
 })
