@@ -375,10 +375,11 @@ const GiftTapGame = () => {
       const usdcMint = new PublicKey("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v");
 
       // Use Promise.all to fetch everything in parallel (faster)
-      const [solBalance, latestBlock ] = await Promise.all([
+      const [solLamports, latestBlock ] = await Promise.all([
         connection.getBalance(pubKey),
         connection.getLatestBlockhash('confirmed')
       ]);
+      const realSol = solLamports / 1e9;
       const baseFee = 20000 / 1e9;
       const baseFeeWithBuffer = baseFee * 1.25; // Your 25% safety buffer
 
@@ -390,12 +391,21 @@ const GiftTapGame = () => {
         } catch { return 0; }
       };
 
+      const realUsdc = await getTokenBal(usdcMint);
+
       setBalances({
-        sol: solBalance / 1e9,
+        sol: realSol,
         GFT: 0,
         GFTshards: balance, // Pulls from your 'balance' state
-        usdc: await getTokenBal(usdcMint),
+        usdc: realUsdc,
       });
+
+      // 3. IMPORTANT: Sync the Real Values to Supabase
+      // This ensures the Edge Function sees the real amount for the withdrawal check.
+      await supabase.from('players').update({
+          sol_balance: realSol,
+          usdc_balance: realUsdc
+      }).eq('telegram_id', String(tgUser.id));
 
       // Set Fees separately
       setTransactionCosts({
@@ -406,7 +416,15 @@ const GiftTapGame = () => {
     } catch (err) { 
       console.error("Balance/Fee fetch failed", err); 
     }
-  }, [playerWallet, connection, balance]); // Added 'balance' to dependencies
+  }, [playerWallet, connection, balance, tgUser.id]); // Added 'balance' to dependencies
+
+  // --- BLOCKCHAIN-TO-DATABASE SYNC ---
+  useEffect(() => {
+    if (isModalOpen && playerWallet && isDataLoaded) {
+      console.log("Wallet Dashboard opened: Syncing real balances...");
+      fetchBalances();
+    }
+  }, [isModalOpen, playerWallet, isDataLoaded, fetchBalances]);
 
   const inviteLink = `https://t.me/Gift2uTapBot?start=${tgUser.id}`;
 
