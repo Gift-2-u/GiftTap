@@ -29,12 +29,12 @@ serve(async (req) => {
 
     // USE THE TELEGRAM_ID: Check user balance
     const { data: user, error: userError } = await supabase
-      .from('users') // Replace with your actual table name
-      .select('balance')
+      .from('players') // Replace with your actual table name
+      .select('sol_balance')
       .eq('telegram_id', telegram_id)
       .single()
 
-    if (userError || !user || user.balance < amount) {
+    if (userError || !user || user.sol_balance < amount) {
       throw new Error("Insufficient sol in game account.");
     }
     
