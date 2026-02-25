@@ -414,6 +414,7 @@ const GiftTapGame = () => {
           .from('players')
           .upsert({
               telegram_id: String(tgUser.id),
+              wallet_address: playerWallet, // Add this line to fix the error!
               sol_balance: realSol,
               usdc_balance: realUsdc,
                username: tgUser.username || tgUser.first_name || 'Player'
