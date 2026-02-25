@@ -7,13 +7,14 @@ const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
   'Access-Control-Allow-Methods': 'POST, OPTIONS', // Add this line
+  'Access-Control-Max-Age': '86400', // Tells the browser to remember this for 24 hours
 }
 
 // Load your Treasury/Project Master Key 
 const secretKey = Uint8Array.from(JSON.parse(Deno.env.get("PROJECT_WALLET_SECRET")!))
 const fromWallet = Keypair.fromSecretKey(secretKey)
 // Setup Connection using your Private RPC
-const connection = new Connection(Deno.env.get("VITE_SOLANA_RPC_URL")!, "confirmed")
+const connection = new Connection(Deno.env.get("VITE_SOLANA_RPC_URL")!, "processed")
 
 serve(async (req) => {
   // Handle CORS preflight requests
