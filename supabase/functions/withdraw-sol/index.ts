@@ -9,6 +9,12 @@ const corsHeaders = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS', // Add this line
 }
 
+// Load your Treasury/Project Master Key 
+const secretKey = Uint8Array.from(JSON.parse(Deno.env.get("PROJECT_WALLET_SECRET")!))
+const fromWallet = Keypair.fromSecretKey(secretKey)
+// Setup Connection using your Private RPC
+const connection = new Connection(Deno.env.get("VITE_SOLANA_RPC_URL")!, "confirmed")
+
 serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
@@ -37,13 +43,6 @@ serve(async (req) => {
     if (userError || !user || user.sol_balance < amount) {
       throw new Error("Insufficient sol in game account.");
     }
-    
-    // Setup Connection using your Private RPC
-    const connection = new Connection(Deno.env.get("VITE_SOLANA_RPC_URL")!, "confirmed")
-    
-    // Load your Treasury/Project Master Key 
-    const secretKey = Uint8Array.from(JSON.parse(Deno.env.get("PROJECT_WALLET_SECRET")!))
-    const fromWallet = Keypair.fromSecretKey(secretKey)
 
     // 2. MATH: Calculate exactly what the player gets
     // Project Fee = 0.0005. Network Buffer = ~0.00002. Total deduction = 0.00052.
@@ -76,14 +75,14 @@ serve(async (req) => {
       })
     )
 
-    // 4. Get the latest blockhash (Crucial for modern Solana transactions)
-    const latestBlockhash = await connection.getLatestBlockhash('confirmed');
-    transaction.recentBlockhash = latestBlockhash.blockhash;
+    // FAST BLOCKHASH FETCH
+    const { blockhash } = await connection.getLatestBlockhash('confirmed');
+    transaction.recentBlockhash = blockhash;
     transaction.feePayer = fromWallet.publicKey;
 
     // 5. Sign and Send
     const signature = await connection.sendTransaction(transaction, [fromWallet], {
-      skipPreflight: false,
+      skipPreflight: true,
       preflightCommitment: 'confirmed',
     })
 
