@@ -82,12 +82,15 @@ serve(async (req) => {
     transaction.feePayer = fromWallet.publicKey;
 
     // 5. Sign and Send
-    const signature = await connection.sendTransaction(transaction, [fromWallet])
+    const signature = await connection.sendTransaction(transaction, [fromWallet], {
+      skipPreflight: false,
+      preflightCommitment: 'confirmed',
+    })
 
     // 2. Deduct the SOL from the database after the transaction succeeds
     await supabase
       .from('players')
-      .update({ balance: user.balance - amount })
+      .update({ balance: user.sol_balance - amount })
       .eq('telegram_id', telegram_id)
     
     return new Response(JSON.stringify({ success: true, signature }), { headers: { ...corsHeaders, "Content-Type": "application/json" } })
