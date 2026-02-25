@@ -383,6 +383,9 @@ const GiftTapGame = () => {
       const baseFee = 20000 / 1e9;
       const baseFeeWithBuffer = baseFee * 1.25; // Your 25% safety buffer
 
+      // 2. Update UI (This part is also working)
+      setBalances(prev => ({ ...prev, sol: realSol }));
+
       const getTokenBal = async (mint) => {
         try {
           const ata = getAssociatedTokenAddressSync(mint, pubKey);
@@ -400,18 +403,28 @@ const GiftTapGame = () => {
         usdc: realUsdc,
       });
 
-      // 3. IMPORTANT: Sync the Real Values to Supabase
-      // This ensures the Edge Function sees the real amount for the withdrawal check.
-      await supabase.from('players').update({
-          sol_balance: realSol,
-          usdc_balance: realUsdc
-      }).eq('telegram_id', String(tgUser.id));
-
       // Set Fees separately
       setTransactionCosts({
         baseFeeWithBuffer: baseFeeWithBuffer, 
         projectFee: 0.0005 // Your fixed Gift launch fee
       });
+
+      /// 3. --- PASTE THE UPSERT CODE HERE ---
+      const { data, error } = await supabase
+          .from('players')
+          .upsert({
+              telegram_id: String(tgUser.id),
+              sol_balance: realSol,
+              usdc_balance: realUsdc,
+               username: tgUser.username || tgUser.first_name || 'Player'
+          }, { onConflict: 'telegram_id' })
+          .select();
+
+      if (error) {
+          console.error("❌ SYNC ERROR:", error.message);
+      } else {
+          console.log("✅ Sync Successful for ID:", tgUser.id, data);
+      }
       
     } catch (err) { 
       console.error("Balance/Fee fetch failed", err); 
