@@ -11,6 +11,18 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).send('Method Not Allowed');
 
+  // This check prevents the "supabaseUrl is required" crash
+  if (!supabaseUrl || !supabaseServiceKey) {
+    console.error("FATAL: Environment Variables Missing", { 
+        url: !!supabaseUrl, 
+        key: !!supabaseServiceKey 
+    });
+    return res.status(500).json({ 
+        error: "Server Configuration Error", 
+        details: "Supabase environment variables are not accessible to the backend." 
+    });
+  }
+
   try {
     const { telegram_id, amount, toAddress } = req.body;
 
