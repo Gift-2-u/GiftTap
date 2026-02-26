@@ -462,19 +462,11 @@ const GiftTapGame = () => {
     setTxStatus({ loading: false, message: 'Processing withdrawal...' });
     
     try {
-        // Replace this URL with your actual Supabase Project URL
-        const response = await fetch('https://ncwlbwzxfpcnxkyrmdck.supabase.co/functions/v1/withdraw-sol', {
+        // NEW:
+        const response = await fetch('/api/withdraw', {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                // If you use a JWT/Anon Key, add it here:
-                'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
-            },
-            body: JSON.stringify({
-                telegram_id: window.Telegram?.WebApp?.initDataUnsafe?.user?.id,
-                amount: parseFloat(withdrawAmount),
-                toAddress: withdrawAddress
-            })
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ telegram_id: tgUser.id, amount, toAddress })
         });
 
         const result = await response.json();
