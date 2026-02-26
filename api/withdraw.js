@@ -2,71 +2,65 @@ import { Connection, Keypair, PublicKey, Transaction, SystemProgram, LAMPORTS_PE
 import { createClient } from '@supabase/supabase-js';
 
 export default async function handler(req, res) {
-  // Allow Vercel to handle the preflight
-  res.setHeader('Access-Control-Allow-Credentials', true);
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
-  res.setHeader('Access-Control-Allow-Headers', 'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version');
-  / This will list every variable name Vercel has loaded
-  console.log("Available Keys:", Object.keys(process.env));
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
   if (req.method === 'OPTIONS') return res.status(200).end();
-  if (req.method !== 'POST') return res.status(405).send('Method Not Allowed');
-
-  // Replace the top of your handler with this:
-  const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY;
-
-  if (!url || !key) {
-      console.error("DEBUG: URL found:", !!process.env.SUPABASE_URL, "VITE_URL found:", !!process.env.VITE_SUPABASE_URL);
-      return res.status(500).json({ error: "Missing Supabase credentials in all known variables." });
-  }
-
-  // 3. Initialize Supabase
-  const supabase = createClient(url, key);
 
   try {
     const { telegram_id, amount, toAddress } = req.body;
     const numAmount = Number(amount);
 
-    if (!telegram_id || !numAmount || !toAddress) {
-      return res.status(400).json({ error: "Missing fields: telegram_id, amount, or toAddress" });
+    // --- 1. KEY VALIDATION ---
+    const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
+    const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    const rpc = process.env.VITE_SOLANA_RPC_URL;
+    const secretStr = process.env.PROJECT_WALLET_SECRET;
+
+    if (!url || !key || !rpc || !secretStr) {
+      throw new Error(`Missing Env Vars: URL:${!!url} KEY:${!!key} RPC:${!!rpc} SECRET:${!!secretStr}`);
     }
 
-    // 4. Verify Balance in DB
+    const supabase = createClient(url, key);
+    const connection = new Connection(rpc, "confirmed");
+
+    // --- 2. WALLET VALIDATION ---
+    let fromWallet;
+    try {
+      const cleanedSecret = secretStr.trim();
+      fromWallet = Keypair.fromSecretKey(Uint8Array.from(JSON.parse(cleanedSecret)));
+    } catch (e) {
+      throw new Error("Invalid PROJECT_WALLET_SECRET format. Must be a JSON array [1,2,3...]");
+    }
+
+    // --- 3. DATABASE CHECK ---
     const { data: user, error: userError } = await supabase
       .from('players')
       .select('sol_balance')
       .eq('telegram_id', String(telegram_id))
       .single();
 
-    if (userError || !user) return res.status(404).json({ error: "User not found" });
-    if (user.sol_balance < numAmount) return res.status(400).json({ error: "Insufficient balance" });
+    if (userError || !user) throw new Error("User not found in database.");
+    if (user.sol_balance < numAmount) throw new Error("Insufficient balance in app.");
 
-    // 5. Solana Transaction Logic
-    const connection = new Connection(process.env.VITE_SOLANA_RPC_URL, "confirmed");
-    // Replace the old secretKey line with this:
-    let secretKey;
-    try {
-        const rawSecret = process.env.PROJECT_WALLET_SECRET.trim();
-        secretKey = Uint8Array.from(JSON.parse(rawSecret));
-    } catch (err) {
-        // This will send the ACTUAL error message to your browser's Network tab
-        console.error("Detailed Error:", err);
-        return res.status(500).json({ 
-            error: err.message, 
-            stack: err.stack,
-            hint: "Check if the server wallet has enough SOL for gas." 
-        });
+    // --- 4. SOLANA BALANCE CHECK (The "Gas" Check) ---
+    const serverBalance = await connection.getBalance(fromWallet.publicKey);
+    if (serverBalance < 0.002 * LAMPORTS_PER_SOL) {
+      throw new Error(`Server wallet is low on gas (${serverBalance / LAMPORTS_PER_SOL} SOL). Send 0.01 SOL to ${fromWallet.publicKey.toBase58()}`);
     }
-    const fromWallet = Keypair.fromSecretKey(secretKey);
+
+    // --- 5. TRANSACTION BUILDING ---
+    // Safety check: ensure we aren't sending a negative amount
+    const mainAmount = Math.floor((numAmount - 0.0006) * LAMPORTS_PER_SOL);
+    if (mainAmount <= 0) throw new Error("Withdraw amount is too small to cover network fees.");
 
     const transaction = new Transaction().add(
       ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 100000 }),
       SystemProgram.transfer({
         fromPubkey: fromWallet.publicKey,
         toPubkey: new PublicKey(toAddress),
-        lamports: Math.floor((numAmount - 0.00052) * LAMPORTS_PER_SOL),
+        lamports: mainAmount,
       }),
       SystemProgram.transfer({
         fromPubkey: fromWallet.publicKey,
@@ -75,25 +69,25 @@ export default async function handler(req, res) {
       })
     );
 
-    const { blockhash } = await connection.getLatestBlockhash('confirmed');
+    const { blockhash } = await connection.getLatestBlockhash('finalized');
     transaction.recentBlockhash = blockhash;
     transaction.feePayer = fromWallet.publicKey;
 
-    // 6. Execute Transaction
-    const signature = await connection.sendTransaction(transaction, [fromWallet]);
+    // --- 6. EXECUTION ---
+    const signature = await connection.sendTransaction(transaction, [fromWallet], { skipPreflight: true });
     
-    // 7. Deduct Balance from DB
-    const { error: updateError } = await supabase
-      .from('players')
+    // Update DB
+    await supabase.from('players')
       .update({ sol_balance: user.sol_balance - numAmount })
       .eq('telegram_id', String(telegram_id));
-
-    if (updateError) throw new Error("Transaction sent but DB failed to update.");
 
     return res.status(200).json({ success: true, signature });
 
   } catch (err) {
-    console.error("Handler Error:", err.message);
-    return res.status(500).json({ error: err.message });
+    console.error("WITHDRAW_ERROR:", err.message);
+    return res.status(500).json({ 
+      error: err.message,
+      tip: "Check your Vercel logs or the 'Response' tab in Chrome DevTools."
+    });
   }
 }
