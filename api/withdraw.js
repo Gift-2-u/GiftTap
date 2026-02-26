@@ -13,13 +13,13 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).send('Method Not Allowed');
 
-  // 2. Define Variables (This fixes the ReferenceError)
-  const url = process.env.SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  // Replace the top of your handler with this:
+  const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY;
 
   if (!url || !key) {
-    console.error("Missing Environment Variables");
-    return res.status(500).json({ error: "Server Configuration Error: Missing Supabase credentials." });
+      console.error("DEBUG: URL found:", !!process.env.SUPABASE_URL, "VITE_URL found:", !!process.env.VITE_SUPABASE_URL);
+      return res.status(500).json({ error: "Missing Supabase credentials in all known variables." });
   }
 
   // 3. Initialize Supabase
