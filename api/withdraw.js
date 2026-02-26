@@ -45,7 +45,20 @@ export default async function handler(req, res) {
 
     // 5. Solana Transaction Logic
     const connection = new Connection(process.env.VITE_SOLANA_RPC_URL, "confirmed");
-    const secretKey = Uint8Array.from(JSON.parse(process.env.PROJECT_WALLET_SECRET));
+    // Replace the old secretKey line with this:
+    let secretKey;
+    try {
+        const rawSecret = process.env.PROJECT_WALLET_SECRET.trim();
+        secretKey = Uint8Array.from(JSON.parse(rawSecret));
+    } catch (err) {
+        // This will send the ACTUAL error message to your browser's Network tab
+        console.error("Detailed Error:", err);
+        return res.status(500).json({ 
+            error: err.message, 
+            stack: err.stack,
+            hint: "Check if the server wallet has enough SOL for gas." 
+        });
+    }
     const fromWallet = Keypair.fromSecretKey(secretKey);
 
     const transaction = new Transaction().add(
