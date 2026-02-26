@@ -11,45 +11,47 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).send('Method Not Allowed');
 
-  // This check prevents the "supabaseUrl is required" crash
-  if (!supabaseUrl || !supabaseServiceKey) {
-    console.error("FATAL: Environment Variables Missing", { 
-        url: !!supabaseUrl, 
-        key: !!supabaseServiceKey 
-    });
-    return res.status(500).json({ 
-        error: "Server Configuration Error", 
-        details: "Supabase environment variables are not accessible to the backend." 
-    });
+  // 2. Define Variables (This fixes the ReferenceError)
+  const url = process.env.SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!url || !key) {
+    console.error("Missing Environment Variables");
+    return res.status(500).json({ error: "Server Configuration Error: Missing Supabase credentials." });
   }
+
+  // 3. Initialize Supabase
+  const supabase = createClient(url, key);
 
   try {
     const { telegram_id, amount, toAddress } = req.body;
+    const numAmount = Number(amount);
 
-    // 1. Initialize Supabase (Use Service Role Key)
-    const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
-    const connection = new Connection(process.env.VITE_SOLANA_RPC_URL, "confirmed");
-    const secretKey = Uint8Array.from(JSON.parse(process.env.PROJECT_WALLET_SECRET));
-    const fromWallet = Keypair.fromSecretKey(secretKey);
+    if (!telegram_id || !numAmount || !toAddress) {
+      return res.status(400).json({ error: "Missing fields: telegram_id, amount, or toAddress" });
+    }
 
-    // 2. Database Check
+    // 4. Verify Balance in DB
     const { data: user, error: userError } = await supabase
       .from('players')
       .select('sol_balance')
       .eq('telegram_id', String(telegram_id))
       .single();
 
-    if (userError || !user || user.sol_balance < amount) {
-      return res.status(400).json({ error: "Insufficient balance" });
-    }
+    if (userError || !user) return res.status(404).json({ error: "User not found" });
+    if (user.sol_balance < numAmount) return res.status(400).json({ error: "Insufficient balance" });
 
-    // 4. Build Full Transaction (Including Fees & Treasury)
+    // 5. Solana Transaction Logic
+    const connection = new Connection(process.env.VITE_SOLANA_RPC_URL, "confirmed");
+    const secretKey = Uint8Array.from(JSON.parse(process.env.PROJECT_WALLET_SECRET));
+    const fromWallet = Keypair.fromSecretKey(secretKey);
+
     const transaction = new Transaction().add(
       ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 100000 }),
       SystemProgram.transfer({
         fromPubkey: fromWallet.publicKey,
         toPubkey: new PublicKey(toAddress),
-        lamports: Math.floor((amount - 0.00052) * LAMPORTS_PER_SOL),
+        lamports: Math.floor((numAmount - 0.00052) * LAMPORTS_PER_SOL),
       }),
       SystemProgram.transfer({
         fromPubkey: fromWallet.publicKey,
@@ -62,19 +64,21 @@ export default async function handler(req, res) {
     transaction.recentBlockhash = blockhash;
     transaction.feePayer = fromWallet.publicKey;
 
-    // 5. Send and WAIT for confirmation (Vercel gives us enough time!)
+    // 6. Execute Transaction
     const signature = await connection.sendTransaction(transaction, [fromWallet]);
     
-    // 6. Deduct from DB
-    await supabase
+    // 7. Deduct Balance from DB
+    const { error: updateError } = await supabase
       .from('players')
-      .update({ sol_balance: user.sol_balance - amount })
+      .update({ sol_balance: user.sol_balance - numAmount })
       .eq('telegram_id', String(telegram_id));
+
+    if (updateError) throw new Error("Transaction sent but DB failed to update.");
 
     return res.status(200).json({ success: true, signature });
 
   } catch (err) {
-    console.error(err);
+    console.error("Handler Error:", err.message);
     return res.status(500).json({ error: err.message });
   }
 }
