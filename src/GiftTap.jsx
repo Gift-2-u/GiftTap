@@ -466,7 +466,10 @@ const GiftTapGame = () => {
         const response = await fetch('/api/withdraw', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ telegram_id: tgUser.id, amount, toAddress })
+            body: JSON.stringify({ 
+              telegram_id: String(tgUser.id), 
+              amount: withdrawAmount, 
+              toAddress: withdrawAddress })
         });
 
         const result = await response.json();
