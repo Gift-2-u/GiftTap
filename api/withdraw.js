@@ -15,7 +15,7 @@ export default async function handler(req, res) {
     // --- 1. KEY VALIDATION ---
     const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
     const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-    const rpc = process.env.VITE_SOLANA_RPC_URL;
+    const rpc = process.env.SOLANA_RPC_URL || process.env.VITE_SOLANA_RPC_URL;
     const secretStr = process.env.PROJECT_WALLET_SECRET;
 
     if (!url || !key || !rpc || !secretStr) {
@@ -23,7 +23,18 @@ export default async function handler(req, res) {
     }
 
     const supabase = createClient(url, key);
-    const connection = new Connection(rpc, "confirmed");
+    const connection = new Connection(rpc, {
+        commitment: 'confirmed',
+        confirmTransactionInitialTimeout: 60000,
+    });
+
+    // TEST THE CONNECTION IMMEDIATELY
+    try {
+        const version = await connection.getVersion();
+        console.log("Solana Node Version:", version);
+    } catch (err) {
+        throw new Error(`RPC Connection Failed: ${err.message}. Check if your Helius API key is active.`);
+    }
 
     // --- 2. WALLET VALIDATION ---
     let fromWallet;
