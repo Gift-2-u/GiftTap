@@ -23,18 +23,7 @@ export default async function handler(req, res) {
     }
 
     const supabase = createClient(url, key);
-    const connection = new Connection(rpc, {
-        commitment: 'confirmed',
-        confirmTransactionInitialTimeout: 60000,
-    });
-
-    // TEST THE CONNECTION IMMEDIATELY
-    try {
-        const version = await connection.getVersion();
-        console.log("Solana Node Version:", version);
-    } catch (err) {
-        throw new Error(`RPC Connection Failed: ${err.message}. Check if your Helius API key is active.`);
-    }
+    const connection = new Connection(rpc, "confirmed");
 
     // --- 2. WALLET VALIDATION ---
     let fromWallet;
