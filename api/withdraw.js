@@ -17,6 +17,10 @@ export default async function handler(req, res) {
     const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
     const rpc = process.env.SOLANA_RPC_URL || process.env.VITE_SOLANA_RPC_URL;
     const secretStr = process.env.PROJECT_WALLET_SECRET;
+    // Example of how to decrypt in your code
+    const decrypted = crypto.AES.decrypt(player.encrypted_secret_key, process.env.MASTER_ENCRYPTION_KEY);
+    const secretKeyArray = JSON.parse(decrypted.toString(crypto.enc.Utf8));
+    console.log("Original Secret Key:", secretKeyArray);
 
     if (!url || !key || !rpc || !secretStr) {
       throw new Error(`Missing Env Vars: URL:${!!url} KEY:${!!key} RPC:${!!rpc} SECRET:${!!secretStr}`);
