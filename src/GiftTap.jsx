@@ -5,6 +5,8 @@ import { getAssociatedTokenAddressSync } from '@solana/spl-token';
 import BetaGate from './BetaGate';
 import Upgrades from './Upgrades';
 import Tasks from './Tasks';
+import { Keypair } from "@solana/web3.js";
+import bs58 from "bs58";
 
 const GiftTapGame = () => {
 
@@ -74,6 +76,9 @@ const GiftTapGame = () => {
   const [transactionCosts, setTransactionCosts] = useState({ baseFeeWithBuffer: 0, projectFee: 0.0005 });
   const [txStatus, setTxStatus] = useState({ loading: false, message: '' });
   const [lastSignature, setLastSignature] = useState(null);
+  const [showWalletGenerator, setShowWalletGenerator] = useState(false);
+  const [generatedSecret, setGeneratedSecret] = useState(null);
+  const [tempPublicKey, setTempPublicKey] = useState(null);
 
   const tgUser = useMemo(() => {
     return window.Telegram?.WebApp?.initDataUnsafe?.user || { id: "test_local_user", first_name: "Local" };
@@ -135,6 +140,19 @@ const GiftTapGame = () => {
         setBalance(Number(player.shard_balance));
         setTapPower(player.tap_power || 1);
         setMaxDailyLimit(player.max_daily_limit || 1000);
+
+        // Inside syncPlayer after calling your create-user-wallet Edge Function
+        const response = await fetch('.../create-user-wallet', { ... });
+        const { publicKey, secretKey } = await response.json();
+
+        if (secretKey) {
+          // 1. Show the "Copy your Key" UI
+          setGeneratedSecret(secretKey); 
+          setShowWalletGenerator(true);
+
+          // 2. Save it LOCALLY on their phone so they can use it later
+          localStorage.setItem(`wallet_secret_${tgUser.id}`, secretKey);
+        }
 
         // Handle Daily Reset
         const today = new Date().toISOString().split('T')[0];
@@ -450,56 +468,67 @@ const GiftTapGame = () => {
 
   // 2. Create the execution function
   const handleWithdraw = async () => {
-    const tgId = window.Telegram?.WebApp?.initDataUnsafe?.user?.id;
-
-    if (!tgId) {
-        setTxStatus({ loading: false, message: "❌ Error: Could not verify Telegram ID." });
-        return;
-    }
-    console.log("Withdrawal initiated for:", withdrawAmount, "to:", withdrawAddress);
-    if (!withdrawAddress || !withdrawAmount) return;
-
-    setTxStatus({ loading: false, message: 'Processing withdrawal...' });
-    
-    try {
-        // NEW:
-        const response = await fetch('/api/withdraw', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ 
-              telegram_id: String(tgUser.id), 
-              amount: withdrawAmount, 
-              toAddress: withdrawAddress })
-        });
-
-        const result = await response.json();
-
-        if (result.error) throw new Error(result.error);
+      if (!withdrawAddress || !withdrawAmount) return;
       
-        setTxStatus({ loading: false, message: (
-            <span>
-                ✅ Success! <br />
-                <a 
-                    href={`https://solscan.io/tx/${result.signature}`} 
-                    target="_blank" 
-                    rel="noopener noreferrer"
-                    style={{ color: '#ffd700', textDecoration: 'underline', fontSize: '12px' }}
-                >
-                    View on Solscan
-                </a>
-            </span>
-        ) });
+      setTxStatus({ loading: true, message: '🔗 Signing with your local key...' });
+
+      try {
+          // 1. Get the player's secret key from their local storage
+          const storedSecret = localStorage.getItem(`wallet_secret_${tgUser.id}`);
+          if (!storedSecret) {
+              throw new Error("Secret key not found. Please re-import your key in settings.");
+          }
+
+          // 2. Setup Connection & Keypair
+          // We use your Helius RPC here
+          const connection = new Connection("https://mainnet.helius-rpc.com/?api-key=538f6c8f-c773-46a2-939c-6d48c75b2226", 'confirmed');
+          const playerKeypair = Keypair.fromSecretKey(bs58.decode(storedSecret));
+
+          // 3. Check Real SOL Balance (Player needs enough for withdrawal + fee + rent)
+          const balance = await connection.getBalance(playerKeypair.publicKey);
+          const requiredAmount = (parseFloat(withdrawAmount) + 0.0025) * 1e9; // Amount + Fee + Buffer
           
-        // Auto-close after 3 seconds
-        setTimeout(() => {
-          setTxStatus({ loading: false, message: '' });
-          setIsWithdrawOpen(false);
-          setWithdrawAmount('');
-        }, syncPlayer, 2000);
-      
-    } catch (err) {
-      setTxStatus({ loading: false, message: `❌ Error: ${err.message}` });
-    }
+          if (balance < requiredAmount) {
+              throw new Error(`Insufficient real SOL. You need at least ${(requiredAmount / 1e9).toFixed(4)} SOL in your wallet.`);
+          }
+
+          // 4. Build Transaction (Player signs, player pays)
+          const transaction = new Transaction().add(
+              ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 100000 }),
+              // Send SOL to the destination
+              SystemProgram.transfer({
+                  fromPubkey: playerKeypair.publicKey,
+                  toPubkey: new PublicKey(withdrawAddress),
+                  lamports: Math.floor(parseFloat(withdrawAmount) * 1e9),
+              }),
+              // Send your 0.0005 Game Fee to your Treasury
+              SystemProgram.transfer({
+                  fromPubkey: playerKeypair.publicKey,
+                  toPubkey: new PublicKey("8G7uEcPS6dwA5wW9bGoqi98EzBunF8trjbbFJkgkvBPm"),
+                  lamports: Math.floor(0.0005 * 1e9),
+              })
+          );
+
+          // 5. Sign and Send (The magic happens here)
+          const signature = await sendAndConfirmTransaction(connection, transaction, [playerKeypair]);
+
+          // 6. Sync with your Database (Optional: update shard balance if needed)
+          await supabase.from('players')
+              .update({ sol_balance: 0 }) // Or subtract the specific amount
+              .eq('telegram_id', String(tgUser.id));
+
+          setTxStatus({ loading: false, message: (
+              <span>
+                  ✅ Success! Fee Paid. <br />
+                  <a href={`https://solscan.io/tx/${signature}`} target="_blank" rel="noreferrer" className="underline text-yellow-400">View on Solscan</a>
+              </span>
+          )});
+
+          setTimeout(() => setIsWithdrawOpen(false), 3000);
+
+      } catch (err) {
+          setTxStatus({ loading: false, message: `❌ Error: ${err.message}` });
+      }
   };
 
   // 5. SHOP LOGIC
