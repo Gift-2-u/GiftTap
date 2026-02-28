@@ -119,42 +119,33 @@ const GiftTapGame = () => {
     setIsLeaderboardOpen(true);
   };
 
-  // 4. SYNC PLAYER LOGIC (Fixed Brackets)
   const syncPlayer = useCallback(async () => {
     setIsLoading(true);
     try {
       const userId = String(tgUser.id);
       
-      // Your original fetch logic
-      const { data: player } = await supabase
+      // 1. Fetch player data
+      const { data: player, error: fetchError } = await supabase
         .from('players')
-        .select('*, sol_balance, usdc_balance, gft_token_balance')
+        .select('*')
         .eq('telegram_id', userId)
         .maybeSingle();
 
-      if (player && player.wallet_address, player.has_beta_access) {
-        // Check if they have the beta flag
+      // CASE A: Player exists AND already has a wallet address
+      if (player && player.wallet_address) {
         setHasAccess(player.has_beta_access || false);
         setPlayerWallet(player.wallet_address);
-        setBalances({ sol: player.sol_balance || 0, GFT: player.gft_token_balance || 0, GFTshards: Number(player.shard_balance) || 0, usdc: player.usdc_balance || 0 });
+        setBalances({ 
+          sol: player.sol_balance || 0, 
+          GFT: player.gft_token_balance || 0, 
+          GFTshards: Number(player.shard_balance) || 0, 
+          usdc: player.usdc_balance || 0 
+        });
         setBalance(Number(player.shard_balance));
         setTapPower(player.tap_power || 1);
         setMaxDailyLimit(player.max_daily_limit || 1000);
 
-        // Inside syncPlayer after calling your create-user-wallet Edge Function
-        const response = await fetch('.../create-user-wallet', { ... });
-        const { publicKey, secretKey } = await response.json();
-
-        if (secretKey) {
-          // 1. Show the "Copy your Key" UI
-          setGeneratedSecret(secretKey); 
-          setShowWalletGenerator(true);
-
-          // 2. Save it LOCALLY on their phone so they can use it later
-          localStorage.setItem(`wallet_secret_${tgUser.id}`, secretKey);
-        }
-
-        // Handle Daily Reset
+        // Daily Reset Logic
         const today = new Date().toISOString().split('T')[0];
         if (player.last_tap_date !== today) {
           setDailyTaps(0);
@@ -164,19 +155,51 @@ const GiftTapGame = () => {
           setLastTapDate(player.last_tap_date);
         }
           
-        // Your original Energy Recovery Calculation
+        // Energy Recovery Logic
         const lastDate = new Date(player.last_updated).getTime();
         const now = new Date().getTime();
         const secondsPassed = Math.floor((now - lastDate) / 1000);
-        const recovered = Math.floor(secondsPassed / 1.5); // Back to your 1.5s logic
-          
-        setEnergy(Math.min(player.last_energy + recovered, 500));
-        setIsDataLoaded(true);
+        const recovered = Math.floor(secondsPassed / 1.5); 
+        setEnergy(Math.min((player.last_energy || 0) + recovered, 500));
         
-      } else {
-        // NEW USER: Show Beta Gate
-        setHasAccess(false);
+        setIsDataLoaded(true);
+      } 
+      // CASE B: New Player OR Player without a wallet
+      else {
+        console.log("No wallet found, generating...");
+        
+        // This is the FIXED fetch call (No more '...')
+        const response = await fetch('https://ncwlbwzxfpcnxkyrmdck.supabase.co/functions/v1/create-user-wallet', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
+          },
+          body: JSON.stringify({ 
+            telegram_id: userId,
+            username: tgUser.username || tgUser.first_name || 'Player'
+          })
+        });
+
+        const result = await response.json();
+
+        if (result.publicKey && result.secretKey) {
+          // 1. Handover: Show the Secret Key to the user
+          setGeneratedSecret(result.secretKey); 
+          setShowWalletGenerator(true);
+
+          // 2. Storage: Save it locally so the user pays their own gas later
+          localStorage.setItem(`wallet_secret_${userId}`, result.secretKey);
+          
+          // 3. Update UI
+          setPlayerWallet(result.publicKey);
+          setIsDataLoaded(true);
+        } else {
+          // If wallet creation fails, they might just be stuck at the Beta Gate
+          setHasAccess(false);
+        }
       }
+
       await fetchTopLeader();
     } catch (err) {
       console.error("Sync Error:", err.message);
