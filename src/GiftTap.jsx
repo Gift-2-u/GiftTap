@@ -81,6 +81,8 @@ const GiftTapGame = () => {
   const [showSettings, setShowSettings] = useState(false);
   const [walletPwd, setWalletPwd] = useState('');
   const [isRevealed, setIsRevealed] = useState(false);
+  const [mustBackup, setMustBackup] = useState(false);
+  const [setupPwd, setSetupPwd] = useState('');
 
   const tgUser = useMemo(() => {
     return window.Telegram?.WebApp?.initDataUnsafe?.user || { id: "test_local_user", first_name: "Local" };
@@ -236,42 +238,28 @@ const GiftTapGame = () => {
 
       if (invokeError) throw new Error(invokeError.message);
 
-      if (newWallet && newWallet.secretKey) { 
-        if (newWallet.secretKey) {
-          localStorage.setItem(`wallet_secret_${userId}`, newWallet.secretKey);
-        }
+      // AGGRESSIVELY CATCH THE DATA (Fixes the missing phrase bug)
+      const secret = newWallet?.secretKey || newWallet?.data?.secretKey;
+      const publicK = newWallet?.publicKey || newWallet?.data?.publicKey;
 
-        const { error: upsertError } = await supabase.from('players').upsert({
-            telegram_id: userId,
-            username: userName,
-            wallet_address: newWallet.publicKey,
-            has_beta_access: true,
-            shard_balance: 0,
-            last_energy: 500,
-            last_updated: new Date().toISOString()
-        }, { onConflict: 'telegram_id' });
+      if (secret) {
+        // Save silently to the phone for the Wallet Modal to use later
+        localStorage.setItem(`wallet_secret_${userId}`, secret);
+      } else {
+        console.error("⚠️ Edge Function did not return the secret key!");
+      }
 
-        if (upsertError) {
-            console.error("UPSERT ERROR:", upsertError);
-        }
+      // 3. Force entry into the game (Stops the "Hanging")
+      setPlayerWallet(publicK);
+      setBalance(0);
+      setEnergy(500);
+      setHasAccess(true);
+      setIsDataLoaded(true);
 
-        if (inputCode) {
-          await supabase
-            .from('invite_codes')
-            .update({ is_used: true, used_by: userId })
-            .eq('code', inputCode);
-        }
-
-        setPlayerWallet(newWallet.publicKey);
-        setBalance(0);
-        setEnergy(500);
-        setHasAccess(true);
-        setIsDataLoaded(true);
-      } // <--- This was closing the "if", but you had an extra one after it.
     } catch (err) {
       console.error("Init Error:", err);
     } finally {
-      setIsLoading(false);
+      setIsLoading(false); // Guarantees the loading screen disappears
     }
   };
 
@@ -594,7 +582,19 @@ const GiftTapGame = () => {
             </div>
 
             <div style={styles.walletWrapper}>
-              <button onClick={() => { setIsModalOpen(true); fetchBalances(); }} style={styles.walletBtn}>
+              <button 
+                onClick={() => { 
+                  setIsModalOpen(true); 
+                  // Check if they have done the mandatory backup
+                  const isBackedUp = localStorage.getItem(`wallet_backed_up_${tgUser.id}`);
+                  if (!isBackedUp) {
+                    setMustBackup(true); // Force the mandatory popup
+                  } else {
+                    fetchBalances();
+                  }
+                }} 
+                style={styles.walletBtn}
+              >
                 {playerWallet?.slice(0, 4)}...{playerWallet?.slice(-4)}
               </button>
             </div>
@@ -680,92 +680,135 @@ const GiftTapGame = () => {
             </div>
           )}
 
-          {/* Wallet Modal with Settings Toggle */}
+          {/* Wallet Modal */}
           {isModalOpen && (
-            <div style={styles.modalOverlay} onClick={() => { setIsModalOpen(false); setShowSettings(false); setIsRevealed(false); }}>
+            <div style={styles.modalOverlay} onClick={() => { 
+              if (!mustBackup) { setIsModalOpen(false); setShowSettings(false); setIsRevealed(false); }
+            }}>
               <div style={styles.modalContent} onClick={e => e.stopPropagation()}>
                 
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
-                  <h3 style={{ margin: 0, color: '#ffd700' }}>{showSettings ? 'Wallet Settings' : 'Wallet Dashboard'}</h3>
-                  <div>
-                    {!showSettings && (
-                      <button onClick={() => setShowSettings(true)} style={{ background: 'none', border: 'none', color: '#888', fontSize: '18px', marginRight: '15px', cursor: 'pointer' }}>⚙️</button>
-                    )}
-                    <button onClick={() => { setIsModalOpen(false); setShowSettings(false); setIsRevealed(false); }} style={{ background: 'none', border: 'none', color: '#888', fontSize: '18px', cursor: 'pointer' }}>✕</button>
-                  </div>
-                </div>
-
-                {showSettings ? (
-                  // --- SECURITY / SETTINGS VIEW ---
+                {/* --- MANDATORY BACKUP SCREEN (First Visit Only) --- */}
+                {mustBackup ? (
                   <div style={{ textAlign: 'left' }}>
-                    <p style={{ color: '#aaa', fontSize: '12px', marginBottom: '15px' }}>Secure your Secret Phrase. Set a local password to view it.</p>
+                    <h3 style={{ color: '#ff4d4d', marginTop: 0 }}>⚠️ Action Required</h3>
+                    <p style={{ fontSize: '12px', color: '#ccc' }}>Before you can use your wallet, you must secure your Secret Phrase. Create a local password to lock it.</p>
                     
-                    {!isRevealed ? (
-                      <div style={{ background: '#111', padding: '15px', borderRadius: '10px', border: '1px solid #333' }}>
-                        <label style={{ color: '#ccc', fontSize: '12px' }}>Enter Password to Reveal:</label>
-                        <input 
-                          type="password" 
-                          value={walletPwd}
-                          onChange={(e) => setWalletPwd(e.target.value)}
-                          placeholder="Your password"
-                          style={{ width: '100%', marginTop: '5px', padding: '10px', borderRadius: '8px', background: '#000', border: '1px solid #444', color: '#fff', boxSizing: 'border-box' }}
-                        />
-                        <button 
-                          onClick={() => {
-                            if (!walletPwd) return alert("Please enter a password.");
-                            const savedPwd = localStorage.getItem(`wallet_pwd_${tgUser.id}`);
-                            if (!savedPwd) {
-                              localStorage.setItem(`wallet_pwd_${tgUser.id}`, walletPwd);
-                              setIsRevealed(true);
-                            } else if (savedPwd === walletPwd) {
-                              setIsRevealed(true);
-                            } else {
-                              alert("Incorrect password!");
-                            }
-                          }}
-                          style={{ width: '100%', marginTop: '15px', background: '#ffd700', color: '#000', padding: '10px', borderRadius: '8px', fontWeight: 'bold', border: 'none' }}
-                        >
-                          {localStorage.getItem(`wallet_pwd_${tgUser.id}`) ? 'Unlock Wallet' : 'Set Password & Unlock'}
-                        </button>
-                      </div>
-                    ) : (
-                      <div style={{ background: '#111', padding: '15px', borderRadius: '10px', border: '1px solid #ffd700' }}>
-                        <p style={{ color: '#ff4d4d', fontSize: '12px', fontWeight: 'bold', margin: '0 0 10px 0' }}>⚠️ NEVER SHARE THIS PHRASE</p>
-                        <code style={{ color: '#4ade80', fontSize: '11px', wordBreak: 'break-all', display: 'block', marginBottom: '15px', padding: '10px', background: '#000', borderRadius: '5px' }}>
-                          {localStorage.getItem(`wallet_secret_${tgUser.id}`) || "Phrase not found on device."}
-                        </code>
-                        <button 
-                          onClick={() => {
-                            navigator.clipboard.writeText(localStorage.getItem(`wallet_secret_${tgUser.id}`));
-                            alert("Secret Phrase Copied!");
-                          }}
-                          style={{ width: '100%', background: '#333', color: '#fff', border: '1px solid #555', padding: '10px', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}
-                        >
-                          📋 Copy Phrase
-                        </button>
-                      </div>
-                    )}
-                    <button onClick={() => { setShowSettings(false); setIsRevealed(false); setWalletPwd(''); }} style={{ width: '100%', marginTop: '20px', background: 'none', color: '#888', border: 'none', cursor: 'pointer' }}>← Back to Balances</button>
+                    <div style={{ background: '#111', padding: '15px', borderRadius: '10px', border: '1px solid #333', marginBottom: '15px' }}>
+                      <label style={{ color: '#888', fontSize: '11px' }}>CREATE WALLET PASSWORD:</label>
+                      <input 
+                        type="password" 
+                        value={setupPwd}
+                        onChange={(e) => setSetupPwd(e.target.value)}
+                        placeholder="Enter a strong password"
+                        style={{ width: '100%', marginTop: '5px', padding: '10px', borderRadius: '8px', background: '#000', border: '1px solid #555', color: '#fff', boxSizing: 'border-box' }}
+                      />
+                    </div>
+
+                    <div style={{ background: '#000', padding: '15px', borderRadius: '10px', border: '1px solid #ffd700', marginBottom: '15px' }}>
+                      <label style={{ color: '#ffd700', fontSize: '11px', fontWeight: 'bold' }}>YOUR SECRET PHRASE:</label>
+                      <code style={{ color: '#4ade80', fontSize: '11px', wordBreak: 'break-all', display: 'block', marginTop: '5px' }}>
+                        {localStorage.getItem(`wallet_secret_${tgUser.id}`) || "❌ Error: Key not found. Please clear browser cache and try again."}
+                      </code>
+                    </div>
+
+                    <button 
+                      onClick={() => {
+                        navigator.clipboard.writeText(localStorage.getItem(`wallet_secret_${tgUser.id}`));
+                        alert("Copied!");
+                      }}
+                      style={{ width: '100%', background: '#333', color: '#fff', padding: '10px', borderRadius: '8px', marginBottom: '10px', border: '1px solid #555' }}
+                    >
+                      📋 Copy Phrase
+                    </button>
+
+                    <button 
+                      disabled={setupPwd.length < 4}
+                      onClick={() => {
+                        // Save the password and mark as backed up
+                        localStorage.setItem(`wallet_pwd_${tgUser.id}`, setupPwd);
+                        localStorage.setItem(`wallet_backed_up_${tgUser.id}`, "true");
+                        setMustBackup(false);
+                        fetchBalances();
+                      }}
+                      style={{ width: '100%', background: '#fbef43', color: '#000', padding: '12px', borderRadius: '8px', fontWeight: 'bold', border: 'none', opacity: setupPwd.length < 4 ? 0.5 : 1 }}
+                    >
+                      I HAVE SAVED MY PHRASE & PASSWORD
+                    </button>
                   </div>
                 ) : (
-                  // --- DEFAULT BALANCES VIEW ---
+                  // --- NORMAL WALLET DASHBOARD (After Backup) ---
                   <>
-                    <p style={{ fontSize: '12px', color: '#888', marginBottom: '15px' }}>Wallet Balance.</p>
-                    <div style={{ marginTop: '10px' }}>
-                      {Object.entries(balances).map(([key, value]) => (
-                        <div key={key} style={styles.balanceRow}>
-                          <span style={{ textTransform: 'uppercase', color: '#888', fontSize: '12px' }}>{key}:</span>
-                          <span style={{ fontWeight: 'bold' }}>
-                            {key === 'GFTshards' ? value.toLocaleString() : value.toFixed(4)}
-                          </span>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
+                      <h3 style={{ margin: 0, color: '#ffd700' }}>{showSettings ? 'Wallet Settings' : 'Wallet Dashboard'}</h3>
+                      <div>
+                        {!showSettings && (
+                          <button onClick={() => setShowSettings(true)} style={{ background: 'none', border: 'none', color: '#888', fontSize: '18px', marginRight: '15px', cursor: 'pointer' }}>⚙️</button>
+                        )}
+                        <button onClick={() => { setIsModalOpen(false); setShowSettings(false); setIsRevealed(false); }} style={{ background: 'none', border: 'none', color: '#888', fontSize: '18px', cursor: 'pointer' }}>✕</button>
+                      </div>
+                    </div>
+
+                    {showSettings ? (
+                      <div style={{ textAlign: 'left' }}>
+                        <p style={{ color: '#aaa', fontSize: '12px', marginBottom: '15px' }}>Enter your password to reveal your Secret Phrase.</p>
+                        
+                        {!isRevealed ? (
+                          <div style={{ background: '#111', padding: '15px', borderRadius: '10px', border: '1px solid #333' }}>
+                            <input 
+                              type="password" 
+                              value={walletPwd}
+                              onChange={(e) => setWalletPwd(e.target.value)}
+                              placeholder="Your password"
+                              style={{ width: '100%', padding: '10px', borderRadius: '8px', background: '#000', border: '1px solid #444', color: '#fff', boxSizing: 'border-box' }}
+                            />
+                            <button 
+                              onClick={() => {
+                                const savedPwd = localStorage.getItem(`wallet_pwd_${tgUser.id}`);
+                                if (savedPwd === walletPwd) {
+                                  setIsRevealed(true);
+                                } else {
+                                  alert("Incorrect password!");
+                                }
+                              }}
+                              style={{ width: '100%', marginTop: '15px', background: '#ffd700', color: '#000', padding: '10px', borderRadius: '8px', fontWeight: 'bold', border: 'none' }}
+                            >
+                              Unlock Wallet
+                            </button>
+                          </div>
+                        ) : (
+                          <div style={{ background: '#111', padding: '15px', borderRadius: '10px', border: '1px solid #ffd700' }}>
+                            <p style={{ color: '#ff4d4d', fontSize: '12px', fontWeight: 'bold', margin: '0 0 10px 0' }}>⚠️ NEVER SHARE THIS PHRASE</p>
+                            <code style={{ color: '#4ade80', fontSize: '11px', wordBreak: 'break-all', display: 'block', marginBottom: '15px', padding: '10px', background: '#000', borderRadius: '5px' }}>
+                              {localStorage.getItem(`wallet_secret_${tgUser.id}`)}
+                            </code>
+                            <button 
+                              onClick={() => { navigator.clipboard.writeText(localStorage.getItem(`wallet_secret_${tgUser.id}`)); alert("Copied!"); }}
+                              style={{ width: '100%', background: '#333', color: '#fff', border: '1px solid #555', padding: '10px', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}
+                            >
+                              📋 Copy Phrase
+                            </button>
+                          </div>
+                        )}
+                        <button onClick={() => { setShowSettings(false); setIsRevealed(false); setWalletPwd(''); }} style={{ width: '100%', marginTop: '20px', background: 'none', color: '#888', border: 'none', cursor: 'pointer' }}>← Back to Balances</button>
+                      </div>
+                    ) : (
+                      <>
+                        <p style={{ fontSize: '12px', color: '#888', marginBottom: '15px' }}>Wallet Balance.</p>
+                        <div style={{ marginTop: '10px' }}>
+                          {Object.entries(balances).map(([key, value]) => (
+                            <div key={key} style={styles.balanceRow}>
+                              <span style={{ textTransform: 'uppercase', color: '#888', fontSize: '12px' }}>{key}:</span>
+                              <span style={{ fontWeight: 'bold' }}>{key === 'GFTshards' ? value.toLocaleString() : value.toFixed(4)}</span>
+                            </div>
+                          ))}
                         </div>
-                      ))}
-                    </div>
-                    <div style={styles.actionRow}>
-                      <button style={styles.actionBtn} onClick={() => { setIsModalOpen(false); setIsReceiveOpen(true); }}>Receive</button>
-                      <button style={styles.actionBtn} onClick={() => { setIsModalOpen(false); setIsWithdrawOpen(true); }}>Send</button>
-                      <button style={styles.actionBtn} onClick={() => { setIsModalOpen(false); setIsSwapOpen(true); }}>Swap</button>
-                    </div>
+                        <div style={styles.actionRow}>
+                          <button style={styles.actionBtn} onClick={() => { setIsModalOpen(false); setIsReceiveOpen(true); }}>Receive</button>
+                          <button style={styles.actionBtn} onClick={() => { setIsModalOpen(false); setIsWithdrawOpen(true); }}>Send</button>
+                          <button style={styles.actionBtn} onClick={() => { setIsModalOpen(false); setIsSwapOpen(true); }}>Swap</button>
+                        </div>
+                      </>
+                    )}
                   </>
                 )}
               </div>
