@@ -208,6 +208,8 @@ const GiftTapGame = () => {
   }, [tgUser, fetchTopLeader]);
 
   const initializeNewPlayer = async (inputCode) => {
+    console.log("🚀 Starting Initialization with code:", inputCode);
+    setIsLoading(true);
     try {
       // --- STEP 1: VERIFY BETA CODE ---
       const { data: codeData, error: codeError } = await supabase

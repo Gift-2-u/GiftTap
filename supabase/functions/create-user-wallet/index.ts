@@ -35,8 +35,8 @@ serve(async (req) => {
     // Manual Base58 conversion for Solana addresses is CPU heavy, so we send the Raw bytes 
     // and let the frontend or DB handle the format if needed. 
     // For now, we use a simple Base64 for the test.
-    const publicKey = bs58.encode(keypair.publicKey)
-    const secretKeyRaw = keypair.secretKey 
+    const publicKey = bs58.encode(keypair.publicKey);
+    const secretKey = bs58.encode(keypair.secretKey); // You need this!
 
     // 2. Encryption (Using the faster WebCrypto API)
     const hexKey = Deno.env.get("MASTER_ENCRYPTION_KEY") || ""
@@ -74,7 +74,8 @@ serve(async (req) => {
 
     if (dbError) throw dbError
 
-    return new Response(JSON.stringify({ publicKey }), {
+    return new Response(JSON.stringify({ publicKey: publicKey, 
+    secretKey: secretKey }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       status: 200,
     })
