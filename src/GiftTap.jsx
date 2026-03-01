@@ -78,6 +78,9 @@ const GiftTapGame = () => {
   const [showWalletGenerator, setShowWalletGenerator] = useState(false);
   const [generatedSecret, setGeneratedSecret] = useState(null);
   const [tempPublicKey, setTempPublicKey] = useState(null);
+  const [showSettings, setShowSettings] = useState(false);
+  const [walletPwd, setWalletPwd] = useState('');
+  const [isRevealed, setIsRevealed] = useState(false);
 
   const tgUser = useMemo(() => {
     return window.Telegram?.WebApp?.initDataUnsafe?.user || { id: "test_local_user", first_name: "Local" };
@@ -124,7 +127,7 @@ const GiftTapGame = () => {
       const userId = String(tgUser.id);
       
       // 1. Fetch player data
-      const { data: player, error: fetchError } = await supabase
+      const { data: player } = await supabase
         .from('players')
         .select('*')
         .eq('telegram_id', userId)
@@ -182,19 +185,13 @@ const GiftTapGame = () => {
 
         const result = await response.json();
 
-        if (result.publicKey && result.secretKey) {
-          // 1. Handover: Show the Secret Key to the user
-          setGeneratedSecret(result.secretKey); 
-          setShowWalletGenerator(true);
-
-          // 2. Storage: Save it locally so the user pays their own gas later
-          localStorage.setItem(`wallet_secret_${userId}`, result.secretKey);
-          
-          // 3. Update UI
+        if (result && result.publicKey) {
+          if (result.secretKey) {
+            localStorage.setItem(`wallet_secret_${userId}`, result.secretKey);
+          }
           setPlayerWallet(result.publicKey);
           setIsDataLoaded(true);
         } else {
-          // If wallet creation fails, they might just be stuck at the Beta Gate
           setHasAccess(false);
         }
       }
@@ -217,26 +214,32 @@ const GiftTapGame = () => {
         .eq('code', inputCode)
         .maybeSingle();
 
-      if (codeError || !codeData) {
+      if (codeError || !codeData || codeData.is_used) {
         alert("❌ Invalid or already used code!");
         setIsLoading(false);
         return; 
       }
 
-      setIsLoading(true);
-
       const userId = String(tgUser.id);
       const userName = tgUser.username || tgUser.first_name || 'Player';
 
-      // 1. Create the wallet via Edge Function
-        const { data: newWallet, error: invokeError } = await supabase.functions.invoke('create-user-wallet', {
-          body: { telegram_id: userId, username: userName }
-        });
+      // 2. LOCK CODE IMMEDIATELY
+      await supabase
+        .from('invite_codes')
+        .update({ is_used: true, used_by: userId })
+        .eq('code', inputCode);
+
+      // 3. Create the wallet via Edge Function
+      const { data: newWallet, error: invokeError } = await supabase.functions.invoke('create-user-wallet', {
+        body: { telegram_id: userId, username: userName }
+      });
+
+      if (invokeError) throw new Error(invokeError.message);
 
       if (newWallet && newWallet.secretKey) { 
-        setGeneratedSecret(newWallet.secretKey); 
-        setShowWalletGenerator(true);
-        localStorage.setItem(`wallet_secret_${userId}`, newWallet.secretKey);
+        if (newWallet.secretKey) {
+          localStorage.setItem(`wallet_secret_${userId}`, newWallet.secretKey);
+        }
 
         const { error: upsertError } = await supabase.from('players').upsert({
             telegram_id: userId,
@@ -302,8 +305,6 @@ const GiftTapGame = () => {
       }, { onConflict: 'telegram_id' });
 
       if (error) {
-        console.error("❌ SAVE ERROR:", error.message);
-        // Fallback: Try saving by wallet if TG ID fails
         await supabase.from('players').update({ shard_balance: b, last_energy: e }).eq('wallet_address', playerWallet);
       }
     }, 800); // Slightly faster save
@@ -339,8 +340,6 @@ const GiftTapGame = () => {
     setBalance(nextBalance);
     setEnergy(nextEnergy);
     setDailyTaps(nextDaily);
-    saveToDatabase(nextBalance, nextEnergy, nextDaily, lastTapDate);
-
     saveToDatabase(nextBalance, nextEnergy, nextDaily, today);
     
     const id = Date.now();
@@ -354,13 +353,8 @@ const GiftTapGame = () => {
 
     const channel = supabase
       .channel(`main-page-sync-${tgUser.id}`)
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'players',
-        },
+      .on('postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'players' },
         async (payload) => {
           // 1. Update your personal balance (Seamless Sync)
           if (payload.new.telegram_id === String(tgUser.id)) {
@@ -408,27 +402,12 @@ const GiftTapGame = () => {
   const fetchBalances = useCallback(async () => {
     if (!playerWallet) return;
 
-    // --- ADD THIS SECURITY CHECK ---
-    const userId = String(tgUser.id);
-    const savedKey = localStorage.getItem(`wallet_secret_${userId}`);
-
-    // If the wallet exists but we don't have the key saved locally yet
-    if (!savedKey) {
-        console.log("🛡️ Wallet detected but no local backup found. Triggering handover...");
-        
-        // We call the Edge Function one more time to "Fetch" the key 
-        // OR we show a button to "Reveal" it.
-        // For now, let's trigger your existing popup:
-        setShowWalletGenerator(true); 
-    }
-    // -------------------------------
-
     try {
       const pubKey = new PublicKey(playerWallet);
       const usdcMint = new PublicKey("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v");
 
       // Use Promise.all to fetch everything in parallel (faster)
-      const [solLamports, latestBlock ] = await Promise.all([
+      const [solLamports] = await Promise.all([
         connection.getBalance(pubKey),
         connection.getLatestBlockhash('confirmed')
       ]);
@@ -463,15 +442,13 @@ const GiftTapGame = () => {
       });
 
       /// 3. --- PASTE THE UPSERT CODE HERE ---
-      const { data, error } = await supabase
-          .from('players')
-          .upsert({
-              telegram_id: String(tgUser.id),
-              wallet_address: playerWallet, // Add this line to fix the error!
-              sol_balance: realSol,
-              usdc_balance: realUsdc,
-               username: tgUser.username || tgUser.first_name || 'Player'
-          }, { onConflict: 'telegram_id' })
+      await supabase.from('players').upsert({
+        telegram_id: String(tgUser.id),
+        wallet_address: playerWallet, // Add this line to fix the error!
+        sol_balance: realSol,
+        usdc_balance: realUsdc,
+        username: tgUser.username || tgUser.first_name || 'Player'
+      }, { onConflict: 'telegram_id' })
           .select();
 
       if (error) {
@@ -487,11 +464,11 @@ const GiftTapGame = () => {
 
   // --- BLOCKCHAIN-TO-DATABASE SYNC ---
   useEffect(() => {
-    if (isModalOpen && playerWallet && isDataLoaded) {
+    if (isModalOpen && playerWallet && isDataLoaded && !showSettings) {
       console.log("Wallet Dashboard opened: Syncing real balances...");
       fetchBalances();
     }
-  }, [isModalOpen, playerWallet, isDataLoaded, fetchBalances]);
+  }, [isModalOpen, playerWallet, isDataLoaded, fetchBalances, showSettings]);
 
   const inviteLink = `https://t.me/Gift2uTapBot?start=${tgUser.id}`;
 
@@ -703,38 +680,94 @@ const GiftTapGame = () => {
             </div>
           )}
 
-          {/* Wallet Modal */}
+          {/* Wallet Modal with Settings Toggle */}
           {isModalOpen && (
-            <div style={styles.modalOverlay} onClick={() => setIsModalOpen(false)}>
+            <div style={styles.modalOverlay} onClick={() => { setIsModalOpen(false); setShowSettings(false); setIsRevealed(false); }}>
               <div style={styles.modalContent} onClick={e => e.stopPropagation()}>
-                <h3>Wallet Dashboard</h3>
-                <p style={{ fontSize: '12px', color: '#888', marginBottom: '15px' }}>
-                  Wallet Balance.
-                </p>
-                {/* PASTE THE LOOP HERE - REPLACING THE OLD STATIC ROWS */}
-                <div style={{ marginTop: '10px' }}>
-                  {Object.entries(balances).map(([key, value]) => (
-                    <div key={key} style={styles.balanceRow}>
-                      <span style={{ textTransform: 'uppercase', color: '#888', fontSize: '12px' }}>{key}:</span>
-                      <span style={{ fontWeight: 'bold' }}>
-                        {/* Note: Added a check for 'GFTshards' vs 'sol' formatting */}
-                        {key === 'GFTshards' ? value.toLocaleString() : value.toFixed(4)}
-                      </span>
+                
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
+                  <h3 style={{ margin: 0, color: '#ffd700' }}>{showSettings ? 'Wallet Settings' : 'Wallet Dashboard'}</h3>
+                  <div>
+                    {!showSettings && (
+                      <button onClick={() => setShowSettings(true)} style={{ background: 'none', border: 'none', color: '#888', fontSize: '18px', marginRight: '15px', cursor: 'pointer' }}>⚙️</button>
+                    )}
+                    <button onClick={() => { setIsModalOpen(false); setShowSettings(false); setIsRevealed(false); }} style={{ background: 'none', border: 'none', color: '#888', fontSize: '18px', cursor: 'pointer' }}>✕</button>
+                  </div>
+                </div>
+
+                {showSettings ? (
+                  // --- SECURITY / SETTINGS VIEW ---
+                  <div style={{ textAlign: 'left' }}>
+                    <p style={{ color: '#aaa', fontSize: '12px', marginBottom: '15px' }}>Secure your Secret Phrase. Set a local password to view it.</p>
+                    
+                    {!isRevealed ? (
+                      <div style={{ background: '#111', padding: '15px', borderRadius: '10px', border: '1px solid #333' }}>
+                        <label style={{ color: '#ccc', fontSize: '12px' }}>Enter Password to Reveal:</label>
+                        <input 
+                          type="password" 
+                          value={walletPwd}
+                          onChange={(e) => setWalletPwd(e.target.value)}
+                          placeholder="Your password"
+                          style={{ width: '100%', marginTop: '5px', padding: '10px', borderRadius: '8px', background: '#000', border: '1px solid #444', color: '#fff', boxSizing: 'border-box' }}
+                        />
+                        <button 
+                          onClick={() => {
+                            if (!walletPwd) return alert("Please enter a password.");
+                            const savedPwd = localStorage.getItem(`wallet_pwd_${tgUser.id}`);
+                            if (!savedPwd) {
+                              localStorage.setItem(`wallet_pwd_${tgUser.id}`, walletPwd);
+                              setIsRevealed(true);
+                            } else if (savedPwd === walletPwd) {
+                              setIsRevealed(true);
+                            } else {
+                              alert("Incorrect password!");
+                            }
+                          }}
+                          style={{ width: '100%', marginTop: '15px', background: '#ffd700', color: '#000', padding: '10px', borderRadius: '8px', fontWeight: 'bold', border: 'none' }}
+                        >
+                          {localStorage.getItem(`wallet_pwd_${tgUser.id}`) ? 'Unlock Wallet' : 'Set Password & Unlock'}
+                        </button>
+                      </div>
+                    ) : (
+                      <div style={{ background: '#111', padding: '15px', borderRadius: '10px', border: '1px solid #ffd700' }}>
+                        <p style={{ color: '#ff4d4d', fontSize: '12px', fontWeight: 'bold', margin: '0 0 10px 0' }}>⚠️ NEVER SHARE THIS PHRASE</p>
+                        <code style={{ color: '#4ade80', fontSize: '11px', wordBreak: 'break-all', display: 'block', marginBottom: '15px', padding: '10px', background: '#000', borderRadius: '5px' }}>
+                          {localStorage.getItem(`wallet_secret_${tgUser.id}`) || "Phrase not found on device."}
+                        </code>
+                        <button 
+                          onClick={() => {
+                            navigator.clipboard.writeText(localStorage.getItem(`wallet_secret_${tgUser.id}`));
+                            alert("Secret Phrase Copied!");
+                          }}
+                          style={{ width: '100%', background: '#333', color: '#fff', border: '1px solid #555', padding: '10px', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}
+                        >
+                          📋 Copy Phrase
+                        </button>
+                      </div>
+                    )}
+                    <button onClick={() => { setShowSettings(false); setIsRevealed(false); setWalletPwd(''); }} style={{ width: '100%', marginTop: '20px', background: 'none', color: '#888', border: 'none', cursor: 'pointer' }}>← Back to Balances</button>
+                  </div>
+                ) : (
+                  // --- DEFAULT BALANCES VIEW ---
+                  <>
+                    <p style={{ fontSize: '12px', color: '#888', marginBottom: '15px' }}>Wallet Balance.</p>
+                    <div style={{ marginTop: '10px' }}>
+                      {Object.entries(balances).map(([key, value]) => (
+                        <div key={key} style={styles.balanceRow}>
+                          <span style={{ textTransform: 'uppercase', color: '#888', fontSize: '12px' }}>{key}:</span>
+                          <span style={{ fontWeight: 'bold' }}>
+                            {key === 'GFTshards' ? value.toLocaleString() : value.toFixed(4)}
+                          </span>
+                        </div>
+                      ))}
                     </div>
-                  ))}
-                </div>
-                <div style={styles.actionRow}>
-                  <button style={{ ...styles.actionBtn }} 
-                  onClick={() => { setIsModalOpen(false); setIsReceiveOpen(true); }}
-                  >Receive</button>
-                  <button style={styles.actionBtn}
-                  onClick={() => { setIsModalOpen(false); setIsWithdrawOpen(true); }}
-                  >Send</button>
-                  <button style={styles.actionBtn}
-                  onClick={() => { setIsModalOpen(false); setIsSwapOpen(true); }}
-                  >Swap</button>
-                </div>
-                <button onClick={() => setIsModalOpen(false)} style={styles.closeBtn}>Close</button>
+                    <div style={styles.actionRow}>
+                      <button style={styles.actionBtn} onClick={() => { setIsModalOpen(false); setIsReceiveOpen(true); }}>Receive</button>
+                      <button style={styles.actionBtn} onClick={() => { setIsModalOpen(false); setIsWithdrawOpen(true); }}>Send</button>
+                      <button style={styles.actionBtn} onClick={() => { setIsModalOpen(false); setIsSwapOpen(true); }}>Swap</button>
+                    </div>
+                  </>
+                )}
               </div>
             </div>
           )}
@@ -814,7 +847,7 @@ const GiftTapGame = () => {
                   </div>
 
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#fbef43', marginTop: '5px' }}>
-                    <span>Gift Launch Support</span>
+                    <span>Project fee</span>
                     <span>- {(transactionCosts.projectFee || 0.0005).toFixed(4)} SOL</span>
                   </div>
                   <div style={{ borderTop: '1px solid #333', marginTop: '10px', paddingTop: '10px', display: 'flex', justifyContent: 'space-between', fontWeight: 'bold' }}>
