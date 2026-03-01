@@ -5,7 +5,6 @@ import { getAssociatedTokenAddressSync } from '@solana/spl-token';
 import BetaGate from './BetaGate';
 import Upgrades from './Upgrades';
 import Tasks from './Tasks';
-import { Keypair } from "@solana/web3.js";
 import bs58 from "bs58";
 
 const GiftTapGame = () => {
