@@ -446,7 +446,7 @@ const GiftTapGame = () => {
       }, { onConflict: 'telegram_id' })
           .select();
 
-      if (error) {
+      if (upsertError) {
           console.error("❌ SYNC ERROR:", error.message);
       } else {
           console.log("✅ Sync Successful for ID:", tgUser.id, data);
