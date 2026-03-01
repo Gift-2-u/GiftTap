@@ -231,35 +231,40 @@ const GiftTapGame = () => {
         .update({ is_used: true, used_by: userId })
         .eq('code', inputCode);
 
-      // 3. Create the wallet via Edge Function
-      const { data: newWallet, error: invokeError } = await supabase.functions.invoke('create-user-wallet', {
-        body: { telegram_id: userId, username: userName }
+      // 3. EXACT SAME FETCH AS SYNCPLAYER (This guarantees the Secret Phrase)
+      const response = await fetch('https://ncwlbwzxfpcnxkyrmdck.supabase.co/functions/v1/create-user-wallet', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
+        },
+        body: JSON.stringify({ telegram_id: userId, username: userName })
       });
 
-      if (invokeError) throw new Error(invokeError.message);
+      const newWallet = await response.json();
 
-      // AGGRESSIVELY CATCH THE DATA (Fixes the missing phrase bug)
-      const secret = newWallet?.secretKey || newWallet?.data?.secretKey;
-      const publicK = newWallet?.publicKey || newWallet?.data?.publicKey;
+      if (newWallet && newWallet.publicKey) {
+        // 4. Save Secret Silently (No Popup yet, just storing it for the Wallet Modal)
+        if (newWallet.secretKey) {
+          localStorage.setItem(`wallet_secret_${userId}`, newWallet.secretKey);
+          console.log("✅ Secret phrase successfully caught and saved!");
+        } else {
+          console.error("❌ Edge Function returned no Secret Key!", newWallet);
+        }
 
-      if (secret) {
-        // Save silently to the phone for the Wallet Modal to use later
-        localStorage.setItem(`wallet_secret_${userId}`, secret);
-      } else {
-        console.error("⚠️ Edge Function did not return the secret key!");
+        // 5. Update game state to enter the game
+        setPlayerWallet(newWallet.publicKey);
+        setBalance(0);
+        setEnergy(500);
+        setHasAccess(true);
+        setIsDataLoaded(true);
       }
-
-      // 3. Force entry into the game (Stops the "Hanging")
-      setPlayerWallet(publicK);
-      setBalance(0);
-      setEnergy(500);
-      setHasAccess(true);
-      setIsDataLoaded(true);
-
     } catch (err) {
       console.error("Init Error:", err);
+      alert("Error during initialization.");
     } finally {
-      setIsLoading(false); // Guarantees the loading screen disappears
+      setIsLoading(false);
+    }(false); // Guarantees the loading screen disappears
     }
   };
 
