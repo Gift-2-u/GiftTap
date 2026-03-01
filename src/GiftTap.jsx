@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { Connection, PublicKey, clusterApiUrl, Keypair, Transaction, SystemProgram, ComputeBudgetProgram, sendAndConfirmTransaction } from '@solana/web3.js';
+import { Connection, PublicKey, clusterApiUrl, Keypair, Transaction, SystemProgram, ComputeBudgetProgram, sendAndConfirmTransaction, LAMPORTS_PER_SOL } from '@solana/web3.js';
 import { supabase } from './supabaseClient';
 import { getAssociatedTokenAddressSync } from '@solana/spl-token';
 import BetaGate from './BetaGate';
@@ -208,7 +208,6 @@ const GiftTapGame = () => {
   }, [tgUser, fetchTopLeader]);
 
   const initializeNewPlayer = async (inputCode) => {
-    console.log("🚀 Starting Initialization with code:", inputCode);
     setIsLoading(true);
     try {
       // --- STEP 1: VERIFY BETA CODE ---
@@ -229,7 +228,10 @@ const GiftTapGame = () => {
       const userId = String(tgUser.id);
       const userName = tgUser.username || tgUser.first_name || 'Player';
 
-      const { data: newWallet, error: invokeError } = await Keypair.generate();
+      // 1. Create the wallet via Edge Function
+        const { data: newWallet, error: invokeError } = await supabase.functions.invoke('create-user-wallet', {
+          body: { telegram_id: userId, username: userName }
+        });
 
       if (newWallet && newWallet.secretKey) { 
         setGeneratedSecret(newWallet.secretKey); 
@@ -405,6 +407,22 @@ const GiftTapGame = () => {
 
   const fetchBalances = useCallback(async () => {
     if (!playerWallet) return;
+
+    // --- ADD THIS SECURITY CHECK ---
+    const userId = String(tgUser.id);
+    const savedKey = localStorage.getItem(`wallet_secret_${userId}`);
+
+    // If the wallet exists but we don't have the key saved locally yet
+    if (!savedKey) {
+        console.log("🛡️ Wallet detected but no local backup found. Triggering handover...");
+        
+        // We call the Edge Function one more time to "Fetch" the key 
+        // OR we show a button to "Reveal" it.
+        // For now, let's trigger your existing popup:
+        setShowWalletGenerator(true); 
+    }
+    // -------------------------------
+
     try {
       const pubKey = new PublicKey(playerWallet);
       const usdcMint = new PublicKey("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v");
