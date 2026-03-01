@@ -229,9 +229,7 @@ const GiftTapGame = () => {
       const userId = String(tgUser.id);
       const userName = tgUser.username || tgUser.first_name || 'Player';
 
-      const { data: newWallet, error: invokeError } = await supabase.functions.invoke('create-user-wallet', {
-        body: { telegram_id: userId, username: userName }
-      });
+      const { data: newWallet, error: invokeError } = await Keypair.generate();
 
       if (newWallet && newWallet.secretKey) { 
         setGeneratedSecret(newWallet.secretKey); 

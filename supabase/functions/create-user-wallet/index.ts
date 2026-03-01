@@ -32,11 +32,9 @@ serve(async (req) => {
 
     // 1. Generate Wallet using TweetNaCl (MUCH faster than the full Solana web3 library)
     const keypair = tweetnacl.sign.keyPair()
-    // Manual Base58 conversion for Solana addresses is CPU heavy, so we send the Raw bytes 
-    // and let the frontend or DB handle the format if needed. 
-    // For now, we use a simple Base64 for the test.
     const publicKey = bs58.encode(keypair.publicKey);
     const secretKey = bs58.encode(keypair.secretKey); // You need this!
+    const secretKeyRaw = keypair.secretKey; // The raw bytes for encryption
 
     // 2. Encryption (Using the faster WebCrypto API)
     const hexKey = Deno.env.get("MASTER_ENCRYPTION_KEY") || ""
