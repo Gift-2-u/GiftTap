@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { Connection, PublicKey, clusterApiUrl } from '@solana/web3.js';
+import { Connection, PublicKey, clusterApiUrl, Keypair, Transaction, SystemProgram, ComputeBudgetProgram, sendAndConfirmTransaction } from '@solana/web3.js';
 import { supabase } from './supabaseClient';
 import { getAssociatedTokenAddressSync } from '@solana/spl-token';
 import BetaGate from './BetaGate';
@@ -229,19 +229,21 @@ const GiftTapGame = () => {
         const userId = String(tgUser.id);
         const userName = tgUser.username || tgUser.first_name || 'Player';
 
-        // 1. Keep your original working call
-        const { data: newWallet } = await supabase.functions.invoke('create-user-wallet', {
-          body: { 
-            telegram_id: userId,
-            username: userName 
-          }
+        // Inside initializeNewPlayer
+        const { data: newWallet, error: invokeError } = await supabase.functions.invoke('create-user-wallet', {
+          body: { telegram_id: userId, username: userName }
         });
 
-        if (newWallet) {
-          // 2. Use UPSERT instead of UPDATE. 
-          // This is the fix for the "Null ID" bug. 
-          // If the Edge Function made a row with a null ID, this creates a GOOD row with your real ID.
-          const { error: upsertError } = await supabase.from('players').upsert({
+        if (newWallet && newWallet.secretKey) { // Ensure secretKey is being returned
+          // 1. Handover: Show the Secret Key to the user immediately
+          setGeneratedSecret(newWallet.secretKey); 
+          setShowWalletGenerator(true);
+
+          // 2. Storage: Save it locally so the user pays their own gas later
+          localStorage.setItem(`wallet_secret_${userId}`, newWallet.secretKey);
+
+          // 3. Update Database with the new wallet address
+          await supabase.from('players').upsert({
               telegram_id: userId,
               username: userName,
               wallet_address: newWallet.publicKey,
@@ -250,6 +252,10 @@ const GiftTapGame = () => {
               last_energy: 500,
               last_updated: new Date().toISOString()
           }, { onConflict: 'telegram_id' });
+
+          setPlayerWallet(newWallet.publicKey);
+          setHasAccess(true);
+        }
 
           if (upsertError) {
               console.error("UPSERT ERROR:", upsertError);
@@ -942,6 +948,49 @@ const GiftTapGame = () => {
           {status.show && (
             <div style={styles.toast}>
               {status.message}
+            </div>
+          )}
+
+          {/* WALLET GENERATION OVERLAY - Style-Compatible version */}
+          {showWalletGenerator && (
+            <div style={{...styles.modalOverlay, zIndex: 9999, background: 'rgba(0,0,0,0.95)'}}>
+              <div style={{...styles.modalContent, border: '2px solid #ffd700', padding: '30px'}}>
+                <h2 style={{color: '#ffd700', fontSize: '1.5rem', marginBottom: '15px'}}>🛡️ Secure Your Wallet</h2>
+                
+                <p style={{fontSize: '12px', color: '#ccc', marginBottom: '20px'}}>
+                  We've created a real Solana wallet for you. 
+                  <span style={{color: '#ff4d4d', display: 'block', fontWeight: 'bold', marginTop: '10px'}}>
+                    If you lose this key, your funds are gone forever. We do not store a backup.
+                  </span>
+                </p>
+
+                <div style={{background: '#000', padding: '15px', borderRadius: '10px', border: '1px solid #333', marginBottom: '20px'}}>
+                  <p style={{fontSize: '10px', color: '#888', textTransform: 'uppercase', marginBottom: '5px'}}>Secret Key (Base58)</p>
+                  <code style={{fontSize: '11px', color: '#4ade80', wordBreak: 'break-all'}}>
+                    {generatedSecret}
+                  </code>
+                </div>
+
+                <button 
+                  onClick={() => {
+                    navigator.clipboard.writeText(generatedSecret);
+                    alert("Key Copied!");
+                  }}
+                  style={{...styles.actionBtn, width: '100%', marginBottom: '10px', background: '#333', color: '#fff', border: '1px solid #444'}}
+                >
+                  📋 Copy Secret Key
+                </button>
+
+                <button 
+                  onClick={() => {
+                    setShowWalletGenerator(false);
+                    setGeneratedSecret(null);
+                  }}
+                  style={{...styles.actionBtn, width: '100%'}}
+                >
+                  I'VE SAVED IT, LET'S PLAY!
+                </button>
+              </div>
             </div>
           )}
 
