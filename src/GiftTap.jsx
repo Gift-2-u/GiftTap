@@ -209,77 +209,66 @@ const GiftTapGame = () => {
   }, [tgUser, fetchTopLeader]);
 
   const initializeNewPlayer = async (inputCode) => {
-      
-      try {
-        // --- STEP 1: VERIFY BETA CODE ---
-        const { data: codeData, error: codeError } = await supabase
-            .from('invite_codes')
-            .select('*')
-            .eq('code', inputCode)
-            .maybeSingle();
+    try {
+      // --- STEP 1: VERIFY BETA CODE ---
+      const { data: codeData, error: codeError } = await supabase
+        .from('invite_codes')
+        .select('*')
+        .eq('code', inputCode)
+        .maybeSingle();
 
-        if (codeError || !codeData) {
-            alert("❌ Invalid or already used code!");
-            setIsLoading(false);
-            return; // Stop here if code is bad
-        }
-
-        setIsLoading(true); // Show main loading screen
-
-        const userId = String(tgUser.id);
-        const userName = tgUser.username || tgUser.first_name || 'Player';
-
-        // Inside initializeNewPlayer
-        const { data: newWallet, error: invokeError } = await supabase.functions.invoke('create-user-wallet', {
-          body: { telegram_id: userId, username: userName }
-        });
-
-        if (newWallet && newWallet.secretKey) { // Ensure secretKey is being returned
-          // 1. Handover: Show the Secret Key to the user immediately
-          setGeneratedSecret(newWallet.secretKey); 
-          setShowWalletGenerator(true);
-
-          // 2. Storage: Save it locally so the user pays their own gas later
-          localStorage.setItem(`wallet_secret_${userId}`, newWallet.secretKey);
-
-          // 3. Update Database with the new wallet address
-          await supabase.from('players').upsert({
-              telegram_id: userId,
-              username: userName,
-              wallet_address: newWallet.publicKey,
-              has_beta_access: true,
-              shard_balance: 0,
-              last_energy: 500,
-              last_updated: new Date().toISOString()
-          }, { onConflict: 'telegram_id' });
-
-          setPlayerWallet(newWallet.publicKey);
-          setHasAccess(true);
-        }
-
-          if (upsertError) {
-              console.error("UPSERT ERROR:", upsertError);
-          }
-
-          // 3. Mark Code as Used (If you are using the Gate)
-          if (inputCode) {
-            await supabase
-              .from('invite_codes')
-              .update({ is_used: true, used_by: userId })
-              .eq('code', inputCode);
-          }
-
-          setPlayerWallet(newWallet.publicKey);
-          setBalance(0);
-          setEnergy(500);
-          setHasAccess(true);
-          setIsDataLoaded(true);
-        }
-      } catch (err) {
-        console.error("Init Error:", err);
-      } finally {
+      if (codeError || !codeData) {
+        alert("❌ Invalid or already used code!");
         setIsLoading(false);
+        return; 
       }
+
+      setIsLoading(true);
+
+      const userId = String(tgUser.id);
+      const userName = tgUser.username || tgUser.first_name || 'Player';
+
+      const { data: newWallet, error: invokeError } = await supabase.functions.invoke('create-user-wallet', {
+        body: { telegram_id: userId, username: userName }
+      });
+
+      if (newWallet && newWallet.secretKey) { 
+        setGeneratedSecret(newWallet.secretKey); 
+        setShowWalletGenerator(true);
+        localStorage.setItem(`wallet_secret_${userId}`, newWallet.secretKey);
+
+        const { error: upsertError } = await supabase.from('players').upsert({
+            telegram_id: userId,
+            username: userName,
+            wallet_address: newWallet.publicKey,
+            has_beta_access: true,
+            shard_balance: 0,
+            last_energy: 500,
+            last_updated: new Date().toISOString()
+        }, { onConflict: 'telegram_id' });
+
+        if (upsertError) {
+            console.error("UPSERT ERROR:", upsertError);
+        }
+
+        if (inputCode) {
+          await supabase
+            .from('invite_codes')
+            .update({ is_used: true, used_by: userId })
+            .eq('code', inputCode);
+        }
+
+        setPlayerWallet(newWallet.publicKey);
+        setBalance(0);
+        setEnergy(500);
+        setHasAccess(true);
+        setIsDataLoaded(true);
+      } // <--- This was closing the "if", but you had an extra one after it.
+    } catch (err) {
+      console.error("Init Error:", err);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   // 5. EFFECTS
