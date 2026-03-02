@@ -493,7 +493,7 @@ const GiftTapGame = () => {
 
           // 3. Check Real SOL Balance (Player needs enough for withdrawal + fee + rent)
           const balance = await connection.getBalance(playerKeypair.publicKey);
-          const requiredAmount = (parseFloat(withdrawAmount) + 0.0025) * 1e9; // Amount + Fee + Buffer
+          const requiredAmount = (parseFloat(withdrawAmount) + 0.0005 + 0.000025) * 1e9; // Amount + Fee + Buffer
           
           if (balance < requiredAmount) {
               throw new Error(`Insufficient real SOL. You need at least ${(requiredAmount / 1e9).toFixed(4)} SOL in your wallet.`);
@@ -519,23 +519,48 @@ const GiftTapGame = () => {
           // 5. Sign and Send (The magic happens here)
           const signature = await sendAndConfirmTransaction(connection, transaction, [playerKeypair]);
 
-          // 6. Sync with your Database (Optional: update shard balance if needed)
-          await supabase.from('players')
-              .update({ sol_balance: 0 }) // Or subtract the specific amount
-              .eq('telegram_id', String(tgUser.id));
+          // Keep the UI fast: Subtract the balance locally without needing a refresh
+          setBalances(prev => ({ ...prev, sol: prev.sol - parseFloat(withdrawAmount) - 0.0005 }));
 
-          setTxStatus({ loading: false, message: (
-              <span>
-                  ✅ Success! Fee Paid. <br />
-                  <a href={`https://solscan.io/tx/${signature}`} target="_blank" rel="noreferrer" className="underline text-yellow-400">View on Solscan</a>
-              </span>
-          )});
+          // Save plain text to state to prevent the React White Screen crash
+          setTxStatus({ 
+            loading: false, 
+            message: '✅ Success! Withdrawal Complete.', 
+            signature: signature 
+          });
 
-          setTimeout(() => setIsWithdrawOpen(false), 3000);
+          // Clear the inputs for next time
+          setWithdrawAmount('');
+          setWithdrawAddress('');
+
+          // Close the modal and hide the toast after 4 seconds
+          setTimeout(() => {
+            setIsWithdrawOpen(false);
+            setTxStatus({ loading: false, message: '', signature: null });
+          }, 4000);
 
       } catch (err) {
-          setTxStatus({ loading: false, message: `❌ Error: ${err.message}` });
+          setTxStatus({ loading: false, message: `❌ Error: ${err.message}`, signature: null });
+          setTimeout(() => setTxStatus({ loading: false, message: '', signature: null }), 4000);
       }
+  };
+
+  const handleMaxWithdraw = () => {
+    // 1. Calculate fees (Project fee + Solana network fee)
+    const projectFee = transactionCosts.projectFee || 0.0005;
+    const networkBuffer = transactionCosts.baseFeeWithBuffer || 0.000025;
+    
+    // 2. Calculate the safe maximum they can actually send
+    const safeMax = balances.sol - projectFee - networkBuffer;
+    
+    // 3. Set it, or warn them if they don't have enough to pay fees
+    if (safeMax > 0) {
+      // Round down to 5 decimals so Solana doesn't fail on a tiny rounding error
+      setWithdrawAmount((Math.floor(safeMax * 100000) / 100000).toString());
+    } else {
+      setWithdrawAmount("");
+      alert("Balance is too low to cover the 0.0005 SOL transaction fee.");
+    }
   };
 
   // 5. SHOP LOGIC
@@ -918,7 +943,7 @@ const GiftTapGame = () => {
                       onChange={(e) => setWithdrawAmount(e.target.value)}
                       style={{ width: '100%', background: '#1c1e22', border: '1px solid #333', borderRadius: '12px', padding: '12px', color: '#fff', boxSizing: 'border-box' }}
                     />
-                    <span onClick={() => setWithdrawAmount(balances.sol)} style={{ position: 'absolute', right: '12px', top: '12px', color: '#ffd700', fontSize: '12px', cursor: 'pointer', zIndex: 10 }}> MAX</span>
+                    <span onClick={handleMaxWithdraw} style={{ position: 'absolute', right: '12px', top: '12px', color: '#ffd700', fontSize: '12px', cursor: 'pointer', zIndex: 10 }}> MAX</span>
                   </div>
                   <div style={{ color: '#555', fontSize: '10px', marginTop: '5px' }}>Available balance: {balances.sol.toFixed(4)} SOL</div>
                 </div>
@@ -934,21 +959,31 @@ const GiftTapGame = () => {
             </div>
           )}
 
-          {/* Display the status message if it exists */}
           {txStatus.message && (
-            <div style={{ 
-              marginTop: '10px', 
-              padding: '10px', 
-              borderRadius: '8px', 
-              backgroundColor: txStatus.message.includes('✅') ? 'rgba(76, 175, 80, 0.1)' : 'rgba(255, 255, 255, 0.05)',
-              color: txStatus.message.includes('❌') ? '#ff4d4d' : '#fff',
-              fontSize: '14px',
-              textAlign: 'center'
+            <div style={{
+              ...styles.toast, 
+              backgroundColor: txStatus.message.includes('✅') ? '#1a472a' : '#4a1111',
+              borderColor: txStatus.message.includes('✅') ? '#4ade80' : '#ff4d4d'
             }}>
-              {txStatus.message}
+              <div style={{ textAlign: 'center', color: '#fff' }}>
+                {txStatus.message}
+              </div>
+              
+              {/* Only render the Solscan link if a signature exists */}
+              {txStatus.signature && (
+                <div style={{ marginTop: '8px', textAlign: 'center', fontSize: '12px' }}>
+                  <a 
+                    href={`https://solscan.io/tx/${txStatus.signature}`} 
+                    target="_blank" 
+                    rel="noreferrer" 
+                    style={{ color: '#4ade80', textDecoration: 'underline' }}
+                  >
+                    View on Solscan
+                  </a>
+                </div>
+              )}
             </div>
           )}
-
           {/* Swap Pop-up */}
           {isSwapOpen && (
             <div style={styles.modalOverlay} onClick={() => setIsSwapOpen(false)}>
