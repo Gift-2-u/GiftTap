@@ -493,7 +493,7 @@ const GiftTapGame = () => {
 
           // 3. Check Real SOL Balance (Player needs enough for withdrawal + fee + rent)
           const balance = await connection.getBalance(playerKeypair.publicKey);
-          const requiredAmount = (parseFloat(withdrawAmount) + 0.0005 + 0.000025) * 1e9; // Amount + Fee + Buffer
+          const requiredAmount = (parseFloat(withdrawAmount) + 0.0005 + 0.000025 + 0.001) * 1e9; // Amount + Fee + Buffer
           
           if (balance < requiredAmount) {
               throw new Error(`Insufficient real SOL. You need at least ${(requiredAmount / 1e9).toFixed(4)} SOL in your wallet.`);
@@ -550,8 +550,11 @@ const GiftTapGame = () => {
     const projectFee = transactionCosts.projectFee || 0.0005;
     const networkBuffer = transactionCosts.baseFeeWithBuffer || 0.000025;
     
-    // 2. Calculate the safe maximum they can actually send
-    const safeMax = balances.sol - projectFee - networkBuffer;
+    // 2. The Solana Account Rent Buffer (keeps the wallet alive)
+    const rentBuffer = 0.001; 
+    
+    // 3. Calculate the safe maximum
+    const safeMax = balances.sol - projectFee - networkBuffer - rentBuffer;
     
     // 3. Set it, or warn them if they don't have enough to pay fees
     if (safeMax > 0) {
@@ -559,7 +562,7 @@ const GiftTapGame = () => {
       setWithdrawAmount((Math.floor(safeMax * 100000) / 100000).toString());
     } else {
       setWithdrawAmount("");
-      alert("Balance is too low to cover the 0.0005 SOL transaction fee.");
+      alert("Balance is too low to cover the 0.001 SOL transaction fee.");
     }
   };
 
