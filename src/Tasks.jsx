@@ -23,7 +23,7 @@ const Tasks = ({ balance, setBalance, tgUser }) => {
         .single();
 
       if (!error && data) {
-        setCompletedTasks(data.completed_tasks || []);
+        etCompletedTasks(Array.isArray(data.completed_tasks) ? data.completed_tasks : []);
       }
       setLoadingTasks(false);
     };
