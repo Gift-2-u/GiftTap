@@ -119,7 +119,15 @@ const Tasks = ({ balance, setBalance, tgUser }) => {
             }}>
               
               <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
-                <div style={{ fontSize: '24px', filter: isLocked ? 'grayscale(100%)' : 'none' }}>{isLocked ? '🔒' : task.icon}</div>
+                <div style={{ fontSize: '28px', display: 'flex', alignItems: 'center', filter: isLocked ? 'grayscale(100%)' : 'none' }}>
+                  {isLocked ? '🔒' : (
+                    task.icon.includes('.') || task.icon.includes('http') ? (
+                      <img src={task.icon} alt="icon" style={{ width: '32px', height: '32px', objectFit: 'contain' }} />
+                    ) : (
+                      task.icon
+                    )
+                  )}
+                </div>
                 <div style={{ textAlign: 'left' }}>
                   <div style={{ color: '#fff', fontWeight: 'bold', fontSize: '14px' }}>{task.title}</div>
                   <div style={{ color: '#ffd700', fontSize: '12px', marginTop: '4px' }}>
