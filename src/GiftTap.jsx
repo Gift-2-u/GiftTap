@@ -459,7 +459,7 @@ const GiftTapGame = () => {
       });
 
       /// 3. --- PASTE THE UPSERT CODE HERE ---
-      await supabase.from('players').upsert({
+      const { error: upsertError } = await supabase.from('players').upsert({
         telegram_id: String(tgUser.id),
         wallet_address: playerWallet, // Add this line to fix the error!
         sol_balance: realSol,

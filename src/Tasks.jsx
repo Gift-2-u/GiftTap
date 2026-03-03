@@ -7,17 +7,17 @@ const Tasks = ({ balance, setBalance, tgUser }) => {
   const [loadingTasks, setLoadingTasks] = useState(true);
   // NEW: State to track player's real progression stats
   const [playerStats, setPlayerStats] = useState({ streak: 0, purchased: false });
-  const currentLevel = balance < 25000 ? 1 : balance < 100000 ? 2 : balance < 500000 ? 3 : 4;
+  const currentLevel = balance < 500 ? 1 : balance < 1500 ? 5 : balance < 5000 ? 10 : 20;
 
-  const taskList = [
+  const TASK_LIST = [
     { id: 'sub_tg', name: 'Join telegram', reward: 250, link: 'https://t.me/Gift2u_GiftTap_official', icon: 'https://upload.wikimedia.org/wikipedia/commons/8/82/Telegram_logo.svg', reqLevel: 1, type: 'social' },
     { id: 'follow_x', name: 'Follow us on X', reward: 250, link: 'https://x.com/gift2utoken', icon: '/logo-white.png', reqLevel: 1, type: 'social' },
     // Streak Tasks (Type: streak)
-    { id: 'streak_7', title: 'Tap 7 Days in a Row', reward: 25000, icon: '🔥', reqLevel: 1, type: 'streak', target: 7 },
-    { id: 'streak_14', title: 'Tap 14 Days in a Row', reward: 100000, icon: '🔥', reqLevel: 2, type: 'streak', target: 14 },
-    { id: 'streak_30', title: 'Tap 30 Days in a Row', reward: 500000, icon: '🔥', reqLevel: 3, type: 'streak', target: 30 }, 
+    { id: 'streak_7', title: 'Tap 7 Days in a Row', reward: 500, icon: '🔥', reqLevel: 1, type: 'streak', target: 7 },
+    { id: 'streak_14', title: 'Tap 14 Days in a Row', reward: 1500, icon: '🔥', reqLevel: 2, type: 'streak', target: 14 },
+    { id: 'streak_30', title: 'Tap 30 Days in a Row', reward: 5000, icon: '🔥', reqLevel: 3, type: 'streak', target: 30 }, 
     // Purchase Task (Type: purchase)
-    { id: 'first_purchase', title: 'Make an In-App Purchase', reward: 250000, icon: '🛍️', reqLevel: 1, type: 'purchase' }
+    { id: 'first_purchase', title: 'Make an In-App Purchase', reward: 2500, icon: '🛍️', reqLevel: 1, type: 'purchase' }
   ];
 
   // 1. Load completed tasks from Supabase when the page opens
