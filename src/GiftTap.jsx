@@ -58,6 +58,7 @@ const GiftTapGame = () => {
   const [isLeaderboardOpen, setIsLeaderboardOpen] = useState(false);
   const [hasAccess, setHasAccess] = useState(false);
   const [dailyTaps, setDailyTaps] = useState(0);
+  const [streak, setStreak] = useState(0);
   const [lastTapDate, setLastTapDate] = useState(new Date().toISOString().split('T')[0]);
   const [isPressed, setIsPressed] = useState(false);
   const [isShopOpen, setIsShopOpen] = useState(false);
@@ -157,6 +158,7 @@ const GiftTapGame = () => {
         } else {
           setDailyTaps(player.daily_taps || 0);
           setLastTapDate(player.last_tap_date);
+          setStreak(player.current_streak || 0);
         }
           
         // Energy Recovery Logic
@@ -281,7 +283,7 @@ const GiftTapGame = () => {
   }, []);
 
   // 6. SAVE PROGRESS
-  const saveToDatabase = async (b, e, dt, ltd) => {
+  const saveToDatabase = async (b, e, dt, ltd, strk) => {
     // 1. Don't save if we don't have a valid user ID
     if (!tgUser?.id || tgUser.id === "test_local_user") return;
 
@@ -296,25 +298,45 @@ const GiftTapGame = () => {
         last_energy: e,
         daily_taps: dt, // Make sure these columns exist in Supabase!
         last_tap_date: ltd,
+        current_streak: strk, // <--- Now it saves the streak!
         last_updated: new Date().toISOString()
       }, { onConflict: 'telegram_id' });
 
       if (error) {
-        await supabase.from('players').update({ shard_balance: b, last_energy: e }).eq('wallet_address', playerWallet);
+        await supabase.from('players').update({ shard_balance: b, last_energy: e, current_streak: strk }).eq('wallet_address', playerWallet);
       }
     }, 800); // Slightly faster save
   };
 
   const handleTap = (e) => {
-    const today = new Date().toISOString().split('T')[0];
+    // 1. Get today's and yesterday's exact dates
+    const todayObj = new Date();
+    const today = todayObj.toISOString().split('T')[0];
   
     // 1. Reset logic if it's a new day
     let currentDailyTaps = dailyTaps;
+    let currentStreak = streak === 0 ? 1 : streak; // If it's their very first tap ever, Day 1!
+
+    // 2. Did they cross into a new day?
     if (lastTapDate !== today) {
+      const yesterdayObj = new Date();
+      yesterdayObj.setDate(yesterdayObj.getDate() - 1);
+      const yesterday = yesterdayObj.toISOString().split('T')[0];
+
+      // 3. STREAK LOGIC
+      if (lastTapDate === yesterday) {
+        currentStreak += 1; // They tapped yesterday, streak continues!
+      } else if (lastTapDate < yesterday) {
+        currentStreak = 1; // They missed a day, streak broken!
+      }
+
       currentDailyTaps = 0;
       setDailyTaps(0);
       setLastTapDate(today);
-      saveToDatabase(balance, energy, 0, today);
+      setStreak(currentStreak);
+      
+      // Save the day-reset instantly
+      saveToDatabase(balance, energy, 0, today, currentStreak);
     }
 
     // 2. CHECK LIMIT (1000)
@@ -335,7 +357,7 @@ const GiftTapGame = () => {
     setBalance(nextBalance);
     setEnergy(nextEnergy);
     setDailyTaps(nextDaily);
-    saveToDatabase(nextBalance, nextEnergy, nextDaily, today);
+    saveToDatabase(nextBalance, nextEnergy, nextDaily, today, currentStreak);
     
     const id = Date.now();
     setTaps(t => [...t, { id, x: e.clientX, y: e.clientY }]);
