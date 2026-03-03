@@ -10,8 +10,8 @@ const Tasks = ({ balance, setBalance, tgUser }) => {
   const currentLevel = balance < 500 ? 1 : balance < 1500 ? 5 : balance < 5000 ? 10 : 20;
 
   const TASK_LIST = [
-    { id: 'sub_tg', name: 'Join telegram', reward: 250, link: 'https://t.me/Gift2u_GiftTap_official', icon: 'https://upload.wikimedia.org/wikipedia/commons/8/82/Telegram_logo.svg', reqLevel: 1, type: 'social' },
-    { id: 'follow_x', name: 'Follow us on X', reward: 250, link: 'https://x.com/gift2utoken', icon: '/logo-white.png', reqLevel: 1, type: 'social' },
+    { id: 'sub_tg', title: 'Join telegram', reward: 250, link: 'https://t.me/Gift2u_GiftTap_official', icon: 'https://upload.wikimedia.org/wikipedia/commons/8/82/Telegram_logo.svg', reqLevel: 1, type: 'social' },
+    { id: 'follow_x', title: 'Follow us on X', reward: 250, link: 'https://x.com/gift2utoken', icon: '/logo-white.png', reqLevel: 1, type: 'social' },
     // Streak Tasks (Type: streak)
     { id: 'streak_7', title: 'Tap 7 Days in a Row', reward: 500, icon: '🔥', reqLevel: 1, type: 'streak', target: 7 },
     { id: 'streak_14', title: 'Tap 14 Days in a Row', reward: 1500, icon: '🔥', reqLevel: 2, type: 'streak', target: 14 },
