@@ -304,7 +304,9 @@ const GiftTapGame = () => {
       .eq('telegram_id', String(tgUser.id)); // Match their specific row
 
       if (error) {
-        await supabase.from('players').update({ shard_balance: b, last_energy: e, current_streak: strk });
+      console.error("🔴 SUPABASE UPDATE FAILED:", error.message);
+      } else {
+         console.log("✅ SAVE SUCCESSFUL! Streaks and Dates updated.");
       }
     }, 800); // Slightly faster save
   };

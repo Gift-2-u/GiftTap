@@ -133,7 +133,7 @@ const Tasks = ({ balance, setBalance, tgUser }) => {
         )}
       </div>
 
-      <div style={{ flex: 1, overflowY: 'auto' }}>
+      <div style={{ flex: 1, overflowY: 'auto', paddingBottom: '120px' }}>
         {TASK_LIST.map((task) => {
           const isCompleted = safeCompletedTasks.includes(task.id);
           const isLocked = currentLevel < task.reqLevel;
