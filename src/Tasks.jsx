@@ -1,7 +1,15 @@
 import { useState, useEffect } from 'react';
 import { supabase } from './supabaseClient';
 
-// 1. Calculates their exact current level starting at 0
+const Tasks = ({ balance, setBalance, tgUser }) => {
+  const [completedTasks, setCompletedTasks] = useState([]);
+  const [readyToClaim, setReadyToClaim] = useState([]); // Tracks tasks that are waiting to be claimed
+  const [loadingTasks, setLoadingTasks] = useState(true);
+  // NEW: State to track player's real progression stats
+  const [playerStats, setPlayerStats] = useState({ streak: 0, purchased: false });
+
+  // --- NEW: THE TRUE LEVELING ENGINE ---
+  // 1. Calculates their exact current level starting at 0
   const calculateLevel = (taps) => {
     if (taps < 50000) return Math.floor(taps / 10000); // Lvl 0 to 4 (10k each)
     if (taps < 110000) return 5 + Math.floor((taps - 50000) / 12000); // Lvl 5 to 9 (12k each)
