@@ -315,7 +315,7 @@ const GiftTapGame = () => {
   
     // 1. Reset logic if it's a new day
     let currentDailyTaps = dailyTaps;
-    let currentStreak = streak;
+    let currentStreak = Math.max(1, streak); // Forces 0 to immediately become 1!
 
     // 2. Did they cross into a new day?
     if (lastTapDate !== today) {
