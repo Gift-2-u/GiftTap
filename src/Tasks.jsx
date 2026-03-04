@@ -1,24 +1,26 @@
 import { useState, useEffect } from 'react';
 import { supabase } from './supabaseClient';
 
-const Tasks = ({ balance, setBalance, tgUser }) => {
-  const [completedTasks, setCompletedTasks] = useState([]);
-  const [readyToClaim, setReadyToClaim] = useState([]); // Tracks tasks that are waiting to be claimed
-  const [loadingTasks, setLoadingTasks] = useState(true);
-  // NEW: State to track player's real progression stats
-  const [playerStats, setPlayerStats] = useState({ streak: 0, purchased: false });
-
-  // --- NEW: THE TRUE LEVELING ENGINE ---
-  // Calculates the player's exact level based on your custom tap brackets
+// 1. Calculates their exact current level starting at 0
   const calculateLevel = (taps) => {
-    if (taps < 50000) return Math.floor(taps / 10000) + 1; // Lv 1 to 4 (10k each)
-    if (taps < 110000) return 4 + Math.floor((taps - 40000) / 12000) + 1; // Lv 5 to 9 (12k each)
-    if (taps < 335000) return 9 + Math.floor((taps - 100000) / 15000) + 1; // Lv 10 to 24 (15k each)
-    if (taps < 835000) return 24 + Math.floor((taps - 325000) / 20000) + 1; // Lv 25 to 49 (20k each)
+    if (taps < 50000) return Math.floor(taps / 10000); // Lvl 0 to 4 (10k each)
+    if (taps < 110000) return 5 + Math.floor((taps - 50000) / 12000); // Lvl 5 to 9 (12k each)
+    if (taps < 335000) return 10 + Math.floor((taps - 110000) / 15000); // Lvl 10 to 24 (15k each)
+    if (taps < 835000) return 25 + Math.floor((taps - 335000) / 20000); // Lvl 25 to 49 (20k each)
     return 50; // Max level cap
   };
 
-  const currentLevel = calculateLevel(balance); // Using balance as 'total taps' for now
+  // 2. Automatically calculates the exact target for their NEXT level
+  const getNextLevelTarget = (level) => {
+    if (level < 5) return (level + 1) * 10000;
+    if (level < 10) return 50000 + ((level - 4) * 12000);
+    if (level < 25) return 110000 + ((level - 9) * 15000);
+    if (level < 50) return 335000 + ((level - 24) * 20000);
+    return null; // They hit max level!
+  };
+
+  const currentLevel = calculateLevel(balance); 
+  const nextTarget = getNextLevelTarget(currentLevel);
 
   const TASK_LIST = [
     { id: 'sub_tg', title: 'Join telegram', reward: 250, link: 'https://t.me/Gift2u_GiftTap_official', icon: 'https://upload.wikimedia.org/wikipedia/commons/8/82/Telegram_logo.svg', reqLevel: 1, type: 'social' },
@@ -106,8 +108,21 @@ const Tasks = ({ balance, setBalance, tgUser }) => {
       <div style={{ background: '#222', padding: '15px', borderRadius: '15px', marginBottom: '20px', border: '1px solid #ffd700', textAlign: 'center' }}>
         <h2 style={{ color: '#ffd700', margin: '0 0 5px 0', fontSize: '24px' }}>Level {currentLevel}</h2>
         <div style={{ color: '#888', fontSize: '12px' }}>
-          Total Shards Tapped: {balance.toLocaleString()}
+          {currentLevel < 50 
+            ? `Reach ${nextTarget.toLocaleString()} Shards for Level ${currentLevel + 1}` 
+            : '👑 MAX LEVEL ACHIEVED 👑'}
         </div>
+        
+        {/* Optional: A cool mini progress bar for the header */}
+        {currentLevel < 50 && (
+          <div style={{ width: '100%', background: '#000', borderRadius: '10px', height: '6px', marginTop: '10px', overflow: 'hidden' }}>
+            <div style={{ 
+              height: '100%', 
+              background: '#4ade80', 
+              width: `${(balance / nextTarget) * 100}%` 
+            }} />
+          </div>
+        )}
       </div>
 
       <div style={{ flex: 1, overflowY: 'auto' }}>
