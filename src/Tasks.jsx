@@ -102,12 +102,11 @@ const Tasks = ({ balance, setBalance, tgUser }) => {
   return (
     <div style={{ flex: 1, width: '100%', display: 'flex', flexDirection: 'column', padding: '20px', boxSizing: 'border-box' }}>
       
+      {/* BEAUTIFUL LEVEL HEADER */}
       <div style={{ background: '#222', padding: '15px', borderRadius: '15px', marginBottom: '20px', border: '1px solid #ffd700', textAlign: 'center' }}>
-        <h2 style={{ color: '#ffd700', margin: '0 0 5px 0' }}>Level {currentLevel}</h2>
+        <h2 style={{ color: '#ffd700', margin: '0 0 5px 0', fontSize: '24px' }}>Level {currentLevel}</h2>
         <div style={{ color: '#888', fontSize: '12px' }}>
-          {currentLevel === 1 ? 'Reach 25,000 Shards for Level 2' : 
-           currentLevel === 2 ? 'Reach 100,000 Shards for Level 3' : 
-           currentLevel === 3 ? 'Reach 500,000 Shards for Level 4' : 'MAX LEVEL ACHIEVED'}
+          Total Shards Tapped: {balance.toLocaleString()}
         </div>
       </div>
 
