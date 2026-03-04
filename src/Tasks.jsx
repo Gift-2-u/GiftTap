@@ -7,15 +7,32 @@ const Tasks = ({ balance, setBalance, tgUser }) => {
   const [loadingTasks, setLoadingTasks] = useState(true);
   // NEW: State to track player's real progression stats
   const [playerStats, setPlayerStats] = useState({ streak: 0, purchased: false });
-  const currentLevel = balance < 500 ? 1 : balance < 1500 ? 5 : balance < 5000 ? 10 : 20;
+
+  // --- NEW: THE TRUE LEVELING ENGINE ---
+  // Calculates the player's exact level based on your custom tap brackets
+  const calculateLevel = (taps) => {
+    if (taps < 50000) return Math.floor(taps / 10000) + 1; // Lv 1 to 4 (10k each)
+    if (taps < 110000) return 4 + Math.floor((taps - 40000) / 12000) + 1; // Lv 5 to 9 (12k each)
+    if (taps < 335000) return 9 + Math.floor((taps - 100000) / 15000) + 1; // Lv 10 to 24 (15k each)
+    if (taps < 835000) return 24 + Math.floor((taps - 325000) / 20000) + 1; // Lv 25 to 49 (20k each)
+    return 50; // Max level cap
+  };
+
+  const currentLevel = calculateLevel(balance); // Using balance as 'total taps' for now
 
   const TASK_LIST = [
     { id: 'sub_tg', title: 'Join telegram', reward: 250, link: 'https://t.me/Gift2u_GiftTap_official', icon: 'https://upload.wikimedia.org/wikipedia/commons/8/82/Telegram_logo.svg', reqLevel: 1, type: 'social' },
     { id: 'follow_x', title: 'Follow us on X', reward: 250, link: 'https://x.com/gift2utoken', icon: '/logo-white.png', reqLevel: 1, type: 'social' },
+    // NEW: Level Milestone Tasks
+    { id: 'reach_lvl_1', title: 'Reach Level 1', reward: 1000, icon: '⭐', type: 'level', target: 1 },
+    { id: 'reach_lvl_5', title: 'Reach Level 5', reward: 5000, icon: '⭐', reqLevel: 1, type: 'level', target: 5 },
+    { id: 'reach_lvl_10', title: 'Reach Level 10', reward: 35000, icon: '🌟', reqLevel: 5, type: 'level', target: 10 },
+    { id: 'reach_lvl_20', title: 'Reach Level 20', reward: 100000, icon: '🏆', reqLevel: 10, type: 'level', target: 20 },
+    { id: 'reach_lvl_50', title: 'Reach Level 50', reward: 150000, icon: '👑', reqLevel: 20, type: 'level', target: 50 },
     // Streak Tasks (Type: streak)
-    { id: 'streak_7', title: 'Tap 7 Days in a Row', reward: 500, icon: '🔥', reqLevel: 1, type: 'streak', target: 7 },
-    { id: 'streak_14', title: 'Tap 14 Days in a Row', reward: 1500, icon: '🔥', reqLevel: 2, type: 'streak', target: 14 },
-    { id: 'streak_30', title: 'Tap 30 Days in a Row', reward: 5000, icon: '🔥', reqLevel: 3, type: 'streak', target: 30 }, 
+    { id: 'streak_7', title: 'Tap 7 Days in a Row', reward: 750, icon: '🔥', reqLevel: 1, type: 'streak', target: 7 },
+    { id: 'streak_14', title: 'Tap 14 Days in a Row', reward: 2000, icon: '🔥', reqLevel: 1, type: 'streak', target: 14 },
+    { id: 'streak_30', title: 'Tap 30 Days in a Row', reward: 5000, icon: '🔥', reqLevel: 1, type: 'streak', target: 30 }, 
     // Purchase Task (Type: purchase)
     { id: 'first_purchase', title: 'Make an In-App Purchase', reward: 2500, icon: '🛍️', reqLevel: 1, type: 'purchase' }
   ];
