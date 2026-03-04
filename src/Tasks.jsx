@@ -110,7 +110,7 @@ const Tasks = ({ balance, setBalance, tgUser }) => {
 
   const safeCompletedTasks = Array.isArray(completedTasks) ? completedTasks : [];
   return (
-    <div style={{ flex: 1, width: '100%', display: 'flex', flexDirection: 'column', padding: '20px', boxSizing: 'border-box' }}>
+    <div style={{ flex: 1, width: '100%', display: 'flex', flexDirection: 'column', paddingBottom: '100px', padding: '20px', boxSizing: 'border-box' }}>
       
       {/* BEAUTIFUL LEVEL HEADER */}
       <div style={{ background: '#222', padding: '15px', borderRadius: '15px', marginBottom: '20px', border: '1px solid #ffd700', textAlign: 'center' }}>
