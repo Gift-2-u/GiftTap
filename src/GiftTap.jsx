@@ -290,7 +290,7 @@ const GiftTapGame = () => {
     clearTimeout(window.saveTimeout);
 
     window.saveTimeout = setTimeout(async () => {
-      const { error } = await supabase.from('players').upsert({
+      const { error } = await supabase.from('players').update({
         telegram_id: String(tgUser.id),
         username: tgUser.username || tgUser.first_name,
         shard_balance: b,
@@ -300,10 +300,11 @@ const GiftTapGame = () => {
         last_tap_date: ltd,
         current_streak: strk, // <--- Now it saves the streak!
         last_updated: new Date().toISOString()
-      }, { onConflict: 'telegram_id' });
+      })
+      .eq('telegram_id', String(tgUser.id)); // Match their specific row
 
       if (error) {
-        await supabase.from('players').update({ shard_balance: b, last_energy: e, current_streak: strk }).eq('wallet_address', playerWallet);
+        await supabase.from('players').update({ shard_balance: b, last_energy: e, current_streak: strk });
       }
     }, 800); // Slightly faster save
   };
