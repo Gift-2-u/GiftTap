@@ -10,14 +10,17 @@ const Marketplace = ({ balance, setBalance, tapPower = 1, setTapPower, maxEnergy
   const energyLevel = ((maxEnergy - 500) / 500) + 1; 
   const energyCost = energyLevel * 2000;
 
-  // --- P2P MARKET DATA ---
+  // --- P2P MARKET DATA (THE ELF ECOSYSTEM) ---
   const listings = [
-    { id: 1, name: "Neon Drone", type: "Bots", rarity: "Epic", boost: "+500/hr", price: 0.15, currency: "SOL", image: "🤖" },
-    { id: 2, name: "Gold Gloves", type: "Gloves", rarity: "Rare", boost: "+5/Tap", price: 25000, currency: "GFT", image: "🧤" },
-    { id: 3, name: "Silk Ribbon", type: "Misc", rarity: "Legendary", boost: "10% Crit", price: 150000, currency: "GFT", image: "🎀" },
-    { id: 4, name: "Rusty Bot", type: "Bots", rarity: "Common", boost: "+50/hr", price: 0.02, currency: "SOL", image: "⚙️" },
-    { id: 5, name: "Bronze Tap", type: "Gloves", rarity: "Uncommon", boost: "+2/Tap", price: 5000, currency: "GFT", image: "🦾" }
+    { id: 1, name: "Nightfall Scout", type: "Bots", rarity: "Epic", boost: "+500/hr", price: 0.15, currency: "SOL", image: "🧝‍♂️" },
+    { id: 2, name: "Magma Smith", type: "Power", rarity: "Rare", boost: "+5/Tap", price: 25000, currency: "GFT", image: "🗡️" },
+    { id: 3, name: "Crystal Channeler", type: "Energy", rarity: "Uncommon", boost: "+2000 Energy", price: 0.05, currency: "SOL", image: "🔮" },
+    { id: 4, name: "Void Walker", type: "Bots", rarity: "Legendary", boost: "+2500/hr", price: 1.2, currency: "SOL", image: "🥷" },
+    { id: 5, name: "Oracle of Chance", type: "Luck", rarity: "Legendary", boost: "10% Crit", price: 150000, currency: "GFT", image: "🎲" }
   ];
+
+  // (And update your filter buttons array further down in the code to match):
+  // {['All', 'Bots', 'Power', 'Energy', 'Luck'].map(filter => ...
 
   const filteredListings = listings.filter(item => marketFilter === 'All' || item.type === marketFilter);
 
