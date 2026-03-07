@@ -282,6 +282,33 @@ const GiftTapGame = () => {
     return () => clearInterval(ticker);
   }, []);
 
+  // Inside your main GiftTap component:
+  useEffect(() => {
+    async function verifyPlayerStreak(userId) {
+      try {
+        const { data, error } = await supabase.functions.invoke('player-stats', {
+          body: { userId: userId } 
+        });
+
+        if (error) throw error;
+
+        // data.streak will accurately reflect '0' if they missed a day, 
+        // or their current streak if they are within the 24-hour window.
+        console.log("Verified Stats:", data);
+        
+        // Add your state update here, for example:
+        // setStreak(data.streak);
+
+      } catch (error) {
+        console.error("Error verifying streak:", error.message);
+      }
+    }
+
+    // Replace 'currentUser.id' with the actual variable holding your player's ID
+    // verifyPlayerStreak(currentUser.id); 
+
+  }, []); // The empty bracket ensures this only runs once when the game mounts
+
   // 6. SAVE PROGRESS
   const saveToDatabase = async (b, e, dt, ltd, strk) => {
     // 1. Don't save if we don't have a valid user ID
