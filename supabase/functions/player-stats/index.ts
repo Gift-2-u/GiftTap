@@ -4,7 +4,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.7.1";
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS', // Fixed missing method
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
 
 serve(async (req) => {
@@ -25,7 +25,6 @@ serve(async (req) => {
       throw new Error("userId is required");
     }
 
-    // Fixed database column names to match your actual Supabase table
     const { data: player, error } = await supabaseClient
       .from('players')
       .select('current_streak, last_tap_date')
@@ -33,20 +32,18 @@ serve(async (req) => {
       .single();
 
     if (error) throw error;
-    
-    // SAFETY CHECK: This explicitly proves to the compiler that 'player' exists, 
-    // instantly clearing the fatal "exit code 1" type-check error.
     if (!player) throw new Error("Player not found");
 
-    const serverTimeNow = new Date();
-    // Safely reads your exact date column format
-    const lastLoginTime = new Date(player.last_tap_date);
-    const timeDiffMs = serverTimeNow.getTime() - lastLoginTime.getTime();
-    const hoursSinceLastLogin = timeDiffMs / (1000 * 60 * 60);
-
     let currentStreak = player.current_streak || 0;
+    const lastTapDateStr = player.last_tap_date; // Example: "2026-03-07"
 
-    if (hoursSinceLastLogin > 24) {
+    // 1. Calculate "Yesterday" in exact YYYY-MM-DD format to match your frontend
+    const yesterdayObj = new Date();
+    yesterdayObj.setDate(yesterdayObj.getDate() - 1);
+    const yesterdayStr = yesterdayObj.toISOString().split('T')[0];
+
+    // 2. STREAK LOGIC: Only reset to 0 if their last tap was BEFORE yesterday
+    if (lastTapDateStr && lastTapDateStr < yesterdayStr) {
       currentStreak = 0;
       
       const { error: updateError } = await supabaseClient
