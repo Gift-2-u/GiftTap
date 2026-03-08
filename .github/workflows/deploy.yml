@@ -9,6 +9,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # 1. ADD THIS NEW STEP FIRST:
+      - name: Force Install Working Vercel Version
+        run: npm install -g vercel@50.26.1
+
       - name: Deploy to Vercel
         uses: amondnet/vercel-action@v20
         with:
@@ -16,4 +20,3 @@ jobs:
           vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
           vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
           vercel-args: '--prod' # This tells Vercel: "Build this using YOUR dashboard secrets"
-          vercel-version: '50.26.1'
