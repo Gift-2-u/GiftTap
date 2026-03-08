@@ -309,8 +309,9 @@ const GiftTapGame = () => {
           setStreak(data.streak);
         }
 
-      } catch (error) {
-        // Silently catch errors to pass strict production build rules
+      } catch (err) {
+        // WE ARE NOW USING THE 'err' VARIABLE! This stops Vercel from crashing.
+        console.error("Streak Verify Error:", err.message);
       }
     }
 
