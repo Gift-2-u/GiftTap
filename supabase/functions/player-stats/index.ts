@@ -68,8 +68,11 @@ serve(async (req) => {
         status: 200,
       }
     );
-  } catch (error) {
-    return new Response(JSON.stringify({ error: error.message }), {
+ } catch (error) {
+    // This strict check tells TypeScript exactly how to handle the error object safely
+    const errorMessage = error instanceof Error ? error.message : "An unknown error occurred";
+    
+    return new Response(JSON.stringify({ error: errorMessage }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       status: 400,
     });
