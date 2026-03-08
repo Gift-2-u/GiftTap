@@ -286,17 +286,28 @@ const GiftTapGame = () => {
   useEffect(() => {
     async function verifyPlayerStreak(userId) {
       try {
-        const { data, error } = await supabase.functions.invoke('player-stats', {
-          body: { userId: userId } 
+        // Standard HTTP fetch instead of supabase.functions.invoke
+        const response = await fetch('https://ncwlbwzxfpcnxkyrmdck.supabase.co/functions/v1/player-stats', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            // Replace with your actual Supabase anon key
+            'Authorization': `Bearer [eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5jd2xid3p4ZnBjbnhreXJtZGNrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA0Mjc4MDcsImV4cCI6MjA4NjAwMzgwN30.lp1zIYoaf7PRy7UzJ-8leZnwLVijAXqq17Sqziut4qg]` 
+          },
+          body: JSON.stringify({ 
+            userId: userId // Make sure this matches the variable the Edge Function expects
+          })
         });
 
-        if (error) throw error;
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
 
-        // data.streak will accurately reflect '0' if they missed a day, 
-        // or their current streak if they are within the 24-hour window.
-        console.log("Verified Stats:", data);
+        const data = await response.json();
         
-        // Add your state update here, for example:
+        console.log("Verified Stats from Edge Function:", data);
+        
+        // Update your game state here
         // setStreak(data.streak);
 
       } catch (error) {
@@ -304,10 +315,10 @@ const GiftTapGame = () => {
       }
     }
 
-    // Replace 'currentUser.id' with the actual variable holding your player's ID
+    // Replace 'currentUser.id' with your actual player ID variable (like telegram_id if you adapted it)
     // verifyPlayerStreak(currentUser.id); 
 
-  }, []); // The empty bracket ensures this only runs once when the game mounts
+  }, []);
 
   // 6. SAVE PROGRESS
   const saveToDatabase = async (b, e, dt, ltd, strk) => {
