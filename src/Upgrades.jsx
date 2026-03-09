@@ -1,9 +1,14 @@
 import React, { useState } from 'react';
 import { supabase } from './supabaseClient';
+import { Connection, PublicKey, Keypair, Transaction, SystemProgram, ComputeBudgetProgram, sendAndConfirmTransaction } from '@solana/web3.js';
+import bs58 from 'bs58';
 
 const Marketplace = ({ balance, setBalance, stats, setStats, tgUser, playerWallet }) => {
   const [activeTab, setActiveTab] = useState('market'); 
   const [marketFilter, setMarketFilter] = useState('All'); 
+
+  // Custom Pop-up State
+  const [txStatus, setTxStatus] = useState({ show: false, loading: false, message: '', success: false });
 
   // 1. Pull stats securely
   const tapPower = stats?.tap_power || 1;
@@ -43,14 +48,131 @@ const Marketplace = ({ balance, setBalance, stats, setStats, tgUser, playerWalle
 
   const filteredListings = premiumListings.filter(item => marketFilter === 'All' || item.type === marketFilter);
 
-  const handlePremiumBuy = (item) => {
-    // We will wire this to your Solana transaction logic next
-    alert(`Initiating Solana transaction to buy ${item.name} for ${item.price} SOL...`);
+ // 5. SOLANA TRANSACTION LOGIC
+  const handlePremiumBuy = async (item) => {
+    // Open the pop-up immediately in a loading state
+    setTxStatus({ show: true, loading: true, message: `Initiating purchase for ${item.name}...`, success: false });
+
+    try {
+      // 1. Get Secret Key
+      const storedSecret = localStorage.getItem(`wallet_secret_${tgUser.id}`);
+      if (!storedSecret) {
+        throw new Error("Secret key not found. Please unlock your wallet in settings.");
+      }
+
+      // 2. Setup Connection
+      const connection = new Connection("https://mainnet.helius-rpc.com/?api-key=538f6c8f-c773-46a2-939c-6d48c75b2226", 'confirmed');
+      const playerKeypair = Keypair.fromSecretKey(bs58.decode(storedSecret));
+
+      // 3. Set Destination Wallets & Costs
+      const masterWallet = new PublicKey("D4GufPTvp6tnzkaYGfombFLs48UjDANsxjMFJnSYz4Gh"); // <--- Add your Master Wallet here
+      const treasuryWallet = new PublicKey("8G7uEcPS6dwA5wW9bGoqi98EzBunF8trjbbFJkgkvBPm"); // Your Fee Treasury
+
+      const itemPriceLamports = Math.floor(item.price * 1e9);
+      const projectFeeLamports = Math.floor(0.0005 * 1e9); // The 0.0005 SOL Treasury Fee
+      const totalRequired = itemPriceLamports + projectFeeLamports + 100000; // Total + buffer for network fee
+
+      // 4. Check Balance
+      const currentBalance = await connection.getBalance(playerKeypair.publicKey);
+      if (currentBalance < totalRequired) {
+        throw new Error(`Insufficient SOL. You need at least ${(totalRequired / 1e9).toFixed(4)} SOL to cover the item and network fees.`);
+      }
+
+      setTxStatus({ show: true, loading: true, message: `🔗 Confirming payment of ${item.price} SOL on Solana...`, success: false });
+
+      // 5. Build Split Transaction
+      const transaction = new Transaction().add(
+        ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 100000 }),
+        // Instruction 1: Send the main purchase price to your Master Wallet
+        SystemProgram.transfer({
+          fromPubkey: playerKeypair.publicKey,
+          toPubkey: masterWallet,
+          lamports: itemPriceLamports,
+        }),
+        // Instruction 2: Send the game fee directly to your Treasury
+        SystemProgram.transfer({
+          fromPubkey: playerKeypair.publicKey,
+          toPubkey: treasuryWallet,
+          lamports: projectFeeLamports,
+        })
+      );
+
+      // 6. Send and Confirm
+      const signature = await sendAndConfirmTransaction(connection, transaction, [playerKeypair]);
+
+      // 7. Apply the Item's Effect & Update Database
+      let dbUpdates = {};
+      
+      if (item.name === "Instant Energy Refill") {
+        dbUpdates = { last_energy: 500 };
+        // Instantly update the screen if the prop is available
+        if (typeof setEnergy === 'function') setEnergy(500); 
+      } 
+      else if (item.name === "Permanent 2x Boost") {
+        dbUpdates = { tap_power: tapPower * 2 };
+        setStats({ ...stats, tap_power: tapPower * 2 });
+      } 
+      else if (item.name === "Daily Limit Breaker") {
+        dbUpdates = { max_daily_limit: maxDailyLimit + 5000 };
+        setStats({ ...stats, max_daily_limit: maxDailyLimit + 5000 });
+      }
+
+      // Push the new stats to your Supabase database
+      const { error: updateError } = await supabase
+        .from('players')
+        .update(dbUpdates)
+        .eq('telegram_id', String(tgUser.id));
+
+      if (updateError) throw updateError;
+
+      // Show final success message
+      setTxStatus({ 
+        show: true, 
+        loading: false, 
+        message: `✅ Success! ${item.name} activated. (Sig: ${signature.slice(0, 8)}...)`, 
+        success: true 
+      });
+
+      // Auto-close the pop-up after 3 seconds
+      setTimeout(() => setTxStatus(prev => ({ ...prev, show: false })), 3000);
+
+      // (Optional: Future code goes here to update the database to actually grant the item to their Backpack)
+
+    } catch (err) {
+      console.error("Purchase Error:", err);
+      setTxStatus({ show: true, loading: false, message: `❌ Error: ${err.message}`, success: false });
+    }
   };
 
   return (
     <div style={{ flex: 1, width: '100%', display: 'flex', flexDirection: 'column', padding: '15px', paddingBottom: '120px', boxSizing: 'border-box' }}>
       
+      {/* --- CUSTOM POP-UP MODAL --- */}
+      {txStatus.show && (
+        <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', background: 'rgba(0,0,0,0.85)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 9999 }}>
+          <div style={{ background: '#1c1e22', padding: '25px', borderRadius: '15px', border: txStatus.success ? '2px solid #4ade80' : '2px solid #ffd700', textAlign: 'center', width: '80%', maxWidth: '320px', boxShadow: '0 4px 20px rgba(0,0,0,0.5)' }}>
+            
+            <h3 style={{ color: '#fff', marginTop: 0, marginBottom: '15px' }}>
+              {txStatus.loading ? '⚙️ Processing...' : txStatus.success ? '🎉 Complete!' : '⚠️ Notice'}
+            </h3>
+            
+            <p style={{ color: '#ccc', fontSize: '13px', lineHeight: '1.4', marginBottom: '25px', wordBreak: 'break-word' }}>
+              {txStatus.message}
+            </p>
+            
+            {/* Only show the close button if it's done loading */}
+            {!txStatus.loading && (
+              <button 
+                onClick={() => setTxStatus({ ...txStatus, show: false })} 
+                style={{ width: '100%', background: '#333', color: '#fff', border: '1px solid #555', padding: '12px', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}
+              >
+                Close
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <div style={{ textAlign: 'center', marginBottom: '15px' }}>
         <h2 style={{ color: '#ffd700', fontSize: '24px', margin: '0 0 5px 0' }}>Gift Shop</h2>
@@ -69,7 +191,6 @@ const Marketplace = ({ balance, setBalance, stats, setStats, tgUser, playerWalle
         {/* --- TAB 1: REGULAR SHARD UPGRADES --- */}
         {activeTab === 'upgrades' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
-            {/* Multitap */}
             <div style={{ background: '#1c1e22', borderRadius: '15px', padding: '15px', border: '1px solid #333', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div>
                 <h3 style={{ margin: '0 0 5px 0', color: '#ffd700', fontSize: '16px' }}>Multitap</h3>
@@ -85,7 +206,6 @@ const Marketplace = ({ balance, setBalance, stats, setStats, tgUser, playerWalle
               </button>
             </div>
 
-            {/* Daily Limit */}
             <div style={{ background: '#1c1e22', borderRadius: '15px', padding: '15px', border: '1px solid #333', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div>
                 <h3 style={{ margin: '0 0 5px 0', color: '#ffd700', fontSize: '16px' }}>Daily Limit</h3>

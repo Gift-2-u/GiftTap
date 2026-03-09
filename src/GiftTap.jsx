@@ -729,6 +729,7 @@ const GiftTapGame = () => {
               <Upgrades 
                 balance={balance} 
                 setBalance={setBalance}
+                setEnergy={setEnergy} // <--- ADD THIS LINE
                 stats={{ tap_power: tapPower, max_daily_limit: maxDailyLimit }}
                 setStats={(newStats) => {
                   if (newStats.tap_power) setTapPower(newStats.tap_power);
