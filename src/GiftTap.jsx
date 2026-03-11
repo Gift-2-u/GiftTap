@@ -5,6 +5,7 @@ import { getAssociatedTokenAddressSync } from '@solana/spl-token';
 import BetaGate from './BetaGate';
 import Marketplace from './Marketplace';
 import Tasks from './Tasks';
+import Friends from './Friends';
 import bs58 from "bs58";
 
 // Drop these at the very top of GiftTap.jsx, right under your imports
