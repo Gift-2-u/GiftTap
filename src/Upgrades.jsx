@@ -2,51 +2,75 @@ import React, { useState } from 'react';
 import { supabase } from './supabaseClient';
 import { Connection, PublicKey, Keypair, Transaction, SystemProgram, ComputeBudgetProgram, sendAndConfirmTransaction } from '@solana/web3.js';
 import bs58 from 'bs58';
+// At the top of Tasks.jsx
+import { calculateLevel, getNextLevelTarget } from './GiftTap'; 
+// (Make sure the path matches where your file is)
 
-const Marketplace = ({ balance, setBalance, stats, setStats, tgUser, playerWallet }) => {
+const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, tgUser, playerWallet }) => {
   const [activeTab, setActiveTab] = useState('market'); 
   const [marketFilter, setMarketFilter] = useState('All'); 
 
   // Custom Pop-up State
   const [txStatus, setTxStatus] = useState({ show: false, loading: false, message: '', success: false });
 
-  // 1. Pull stats securely
-  const tapPower = stats?.tap_power || 1;
-  const maxDailyLimit = stats?.max_daily_limit || 1000;
+  // Initialize local inventory from stats so the UI updates instantly
+  const [localInventory, setLocalInventory] = useState(stats?.inventory || {});
 
-  // 2. REGULAR SHARD UPGRADES MATH
-  const multitapCost = tapPower * 1000;
-  const limitLevel = ((maxDailyLimit - 1000) / 500) + 1; 
-  const limitCost = limitLevel * 2000;
+  // Update local inventory if stats change from the parent
+  useEffect(() => {
+    if (stats?.inventory) setLocalInventory(stats.inventory);
+  }, [stats?.inventory]);
 
-  // 3. SHARD BUY FUNCTION
-  const handleShardBuy = async (type, cost, bonus) => {
-    if (balance < cost) return alert("Not enough Shards!");
-
-    const updates = type === 'power' 
-      ? { tap_power: tapPower + bonus, shard_balance: balance - cost }
-      : { max_daily_limit: maxDailyLimit + bonus, shard_balance: balance - cost };
-
-    try {
-      const { error } = await supabase.from('players').update(updates).eq('telegram_id', String(tgUser.id));
-      if (error) throw error;
-
-      setBalance(prev => prev - cost);
-      if (type === 'power') setStats({ tap_power: tapPower + bonus, max_daily_limit: maxDailyLimit });
-      else setStats({ tap_power: tapPower, max_daily_limit: maxDailyLimit + bonus });
-    } catch (err) {
-      console.error("Upgrade Error:", err.message);
-    }
-  };
-
-  // 4. PREMIUM SOL UPGRADES (Placeholder for future NFTs)
-  const premiumListings = [
-    { id: 1, name: "Permanent 2x Boost", type: "Power", rarity: "Legendary", boost: "Double Shards", price: 0.05, currency: "SOL", image: "🔥" },
-    { id: 2, name: "Instant Energy Refill", type: "Energy", rarity: "Uncommon", boost: "Fill to 500", price: 0.005, currency: "SOL", image: "⚡" },
-    { id: 3, name: "Daily Limit Breaker", type: "Misc", rarity: "Epic", boost: "+5000 Limit", price: 0.02, currency: "SOL", image: "🚀" }
+  // --- ITEM DEFINITIONS ---
+  const shardListings = [
+    { id: 'frenzy', name: "90-Second Frenzy", desc: "2x Payout per energy", duration: "90 Seconds", cost: 500, icon: "🔥" },
+    { id: 'battery', name: "Expanded Battery", desc: "+1,000 Max Energy", duration: "24 Hours", cost: 500, icon: "🔋" },
+    { id: 'heavy', name: "Heavy Hands", desc: "2x Efficiency (Drains 2x, Pays 2x)", duration: "24 Hours", cost: 400, icon: "🥊" },
+    { id: 'refill', name: "Instant Refill", desc: "Fills energy to max", duration: "Instant", cost: 300, icon: "⚡" }
   ];
 
+  const premiumListings = [
+    { id: 'bot', name: "Weekend Bot", type: "Misc", rarity: "Epic", boost: "Auto-tap max limits", duration: "3 Days", price: 0.01, currency: "SOL", image: "🤖" },
+    { id: 'grinder', name: "Grinder's Contract", type: "Power", rarity: "Rare", boost: "+2,000 Daily Limit", duration: "7 Days", price: 0.01, currency: "SOL", image: "📜" },
+    { id: 'whale', name: "Whale's Contract", type: "Power", rarity: "Legendary", boost: "+5,000 Daily Limit", duration: "7 Days", price: 0.03, currency: "SOL", image: "🐳" },
+    { id: 'crate', name: "The Vault Drop", type: "Misc", rarity: "Legendary", boost: "+50,000 Shards", duration: "Instant", price: 0.05, currency: "SOL", image: "💎" }
+  ];
+
+  const allItems = [...shardListings, ...premiumListings];
   const filteredListings = premiumListings.filter(item => marketFilter === 'All' || item.type === marketFilter);
+
+  // --- 1. BUYING WITH SHARDS (Goes to Backpack) ---
+  const handleShardBuy = async (item) => {
+    if (balance < item.cost) {
+      setTxStatus({ show: true, loading: false, message: "❌ Not enough Shards!", success: false });
+      return;
+    }
+
+    setTxStatus({ show: true, loading: true, message: `Purchasing ${item.name}...`, success: false });
+
+    // Copy current inventory and add 1
+    const newInventory = { ...localInventory };
+    newInventory[item.id] = (newInventory[item.id] || 0) + 1;
+
+    try {
+      const { error } = await supabase.from('players')
+        .update({ shard_balance: balance - item.cost, inventory: newInventory })
+        .eq('telegram_id', String(tgUser.id));
+        
+      if (error) throw error;
+
+      setBalance(prev => prev - item.cost);
+      setLocalInventory(newInventory);
+      if (setStats) setStats({ ...stats, inventory: newInventory }); // Keep parent in sync
+
+      setTxStatus({ show: true, loading: false, message: `✅ ${item.name} added to Backpack!`, success: true });
+      setTimeout(() => setTxStatus(prev => ({ ...prev, show: false })), 2000);
+
+    } catch (err) {
+      console.error("Purchase Error:", err.message);
+      setTxStatus({ show: true, loading: false, message: "❌ Failed to process purchase.", success: false });
+    }
+  };
 
  // 5. SOLANA TRANSACTION LOGIC
   const handlePremiumBuy = async (item) => {
@@ -100,47 +124,80 @@ const Marketplace = ({ balance, setBalance, stats, setStats, tgUser, playerWalle
       // 6. Send and Confirm
       const signature = await sendAndConfirmTransaction(connection, transaction, [playerKeypair]);
 
-      // 7. Apply the Item's Effect & Update Database
-      let dbUpdates = {};
-      
-      if (item.name === "Instant Energy Refill") {
-        dbUpdates = { last_energy: 500 };
-        // Instantly update the screen if the prop is available
-        if (typeof setEnergy === 'function') setEnergy(500); 
-      } 
-      else if (item.name === "Permanent 2x Boost") {
-        dbUpdates = { tap_power: tapPower * 2 };
-        setStats({ ...stats, tap_power: tapPower * 2 });
-      } 
-      else if (item.name === "Daily Limit Breaker") {
-        dbUpdates = { max_daily_limit: maxDailyLimit + 5000 };
-        setStats({ ...stats, max_daily_limit: maxDailyLimit + 5000 });
-      }
+      // Database Update: Add to JSON Inventory
+      const newInventory = { ...localInventory };
+      newInventory[item.id] = (newInventory[item.id] || 0) + 1;
 
-      // Push the new stats to your Supabase database
-      const { error: updateError } = await supabase
-        .from('players')
-        .update(dbUpdates)
+      const { error: updateError } = await supabase.from('players')
+        .update({ inventory: newInventory })
         .eq('telegram_id', String(tgUser.id));
-
+        
       if (updateError) throw updateError;
 
-      // Show final success message
-      setTxStatus({ 
-        show: true, 
-        loading: false, 
-        message: `✅ Success! ${item.name} activated. (Sig: ${signature.slice(0, 8)}...)`, 
-        success: true 
-      });
+      setLocalInventory(newInventory);
+      if (setStats) setStats({ ...stats, inventory: newInventory });
 
-      // Auto-close the pop-up after 3 seconds
+      setTxStatus({ show: true, loading: false, message: `✅ Success! ${item.name} added to Backpack.`, success: true });
       setTimeout(() => setTxStatus(prev => ({ ...prev, show: false })), 3000);
-
-      // (Optional: Future code goes here to update the database to actually grant the item to their Backpack)
 
     } catch (err) {
       console.error("Purchase Error:", err);
       setTxStatus({ show: true, loading: false, message: `❌ Error: ${err.message}`, success: false });
+    }
+  };
+
+  // --- 3. USING ITEMS FROM THE BACKPACK (Starts the Clock) ---
+  const handleUseItem = async (item) => {
+    if (!localInventory[item.id] || localInventory[item.id] <= 0) return;
+
+    setTxStatus({ show: true, loading: true, message: `Activating ${item.name}...`, success: false });
+
+    // 1. Deduct from inventory
+    const newInventory = { ...localInventory };
+    newInventory[item.id] -= 1;
+    if (newInventory[item.id] === 0) delete newInventory[item.id]; // Clean up empty items
+
+    // 2. Set Expiration Timers
+    const now = Date.now();
+    let dbUpdates = { inventory: newInventory };
+
+    // Shard Items
+    if (item.id === 'frenzy') dbUpdates.frenzy_expires = new Date(now + 90 * 1000).toISOString();
+    if (item.id === 'battery') dbUpdates.energy_boost_expires = new Date(now + 24 * 60 * 60 * 1000).toISOString();
+    if (item.id === 'heavy') dbUpdates.efficiency_expires = new Date(now + 24 * 60 * 60 * 1000).toISOString();
+    if (item.id === 'refill') {
+      dbUpdates.last_energy = 1000;
+      if (setEnergy) setEnergy(1000);
+    }
+    
+    // Premium SOL Items
+    if (item.id === 'bot') dbUpdates.bot_expires = new Date(now + 3 * 24 * 60 * 60 * 1000).toISOString();
+    if (item.id === 'grinder') {
+      dbUpdates.limit_boost_amount = 2000;
+      dbUpdates.limit_boost_expires = new Date(now + 7 * 24 * 60 * 60 * 1000).toISOString();
+    }
+    if (item.id === 'whale') {
+      dbUpdates.limit_boost_amount = 5000;
+      dbUpdates.limit_boost_expires = new Date(now + 7 * 24 * 60 * 60 * 1000).toISOString();
+    }
+    if (item.id === 'crate') {
+      dbUpdates.shard_balance = balance + 50000;
+      setBalance(prev => prev + 50000);
+    }
+
+    try {
+      const { error } = await supabase.from('players').update(dbUpdates).eq('telegram_id', String(tgUser.id));
+      if (error) throw error;
+
+      setLocalInventory(newInventory);
+      if (setStats) setStats({ ...stats, inventory: newInventory });
+
+      setTxStatus({ show: true, loading: false, message: `⚡ ${item.name} is now ACTIVE!`, success: true });
+      setTimeout(() => setTxStatus(prev => ({ ...prev, show: false })), 2000);
+
+    } catch (err) {
+      console.error("Activation Error:", err.message);
+      setTxStatus({ show: true, loading: false, message: "❌ Failed to activate item.", success: false });
     }
   };
 
@@ -151,21 +208,14 @@ const Marketplace = ({ balance, setBalance, stats, setStats, tgUser, playerWalle
       {txStatus.show && (
         <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', background: 'rgba(0,0,0,0.85)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 9999 }}>
           <div style={{ background: '#1c1e22', padding: '25px', borderRadius: '15px', border: txStatus.success ? '2px solid #4ade80' : '2px solid #ffd700', textAlign: 'center', width: '80%', maxWidth: '320px', boxShadow: '0 4px 20px rgba(0,0,0,0.5)' }}>
-            
             <h3 style={{ color: '#fff', marginTop: 0, marginBottom: '15px' }}>
               {txStatus.loading ? '⚙️ Processing...' : txStatus.success ? '🎉 Complete!' : '⚠️ Notice'}
             </h3>
-            
             <p style={{ color: '#ccc', fontSize: '13px', lineHeight: '1.4', marginBottom: '25px', wordBreak: 'break-word' }}>
               {txStatus.message}
             </p>
-            
-            {/* Only show the close button if it's done loading */}
             {!txStatus.loading && (
-              <button 
-                onClick={() => setTxStatus({ ...txStatus, show: false })} 
-                style={{ width: '100%', background: '#333', color: '#fff', border: '1px solid #555', padding: '12px', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}
-              >
+              <button onClick={() => setTxStatus({ ...txStatus, show: false })} style={{ width: '100%', background: '#333', color: '#fff', border: '1px solid #555', padding: '12px', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}>
                 Close
               </button>
             )}
@@ -181,60 +231,49 @@ const Marketplace = ({ balance, setBalance, stats, setStats, tgUser, playerWalle
 
       {/* Main Navigation Tabs */}
       <div style={{ display: 'flex', background: '#111', borderRadius: '12px', padding: '5px', marginBottom: '15px', fontSize: '12px' }}>
-        <button onClick={() => setActiveTab('upgrades')} style={{ flex: 1, padding: '10px 0', borderRadius: '10px', border: 'none', background: activeTab === 'upgrades' ? '#4ade80' : 'transparent', color: activeTab === 'upgrades' ? '#000' : '#888', fontWeight: 'bold' }}>Upgrades</button>
-        <button onClick={() => setActiveTab('market')} style={{ flex: 1, padding: '10px 0', borderRadius: '10px', border: 'none', background: activeTab === 'market' ? '#fbef43' : 'transparent', color: activeTab === 'market' ? '#000' : '#888', fontWeight: 'bold' }}>Premium</button>
+        <button onClick={() => setActiveTab('upgrades')} style={{ flex: 1, padding: '10px 0', borderRadius: '10px', border: 'none', background: activeTab === 'upgrades' ? '#4ade80' : 'transparent', color: activeTab === 'upgrades' ? '#000' : '#888', fontWeight: 'bold' }}>Shards</button>
+        <button onClick={() => setActiveTab('market')} style={{ flex: 1, padding: '10px 0', borderRadius: '10px', border: 'none', background: activeTab === 'market' ? '#fbef43' : 'transparent', color: activeTab === 'market' ? '#000' : '#888', fontWeight: 'bold' }}>Premium (SOL)</button>
         <button onClick={() => setActiveTab('inventory')} style={{ flex: 1, padding: '10px 0', borderRadius: '10px', border: 'none', background: activeTab === 'inventory' ? '#9945FF' : 'transparent', color: activeTab === 'inventory' ? '#fff' : '#888', fontWeight: 'bold' }}>Backpack</button>
       </div>
 
       <div style={{ flex: 1, overflowY: 'auto' }}>
         
-        {/* --- TAB 1: REGULAR SHARD UPGRADES --- */}
+        {/* --- TAB 1: SHARD SHOP --- */}
         {activeTab === 'upgrades' && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
-            <div style={{ background: '#1c1e22', borderRadius: '15px', padding: '15px', border: '1px solid #333', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div>
-                <h3 style={{ margin: '0 0 5px 0', color: '#ffd700', fontSize: '16px' }}>Multitap</h3>
-                <p style={{ margin: 0, color: '#888', fontSize: '12px' }}>Increase shards per tap</p>
-                <span style={{ color: '#528db0', fontSize: '12px', fontWeight: 'bold' }}>Level {tapPower} (+1/tap)</span>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            {shardListings.map(item => (
+              <div key={item.id} style={{ background: '#1c1e22', borderRadius: '15px', padding: '15px', border: '1px solid #333', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ flex: 1 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '5px' }}>
+                    <span style={{ fontSize: '18px' }}>{item.icon}</span>
+                    <h3 style={{ margin: 0, color: '#ffd700', fontSize: '16px' }}>{item.name}</h3>
+                  </div>
+                  <p style={{ margin: '0 0 4px 0', color: '#ccc', fontSize: '12px' }}>{item.desc}</p>
+                  <span style={{ color: '#528db0', fontSize: '11px', fontWeight: 'bold' }}>⏱️ {item.duration}</span>
+                </div>
+                <button 
+                  style={{ background: balance >= item.cost ? '#ffd700' : '#333', color: balance >= item.cost ? '#000' : '#666', border: 'none', padding: '10px 15px', borderRadius: '10px', fontWeight: 'bold', cursor: balance >= item.cost ? 'pointer' : 'not-allowed', marginLeft: '10px' }}
+                  onClick={() => handleShardBuy(item)}
+                  disabled={balance < item.cost}
+                >
+                  {item.cost.toLocaleString()} 💎
+                </button>
               </div>
-              <button 
-                style={{ background: balance >= multitapCost ? '#ffd700' : '#333', color: balance >= multitapCost ? '#000' : '#666', border: 'none', padding: '10px 15px', borderRadius: '10px', fontWeight: 'bold', cursor: balance >= multitapCost ? 'pointer' : 'not-allowed' }}
-                onClick={() => handleShardBuy('power', multitapCost, 1)}
-                disabled={balance < multitapCost}
-              >
-                {multitapCost.toLocaleString()} 💎
-              </button>
-            </div>
-
-            <div style={{ background: '#1c1e22', borderRadius: '15px', padding: '15px', border: '1px solid #333', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div>
-                <h3 style={{ margin: '0 0 5px 0', color: '#ffd700', fontSize: '16px' }}>Daily Limit</h3>
-                <p style={{ margin: 0, color: '#888', fontSize: '12px' }}>More taps per day</p>
-                <span style={{ color: '#528db0', fontSize: '12px', fontWeight: 'bold' }}>Level {limitLevel} (+500 limit)</span>
-              </div>
-              <button 
-                style={{ background: balance >= limitCost ? '#ffd700' : '#333', color: balance >= limitCost ? '#000' : '#666', border: 'none', padding: '10px 15px', borderRadius: '10px', fontWeight: 'bold', cursor: balance >= limitCost ? 'pointer' : 'not-allowed' }}
-                onClick={() => handleShardBuy('limit', limitCost, 500)}
-                disabled={balance < limitCost}
-              >
-                {limitCost.toLocaleString()} 💎
-              </button>
-            </div>
+            ))}
           </div>
         )}
 
-        {/* --- TAB 2: PREMIUM SOL UPGRADES --- */}
+        {/* --- TAB 2: PREMIUM SOL SHOP --- */}
         {activeTab === 'market' && (
           <>
             <div style={{ display: 'flex', gap: '8px', marginBottom: '15px', overflowX: 'auto', paddingBottom: '5px' }}>
-              {['All', 'Power', 'Energy', 'Misc'].map(filter => (
+              {['All', 'Power', 'Misc'].map(filter => (
                 <button 
                   key={filter}
                   onClick={() => setMarketFilter(filter)}
                   style={{ 
                     padding: '6px 16px', borderRadius: '20px', border: '1px solid #333', fontSize: '12px', fontWeight: 'bold', whiteSpace: 'nowrap',
-                    background: marketFilter === filter ? '#fff' : '#111', 
-                    color: marketFilter === filter ? '#000' : '#888' 
+                    background: marketFilter === filter ? '#fff' : '#111', color: marketFilter === filter ? '#000' : '#888' 
                   }}>
                   {filter}
                 </button>
@@ -253,7 +292,7 @@ const Marketplace = ({ balance, setBalance, stats, setStats, tgUser, playerWalle
                     {item.name}
                   </div>
                   <div style={{ color: item.rarity === 'Legendary' ? '#ffd700' : '#4ade80', fontSize: '11px', marginTop: '2px', fontWeight: 'bold' }}>
-                    {item.boost}
+                    {item.boost} <br/> <span style={{color: '#888', fontSize: '9px'}}>⏱️ {item.duration}</span>
                   </div>
 
                   <div style={{ width: '100%', marginTop: '10px', borderTop: '1px solid #222', paddingTop: '10px' }}>
@@ -267,19 +306,40 @@ const Marketplace = ({ balance, setBalance, stats, setStats, tgUser, playerWalle
                       Buy
                     </button>
                   </div>
-
                 </div>
               ))}
             </div>
           </>
         )}
 
-        {/* --- TAB 3: BACKPACK --- */}
+        {/* --- TAB 3: THE BACKPACK --- */}
         {activeTab === 'inventory' && (
-          <div style={{ textAlign: 'center', padding: '40px 20px', color: '#888' }}>
-            <div style={{ fontSize: '48px', marginBottom: '15px' }}>🎒</div>
-            <h3 style={{ color: '#fff', margin: '0 0 10px 0' }}>Your Gear</h3>
-            <p style={{ fontSize: '12px' }}>Your purchased NFTs and premium boosts will appear here.</p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            {Object.keys(localInventory).length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '40px 20px', color: '#888' }}>
+                <div style={{ fontSize: '48px', marginBottom: '15px' }}>🎒</div>
+                <h3 style={{ color: '#fff', margin: '0 0 10px 0' }}>Backpack is Empty</h3>
+                <p style={{ fontSize: '12px' }}>Visit the shop to purchase boosts and gear.</p>
+              </div>
+            ) : (
+              allItems.filter(item => localInventory[item.id] > 0).map(item => (
+                <div key={item.id} style={{ background: '#1c1e22', borderRadius: '15px', padding: '15px', border: '1px solid #9945FF', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '5px' }}>
+                      <span style={{ fontSize: '18px' }}>{item.icon || item.image}</span>
+                      <h3 style={{ margin: 0, color: '#fff', fontSize: '16px' }}>{item.name}</h3>
+                    </div>
+                    <span style={{ color: '#888', fontSize: '11px', fontWeight: 'bold' }}>Owned: {localInventory[item.id]}</span>
+                  </div>
+                  <button 
+                    style={{ background: '#9945FF', color: '#fff', border: 'none', padding: '10px 20px', borderRadius: '10px', fontWeight: 'bold', cursor: 'pointer', marginLeft: '10px' }}
+                    onClick={() => handleUseItem(item)}
+                  >
+                    USE
+                  </button>
+                </div>
+              ))
+            )}
           </div>
         )}
 

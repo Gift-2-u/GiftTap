@@ -7,6 +7,47 @@ import Upgrades from './Upgrades';
 import Tasks from './Tasks';
 import bs58 from "bs58";
 
+// Drop these at the very top of GiftTap.jsx, right under your imports
+export const calculateLevel = (taps) => {
+  if (taps < 50000) return Math.floor(taps / 10000); 
+  if (taps < 110000) return 5 + Math.floor((taps - 50000) / 12000); 
+  if (taps < 335000) return 10 + Math.floor((taps - 110000) / 15000); 
+  if (taps < 835000) return 25 + Math.floor((taps - 335000) / 20000); 
+  return 50; 
+};
+
+export const getNextLevelTarget = (level) => {
+  if (level < 5) return (level + 1) * 10000;
+  if (level < 10) return 50000 + ((level - 4) * 12000);
+  if (level < 25) return 110000 + ((level - 9) * 15000);
+  if (level < 50) return 335000 + ((level - 24) * 20000);
+  return null; 
+};
+
+export const getLevelMultiplier = (level) => {
+  if (level <= 1) return 1.025;          
+  if (level === 2) return 1.05;        
+  return 1.05 + ((level - 2) * 0.025);  
+};
+
+const currentLevel = calculateLevel(balance); 
+const nextTarget = getNextLevelTarget(currentLevel);
+
+// 2. CHECK THE CLOCK: Do they have an active time-limited boost?
+let shopMultiplier = 1; // Default to normal
+const now = new Date();
+const expiryTime = new Date(stats.power_boost_expires);
+
+if (stats.active_power_boost === '2x' && now < expiryTime) {
+  shopMultiplier = 2; // The 2-minute or 7-day boost is active!
+} else if (now >= expiryTime && stats.active_power_boost !== 'none') {
+  // The deadline passed! We should wipe the boost from their screen
+  // (You would fire a quick Supabase update here to reset their boost to 'none')
+}
+
+// 3. THE FINAL MATH
+const shardsEarned = baseRate * shopMultiplier;
+
 const GiftTapGame = () => {
 
   const styles = {
@@ -99,6 +140,12 @@ const GiftTapGame = () => {
   }, []);
   // This is where all project fees will be sent to fund the Gift launch
   const GIFT_TREASURY_WALLET = new PublicKey("8G7uEcPS6dwA5wW9bGoqi98EzBunF8trjbbFJkgkvBPm");
+
+  const getLevelMultiplier = (level) => {
+    if (level <= 1) return 1.0;
+    if (level === 2) return 1.1;
+    return 1.1 + ((level - 2) * 0.05); 
+  };
 
   // 2. FETCH TOP LEADER (Individual Badge)
   const fetchTopLeader = useCallback(async () => {
