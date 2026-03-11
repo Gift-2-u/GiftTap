@@ -183,13 +183,15 @@ const GiftTapGame = () => {
 
         // Daily Reset Logic
         const today = new Date().toISOString().split('T')[0];
+        // Always load the exact date and streak from the database so handleTap can do the math
+        setLastTapDate(player.last_tap_date || today);
+        setStreak(player.current_streak || 0);
+
+        // Only reset the visual daily taps to 0 if it's a new day
         if (player.last_tap_date !== today) {
           setDailyTaps(0);
-          setLastTapDate(today);
         } else {
           setDailyTaps(player.daily_taps || 0);
-          setLastTapDate(player.last_tap_date);
-          setStreak(player.current_streak || 0);
         }
           
         // Energy Recovery Logic
@@ -198,8 +200,7 @@ const GiftTapGame = () => {
         const secondsPassed = Math.floor((now - lastDate) / 1000);
         const recovered = Math.floor(secondsPassed / 1.8); 
         // Apply Expanded Battery logic to max energy cap
-        const maxEnergy = (player.energy_boost_expires && now < new Date(player.energy_boost_expires).getTime()) ? 1500 : 500;
-        setEnergy(Math.min((player.last_energy || 0) + recovered, maxEnergy));
+        setEnergy(Math.min((player.last_energy || 0) + recovered, 500));
         
         setIsDataLoaded(true);
       } 
@@ -426,26 +427,29 @@ const GiftTapGame = () => {
     let costMultiplier = 1;
     const now = new Date();
 
-    // Check 90-Second Frenzy Timer
+    // 2. Apply active buffs
     if (stats.frenzy_expires && now < new Date(stats.frenzy_expires)) {
       payoutMultiplier *= 2; 
     }
 
-    // Check Heavy Hands Timer
     if (stats.efficiency_expires && now < new Date(stats.efficiency_expires)) {
       payoutMultiplier *= 2;
-      costMultiplier *= 2; // Drains energy twice as fast!
+      costMultiplier *= 2; 
     }
 
-    // --- NEW: CHECK PREMIUM MULTIPLIER ---
-    if (stats.premium_multiplier_expires && now < new Date(stats.premium_multiplier_expires)) {
-      // Multiplies by whatever is in the database (2 or 3)
-      payoutMultiplier *= (stats.premium_multiplier || 1); 
+    // 3. THE LIMIT CHECK FIX
+    let currentMaxLimit = maxDailyLimit;
+    if (stats.energy_boost_expires && now < new Date(stats.energy_boost_expires)) currentMaxLimit += 1000;
+    if (stats.limit_boost_expires && now < new Date(stats.limit_boost_expires)) currentMaxLimit += (stats.limit_boost_amount || 0);
+
+    if (currentDailyTaps >= currentMaxLimit) {
+      alert("Daily limit reached! Wait for tomorrow or use a boost.");
+      return;
     }
 
-    // Prevent going into negative energy or over daily limit on a multi-click
-    if (energy - costMultiplier < 0 || currentDailyTaps + costMultiplier > maxDailyLimit) {
-        return; // Wait for energy or limit reset
+    // Prevent multi-clicks from draining past 0 or breaking the dynamic limit
+    if (energy - costMultiplier < 0 || currentDailyTaps + costMultiplier > currentMaxLimit) {
+        return; 
     }
 
     const rawShardsEarned = baseRate * payoutMultiplier;
