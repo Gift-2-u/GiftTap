@@ -23,7 +23,7 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, tgUser, 
   const shardListings = [
     { id: 'frenzy', name: "90-Second Frenzy", desc: "2x Payout per energy", duration: "90 Seconds", cost: 500, icon: "🔥" },
     { id: 'battery', name: "Expanded Battery", desc: "+1,000 Max Energy", duration: "24 Hours", cost: 500, icon: "🔋" },
-    { id: 'heavy', name: "Heavy Hands", desc: "2x Efficiency (Drains 2x, Pays 2x)", duration: "24 Hours", cost: 400, icon: "🥊" },
+    { id: 'heavy', name: "Heavy Hands", desc: "2x Efficiency (Drains 2x, Pays 2x)", duration: "24 Hours", cost: 750, icon: "🥊" },
     { id: 'refill', name: "Instant Refill", desc: "Fills energy to max", duration: "Instant", cost: 300, icon: "⚡" }
   ];
 
@@ -32,6 +32,8 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, tgUser, 
     { id: 'grinder', name: "Grinder's Contract", type: "Power", rarity: "Rare", boost: "+2,000 Daily Limit", duration: "7 Days", price: 0.01, currency: "SOL", image: "📜" },
     { id: 'whale', name: "Whale's Contract", type: "Power", rarity: "Legendary", boost: "+5,000 Daily Limit", duration: "7 Days", price: 0.03, currency: "SOL", image: "🐳" },
     { id: 'crate', name: "The Vault Drop", type: "Misc", rarity: "Legendary", boost: "+50,000 Shards", duration: "Instant", price: 0.05, currency: "SOL", image: "💎" }
+    { id: 'x2_boost', name: "Double Power", type: "Power", rarity: "Epic", boost: "2x Shards", duration: "7 Days", price: 0.0125, currency: "SOL", image: "🔥" },
+    { id: 'x3_boost', name: "Triple Power", type: "Power", rarity: "Legendary", boost: "3x Shards", duration: "7 Days", price: 0.025, currency: "SOL", image: "🚀" }
   ];
 
   const allItems = [...shardListings, ...premiumListings];
@@ -59,7 +61,7 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, tgUser, 
 
       setBalance(prev => prev - item.cost);
       setLocalInventory(newInventory);
-      if (setStats) setStats({ ...stats, inventory: newInventory }); // Keep parent in sync
+      if (setStats) setStats({ ...stats, ...dbUpdates }); // Keep parent in sync
 
       setTxStatus({ show: true, loading: false, message: `✅ ${item.name} added to Backpack!`, success: true });
       setTimeout(() => setTxStatus(prev => ({ ...prev, show: false })), 2000);
@@ -181,6 +183,15 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, tgUser, 
     if (item.id === 'crate') {
       dbUpdates.shard_balance = balance + 50000;
       setBalance(prev => prev + 50000);
+    }
+    // --- NEW MULTIPLIER ACTIVATION ---
+    if (item.id === 'x2_boost') {
+      dbUpdates.premium_multiplier = 2;
+      dbUpdates.premium_multiplier_expires = new Date(now + 7 * 24 * 60 * 60 * 1000).toISOString();
+    }
+    if (item.id === 'x3_boost') {
+      dbUpdates.premium_multiplier = 3;
+      dbUpdates.premium_multiplier_expires = new Date(now + 7 * 24 * 60 * 60 * 1000).toISOString();
     }
 
     try {

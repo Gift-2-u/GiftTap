@@ -174,7 +174,11 @@ const GiftTapGame = () => {
           inventory: player.inventory || {},
           frenzy_expires: player.frenzy_expires || null,
           efficiency_expires: player.efficiency_expires || null,
-          energy_boost_expires: player.energy_boost_expires || null
+          energy_boost_expires: player.energy_boost_expires || null,
+          premium_multiplier: player.premium_multiplier || 1,
+          premium_multiplier_expires: player.premium_multiplier_expires || null,
+          limit_boost_amount: player.limit_boost_amount || 0, // <-- NEW
+          limit_boost_expires: player.limit_boost_expires || null // <-- NEW
         });
 
         // Daily Reset Logic
@@ -306,9 +310,7 @@ const GiftTapGame = () => {
 
   useEffect(() => {
     const ticker = setInterval(() => {
-      // Dynamic max energy based on timers
-      const maxE = (stats.energy_boost_expires && new Date() < new Date(stats.energy_boost_expires)) ? 1500 : 500;
-      setEnergy((prev) => (prev < maxE ? prev + 1 : maxE));
+      setEnergy((prev) => (prev < 500 ? prev + 1 : 500 ));
     }, 1500);
     return () => clearInterval(ticker);
   }, [stats.energy_boost_expires]);
@@ -403,8 +405,14 @@ const GiftTapGame = () => {
       saveToDatabase(balance, energy, 0, today, currentStreak);
     }
 
-    if (currentDailyTaps >= maxDailyLimit) {
-      alert("Daily limit reached! Upgrade your limit in the shop.");
+    // Calculate max limit inside the tap function
+    let currentMaxLimit = maxDailyLimit;
+    const clickTime = new Date();
+    if (stats.energy_boost_expires && clickTime < new Date(stats.energy_boost_expires)) currentMaxLimit += 1000;
+    if (stats.limit_boost_expires && clickTime < new Date(stats.limit_boost_expires)) currentMaxLimit += (stats.limit_boost_amount || 0);
+
+    if (currentDailyTaps >= currentMaxLimit) {
+      alert("Daily limit reached! Wait for tomorrow or use a boost.");
       return;
     }
 
@@ -429,13 +437,21 @@ const GiftTapGame = () => {
       costMultiplier *= 2; // Drains energy twice as fast!
     }
 
+    // --- NEW: CHECK PREMIUM MULTIPLIER ---
+    if (stats.premium_multiplier_expires && now < new Date(stats.premium_multiplier_expires)) {
+      // Multiplies by whatever is in the database (2 or 3)
+      payoutMultiplier *= (stats.premium_multiplier || 1); 
+    }
+
     // Prevent going into negative energy or over daily limit on a multi-click
     if (energy - costMultiplier < 0 || currentDailyTaps + costMultiplier > maxDailyLimit) {
         return; // Wait for energy or limit reset
     }
 
-    const shardsEarned = baseRate * payoutMultiplier;
-    const nextBalance = balance + shardsEarned;
+    const rawShardsEarned = baseRate * payoutMultiplier;
+    const shardsEarned = Math.round(rawShardsEarned * 1000) / 1000;
+    
+    const nextBalance = Math.round((balance + shardsEarned) * 1000) / 1000;
     const nextEnergy = energy - costMultiplier;
     const nextDaily = currentDailyTaps + costMultiplier;
 
@@ -682,6 +698,19 @@ const GiftTapGame = () => {
     }
   };
 
+  // --- CALCULATE DYNAMIC DAILY LIMIT BAR ---
+  const now = new Date();
+  let dynamicMaxLimit = maxDailyLimit; // Default is 1000
+
+  // Add 1000 if 24hr Expanded Battery is active
+  if (stats.energy_boost_expires && now < new Date(stats.energy_boost_expires)) {
+    dynamicMaxLimit += 1000;
+  }
+  // Add 2000 or 5000 if a Premium SOL Contract is active
+  if (stats.limit_boost_expires && now < new Date(stats.limit_boost_expires)) {
+    dynamicMaxLimit += (stats.limit_boost_amount || 0);
+  }
+
   if (isLoading) return <div style={styles.container}>Loading Gift...</div>;
 
   return (
@@ -742,17 +771,20 @@ const GiftTapGame = () => {
                     <div 
                       style={{ 
                         ...styles.progressBar, 
-                        width: `${Math.min((dailyTaps / maxDailyLimit) * 100, 100)}%`,
-                        background: dailyTaps >= maxDailyLimit ? '#ff4d4d' : '#ffd700'
+                        width: `${Math.min((dailyTaps / dynamicMaxLimit) * 100, 100)}%`,
+                        background: dailyTaps >= dynamicMaxLimit ? '#ff4d4d' : '#ffd700'
                       }} 
                     />
                   </div>
+                  <p style={{ color: '#888', fontSize: '10px', marginTop: '5px' }}>
+                    Daily Taps: {dailyTaps} / {dynamicMaxLimit}
+                  </p>
                 </div>
               
 
                 <div onClick={handleTap} style={styles.giftZone}>
                   <img src="/Gift2u_logo.png" alt="Gift"  onDragStart={(e) => e.preventDefault()} onContextMenu={(e) => e.preventDefault()} style={{ ...styles.giftImage, filter: isPressed ? 'drop-shadow(0 0 15px rgba(255, 215, 0, 0.8)) brightness(1.1)' : 'drop-shadow(0 0 5px rgba(255, 215, 0, 0.2))', transform: isPressed ? 'scale(0.95)' : 'scale(1)', transition: 'transform 0.05s cubic-bezier(0.34, 1.56, 0.64, 1)' }} />
-                  {taps.map(t => <span key={t.id} style={{ ...styles.floatingText, left: t.x, top: t.y }}>+{t.amount.toFixed(2)}</span>)}
+                  {taps.map(t => <span key={t.id} style={{ ...styles.floatingText, left: t.x, top: t.y }}>+{t.amount.toFixed(3)}</span>)}
                 </div>
               </>
             )}
