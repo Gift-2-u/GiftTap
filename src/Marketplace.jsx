@@ -31,7 +31,7 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, tgUser, 
     { id: 'bot', name: "Weekend Bot", type: "Misc", rarity: "Epic", boost: "Auto-tap max limits", duration: "3 Days", price: 0.01, currency: "SOL", image: "🤖" },
     { id: 'grinder', name: "Grinder's Contract", type: "Power", rarity: "Rare", boost: "+2,000 Daily Limit", duration: "7 Days", price: 0.01, currency: "SOL", image: "📜" },
     { id: 'whale', name: "Whale's Contract", type: "Power", rarity: "Legendary", boost: "+5,000 Daily Limit", duration: "7 Days", price: 0.03, currency: "SOL", image: "🐳" },
-    { id: 'crate', name: "The Vault Drop", type: "Misc", rarity: "Legendary", boost: "+50,000 Shards", duration: "Instant", price: 0.05, currency: "SOL", image: "💎" }
+    { id: 'crate', name: "The Vault Drop", type: "Misc", rarity: "Legendary", boost: "+50,000 Shards", duration: "Instant", price: 0.05, currency: "SOL", image: "💎" },
     { id: 'x2_boost', name: "Double Power", type: "Power", rarity: "Epic", boost: "2x Shards", duration: "7 Days", price: 0.0125, currency: "SOL", image: "🔥" },
     { id: 'x3_boost', name: "Triple Power", type: "Power", rarity: "Legendary", boost: "3x Shards", duration: "7 Days", price: 0.025, currency: "SOL", image: "🚀" }
   ];
