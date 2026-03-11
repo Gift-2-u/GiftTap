@@ -437,14 +437,8 @@ const GiftTapGame = () => {
       costMultiplier *= 2; 
     }
 
-    // 3. THE LIMIT CHECK FIX
-    let currentMaxLimit = maxDailyLimit;
-    if (stats.energy_boost_expires && now < new Date(stats.energy_boost_expires)) currentMaxLimit += 1000;
-    if (stats.limit_boost_expires && now < new Date(stats.limit_boost_expires)) currentMaxLimit += (stats.limit_boost_amount || 0);
-
-    if (currentDailyTaps >= currentMaxLimit) {
-      alert("Daily limit reached! Wait for tomorrow or use a boost.");
-      return;
+    if (stats.premium_multiplier_expires && now < new Date(stats.premium_multiplier_expires)) {
+      payoutMultiplier *= (stats.premium_multiplier || 1); 
     }
 
     // Prevent multi-clicks from draining past 0 or breaking the dynamic limit
