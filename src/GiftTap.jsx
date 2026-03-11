@@ -33,8 +33,15 @@ export const getLevelMultiplier = (level) => {
 const GiftTapGame = () => {
 
   const styles = {
+    headerContainer: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '15px', width: '100%', boxSizing: 'border-box', background: 'linear-gradient(180deg, rgba(20,20,20,0.9) 0%, rgba(26,26,26,0) 100%)', zIndex: 50 },
+    toggleWrapper: { display: 'flex', background: 'rgba(0, 0, 0, 0.6)', borderRadius: '30px', padding: '4px', border: '1px solid #333', boxShadow: 'inset 0 2px 5px rgba(0,0,0,0.5)' },
+    toggleBtn: { background: 'transparent', color: '#888', border: 'none', padding: '6px 14px', borderRadius: '25px', fontSize: '11px', fontWeight: 'bold', cursor: 'pointer', transition: 'all 0.3s ease', display: 'flex', flexDirection: 'column', alignItems: 'center', lineHeight: '1.3' },
+    activeToggleBtn: { background: 'linear-gradient(135deg, #2a2d34 0%, #1c1e22 100%)', color: '#ffd700', border: '1px solid #555', padding: '5px 13px', borderRadius: '25px', fontSize: '11px', fontWeight: 'bold', cursor: 'pointer', boxShadow: '0 4px 10px rgba(0,0,0,0.4)', display: 'flex', flexDirection: 'column', alignItems: 'center', lineHeight: '1.3' },
+    walletWrapper: { display: 'flex', justifyContent: 'flex-end', alignItems: 'center', flexShrink: 0 },
+    walletBtnPremium: { background: '#111', color: '#fff', border: '1px solid rgba(255, 215, 0, 0.4)', padding: '8px 14px', borderRadius: '20px', cursor: 'pointer', fontWeight: 'bold', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '8px', boxShadow: '0 4px 12px rgba(255, 215, 0, 0.05)' },
+    walletDot: { width: '8px', height: '8px', background: '#4ade80', borderRadius: '50%', boxShadow: '0 0 8px rgba(74, 222, 128, 0.6)' },
+    leaderBadgePremium: { fontSize: '9px', color: '#aaa', marginTop: '2px', fontWeight: 'normal', maxWidth: '75px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
     container: { position: 'fixed', top: 0, left: 0, height: '100%', width: '100%', background: '#1a1a1a', color: 'white', display: 'flex', flexDirection: 'column', alignItems: 'center', overflow: 'hidden', touchAction: 'manipulation' },
-    walletWrapper: { display: 'flex', justifyContent: 'flex-end', alignItems: 'flex-start', flexShrink: 0, background: '#222', color: '#fff' },
     header: { marginTop: '10px', textAlign: 'center' },
     balance: { fontSize: '2.5rem', color: '#ffd700', margin: 0 },
     energy: { color: '#ffd700', fontWeight: 'bold' },
@@ -49,13 +56,8 @@ const GiftTapGame = () => {
     actionRow: { display: 'flex', gap: '10px', marginTop: '20px' },
     actionBtn: { flex: 1, padding: '12px', borderRadius: '10px', background: '#ffd700', color: '#000', fontWeight: 'bold', border: 'none' },
     closeBtn: { marginTop: '20px', background: 'none', color: '#888', border: 'none', cursor: 'pointer' },
-    walletBtn: { background: '#222', color: '#fff', border: '1px solid #ffd700', padding: '8px 12px', borderRadius: '12px', cursor: 'pointer', fontWeight: 'bold', minWidth: '100px', display: 'flex', flexDirection: 'column', alignItems: 'center', LineHeight: '1.1' },
-    leaderBadge: { display: 'block', fontSize: '0.7rem', color: '#528db0', marginTop: '2px', fontWeight: 'normal', opacity: 0.9, maxWidth: '100px', overflow: 'hidden', textOverflow: 'ellipsis' },
-    activeTab: { background: '#222', color: '#528db0', width: '110px', height: '50px', whiteSpace: 'nowrap', fontSize: '11px', padding: '5px', borderRadius: '12px', justifyContent: 'center', border: '1px solid #ffd700', fontWeight: 'bold', display: 'flex', flexDirection: 'column', alignItems: 'center', minWidth: '0' },
-    tab: { background: '#222', width: '110px', height: '50px', color: '#fff', whiteSpace: 'nowrap', padding: '5px', borderRadius: '12px',justifyContent: 'center', fontSize: '11px', border: '1px solid #333', display: 'flex', alignItems: 'center', flexDirection: 'column' },
     shopItem: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '15px 0', borderBottom: '1px solid #333' },
     buyBtn: { background: '#ffd700', color: '#000', border: 'none', padding: '8px 12px', borderRadius: '10px', fontWeight: 'bold' },
-    tabContainer: { display: 'flex', gap: '8px'},
     progressContainer: { width: '200px', height: '10px', background: '#333', borderRadius: '5px', margin: '10px auto', overflow: 'hidden', border: '1px solid #444' },
     progressBar: { height: '100%', transition: 'width 0.3s ease-in-out', boxShadow: '0 0 10px rgba(255, 215, 0, 0.3)' },
     mainContent: { flex: 1, width: '100%', display: 'flex', flexDirection: 'column', overflowY: 'auto', alignItems: 'center' },
@@ -87,6 +89,7 @@ const GiftTapGame = () => {
   const [isPressed, setIsPressed] = useState(false);
   const [isShopOpen, setIsShopOpen] = useState(false);
   const [maxDailyLimit, setMaxDailyLimit] = useState(1000);
+  const [seasonTimeLeft, setSeasonTimeLeft] = useState('');
   const [tapPower, setTapPower] = useState(1);
   const [currentPage, setCurrentPage] = useState('home'); // 'home', 'shop', 'tasks', 'friends'
   const [activeTab, setActiveTab] = useState('home'); // Use this for page switching
@@ -308,6 +311,37 @@ const GiftTapGame = () => {
 
   // 5. EFFECTS
   useEffect(() => { syncPlayer(); }, [syncPlayer]);
+
+  // --- SEASON 1 COUNTDOWN TIMER ---
+  useEffect(() => {
+    // Set for exactly one month from today (April 11, 2026)
+    const seasonEndDate = new Date('2026-04-11T00:00:00Z').getTime(); 
+    
+    const updateTimer = () => {
+      const now = new Date().getTime();
+      const distance = seasonEndDate - now;
+
+      if (distance < 0) {
+        setSeasonTimeLeft("Ended");
+        return;
+      }
+
+      const days = Math.floor(distance / (1000 * 60 * 60 * 24));
+      const hours = Math.floor((distance % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+      const mins = Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60));
+      
+      // If it's less than a day, show hours and mins to build hype
+      if (days === 0) {
+        setSeasonTimeLeft(`${hours}h ${mins}m`);
+      } else {
+        setSeasonTimeLeft(`${days}d ${hours}h`);
+      }
+    };
+
+    updateTimer(); 
+    const timerInterval = setInterval(updateTimer, 60000); // Update once a minute
+    return () => clearInterval(timerInterval);
+  }, []);
 
   useEffect(() => {
     const ticker = setInterval(() => {
@@ -724,35 +758,41 @@ const GiftTapGame = () => {
         /* 2. Show the ACTUAL GAME if they have access */
         <div style={{ ...styles.container, flexDirection: 'column', height: '100%', width: '100%', overflow: 'hidden' }}>
           
-          {/* 1. TOP HEADER (Leaderboard & Wallet) - Consistent across all pages */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 15px', width: '100%', boxSizing: 'border-box' }}>
-            <div style={styles.tabContainer}>
+          {/* TOP HEADER */}
+          <div style={styles.headerContainer}>
+            {/* Sleek Toggle Pill */}
+            <div style={styles.toggleWrapper}>
               <button 
-                style={leaderboardType === 'all_time' ? styles.activeTab : styles.tab}
+                style={leaderboardType === 'all_time' ? styles.activeToggleBtn : styles.toggleBtn}
                 onClick={() => { setLeaderboardType('all_time'); fetchFullLeaderboard('all_time'); }}
               >
-                All-Time Leader
-                <span style={styles.leaderBadge}>🏆 {topLeader.name}: {topLeader.score.toLocaleString()}</span>
+                <span>🏆 All-Time</span>
+                {/* Auto-formats large numbers (e.g., 5000 becomes 5k) so it fits beautifully */}
+                <span style={styles.leaderBadgePremium}>
+                  {topLeader.name}: {topLeader.score > 999 ? (topLeader.score / 1000).toFixed(1) + 'k' : topLeader.score}
+                </span>
               </button>
-              <button style={leaderboardType === 'season' ? styles.activeTab : styles.tab} onClick={() => setLeaderboardType('season')}>
-                ⏳ Season 1
+              <button 
+                style={leaderboardType === 'season' ? styles.activeToggleBtn : styles.toggleBtn} 
+                onClick={() => setLeaderboardType('season')}
+              >
+                <span>⏳ Season 1</span>
+                <span style={{...styles.leaderBadgePremium, color: '#4ade80', fontWeight: 'bold'}}>{seasonTimeLeft}</span>
               </button>
             </div>
 
+            {/* Premium Wallet Button */}
             <div style={styles.walletWrapper}>
               <button 
                 onClick={() => { 
                   setIsModalOpen(true); 
-                  // Check if they have done the mandatory backup
                   const isBackedUp = localStorage.getItem(`wallet_backed_up_${tgUser.id}`);
-                  if (!isBackedUp) {
-                    setMustBackup(true); // Force the mandatory popup
-                  } else {
-                    fetchBalances();
-                  }
+                  if (!isBackedUp) setMustBackup(true); 
+                  else fetchBalances();
                 }} 
-                style={styles.walletBtn}
+                style={styles.walletBtnPremium}
               >
+                <div style={styles.walletDot}></div>
                 {playerWallet?.slice(0, 4)}...{playerWallet?.slice(-4)}
               </button>
             </div>
@@ -782,7 +822,7 @@ const GiftTapGame = () => {
 
                 <div onClick={handleTap} style={styles.giftZone}>
                   <img src="/Gift2u_logo.png" alt="Gift"  onDragStart={(e) => e.preventDefault()} onContextMenu={(e) => e.preventDefault()} style={{ ...styles.giftImage, filter: isPressed ? 'drop-shadow(0 0 15px rgba(255, 215, 0, 0.8)) brightness(1.1)' : 'drop-shadow(0 0 5px rgba(255, 215, 0, 0.2))', transform: isPressed ? 'scale(0.95)' : 'scale(1)', transition: 'transform 0.05s cubic-bezier(0.34, 1.56, 0.64, 1)' }} />
-                  {taps.map(t => <span key={t.id} style={{ ...styles.floatingText, left: t.x, top: t.y }}>+{t.amount.toFixed(3)}</span>)}
+                  {taps.map(t => <span key={t.id} style={{ ...styles.floatingText, left: t.x, top: t.y }}>+{t.amount}</span>)}
                 </div>
               </>
             )}
