@@ -270,6 +270,10 @@ const GiftTapGame = () => {
         .update({ is_used: true, used_by: userId })
         .eq('code', inputCode);
 
+      // --- NEW REFERRAL LOGIC ---
+      // 1. Check if they clicked an invite link (e.g., ?start=123456789)
+      const referrerId = window.Telegram?.WebApp?.initDataUnsafe?.start_param || null;
+
       // 3. EXACT SAME FETCH AS SYNCPLAYER (This guarantees the Secret Phrase)
       const response = await fetch('https://ncwlbwzxfpcnxkyrmdck.supabase.co/functions/v1/create-user-wallet', {
         method: 'POST',
@@ -287,13 +291,22 @@ const GiftTapGame = () => {
 
       if (newWallet && newWallet.publicKey) {
         // 4. Save Secret Silently (No Popup yet, just storing it for the Wallet Modal)
-        if (newWallet.secretKey) {
-          localStorage.setItem(`wallet_secret_${userId}`, newWallet.secretKey);
-          console.log("✅ Secret phrase successfully caught and saved!");
-        } else {
-          console.error("❌ Edge Function returned no Secret Key!", newWallet);
-        }
+        if (newWallet.secretKey) localStorage.setItem(`wallet_secret_${userId}`, newWallet.secretKey);
 
+        // 3. Save the referrer to the new player's database row
+        if (referrerId && referrerId !== userId) {
+          await supabase.from('players').update({ referred_by: String(referrerId) }).eq('telegram_id', userId);
+          
+          // 4. Pay the person who invited them +10,000 Shards
+          // We read their current balance and add to it directly in the database
+          const { data: referrerData } = await supabase.from('players').select('shard_balance').eq('telegram_id', String(referrerId)).maybeSingle();
+          if (referrerData) {
+            await supabase.from('players')
+              .update({ shard_balance: Number(referrerData.shard_balance) + 10000 })
+              .eq('telegram_id', String(referrerId));
+          }
+        }
+        
         // 5. Update game state to enter the game
         setPlayerWallet(newWallet.publicKey);
         setBalance(0);
@@ -847,10 +860,9 @@ const GiftTapGame = () => {
               />
             )}
 
+            {/* Friends / Referral Tab */}
             {currentPage === 'friends' && (
-              <div style={{ flex: 1, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-                <h2 style={{ color: '#888' }}>Friends Coming Soon...</h2>
-              </div>
+              <Friends tgUser={tgUser} />
             )}
 
             {/* 3. Navigation Bar (Always at bottom) */}
