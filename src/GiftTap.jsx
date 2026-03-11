@@ -3,7 +3,7 @@ import { Connection, PublicKey, clusterApiUrl, Keypair, Transaction, SystemProgr
 import { supabase } from './supabaseClient';
 import { getAssociatedTokenAddressSync } from '@solana/spl-token';
 import BetaGate from './BetaGate';
-import Upgrades from './Upgrades';
+import Marketplace from './Marketplace';
 import Tasks from './Tasks';
 import bs58 from "bs58";
 
@@ -29,24 +29,6 @@ export const getLevelMultiplier = (level) => {
   if (level === 2) return 1.05;        
   return 1.05 + ((level - 2) * 0.025);  
 };
-
-const currentLevel = calculateLevel(balance); 
-const nextTarget = getNextLevelTarget(currentLevel);
-
-// 2. CHECK THE CLOCK: Do they have an active time-limited boost?
-let shopMultiplier = 1; // Default to normal
-const now = new Date();
-const expiryTime = new Date(stats.power_boost_expires);
-
-if (stats.active_power_boost === '2x' && now < expiryTime) {
-  shopMultiplier = 2; // The 2-minute or 7-day boost is active!
-} else if (now >= expiryTime && stats.active_power_boost !== 'none') {
-  // The deadline passed! We should wipe the boost from their screen
-  // (You would fire a quick Supabase update here to reset their boost to 'none')
-}
-
-// 3. THE FINAL MATH
-const shardsEarned = baseRate * shopMultiplier;
 
 const GiftTapGame = () => {
 
@@ -86,6 +68,7 @@ const GiftTapGame = () => {
 
   // 1. GAME STATE
   const [balance, setBalance] = useState(0);
+  const [stats, setStats] = useState({ frenzy_expires: null, efficiency_expires: null, energy_boost_expires: null, inventory: {} });
   const [energy, setEnergy] = useState(500);
   const [taps, setTaps] = useState([]);
   const [playerWallet, setPlayerWallet] = useState(null);
@@ -132,20 +115,10 @@ const GiftTapGame = () => {
 
   const connection = useMemo(() => {
     const rpcUrl = import.meta.env.VITE_SOLANA_RPC_URL;
-    
-    console.log("DEBUG RPC URL:", rpcUrl); 
-    // If this prints "undefined" as a string, the build failed to find the secret.
-    
     return new Connection(rpcUrl || clusterApiUrl('mainnet-beta'), 'confirmed');
   }, []);
-  // This is where all project fees will be sent to fund the Gift launch
-  const GIFT_TREASURY_WALLET = new PublicKey("8G7uEcPS6dwA5wW9bGoqi98EzBunF8trjbbFJkgkvBPm");
 
-  const getLevelMultiplier = (level) => {
-    if (level <= 1) return 1.0;
-    if (level === 2) return 1.1;
-    return 1.1 + ((level - 2) * 0.05); 
-  };
+  const GIFT_TREASURY_WALLET = new PublicKey("8G7uEcPS6dwA5wW9bGoqi98EzBunF8trjbbFJkgkvBPm");
 
   // 2. FETCH TOP LEADER (Individual Badge)
   const fetchTopLeader = useCallback(async () => {
@@ -196,6 +169,13 @@ const GiftTapGame = () => {
         setBalance(Number(player.shard_balance));
         setTapPower(player.tap_power || 1);
         setMaxDailyLimit(player.max_daily_limit || 1000);
+        // Load Backpack and Timers
+        setStats({
+          inventory: player.inventory || {},
+          frenzy_expires: player.frenzy_expires || null,
+          efficiency_expires: player.efficiency_expires || null,
+          energy_boost_expires: player.energy_boost_expires || null
+        });
 
         // Daily Reset Logic
         const today = new Date().toISOString().split('T')[0];
@@ -212,8 +192,10 @@ const GiftTapGame = () => {
         const lastDate = new Date(player.last_updated).getTime();
         const now = new Date().getTime();
         const secondsPassed = Math.floor((now - lastDate) / 1000);
-        const recovered = Math.floor(secondsPassed / 1.5); 
-        setEnergy(Math.min((player.last_energy || 0) + recovered, 500));
+        const recovered = Math.floor(secondsPassed / 1.8); 
+        // Apply Expanded Battery logic to max energy cap
+        const maxEnergy = (player.energy_boost_expires && now < new Date(player.energy_boost_expires).getTime()) ? 1500 : 500;
+        setEnergy(Math.min((player.last_energy || 0) + recovered, maxEnergy));
         
         setIsDataLoaded(true);
       } 
@@ -324,10 +306,12 @@ const GiftTapGame = () => {
 
   useEffect(() => {
     const ticker = setInterval(() => {
-      setEnergy((prev) => (prev < 500 ? prev + 1 : 500));
+      // Dynamic max energy based on timers
+      const maxE = (stats.energy_boost_expires && new Date() < new Date(stats.energy_boost_expires)) ? 1500 : 500;
+      setEnergy((prev) => (prev < maxE ? prev + 1 : maxE));
     }, 1500);
     return () => clearInterval(ticker);
-  }, []);
+  }, [stats.energy_boost_expires]);
 
   // Inside your main GiftTap component:
   useEffect(() => {
@@ -398,50 +382,65 @@ const GiftTapGame = () => {
   };
 
   const handleTap = (e) => {
-    // 1. Get today's and yesterday's exact dates
     const todayObj = new Date();
     const today = todayObj.toISOString().split('T')[0];
   
-    // 1. Reset logic if it's a new day
     let currentDailyTaps = dailyTaps;
-    let currentStreak = Math.max(1, streak); // Forces 0 to immediately become 1!
+    let currentStreak = Math.max(1, streak);
 
-    // 2. Did they cross into a new day?
     if (lastTapDate !== today) {
       const yesterdayObj = new Date();
       yesterdayObj.setDate(yesterdayObj.getDate() - 1);
       const yesterday = yesterdayObj.toISOString().split('T')[0];
 
-      // 3. STREAK LOGIC
-      if (lastTapDate === yesterday) {
-        currentStreak += 1; // They tapped yesterday, streak continues!
-      } else if (lastTapDate < yesterday) {
-        currentStreak = 1; // They missed a day, streak broken!
-      }
+      if (lastTapDate === yesterday) currentStreak += 1;
+      else if (lastTapDate < yesterday) currentStreak = 1;
 
       currentDailyTaps = 0;
       setDailyTaps(0);
       setLastTapDate(today);
       setStreak(currentStreak);
-      
-      // Save the day-reset instantly
       saveToDatabase(balance, energy, 0, today, currentStreak);
     }
 
-    // 2. CHECK LIMIT (1000)
-    if (currentDailyTaps >= 1000) {
-      alert("Daily limit reached! Upgrade your boost to tap more.");
+    if (currentDailyTaps >= maxDailyLimit) {
+      alert("Daily limit reached! Upgrade your limit in the shop.");
       return;
     }
 
     if (energy <= 0 || !isDataLoaded) return;
 
-    const nextBalance = balance + 1;
-    const nextEnergy = energy - 1;
-    const nextDaily = currentDailyTaps + 1;
+    // --- NEW: THE MATH ENGINE ---
+    const currentLevel = calculateLevel(balance); 
+    const baseRate = getLevelMultiplier(currentLevel); 
+
+    let payoutMultiplier = 1;
+    let costMultiplier = 1;
+    const now = new Date();
+
+    // Check 90-Second Frenzy Timer
+    if (stats.frenzy_expires && now < new Date(stats.frenzy_expires)) {
+      payoutMultiplier *= 2; 
+    }
+
+    // Check Heavy Hands Timer
+    if (stats.efficiency_expires && now < new Date(stats.efficiency_expires)) {
+      payoutMultiplier *= 2;
+      costMultiplier *= 2; // Drains energy twice as fast!
+    }
+
+    // Prevent going into negative energy or over daily limit on a multi-click
+    if (energy - costMultiplier < 0 || currentDailyTaps + costMultiplier > maxDailyLimit) {
+        return; // Wait for energy or limit reset
+    }
+
+    const shardsEarned = baseRate * payoutMultiplier;
+    const nextBalance = balance + shardsEarned;
+    const nextEnergy = energy - costMultiplier;
+    const nextDaily = currentDailyTaps + costMultiplier;
 
     setIsPressed(true);
-    setTimeout(() => setIsPressed(false), 100); // Reset after 100ms
+    setTimeout(() => setIsPressed(false), 100);
 
     setBalance(nextBalance);
     setEnergy(nextEnergy);
@@ -449,7 +448,7 @@ const GiftTapGame = () => {
     saveToDatabase(nextBalance, nextEnergy, nextDaily, today, currentStreak);
     
     const id = Date.now();
-    setTaps(t => [...t, { id, x: e.clientX, y: e.clientY }]);
+    setTaps(t => [...t, { id, x: e.clientX, y: e.clientY, amount: shardsEarned }]);
     setTimeout(() => setTaps(t => t.filter(tap => tap.id !== id)), 500);
   };
 
@@ -468,6 +467,12 @@ const GiftTapGame = () => {
             setEnergy(Number(payload.new.last_energy));
             setTapPower(payload.new.tap_power);
             setMaxDailyLimit(payload.new.max_daily_limit);
+            setStats({
+              inventory: payload.new.inventory || {},
+              frenzy_expires: payload.new.frenzy_expires,
+              efficiency_expires: payload.new.efficiency_expires,
+              energy_boost_expires: payload.new.energy_boost_expires
+            });
           }
 
           // 2. Update the Top Leader Badge (The fix for the main page)
@@ -677,26 +682,6 @@ const GiftTapGame = () => {
     }
   };
 
-  // 5. SHOP LOGIC
-  const buyUpgrade = async (type, cost, bonus) => {
-    if (balance < cost) return alert("Not enough Shards!");
-    
-    const updates = type === 'power' 
-      ? { tap_power: tapPower + bonus, shard_balance: balance - cost }
-      : { max_daily_limit: maxDailyLimit + bonus, shard_balance: balance - cost };
-
-    const { error } = await supabase.from('players').update(updates).eq('telegram_id', String(tgUser.id));
-    
-    if (!error) {
-      setBalance(prev => prev - cost);
-      if (type === 'power') setTapPower(prev => prev + bonus);
-      else setMaxDailyLimit(prev => prev + bonus);
-      alert("Upgrade successful!");
-    } else {
-      console.error("Upgrade Error:", error.message);
-    }
-  };
-
   if (isLoading) return <div style={styles.container}>Loading Gift...</div>;
 
   return (
@@ -767,22 +752,20 @@ const GiftTapGame = () => {
 
                 <div onClick={handleTap} style={styles.giftZone}>
                   <img src="/Gift2u_logo.png" alt="Gift"  onDragStart={(e) => e.preventDefault()} onContextMenu={(e) => e.preventDefault()} style={{ ...styles.giftImage, filter: isPressed ? 'drop-shadow(0 0 15px rgba(255, 215, 0, 0.8)) brightness(1.1)' : 'drop-shadow(0 0 5px rgba(255, 215, 0, 0.2))', transform: isPressed ? 'scale(0.95)' : 'scale(1)', transition: 'transform 0.05s cubic-bezier(0.34, 1.56, 0.64, 1)' }} />
-                  {taps.map(t => <span key={t.id} style={{ ...styles.floatingText, left: t.x, top: t.y }}>+1</span>)}
+                  {taps.map(t => <span key={t.id} style={{ ...styles.floatingText, left: t.x, top: t.y }}>+{t.amount.toFixed(2)}</span>)}
                 </div>
               </>
             )}
 
             {currentPage === 'shop' && (
-              <Upgrades 
+              <Marketplace 
                 balance={balance} 
                 setBalance={setBalance}
-                setEnergy={setEnergy} // <--- ADD THIS LINE
-                stats={{ tap_power: tapPower, max_daily_limit: maxDailyLimit }}
-                setStats={(newStats) => {
-                  if (newStats.tap_power) setTapPower(newStats.tap_power);
-                  if (newStats.max_daily_limit) setMaxDailyLimit(newStats.max_daily_limit);
-                }}
+                setEnergy={setEnergy} 
+                stats={stats}
+                setStats={setStats}
                 tgUser={tgUser}
+                playerWallet={playerWallet}
               />
             )}
 

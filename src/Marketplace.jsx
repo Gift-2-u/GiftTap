@@ -3,8 +3,6 @@ import { supabase } from './supabaseClient';
 import { Connection, PublicKey, Keypair, Transaction, SystemProgram, ComputeBudgetProgram, sendAndConfirmTransaction } from '@solana/web3.js';
 import bs58 from 'bs58';
 // At the top of Tasks.jsx
-import { calculateLevel, getNextLevelTarget } from './GiftTap'; 
-// (Make sure the path matches where your file is)
 
 const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, tgUser, playerWallet }) => {
   const [activeTab, setActiveTab] = useState('market'); 
