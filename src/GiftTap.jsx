@@ -25,9 +25,9 @@ export const getNextLevelTarget = (level) => {
 };
 
 export const getLevelMultiplier = (level) => {
-  if (level <= 1) return 1.025;          
-  if (level === 2) return 1.05;        
-  return 1.05 + ((level - 2) * 0.025);  
+  if (level <= 1) return 1;          
+  if (level === 2) return 1.025;        
+  return 1.025 + ((level - 2) * 0.025);  
 };
 
 const GiftTapGame = () => {
