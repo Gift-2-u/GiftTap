@@ -725,9 +725,9 @@ const GiftTapGame = () => {
       });
 
       /// 3. --- PASTE THE UPSERT CODE HERE ---
-      const { error: upsertError } = await supabase.from('players').upsert({
+      const { data, error: upsertError } = await supabase.from('players').upsert({
         telegram_id: String(tgUser.id),
-        wallet_address: playerWallet, // Add this line to fix the error!
+        wallet_address: playerWallet, 
         sol_balance: realSol,
         usdc_balance: realUsdc,
         username: tgUser.username || tgUser.first_name || 'Player'
@@ -735,9 +735,9 @@ const GiftTapGame = () => {
           .select();
 
       if (upsertError) {
-          console.error("❌ SYNC ERROR:", error.message);
+          console.error("❌ SYNC ERROR:", upsertError.message); 
       } else {
-          console.log("✅ Sync Successful for ID:", tgUser.id, data);
+          console.log("✅ Sync Successful for ID:", tgUser.id, data); 
       }
       
     } catch (err) { 
