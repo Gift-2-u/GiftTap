@@ -471,7 +471,7 @@ const GiftTapGame = () => {
       setDailyTaps(0);
       setLastTapDate(today);
       setStreak(currentStreak);
-      saveToDatabase(balance, energy, 0, today, currentStreak);
+      saveToDatabase(balance, energy, 0, today, currentStreak, lifetimeTaps, maxUnlockedLevel);
     }
 
     // Calculate max limit inside the tap function
@@ -520,7 +520,10 @@ const GiftTapGame = () => {
     const shardsEarned = Math.round(rawShardsEarned * 1000) / 1000;
     
     const nextBalance = Math.round((balance + shardsEarned) * 1000) / 1000;
+
+    const safeLifetimeTaps = Number(lifetimeTaps) || 0;
     const nextLifetimeTaps = Math.round((lifetimeTaps + shardsEarned) * 1000) / 1000;
+    
     let nextEnergy = energy - costMultiplier;
     const nextDaily = currentDailyTaps + costMultiplier;
 
