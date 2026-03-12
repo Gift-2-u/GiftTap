@@ -230,7 +230,7 @@ const GiftTapGame = () => {
       else {
         console.log("No wallet found, generating...");
         
-        // This is the FIXED fetch call (No more '...')
+        // This is the FIXED fetch call
         const response = await fetch('https://ncwlbwzxfpcnxkyrmdck.supabase.co/functions/v1/create-user-wallet', {
           method: 'POST',
           headers: {
@@ -246,9 +246,19 @@ const GiftTapGame = () => {
         const result = await response.json();
 
         if (result && result.publicKey) {
+          // --- THE NEW BACKUP TRIGGER LOGIC ---
           if (result.mnemonic) {
             localStorage.setItem(`wallet_secret_${userId}`, result.mnemonic);
+            localStorage.setItem(`wallet_backed_up_${userId}`, "false"); // Forces password screen
+            localStorage.removeItem(`wallet_pwd_${userId}`); // Clears old passwords
+          } 
+          // Failsafe: Just in case Supabase is still sending the old code
+          else if (result.secretKey) {
+            localStorage.setItem(`wallet_secret_${userId}`, result.secretKey);
+            localStorage.setItem(`wallet_backed_up_${userId}`, "false"); 
+            localStorage.removeItem(`wallet_pwd_${userId}`); 
           }
+          
           setPlayerWallet(result.publicKey);
           setIsDataLoaded(true);
         } else {
@@ -1121,7 +1131,7 @@ const GiftTapGame = () => {
                         {!showSettings && (
                           <button onClick={() => setShowSettings(true)} style={{ background: 'none', border: 'none', color: '#888', fontSize: '18px', marginRight: '15px', cursor: 'pointer' }}>⚙️</button>
                         )}
-                        <button onClick={() => { setIsModalOpen(false); setShowSettings(false); setIsRevealed(false); }} style={{ background: 'none', border: 'none', color: '#888', fontSize: '18px', cursor: 'pointer' }}>✕</button>
+                        <button onClick={() => { setIsModalOpen(false); setShowSettings(false); setIsRevealed(false); setWalletPwd(''); }} style={{ background: 'none', border: 'none', color: '#888', fontSize: '18px', cursor: 'pointer' }}>✕</button>
                       </div>
                     </div>
 
@@ -1143,6 +1153,7 @@ const GiftTapGame = () => {
                                 const savedPwd = localStorage.getItem(`wallet_pwd_${tgUser.id}`);
                                 if (savedPwd === walletPwd) {
                                   setIsRevealed(true);
+                                  setWalletPwd(''); // Clears the input field for security
                                 } else {
                                   alert("Incorrect password!");
                                 }
@@ -1151,7 +1162,50 @@ const GiftTapGame = () => {
                             >
                               Unlock Wallet
                             </button>
+
+                            {/* --- THE "FORGOT PASSWORD" RESET --- */}
+                            <div style={{ textAlign: 'center', marginTop: '15px' }}>
+                              <span 
+                                onClick={() => {
+                                  if(window.confirm("WARNING: This will log you out and delete your wallet from this device. You will need your 12 words to recover your account. Continue?")) {
+                                    localStorage.removeItem(`wallet_secret_${tgUser.id}`);
+                                    localStorage.removeItem(`wallet_pwd_${tgUser.id}`);
+                                    localStorage.removeItem(`wallet_backed_up_${tgUser.id}`);
+                                    window.location.reload();
+                                  }
+                                }}
+                                style={{ color: '#ff4d4d', fontSize: '10px', textDecoration: 'underline', cursor: 'pointer' }}
+                              >
+                                Forgot Password? Reset App
+                              </span>
+                            </div>
                           </div>
+                        ) : (
+                          /* --- THE UNLOCKED 12-WORD GRID --- */
+                          <div style={{ background: '#000', padding: '15px', borderRadius: '10px', border: '1px solid #ffd700', marginTop: '15px' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <label style={{ color: '#ffd700', fontSize: '11px', fontWeight: 'bold' }}>YOUR 12 SECRET WORDS:</label>
+                              <button 
+                                onClick={() => setIsRevealed(false)} 
+                                style={{ background: 'none', border: 'none', color: '#888', fontSize: '12px', cursor: 'pointer' }}
+                              >
+                                Lock 🔒
+                              </button>
+                            </div>
+                            
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px', marginTop: '10px' }}>
+                              {(localStorage.getItem(`wallet_secret_${tgUser.id}`) || "").split(" ").map((word, i) => (
+                                word ? (
+                                  <div key={i} style={{ background: '#222', padding: '6px', borderRadius: '6px', fontSize: '12px', color: '#4ade80', textAlign: 'center', border: '1px solid #333' }}>
+                                    <span style={{ color: '#888', marginRight: '4px', fontSize: '10px' }}>{i + 1}.</span>{word}
+                                  </div>
+                                ) : null
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
                         ) : (
                           <div style={{ background: '#111', padding: '15px', borderRadius: '10px', border: '1px solid #ffd700' }}>
                             <p style={{ color: '#ff4d4d', fontSize: '12px', fontWeight: 'bold', margin: '0 0 10px 0' }}>⚠️ NEVER SHARE THIS PHRASE</p>
