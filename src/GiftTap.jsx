@@ -1131,7 +1131,7 @@ const GiftTapGame = () => {
                         {!showSettings && (
                           <button onClick={() => setShowSettings(true)} style={{ background: 'none', border: 'none', color: '#888', fontSize: '18px', marginRight: '15px', cursor: 'pointer' }}>⚙️</button>
                         )}
-                        <button onClick={() => { setIsModalOpen(false); setShowSettings(false); setIsRevealed(false); setWalletPwd(''); }} style={{ background: 'none', border: 'none', color: '#888', fontSize: '18px', cursor: 'pointer' }}>✕</button>
+                        <button onClick={() => { setIsModalOpen(false); setShowSettings(false); setIsRevealed(false); }} style={{ background: 'none', border: 'none', color: '#888', fontSize: '18px', cursor: 'pointer' }}>✕</button>
                       </div>
                     </div>
 
@@ -1153,7 +1153,6 @@ const GiftTapGame = () => {
                                 const savedPwd = localStorage.getItem(`wallet_pwd_${tgUser.id}`);
                                 if (savedPwd === walletPwd) {
                                   setIsRevealed(true);
-                                  setWalletPwd(''); // Clears the input field for security
                                 } else {
                                   alert("Incorrect password!");
                                 }
@@ -1162,7 +1161,6 @@ const GiftTapGame = () => {
                             >
                               Unlock Wallet
                             </button>
-
                             {/* --- THE "FORGOT PASSWORD" RESET --- */}
                             <div style={{ textAlign: 'center', marginTop: '15px' }}>
                               <span 
@@ -1179,7 +1177,7 @@ const GiftTapGame = () => {
                                 Forgot Password? Reset App
                               </span>
                             </div>
-                          </div>
+                          </div>  
                         ) : (
                           /* --- THE UNLOCKED 12-WORD GRID --- */
                           <div style={{ background: '#000', padding: '15px', borderRadius: '10px', border: '1px solid #ffd700', marginTop: '15px' }}>
@@ -1202,28 +1200,6 @@ const GiftTapGame = () => {
                                 ) : null
                               ))}
                             </div>
-                          </div>
-                        )}
-                      </div>
-
-                        ) : (
-                          <div style={{ background: '#111', padding: '15px', borderRadius: '10px', border: '1px solid #ffd700' }}>
-                            <p style={{ color: '#ff4d4d', fontSize: '12px', fontWeight: 'bold', margin: '0 0 10px 0' }}>⚠️ NEVER SHARE THIS PHRASE</p>
-                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px', marginTop: '10px' }}>
-                              {(localStorage.getItem(`wallet_secret_${tgUser.id}`) || "").split(" ").map((word, i) => (
-                                word ? (
-                                  <div key={i} style={{ background: '#222', padding: '6px', borderRadius: '6px', fontSize: '12px', color: '#4ade80', textAlign: 'center', border: '1px solid #333' }}>
-                                    <span style={{ color: '#888', marginRight: '4px', fontSize: '10px' }}>{i + 1}.</span>{word}
-                                  </div>
-                                ) : null
-                              ))}
-                            </div>
-                            <button 
-                              onClick={() => { navigator.clipboard.writeText(localStorage.getItem(`wallet_secret_${tgUser.id}`)); alert("Copied!"); }}
-                              style={{ width: '100%', background: '#333', color: '#fff', border: '1px solid #555', padding: '10px', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}
-                            >
-                              📋 Copy Phrase
-                            </button>
                           </div>
                         )}
                         <button onClick={() => { setShowSettings(false); setIsRevealed(false); setWalletPwd(''); }} style={{ width: '100%', marginTop: '20px', background: 'none', color: '#888', border: 'none', cursor: 'pointer' }}>← Back to Balances</button>
