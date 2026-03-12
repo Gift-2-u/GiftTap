@@ -17,6 +17,15 @@ export const calculateLevel = (taps) => {
   return 50; 
 };
 
+export const getNextLevelTarget = (currentLevel) => {
+  if (currentLevel < 5) return (currentLevel + 1) * 10000;
+  if (currentLevel < 10) return 50000 + ((currentLevel + 1 - 5) * 15000);
+  if (currentLevel < 20) return 125000 + ((currentLevel + 1 - 10) * 25000);
+  if (currentLevel < 30) return 375000 + ((currentLevel + 1 - 20) * 50000);
+  if (currentLevel < 50) return 875000 + ((currentLevel + 1 - 30) * 100000);
+  return 2875000; // Max level cap
+};
+
 export const getLevelMultiplier = (level) => {
   if (level >= 30) return 1.75;
   if (level >= 20) return 1.50;
