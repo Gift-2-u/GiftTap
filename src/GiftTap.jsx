@@ -8,27 +8,29 @@ import Tasks from './Tasks';
 import Friends from './Friends';
 import bs58 from "bs58";
 
-// Drop these at the very top of GiftTap.jsx, right under your imports
 export const calculateLevel = (taps) => {
   if (taps < 50000) return Math.floor(taps / 10000); 
-  if (taps < 110000) return 5 + Math.floor((taps - 50000) / 12000); 
-  if (taps < 335000) return 10 + Math.floor((taps - 110000) / 15000); 
-  if (taps < 835000) return 25 + Math.floor((taps - 335000) / 20000); 
+  if (taps < 125000) return 5 + Math.floor((taps - 50000) / 15000); 
+  if (taps < 375000) return 10 + Math.floor((taps - 125000) / 25000); 
+  if (taps < 875000) return 20 + Math.floor((taps - 375000) / 50000); 
+  if (taps < 2875000) return 30 + Math.floor((taps - 875000) / 100000); 
   return 50; 
 };
 
-export const getNextLevelTarget = (level) => {
-  if (level < 5) return (level + 1) * 10000;
-  if (level < 10) return 50000 + ((level - 4) * 12000);
-  if (level < 25) return 110000 + ((level - 9) * 15000);
-  if (level < 50) return 335000 + ((level - 24) * 20000);
-  return null; 
+export const getLevelMultiplier = (level) => {
+  if (level >= 30) return 1.75;
+  if (level >= 20) return 1.50;
+  if (level >= 10) return 1.30;
+  if (level >= 5) return 1.15;
+  return 1.00;
 };
 
-export const getLevelMultiplier = (level) => {
-  if (level <= 1) return 1;          
-  if (level === 2) return 1.025;        
-  return 1.025 + ((level - 2) * 0.025);  
+export const ASCENSION_WALLS = {
+  4: { targetLevel: 5, shardCost: 10000, solCost: 0.02, newCap: 9 },
+  9: { targetLevel: 10, shardCost: 15000, solCost: 0.03, newCap: 19 },
+  19: { targetLevel: 20, shardCost: 50000, solCost: 0.10, newCap: 29 },
+  29: { targetLevel: 30, shardCost: 100000, solCost: 0.20, newCap: 49 },
+  49: { targetLevel: 50, shardCost: 400000, solCost: 0.75, newCap: 50 }
 };
 
 const GiftTapGame = () => {
@@ -112,6 +114,10 @@ const GiftTapGame = () => {
   const [isRevealed, setIsRevealed] = useState(false);
   const [mustBackup, setMustBackup] = useState(false);
   const [setupPwd, setSetupPwd] = useState('');
+  const [lifetimeTaps, setLifetimeTaps] = useState(0);
+  const [maxUnlockedLevel, setMaxUnlockedLevel] = useState(4);
+  const [showAscensionModal, setShowAscensionModal] = useState(false);
+  const [currentLevel, setCurrentLevel] = useState(0);
 
   const tgUser = useMemo(() => {
     return window.Telegram?.WebApp?.initDataUnsafe?.user || { id: "test_local_user", first_name: "Local" };
@@ -184,6 +190,9 @@ const GiftTapGame = () => {
           limit_boost_amount: player.limit_boost_amount || 0, // <-- NEW
           limit_boost_expires: player.limit_boost_expires || null // <-- NEW
         });
+        setLifetimeTaps(Number(player.lifetime_taps) || 0); 
+        setMaxUnlockedLevel(player.max_unlocked_level || 4); 
+        setCurrentLevel(calculateLevel(Number(player.lifetime_taps) || 0));
 
         // Daily Reset Logic
         const today = new Date().toISOString().split('T')[0];
@@ -404,7 +413,7 @@ const GiftTapGame = () => {
   }, [tgUser?.id]);
 
   // 6. SAVE PROGRESS
-  const saveToDatabase = async (b, e, dt, ltd, strk) => {
+  const saveToDatabase = async (b, e, dt, ltd, strk, ltt, mul) => {
     // 1. Don't save if we don't have a valid user ID
     if (!tgUser?.id || tgUser.id === "test_local_user") return;
 
@@ -420,6 +429,8 @@ const GiftTapGame = () => {
         daily_taps: dt, // Make sure these columns exist in Supabase!
         last_tap_date: ltd,
         current_streak: strk, // <--- Now it saves the streak!
+        lifetime_taps: ltt,
+        max_unlocked_level: mul,
         last_updated: new Date().toISOString()
       })
       .eq('telegram_id', String(tgUser.id)); // Match their specific row
@@ -467,13 +478,15 @@ const GiftTapGame = () => {
 
     if (energy <= 0 || !isDataLoaded) return;
 
-    // --- NEW: THE MATH ENGINE ---
-    const currentLevel = calculateLevel(balance); 
-    const baseRate = getLevelMultiplier(currentLevel); 
+    // --- ASCENSION WALL CHECK ---
+    if (currentLevel >= maxUnlockedLevel && calculateLevel(lifetimeTaps + 1) > maxUnlockedLevel) {
+      setShowAscensionModal(true);
+      return; 
+    }
 
+    const baseRate = getLevelMultiplier(currentLevel); 
     let payoutMultiplier = 1;
     let costMultiplier = 1;
-    const now = new Date();
 
     // 2. Apply active buffs
     if (stats.frenzy_expires && now < new Date(stats.frenzy_expires)) {
@@ -501,6 +514,13 @@ const GiftTapGame = () => {
     const nextEnergy = energy - costMultiplier;
     const nextDaily = currentDailyTaps + costMultiplier;
 
+    // --- FREE ENERGY RESET ON BASE LEVEL UP ---
+    const newCalculatedLevel = calculateLevel(nextLifetimeTaps);
+    if (newCalculatedLevel > currentLevel && newCalculatedLevel <= maxUnlockedLevel) {
+      nextEnergy = currentMaxLimit; // Free Refill!
+      setCurrentLevel(newCalculatedLevel);
+    }
+
     setIsPressed(true);
     setTimeout(() => setIsPressed(false), 100);
 
@@ -512,6 +532,33 @@ const GiftTapGame = () => {
     const id = Date.now();
     setTaps(t => [...t, { id, x: e.clientX, y: e.clientY, amount: shardsEarned }]);
     setTimeout(() => setTaps(t => t.filter(tap => tap.id !== id)), 500);
+  };
+
+  const handleAscensionPayment = async (method) => {
+    const wallData = ASCENSION_WALLS[maxUnlockedLevel];
+    if (!wallData) return;
+
+    if (method === 'shards') {
+      if (balance < wallData.shardCost) {
+        alert("Not enough Shards!");
+        return;
+      }
+      
+      const newBalance = balance - wallData.shardCost;
+      const newCap = wallData.newCap;
+      const newLevel = wallData.targetLevel;
+      
+      setBalance(newBalance);
+      setMaxUnlockedLevel(newCap);
+      setCurrentLevel(newLevel);
+      setEnergy(maxDailyLimit); 
+      setShowAscensionModal(false);
+      
+      await saveToDatabase(newBalance, maxDailyLimit, dailyTaps, lastTapDate, streak, lifetimeTaps, newCap);
+      alert(`Ascended to Level ${newLevel}! Tap Power Increased.`);
+    } else if (method === 'sol') {
+      alert(`SOL integration for Ascension pending: ${wallData.solCost} SOL`);
+    }
   };
 
   // --- SEAMLESS SYNC (Instant Phone-to-Laptop) ---
@@ -772,6 +819,32 @@ const GiftTapGame = () => {
         /* 2. Show the ACTUAL GAME if they have access */
         <div style={{ ...styles.container, flexDirection: 'column', height: '100%', width: '100%', overflow: 'hidden' }}>
           
+          {/* ASCENSION WALL MODAL */}
+          {showAscensionModal && ASCENSION_WALLS[maxUnlockedLevel] && (
+            <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', background: 'rgba(0,0,0,0.9)', zIndex: 1000, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+              <div style={{ background: '#1c1e22', border: '1px solid #ffd700', borderRadius: '20px', padding: '30px', textAlign: 'center', maxWidth: '300px' }}>
+                <h2 style={{ color: '#ffd700', marginTop: 0 }}>Tier Complete! 🏆</h2>
+                <p style={{ color: '#ddd', fontSize: '14px' }}>
+                  You've hit the Level {maxUnlockedLevel} wall. To ascend to Level {ASCENSION_WALLS[maxUnlockedLevel].targetLevel} and permanently increase your tap power to <strong>{getLevelMultiplier(ASCENSION_WALLS[maxUnlockedLevel].targetLevel)}x</strong>, you must pay the Ascension Fee.
+                </p>
+                
+                <button 
+                  onClick={() => handleAscensionPayment('shards')}
+                  style={{ width: '100%', background: '#2a2d34', color: '#fff', border: '1px solid #4ade80', padding: '15px', borderRadius: '12px', fontWeight: 'bold', cursor: 'pointer', marginBottom: '10px' }}
+                >
+                  Burn {ASCENSION_WALLS[maxUnlockedLevel].shardCost.toLocaleString()} Shards
+                </button>
+                
+                <button 
+                  onClick={() => handleAscensionPayment('sol')}
+                  style={{ width: '100%', background: 'linear-gradient(90deg, #9945FF, #14F195)', color: '#000', border: 'none', padding: '15px', borderRadius: '12px', fontWeight: 'bold', cursor: 'pointer' }}
+                >
+                  Pay {ASCENSION_WALLS[maxUnlockedLevel].solCost} SOL
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* TOP HEADER */}
           <div style={styles.headerContainer}>
             {/* Sleek Toggle Pill */}
