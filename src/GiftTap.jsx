@@ -511,7 +511,8 @@ const GiftTapGame = () => {
     const shardsEarned = Math.round(rawShardsEarned * 1000) / 1000;
     
     const nextBalance = Math.round((balance + shardsEarned) * 1000) / 1000;
-    const nextEnergy = energy - costMultiplier;
+    const nextLifetimeTaps = Math.round((lifetimeTaps + shardsEarned) * 1000) / 1000;
+    let nextEnergy = energy - costMultiplier;
     const nextDaily = currentDailyTaps + costMultiplier;
 
     // --- FREE ENERGY RESET ON BASE LEVEL UP ---
@@ -724,14 +725,6 @@ const GiftTapGame = () => {
       fetchBalances();
     }
   }, [isModalOpen, playerWallet, isDataLoaded, fetchBalances, showSettings]);
-
-  const inviteLink = `https://t.me/Gift2uTapBot?start=${tgUser.id}`;
-
-  const handleInvite = () => {
-    const text = "🎁 Join me on Gift! Tap to earn shards and move your way up the leaderboard!";
-    const url = `https://t.me/share/url?url=${encodeURIComponent(inviteLink)}&text=${encodeURIComponent(text)}`;
-    window.Telegram.WebApp.openTelegramLink(url);
-  };
 
   // 2. Create the execution function
   const handleWithdraw = async () => {
