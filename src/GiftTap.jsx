@@ -259,6 +259,23 @@ const GiftTapGame = () => {
             localStorage.removeItem(`wallet_pwd_${userId}`); 
           }
           
+          // --- NEW: FORCE CREATE THE PLAYER ROW IN SUPABASE ---
+          const { error: insertError } = await supabase
+            .from('players')
+            .upsert({
+              telegram_id: userId,
+              wallet_address: result.publicKey,
+              username: tgUser.username || tgUser.first_name || 'Player',
+              shard_balance: 0,
+              sol_balance: 0,
+              usdc_balance: 0
+            }, { onConflict: 'telegram_id' });
+
+          if (insertError) {
+            console.error("❌ Failed to create new player row:", insertError.message);
+          }
+          // ----------------------------------------------------
+
           setPlayerWallet(result.publicKey);
           setIsDataLoaded(true);
         } else {
