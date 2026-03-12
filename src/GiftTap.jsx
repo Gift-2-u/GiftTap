@@ -322,7 +322,19 @@ const GiftTapGame = () => {
         // 4. Save Secret Silently (No Popup yet, just storing it for the Wallet Modal)
         if (newWallet.mnemonic) {
           localStorage.setItem(`wallet_secret_${userId}`, newWallet.mnemonic);
+          localStorage.setItem(`wallet_backed_up_${userId}`, "false"); 
+          localStorage.removeItem(`wallet_pwd_${userId}`);
           setGeneratedSecret(newWallet.mnemonic); // Keeps your wallet generator overlay working
+        }
+
+        // --- NEW: PERMANENTLY UNLOCK BETA ACCESS IN SUPABASE ---
+        const { error: accessError } = await supabase
+          .from('players')
+          .update({ has_beta_access: true })
+          .eq('telegram_id', userId);
+
+        if (accessError) {
+          console.error("Failed to save beta access:", accessError.message);
         }
 
         // 3. Save the referrer to the new player's database row
