@@ -84,7 +84,6 @@ const Tasks = ({ balance, setBalance, tgUser }) => {
       <div style={{ flex: 1, overflowY: 'auto', paddingBottom: '120px' }}>
         {TASK_LIST.map((task) => {
           const isCompleted = safeCompletedTasks.includes(task.id);
-          const isLocked = currentLevel < task.reqLevel;
           
           // Determine if the task is ready to claim based on its type
           let isReady = false;
@@ -114,12 +113,6 @@ const Tasks = ({ balance, setBalance, tgUser }) => {
                       task.icon
                     )
                   )}
-                </div>
-                <div style={{ textAlign: 'left' }}>
-                  <div style={{ color: '#fff', fontWeight: 'bold', fontSize: '14px' }}>{task.title}</div>
-                  <div style={{ color: '#ffd700', fontSize: '12px', marginTop: '4px' }}>
-                    {isLocked ? `Unlocks at Lv.${task.reqLevel}` : `+${task.reward.toLocaleString()}`}
-                  </div>
                 </div>
               </div>
 
