@@ -210,6 +210,9 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, tgUser, 
     }
   };
 
+  // --- CALCULATE TOTAL BACKPACK ITEMS ---
+  const backpackItemCount = Object.values(localInventory || {}).reduce((total, qty) => total + Number(qty), 0);
+
   return (
     <div style={{ flex: 1, width: '100%', display: 'flex', flexDirection: 'column', padding: '15px', paddingBottom: '120px', boxSizing: 'border-box' }}>
       
@@ -242,7 +245,9 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, tgUser, 
       <div style={{ display: 'flex', background: '#111', borderRadius: '12px', padding: '5px', marginBottom: '15px', fontSize: '12px' }}>
         <button onClick={() => setActiveTab('upgrades')} style={{ flex: 1, padding: '10px 0', borderRadius: '10px', border: 'none', background: activeTab === 'upgrades' ? '#4ade80' : 'transparent', color: activeTab === 'upgrades' ? '#000' : '#888', fontWeight: 'bold' }}>Shards</button>
         <button onClick={() => setActiveTab('market')} style={{ flex: 1, padding: '10px 0', borderRadius: '10px', border: 'none', background: activeTab === 'market' ? '#fbef43' : 'transparent', color: activeTab === 'market' ? '#000' : '#888', fontWeight: 'bold' }}>Premium (SOL)</button>
-        <button onClick={() => setActiveTab('inventory')} style={{ flex: 1, padding: '10px 0', borderRadius: '10px', border: 'none', background: activeTab === 'inventory' ? '#9945FF' : 'transparent', color: activeTab === 'inventory' ? '#fff' : '#888', fontWeight: 'bold' }}>Backpack</button>
+        <button onClick={() => setActiveTab('inventory')} style={{ flex: 1, padding: '10px 0', borderRadius: '10px', border: 'none', background: activeTab === 'inventory' ? '#9945FF' : 'transparent', color: activeTab === 'inventory' ? '#fff' : '#888', fontWeight: 'bold' }}>
+          Backpack {backpackItemCount > 0 && <span style={{ color: activeTab === 'inventory' ? '#fff' : '#4ade80', marginLeft: '4px' }}>({backpackItemCount})</span>}
+        </button>
       </div>
 
       <div style={{ flex: 1, overflowY: 'auto' }}>
