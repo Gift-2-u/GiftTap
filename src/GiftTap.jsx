@@ -557,10 +557,45 @@ const GiftTapGame = () => {
       await saveToDatabase(newBalance, maxDailyLimit, dailyTaps, lastTapDate, streak, lifetimeTaps, newCap);
       alert(`Ascended to Level ${newLevel}! Tap Power Increased.`);
     } else if (method === 'sol') {
-      alert(`SOL integration for Ascension pending: ${wallData.solCost} SOL`);
+      try {
+        // 1. Ping your Supabase edge function to deduct the SOL
+        const response = await fetch('https://ncwlbwzxfpcnxkyrmdck.supabase.co/functions/v1/process-sol-payment', {
+          method: 'POST',
+          headers: { 
+            'Content-Type': 'application/json', 
+            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}` 
+          },
+          body: JSON.stringify({ 
+            telegram_id: String(tgUser.id), 
+            amount: wallData.solCost,
+            description: `Ascension to Level ${wallData.targetLevel}`
+          })
+        });
+
+        const result = await response.json();
+
+        // 2. If the backend confirms the SOL was paid, unlock the tier
+        if (result && result.success) {
+          const newCap = wallData.newCap;
+          const newLevel = wallData.targetLevel;
+          
+          setMaxUnlockedLevel(newCap);
+          setCurrentLevel(newLevel);
+          setEnergy(maxDailyLimit); 
+          setShowAscensionModal(false);
+          
+          // Notice we pass the current 'balance' here because we didn't burn any shards!
+          await saveToDatabase(balance, maxDailyLimit, dailyTaps, lastTapDate, streak, lifetimeTaps, newCap);
+          alert(`Payment successful! Ascended to Level ${newLevel}! Tap Power Increased.`);
+        } else {
+          alert(`Transaction Failed: ${result.error || "Insufficient SOL balance."}`);
+        }
+      } catch (err) {
+        console.error("SOL Payment Error:", err);
+        alert("An error occurred while processing the SOL payment.");
+      }
     }
   };
-
   // --- SEAMLESS SYNC (Instant Phone-to-Laptop) ---
   useEffect(() => {
     if (!isDataLoaded || !tgUser?.id || tgUser.id === "test_local_user") return;

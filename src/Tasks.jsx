@@ -10,18 +10,9 @@ const Tasks = ({ balance, setBalance, tgUser }) => {
   // NEW: State to track player's real progression stats
   const [playerStats, setPlayerStats] = useState({ streak: 0, purchased: false });
 
-  const currentLevel = calculateLevel(balance); 
-  const nextTarget = getNextLevelTarget(currentLevel);
-
   const TASK_LIST = [
     { id: 'sub_tg', title: 'Join telegram', reward: 250, link: 'https://t.me/Gift2u_GiftTap_official', icon: 'https://upload.wikimedia.org/wikipedia/commons/8/82/Telegram_logo.svg', type: 'social' },
     { id: 'follow_x', title: 'Follow us on X', reward: 250, link: 'https://x.com/gift2utoken', icon: '/logo-white.png', type: 'social' },
-    // NEW: Level Milestone Tasks
-    { id: 'reach_lvl_1', title: 'Reach Level 1', reward: 1000, icon: '⭐', type: 'level', target: 1 },
-    { id: 'reach_lvl_5', title: 'Reach Level 5', reward: 5000, icon: '⭐', reqLevel: 1, type: 'level', target: 5 },
-    { id: 'reach_lvl_10', title: 'Reach Level 10', reward: 35000, icon: '🌟', reqLevel: 5, type: 'level', target: 10 },
-    { id: 'reach_lvl_20', title: 'Reach Level 20', reward: 100000, icon: '🏆', reqLevel: 10, type: 'level', target: 20 },
-    { id: 'reach_lvl_50', title: 'Reach Level 50', reward: 150000, icon: '👑', reqLevel: 20, type: 'level', target: 50 },
     // Streak Tasks (Type: streak)
     { id: 'streak_7', title: 'Tap 7 Days in a Row', reward: 750, icon: '🔥', type: 'streak', target: 7 },
     { id: 'streak_14', title: 'Tap 14 Days in a Row', reward: 2000, icon: '🔥', reqLevel: 1, type: 'streak', target: 14 },
@@ -55,9 +46,6 @@ const Tasks = ({ balance, setBalance, tgUser }) => {
 
   // 2. Handle the "Go" button (Opens link, changes button to Claim)
   const handleGo = (task) => {
-    if (currentLevel < task.reqLevel) {
-      return alert(`LOCKED! You need to reach Level ${task.reqLevel} to do this task.`);
-    }
 
     if (task.type === 'social') {
       if (window.Telegram?.WebApp?.openLink) {
