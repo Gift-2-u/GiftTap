@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from './supabaseClient';
 import { Connection, PublicKey, Keypair, Transaction, SystemProgram, ComputeBudgetProgram, sendAndConfirmTransaction } from '@solana/web3.js';
 import bs58 from 'bs58';
-// At the top of Tasks.jsx
+import * as bip39 from "bip39";
+import { derivePath } from "ed25519-hd-key";
 
 const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, tgUser, playerWallet }) => {
   const [activeTab, setActiveTab] = useState('market'); 
@@ -84,9 +85,19 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, tgUser, 
         throw new Error("Secret key not found. Please unlock your wallet in settings.");
       }
 
-      // 2. Setup Connection
+      // 2. Setup Connection & Keypair
       const connection = new Connection("https://mainnet.helius-rpc.com/?api-key=538f6c8f-c773-46a2-939c-6d48c75b2226", 'confirmed');
-      const playerKeypair = Keypair.fromSecretKey(bs58.decode(storedSecret));
+      
+      let playerKeypair;
+      if (storedSecret.includes(" ")) {
+        // --- NEW FORMAT: Translate 12-word mnemonic to Keypair ---
+        const seed = bip39.mnemonicToSeedSync(storedSecret);
+        const derivedSeed = derivePath("m/44'/501'/0'/0'", seed.toString('hex')).key;
+        playerKeypair = Keypair.fromSeed(derivedSeed);
+      } else {
+        // --- LEGACY FORMAT: Base58 string ---
+        playerKeypair = Keypair.fromSecretKey(bs58.decode(storedSecret));
+      }
 
       // 3. Set Destination Wallets & Costs
       const masterWallet = new PublicKey("D4GufPTvp6tnzkaYGfombFLs48UjDANsxjMFJnSYz4Gh"); // <--- Add your Master Wallet here

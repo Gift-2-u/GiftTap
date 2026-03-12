@@ -7,6 +7,7 @@ import Marketplace from './Marketplace';
 import Tasks from './Tasks';
 import Friends from './Friends';
 import bs58 from "bs58";
+import { derivePath } from 'ed25519-hd-key';
 
 export const calculateLevel = (taps) => {
   if (taps < 50000) return Math.floor(taps / 10000); 
