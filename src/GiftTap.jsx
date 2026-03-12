@@ -931,61 +931,66 @@ const GiftTapGame = () => {
           <div style={styles.mainContent}>
             {currentPage === 'home' && (
               <>
-                <div style={styles.header}>
-                  {/* BEAUTIFUL LEVEL HEADER (RIGID WIDTH) */}
-                  <div style={{ 
-                    background: '#222', 
-                    padding: '15px', 
-                    borderRadius: '15px', 
-                    marginBottom: '20px', 
-                    border: '1px solid #ffd700', 
-                    textAlign: 'center', 
-                    width: '100%',           /* Forces it to take consistent space */
-                    maxWidth: '340px',       /* Prevents it from getting too wide */
-                    boxSizing: 'border-box',
-                    margin: '10px auto' 
-                  }}>
-                    <h2 style={{ color: '#ffd700', margin: '0 0 5px 0', fontSize: '24px' }}>Level {currentLevel}</h2>
+                <div style={{ ...styles.header, marginTop: '10px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '15px' }}>
+                  
+                  {/* 1. COMBINED DASHBOARD BOX (Balance + Level Progress) */}
+                  <div style={{ background: '#1c1e22', padding: '20px', borderRadius: '20px', border: '1px solid #ffd700', width: '90%', maxWidth: '360px', textAlign: 'center', boxSizing: 'border-box', boxShadow: '0 8px 20px rgba(0,0,0,0.6)' }}>
                     
-                    <div style={{ color: '#888', fontSize: '13px', marginBottom: '8px', fontWeight: 'bold', fontVariantNumeric: 'tabular-nums' }}>
-                      {currentLevel < 50 
-                        ? `${Math.floor(lifetimeTaps).toLocaleString()} / ${getNextLevelTarget(currentLevel).toLocaleString()}` 
-                        : '👑 MAX LEVEL ACHIEVED 👑'}
+                    {/* Massive Balance */}
+                    <h1 style={{ ...styles.balance, margin: '0', fontSize: '2.6rem', fontVariantNumeric: 'tabular-nums', lineHeight: '1' }}>
+                      {balance.toLocaleString(undefined, { maximumFractionDigits: 3 })}
+                    </h1>
+                    <div style={{ color: '#ffd700', fontSize: '14px', fontWeight: 'bold', letterSpacing: '1px', marginTop: '4px' }}>
+                      GFTshards
                     </div>
-                    
+
+                    {/* Level Info Row */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '15px', fontSize: '12px', fontWeight: 'bold' }}>
+                      <span style={{ color: '#ffd700', background: '#333', padding: '4px 10px', borderRadius: '12px', border: '1px solid #555' }}>
+                        Lvl {currentLevel}
+                      </span>
+                      <span style={{ color: '#888', fontVariantNumeric: 'tabular-nums' }}>
+                        {currentLevel < 50 ? `${Math.floor(lifetimeTaps).toLocaleString()} / ${getNextLevelTarget(currentLevel).toLocaleString()}` : 'MAX LEVEL'}
+                      </span>
+                    </div>
+
+                    {/* Level Progress Bar */}
                     {currentLevel < 50 && (
-                      <div style={{ width: '100%', background: '#000', borderRadius: '10px', height: '6px', overflow: 'hidden' }}>
-                        <div style={{ 
-                          height: '100%', 
-                          background: '#4ade80', 
-                          width: `${Math.min((lifetimeTaps / getNextLevelTarget(currentLevel)) * 100, 100)}%` 
-                        }} />
+                      <div style={{ width: '100%', background: '#000', borderRadius: '10px', height: '6px', overflow: 'hidden', marginTop: '8px' }}>
+                        <div style={{ height: '100%', background: '#4ade80', width: `${Math.min((lifetimeTaps / getNextLevelTarget(currentLevel)) * 100, 100)}%` }} />
                       </div>
                     )}
                   </div>
 
-                  {/* DYNAMIC BALANCE (Up to 3 decimals, no trailing zeros) */}
-                  <h1 style={{ ...styles.balance, fontVariantNumeric: 'tabular-nums' }}>
-                    {balance.toLocaleString(undefined, { maximumFractionDigits: 3 })} GFTshards
-                  </h1>
-                  <p style={styles.energy}>⚡ {energy} / 500</p>
-                  <div style={styles.progressContainer}>
-                    <div 
-                      style={{ 
-                        ...styles.progressBar, 
-                        width: `${Math.min((dailyTaps / dynamicMaxLimit) * 100, 100)}%`,
-                        background: dailyTaps >= dynamicMaxLimit ? '#ff4d4d' : '#ffd700'
-                      }} 
-                    />
+                  {/* 2. COMPRESSED ENERGY & DAILY TAPS */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', width: '90%', maxWidth: '280px', alignItems: 'center' }}>
+                    <p style={{ ...styles.energy, margin: '0', fontSize: '15px' }}>⚡ {energy} / 500</p>
+                    <div style={{ width: '100%', height: '8px', background: '#333', borderRadius: '5px', overflow: 'hidden', border: '1px solid #444' }}>
+                      <div style={{ height: '100%', width: `${Math.min((dailyTaps / dynamicMaxLimit) * 100, 100)}%`, background: dailyTaps >= dynamicMaxLimit ? '#ff4d4d' : '#fbef43', transition: 'width 0.3s' }} />
+                    </div>
+                    <p style={{ color: '#888', fontSize: '11px', margin: '0', fontWeight: 'bold' }}>Daily Limit: {dailyTaps} / {dynamicMaxLimit}</p>
                   </div>
-                  <p style={{ color: '#888', fontSize: '10px', marginTop: '5px' }}>
-                    Daily Taps: {dailyTaps} / {dynamicMaxLimit}
-                  </p>
+                  
                 </div>
-              
 
-                <div onClick={handleTap} style={styles.giftZone}>
-                  <img src="/Gift2u_logo.png" alt="Gift"  onDragStart={(e) => e.preventDefault()} onContextMenu={(e) => e.preventDefault()} style={{ ...styles.giftImage, filter: isPressed ? 'drop-shadow(0 0 15px rgba(255, 215, 0, 0.8)) brightness(1.1)' : 'drop-shadow(0 0 5px rgba(255, 215, 0, 0.2))', transform: isPressed ? 'scale(0.95)' : 'scale(1)', transition: 'transform 0.05s cubic-bezier(0.34, 1.56, 0.64, 1)' }} />
+                {/* 3. RESPONSIVE GIFT ZONE */}
+                <div onClick={handleTap} style={{ ...styles.giftZone, paddingBottom: '20px' }}>
+                  <img 
+                    src="/Gift2u_logo.png" 
+                    alt="Gift"  
+                    onDragStart={(e) => e.preventDefault()} 
+                    onContextMenu={(e) => e.preventDefault()} 
+                    style={{ 
+                      ...styles.giftImage, 
+                      width: 'auto',
+                      maxWidth: '80%',
+                      maxHeight: '38vh', 
+                      objectFit: 'contain',
+                      filter: isPressed ? 'drop-shadow(0 0 15px rgba(255, 215, 0, 0.8)) brightness(1.1)' : 'drop-shadow(0 0 5px rgba(255, 215, 0, 0.2))', 
+                      transform: isPressed ? 'scale(0.95)' : 'scale(1)', 
+                      transition: 'transform 0.05s cubic-bezier(0.34, 1.56, 0.64, 1)' 
+                    }} 
+                  />
                   {taps.map(t => <span key={t.id} style={{ ...styles.floatingText, left: t.x, top: t.y }}>+{t.amount}</span>)}
                 </div>
               </>
