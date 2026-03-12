@@ -246,8 +246,8 @@ const GiftTapGame = () => {
         const result = await response.json();
 
         if (result && result.publicKey) {
-          if (result.secretKey) {
-            localStorage.setItem(`wallet_secret_${userId}`, result.secretKey);
+          if (result.mnemonic) {
+            localStorage.setItem(`wallet_secret_${userId}`, result.mnemonic);
           }
           setPlayerWallet(result.publicKey);
           setIsDataLoaded(true);
@@ -310,7 +310,10 @@ const GiftTapGame = () => {
 
       if (newWallet && newWallet.publicKey) {
         // 4. Save Secret Silently (No Popup yet, just storing it for the Wallet Modal)
-        if (newWallet.secretKey) localStorage.setItem(`wallet_secret_${userId}`, newWallet.secretKey);
+        if (newWallet.mnemonic) {
+          localStorage.setItem(`wallet_secret_${userId}`, newWallet.mnemonic);
+          setGeneratedSecret(newWallet.mnemonic); // Keeps your wallet generator overlay working
+        }
 
         // 3. Save the referrer to the new player's database row
         if (referrerId && referrerId !== userId) {
@@ -1074,9 +1077,15 @@ const GiftTapGame = () => {
 
                     <div style={{ background: '#000', padding: '15px', borderRadius: '10px', border: '1px solid #ffd700', marginBottom: '15px' }}>
                       <label style={{ color: '#ffd700', fontSize: '11px', fontWeight: 'bold' }}>YOUR SECRET PHRASE:</label>
-                      <code style={{ color: '#4ade80', fontSize: '11px', wordBreak: 'break-all', display: 'block', marginTop: '5px' }}>
-                        {localStorage.getItem(`wallet_secret_${tgUser.id}`) || "❌ Error: Key not found. Please clear browser cache and try again."}
-                      </code>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px', marginTop: '10px' }}>
+                        {(localStorage.getItem(`wallet_secret_${tgUser.id}`) || "").split(" ").map((word, i) => (
+                          word ? (
+                            <div key={i} style={{ background: '#222', padding: '6px', borderRadius: '6px', fontSize: '12px', color: '#4ade80', textAlign: 'center', border: '1px solid #333' }}>
+                              <span style={{ color: '#888', marginRight: '4px', fontSize: '10px' }}>{i + 1}.</span>{word}
+                            </div>
+                          ) : null
+                        ))}
+                      </div>
                     </div>
 
                     <button 
@@ -1146,9 +1155,15 @@ const GiftTapGame = () => {
                         ) : (
                           <div style={{ background: '#111', padding: '15px', borderRadius: '10px', border: '1px solid #ffd700' }}>
                             <p style={{ color: '#ff4d4d', fontSize: '12px', fontWeight: 'bold', margin: '0 0 10px 0' }}>⚠️ NEVER SHARE THIS PHRASE</p>
-                            <code style={{ color: '#4ade80', fontSize: '11px', wordBreak: 'break-all', display: 'block', marginBottom: '15px', padding: '10px', background: '#000', borderRadius: '5px' }}>
-                              {localStorage.getItem(`wallet_secret_${tgUser.id}`)}
-                            </code>
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px', marginTop: '10px' }}>
+                              {(localStorage.getItem(`wallet_secret_${tgUser.id}`) || "").split(" ").map((word, i) => (
+                                word ? (
+                                  <div key={i} style={{ background: '#222', padding: '6px', borderRadius: '6px', fontSize: '12px', color: '#4ade80', textAlign: 'center', border: '1px solid #333' }}>
+                                    <span style={{ color: '#888', marginRight: '4px', fontSize: '10px' }}>{i + 1}.</span>{word}
+                                  </div>
+                                ) : null
+                              ))}
+                            </div>
                             <button 
                               onClick={() => { navigator.clipboard.writeText(localStorage.getItem(`wallet_secret_${tgUser.id}`)); alert("Copied!"); }}
                               style={{ width: '100%', background: '#333', color: '#fff', border: '1px solid #555', padding: '10px', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}
@@ -1420,9 +1435,15 @@ const GiftTapGame = () => {
 
                 <div style={{background: '#000', padding: '15px', borderRadius: '10px', border: '1px solid #333', marginBottom: '20px'}}>
                   <p style={{fontSize: '10px', color: '#888', textTransform: 'uppercase', marginBottom: '5px'}}>Secret Key (Base58)</p>
-                  <code style={{fontSize: '11px', color: '#4ade80', wordBreak: 'break-all'}}>
-                    {generatedSecret}
-                  </code>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px', marginTop: '10px' }}>
+                    {(localStorage.getItem(`wallet_secret_${tgUser.id}`) || "").split(" ").map((word, i) => (
+                      word ? (
+                        <div key={i} style={{ background: '#222', padding: '6px', borderRadius: '6px', fontSize: '12px', color: '#4ade80', textAlign: 'center', border: '1px solid #333' }}>
+                          <span style={{ color: '#888', marginRight: '4px', fontSize: '10px' }}>{i + 1}.</span>{word}
+                        </div>
+                      ) : null
+                    ))}
+                  </div>
                 </div>
 
                 <button 
