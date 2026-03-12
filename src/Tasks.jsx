@@ -94,7 +94,7 @@ const Tasks = ({ balance, setBalance, tgUser }) => {
           return (
             <div key={task.id} style={{ 
               background: '#111', 
-              border: `1px solid ${isLocked ? '#333' : '#555'}`, 
+              border: '1px solid #555', 
               borderRadius: '12px', 
               padding: '15px', 
               marginBottom: '10px', 
@@ -105,22 +105,26 @@ const Tasks = ({ balance, setBalance, tgUser }) => {
             }}>
               
               <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
-                <div style={{ fontSize: '28px', display: 'flex', alignItems: 'center', filter: isLocked ? 'grayscale(100%)' : 'none' }}>
-                  {isLocked ? '🔒' : (
-                    task.icon.includes('.') || task.icon.includes('http') ? (
-                      <img src={task.icon} alt="icon" style={{ width: '32px', height: '32px', objectFit: 'contain' }} />
-                    ) : (
-                      task.icon
-                    )
+                <div style={{ fontSize: '28px', display: 'flex', alignItems: 'center' }}>
+                  {task.icon.includes('.') || task.icon.includes('http') ? (
+                    <img src={task.icon} alt="icon" style={{ width: '32px', height: '32px', objectFit: 'contain' }} />
+                  ) : (
+                    task.icon
                   )}
+                </div>
+                
+                {/* YOUR TITLES AND REWARDS RESTORED HERE! */}
+                <div style={{ textAlign: 'left' }}>
+                  <div style={{ color: '#fff', fontWeight: 'bold', fontSize: '14px' }}>{task.title}</div>
+                  <div style={{ color: '#ffd700', fontSize: '12px', marginTop: '4px' }}>
+                    +{task.reward.toLocaleString()} Shards
+                  </div>
                 </div>
               </div>
 
               {/* DYNAMIC BUTTON LOGIC */}
               {isCompleted ? (
                 <span style={{ color: '#4ade80', fontSize: '12px', fontWeight: 'bold' }}>✓ DONE</span>
-              ) : isLocked ? (
-                <span style={{ color: '#888', fontSize: '12px', fontWeight: 'bold' }}>LOCKED</span>
               ) : isReady ? (
                 <button onClick={() => handleClaim(task)} style={{ background: '#fbef43', color: '#000', border: 'none', padding: '8px 15px', borderRadius: '20px', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer' }}>
                   Claim
