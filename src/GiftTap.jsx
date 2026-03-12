@@ -927,6 +927,26 @@ const GiftTapGame = () => {
             {currentPage === 'home' && (
               <>
                 <div style={styles.header}>
+                  {/* BEAUTIFUL LEVEL HEADER */}
+                  <div style={{ background: '#222', padding: '15px', borderRadius: '15px', marginBottom: '20px', border: '1px solid #ffd700', textAlign: 'center' }}>
+                    <h2 style={{ color: '#ffd700', margin: '0 0 5px 0', fontSize: '24px' }}>Level {currentLevel}</h2>
+                    <div style={{ color: '#888', fontSize: '12px' }}>
+                      {currentLevel < 50 
+                        ? `Reach ${nextTarget.toLocaleString()} Shards for Level ${currentLevel + 1}` 
+                        : '👑 MAX LEVEL ACHIEVED 👑'}
+                    </div>
+                    
+                    {/* Optional: A cool mini progress bar for the header */}
+                    {currentLevel < 50 && (
+                      <div style={{ width: '100%', background: '#000', borderRadius: '10px', height: '6px', marginTop: '10px', overflow: 'hidden' }}>
+                        <div style={{ 
+                          height: '100%', 
+                          background: '#4ade80', 
+                          width: `${(balance / nextTarget) * 100}%` 
+                        }} />
+                      </div>
+                    )}
+                  </div>
                   <h1 style={styles.balance}>{balance} GFTshards</h1>
                   <p style={styles.energy}>⚡ {energy} / 500</p>
                   <div style={styles.progressContainer}>
