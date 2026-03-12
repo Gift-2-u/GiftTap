@@ -101,7 +101,7 @@ const Tasks = ({ balance, setBalance, tgUser }) => {
               display: 'flex', 
               alignItems: 'center', 
               justifyContent: 'space-between',
-              opacity: isCompleted || isLocked ? 0.5 : 1
+              opacity: isCompleted ? 0.5 : 1
             }}>
               
               <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
