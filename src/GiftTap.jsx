@@ -330,8 +330,11 @@ const GiftTapGame = () => {
         // --- NEW: PERMANENTLY UNLOCK BETA ACCESS IN SUPABASE ---
         const { error: accessError } = await supabase
           .from('players')
-          .update({ has_beta_access: true })
-          .eq('telegram_id', userId);
+          .upsert({ 
+            telegram_id: userId,
+            has_beta_access: true,
+            username: tgUser.username || tgUser.first_name || 'Player'
+          }, { onConflict: 'telegram_id' });
 
         if (accessError) {
           console.error("Failed to save beta access:", accessError.message);
