@@ -1,8 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from './supabaseClient';
 
-import { calculateLevel, getNextLevelTarget } from './GiftTap';
-
 const Tasks = ({ balance, setBalance, tgUser }) => {
   const [completedTasks, setCompletedTasks] = useState([]);
   const [readyToClaim, setReadyToClaim] = useState([]); // Tracks tasks that are waiting to be claimed
