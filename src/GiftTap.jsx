@@ -968,8 +968,6 @@ const GiftTapGame = () => {
                   <h1 style={{ ...styles.balance, fontVariantNumeric: 'tabular-nums' }}>
                     {balance.toLocaleString(undefined, { maximumFractionDigits: 3 })} GFTshards
                   </h1>
-
-                  <h1 style={styles.balance}>{balance} GFTshards</h1>
                   <p style={styles.energy}>⚡ {energy} / 500</p>
                   <div style={styles.progressContainer}>
                     <div 
