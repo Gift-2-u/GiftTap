@@ -422,7 +422,7 @@ const GiftTapGame = () => {
   }, [tgUser?.id]);
 
   // 6. SAVE PROGRESS
-  const saveToDatabase = async (b, e, dt, ltd, strk, ltt, mul) => {
+  const saveToDatabase = (b, e, dt, ltd, strk, ltt, mul) => {
     // 1. Don't save if we don't have a valid user ID
     if (!tgUser?.id || tgUser.id === "test_local_user") return;
 
@@ -535,9 +535,11 @@ const GiftTapGame = () => {
     setTimeout(() => setIsPressed(false), 100);
 
     setBalance(nextBalance);
+    setLifetimeTaps(nextLifetimeTaps); // <-- This updates the UI!
     setEnergy(nextEnergy);
     setDailyTaps(nextDaily);
-    saveToDatabase(nextBalance, nextEnergy, nextDaily, today, currentStreak);
+    // <-- Added nextLifetimeTaps and maxUnlockedLevel to the save payload!
+    saveToDatabase(nextBalance, nextEnergy, nextDaily, today, currentStreak, nextLifetimeTaps, maxUnlockedLevel); 
     
     const id = Date.now();
     setTaps(t => [...t, { id, x: e.clientX, y: e.clientY, amount: shardsEarned }]);
