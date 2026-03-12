@@ -523,7 +523,7 @@ const GiftTapGame = () => {
 
     const safeLifetimeTaps = Number(lifetimeTaps) || 0;
     const nextLifetimeTaps = Math.round((lifetimeTaps + shardsEarned) * 1000) / 1000;
-    
+
     let nextEnergy = energy - costMultiplier;
     const nextDaily = currentDailyTaps + costMultiplier;
 
@@ -932,18 +932,29 @@ const GiftTapGame = () => {
             {currentPage === 'home' && (
               <>
                 <div style={styles.header}>
-                  {/* BEAUTIFUL LEVEL HEADER */}
-                  <div style={{ background: '#222', padding: '15px', borderRadius: '15px', marginBottom: '20px', border: '1px solid #ffd700', textAlign: 'center' }}>
+                  {/* BEAUTIFUL LEVEL HEADER (RIGID WIDTH) */}
+                  <div style={{ 
+                    background: '#222', 
+                    padding: '15px', 
+                    borderRadius: '15px', 
+                    marginBottom: '20px', 
+                    border: '1px solid #ffd700', 
+                    textAlign: 'center', 
+                    width: '100%',           /* Forces it to take consistent space */
+                    maxWidth: '340px',       /* Prevents it from getting too wide */
+                    boxSizing: 'border-box',
+                    margin: '10px auto' 
+                  }}>
                     <h2 style={{ color: '#ffd700', margin: '0 0 5px 0', fontSize: '24px' }}>Level {currentLevel}</h2>
-                    <div style={{ color: '#888', fontSize: '12px' }}>
+                    
+                    <div style={{ color: '#888', fontSize: '13px', marginBottom: '8px', fontWeight: 'bold', fontVariantNumeric: 'tabular-nums' }}>
                       {currentLevel < 50 
-                        ? `Reach ${getNextLevelTarget(currentLevel).toLocaleString()} Shards for Level ${currentLevel + 1}` 
+                        ? `${Math.floor(lifetimeTaps).toLocaleString()} / ${getNextLevelTarget(currentLevel).toLocaleString()}` 
                         : '👑 MAX LEVEL ACHIEVED 👑'}
                     </div>
                     
-                    {/* The progress bar now uses getNextLevelTarget(currentLevel) directly */}
                     {currentLevel < 50 && (
-                      <div style={{ width: '100%', background: '#000', borderRadius: '10px', height: '6px', marginTop: '10px', overflow: 'hidden' }}>
+                      <div style={{ width: '100%', background: '#000', borderRadius: '10px', height: '6px', overflow: 'hidden' }}>
                         <div style={{ 
                           height: '100%', 
                           background: '#4ade80', 
@@ -952,6 +963,12 @@ const GiftTapGame = () => {
                       </div>
                     )}
                   </div>
+
+                  {/* DYNAMIC BALANCE (Up to 3 decimals, no trailing zeros) */}
+                  <h1 style={{ ...styles.balance, fontVariantNumeric: 'tabular-nums' }}>
+                    {balance.toLocaleString(undefined, { maximumFractionDigits: 3 })} GFTshards
+                  </h1>
+
                   <h1 style={styles.balance}>{balance} GFTshards</h1>
                   <p style={styles.energy}>⚡ {energy} / 500</p>
                   <div style={styles.progressContainer}>

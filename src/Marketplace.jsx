@@ -162,36 +162,54 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, tgUser, 
     let dbUpdates = { inventory: newInventory };
 
     // Shard Items
+    // Calculate exact local midnight for tonight
+    const midnightTonight = new Date();
+    midnightTonight.setHours(23, 59, 59, 999);
+
+    // Shard Items
     if (item.id === 'frenzy') dbUpdates.frenzy_expires = new Date(now + 90 * 1000).toISOString();
-    if (item.id === 'battery') dbUpdates.energy_boost_expires = new Date(now + 24 * 60 * 60 * 1000).toISOString();
-    if (item.id === 'heavy') dbUpdates.efficiency_expires = new Date(now + 24 * 60 * 60 * 1000).toISOString();
+    
+    // Battery and Heavy Hands now expire at exactly 11:59 PM tonight
+    if (item.id === 'battery') dbUpdates.energy_boost_expires = midnightTonight.toISOString();
+    if (item.id === 'heavy') dbUpdates.efficiency_expires = midnightTonight.toISOString();
     if (item.id === 'refill') {
       dbUpdates.last_energy = 1000;
       if (setEnergy) setEnergy(1000);
     }
     
     // Premium SOL Items
-    if (item.id === 'bot') dbUpdates.bot_expires = new Date(now + 3 * 24 * 60 * 60 * 1000).toISOString();
+    // Premium SOL Items
+    if (item.id === 'bot') {
+      const botExpire = new Date();
+      botExpire.setHours(23, 59, 59, 999);
+      botExpire.setDate(botExpire.getDate() + 2); // Today (1) + 2 days = 3 calendar days
+      dbUpdates.bot_expires = botExpire.toISOString();
+    }
+
+    // 7-Day items snap to exactly 11:59 PM on the 7th day
+    const sevenDayExpire = new Date();
+    sevenDayExpire.setHours(23, 59, 59, 999);
+    sevenDayExpire.setDate(sevenDayExpire.getDate() + 6); // Today (1) + 6 days = 7 calendar days
+
     if (item.id === 'grinder') {
       dbUpdates.limit_boost_amount = 2000;
-      dbUpdates.limit_boost_expires = new Date(now + 7 * 24 * 60 * 60 * 1000).toISOString();
+      dbUpdates.limit_boost_expires = sevenDayExpire.toISOString();
     }
     if (item.id === 'whale') {
       dbUpdates.limit_boost_amount = 5000;
-      dbUpdates.limit_boost_expires = new Date(now + 7 * 24 * 60 * 60 * 1000).toISOString();
+      dbUpdates.limit_boost_expires = sevenDayExpire.toISOString();
     }
     if (item.id === 'crate') {
       dbUpdates.shard_balance = balance + 50000;
-      setBalance(prev => prev + 50000);
+      setBalance(prev => prev + 50000); // Instant, no timer needed
     }
-    // --- NEW MULTIPLIER ACTIVATION ---
     if (item.id === 'x2_boost') {
       dbUpdates.premium_multiplier = 2;
-      dbUpdates.premium_multiplier_expires = new Date(now + 7 * 24 * 60 * 60 * 1000).toISOString();
+      dbUpdates.premium_multiplier_expires = sevenDayExpire.toISOString();
     }
     if (item.id === 'x3_boost') {
       dbUpdates.premium_multiplier = 3;
-      dbUpdates.premium_multiplier_expires = new Date(now + 7 * 24 * 60 * 60 * 1000).toISOString();
+      dbUpdates.premium_multiplier_expires = sevenDayExpire.toISOString();
     }
 
     try {
