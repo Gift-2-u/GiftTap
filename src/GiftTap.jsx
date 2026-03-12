@@ -929,8 +929,12 @@ const GiftTapGame = () => {
                 onClick={() => { 
                   setIsModalOpen(true); 
                   const isBackedUp = localStorage.getItem(`wallet_backed_up_${tgUser.id}`);
-                  if (!isBackedUp) setMustBackup(true); 
-                  else fetchBalances();
+                  if (isBackedUp !== "true") {
+                    setMustBackup(true); 
+                  } else {
+                    setMustBackup(false);
+                    fetchBalances();
+                  }
                 }} 
                 style={styles.walletBtnPremium}
               >
