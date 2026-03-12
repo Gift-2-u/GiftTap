@@ -61,7 +61,7 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, tgUser, 
 
       setBalance(prev => prev - item.cost);
       setLocalInventory(newInventory);
-      if (setStats) setStats({ ...stats, ...dbUpdates }); // Keep parent in sync
+      if (setStats) setStats({ ...stats, inventory: newInventory }); // Keep parent in sync
 
       setTxStatus({ show: true, loading: false, message: `✅ ${item.name} added to Backpack!`, success: true });
       setTimeout(() => setTxStatus(prev => ({ ...prev, show: false })), 2000);
