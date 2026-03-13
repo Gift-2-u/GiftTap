@@ -986,7 +986,7 @@ const GiftTapGame = () => {
                 <div style={{ ...styles.header, marginTop: '10px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '15px' }}>
                   
                   {/* 1. COMBINED DASHBOARD BOX (Balance + Level Progress) */}
-                  <div style={{ background: '#1c1e22', padding: '20px', borderRadius: '20px', border: '1px solid #ffd700', width: '90%', maxWidth: '360px', textAlign: 'center', boxSizing: 'border-box', boxShadow: '0 8px 20px rgba(0,0,0,0.6)' }}>
+                  <div style={{ border: '1px solid #ffd700', borderRadius: '20px', padding: '25px 40px', width: '85%', maxWidth: '320px', margin: '0 auto', display: 'flex', flexDirection: 'column', alignItems: 'center', background: '#1c1e22' }}>
                     
                     {/* Massive Balance */}
                     <h1 style={{ ...styles.balance, margin: '0', fontSize: '2.6rem', fontVariantNumeric: 'tabular-nums', lineHeight: '1' }}>
@@ -997,7 +997,7 @@ const GiftTapGame = () => {
                     </div>
 
                     {/* Level Info Row */}
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '15px', fontSize: '12px', fontWeight: 'bold' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '25px', marginTop: '20px', width: '100%' }}>
                       <span style={{ color: '#ffd700', background: '#333', padding: '4px 10px', borderRadius: '12px', border: '1px solid #555' }}>
                         Lvl {currentLevel}
                       </span>
