@@ -986,18 +986,20 @@ const GiftTapGame = () => {
                 <div style={{ ...styles.header, marginTop: '10px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '15px' }}>
                   
                   {/* 1. COMBINED DASHBOARD BOX (Balance + Level Progress) */}
-                  <div style={{ border: '1px solid #ffd700', borderRadius: '20px', padding: '25px 40px', width: '85%', maxWidth: '320px', margin: '0 auto', display: 'flex', flexDirection: 'column', alignItems: 'center', background: '#1c1e22' }}>
+                  <div style={{ border: '1px solid #ffd700', borderRadius: '20px', padding: '25px', width: '85%', maxWidth: '320px', margin: '0 auto', display: 'flex', flexDirection: 'column', alignItems: 'center', background: '#1c1e22' }}>
                     
-                    {/* Massive Balance */}
-                    <h1 style={{ ...styles.balance, margin: '0', fontSize: '2.6rem', fontVariantNumeric: 'tabular-nums', lineHeight: '1' }}>
-                      {balance.toLocaleString(undefined, { maximumFractionDigits: 3 })}
-                    </h1>
-                    <div style={{ color: '#ffd700', fontSize: '14px', fontWeight: 'bold', letterSpacing: '1px', marginTop: '4px' }}>
-                      GFTshards
+                    {/* Massive Balance & GFTshards on the same line */}
+                    <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'baseline', justifyContent: 'center', gap: '8px' }}>
+                      <h1 style={{ ...styles.balance, margin: '0', fontSize: '2.6rem', fontVariantNumeric: 'tabular-nums', lineHeight: '1' }}>
+                        {balance.toLocaleString(undefined, { maximumFractionDigits: 3 })}
+                      </h1>
+                      <span style={{ color: '#ffd700', fontSize: '18px', fontWeight: 'bold', letterSpacing: '1px' }}>
+                        GFTshards
+                      </span>
                     </div>
 
-                    {/* Level Info Row */}
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '25px', marginTop: '20px', width: '100%' }}>
+                    {/* Level Info Row - Added marginBottom to push the progress bar down */}
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '15px', marginTop: '20px', marginBottom: '12px', width: '100%' }}>
                       <span style={{ color: '#ffd700', background: '#333', padding: '4px 10px', borderRadius: '12px', border: '1px solid #555' }}>
                         Lvl {currentLevel}
                       </span>
@@ -1008,14 +1010,15 @@ const GiftTapGame = () => {
 
                     {/* Level Progress Bar */}
                     {currentLevel < 50 && (
-                      <div style={{ width: '100%', background: '#000', borderRadius: '10px', height: '6px', overflow: 'hidden', marginTop: '8px' }}>
+                      <div style={{ width: '100%', background: '#000', borderRadius: '10px', height: '6px', overflow: 'hidden' }}>
                         <div style={{ height: '100%', background: '#4ade80', width: `${Math.min((lifetimeTaps / getNextLevelTarget(currentLevel)) * 100, 100)}%` }} />
                       </div>
                     )}
                   </div>
 
                   {/* 2. COMPRESSED ENERGY & DAILY TAPS */}
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', width: '90%', maxWidth: '280px', alignItems: 'center' }}>
+                  {/* Added a small marginTop here to separate it cleanly from the yellow box */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', width: '90%', maxWidth: '280px', alignItems: 'center', marginTop: '15px' }}>
                     <p style={{ ...styles.energy, margin: '0', fontSize: '15px' }}>⚡ {energy} / 500</p>
                     <div style={{ width: '100%', height: '8px', background: '#333', borderRadius: '5px', overflow: 'hidden', border: '1px solid #444' }}>
                       <div style={{ height: '100%', width: `${Math.min((dailyTaps / dynamicMaxLimit) * 100, 100)}%`, background: dailyTaps >= dynamicMaxLimit ? '#ff4d4d' : '#fbef43', transition: 'width 0.3s' }} />
@@ -1023,10 +1026,11 @@ const GiftTapGame = () => {
                     <p style={{ color: '#888', fontSize: '11px', margin: '0', fontWeight: 'bold' }}>Daily Limit: {dailyTaps} / {dynamicMaxLimit}</p>
                   </div>
                   
-                </div>
+                </div> {/* Keeping your closing div from the snippet */}
 
                 {/* 3. RESPONSIVE GIFT ZONE */}
-                <div onClick={handleTap} style={{ ...styles.giftZone, paddingBottom: '20px' }}>
+                {/* Added marginTop: '-30px' to pull the gift higher up the page */}
+                <div onClick={handleTap} style={{ ...styles.giftZone, paddingBottom: '20px', marginTop: '-30px' }}>
                   <img 
                     src="/Gift2u_logo.png" 
                     alt="Gift"  
