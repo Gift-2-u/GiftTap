@@ -1538,7 +1538,11 @@ const GiftTapGame = () => {
             </div>
           )}
 
-          {/* --- PURCHASE CONFIRMATION MODAL --- */}
+        </div>
+        
+      )}
+
+      {/* --- PURCHASE CONFIRMATION MODAL --- */}
           {showConfirmModal && itemToBuy && (
             <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', background: 'rgba(0,0,0,0.95)', zIndex: 1000, display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '20px', boxSizing: 'border-box' }}>
               <div style={{ background: '#1c1e22', padding: '25px', borderRadius: '20px', border: '1px solid #ffd700', width: '100%', maxWidth: '350px', textAlign: 'center' }}>
@@ -1597,10 +1601,6 @@ const GiftTapGame = () => {
               </div>
             </div>
           )}
-
-        </div>
-        
-      )}
       
     </div>
   );
