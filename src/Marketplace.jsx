@@ -8,6 +8,8 @@ import { derivePath } from "ed25519-hd-key";
 const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, tgUser, playerWallet }) => {
   const [activeTab, setActiveTab] = useState('market'); 
   const [marketFilter, setMarketFilter] = useState('All'); 
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [itemToBuy, setItemToBuy] = useState(null);
 
   // Custom Pop-up State
   const [txStatus, setTxStatus] = useState({ show: false, loading: false, message: '', success: false });
