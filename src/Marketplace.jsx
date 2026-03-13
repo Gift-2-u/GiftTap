@@ -296,7 +296,10 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, tgUser, 
                 </div>
                 <button 
                   style={{ background: balance >= item.cost ? '#ffd700' : '#333', color: balance >= item.cost ? '#000' : '#666', border: 'none', padding: '10px 15px', borderRadius: '10px', fontWeight: 'bold', cursor: balance >= item.cost ? 'pointer' : 'not-allowed', marginLeft: '10px' }}
-                  onClick={() => handleShardBuy(item)}
+                  onClick={() => {
+                    setItemToBuy(item); // Note: make sure your item object has 'isPremium: true' if it costs SOL!
+                    setShowConfirmModal(true);
+                  }}
                   disabled={balance < item.cost}
                 >
                   {item.cost.toLocaleString()} 💎
@@ -343,7 +346,10 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, tgUser, 
                       {item.price} {item.currency}
                     </div>
                     <button 
-                      onClick={() => handlePremiumBuy(item)}
+                      onClick={() => {
+                        setItemToBuy(item); 
+                        setShowConfirmModal(true);
+                      }}
                       style={{ width: '100%', background: '#9945FF', color: '#fff', border: 'none', padding: '6px 0', borderRadius: '6px', fontWeight: 'bold', fontSize: '12px', cursor: 'pointer' }}
                     >
                       Buy
