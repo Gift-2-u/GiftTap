@@ -501,6 +501,9 @@ const GiftTapGame = () => {
   };
 
   const handleTap = (e) => {
+    // 🚨 Add this line right here! It kills the ghost click.
+    if (e.cancelable) e.preventDefault();
+
     // 1. SCAN FOR MULTIPLE FINGERS
     let tapPoints = [];
     if (e.type === 'touchstart') {
