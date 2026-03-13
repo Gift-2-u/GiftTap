@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Connection, PublicKey, clusterApiUrl, Keypair, Transaction, SystemProgram, ComputeBudgetProgram, sendAndConfirmTransaction, LAMPORTS_PER_SOL } from '@solana/web3.js';
 import { supabase } from './supabaseClient';
 import { getAssociatedTokenAddressSync } from '@solana/spl-token';
@@ -130,6 +130,7 @@ const GiftTapGame = () => {
   const [currentLevel, setCurrentLevel] = useState(0);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [itemToBuy, setItemToBuy] = useState(null);
+  const touchLock = useRef(false);
 
   const tgUser = useMemo(() => {
     return window.Telegram?.WebApp?.initDataUnsafe?.user || { id: "test_local_user", first_name: "Local" };
@@ -500,27 +501,22 @@ const GiftTapGame = () => {
     }, 800); // Slightly faster save
   };
 
-  // Add this right ABOVE your handleTap function
-  let ignoreMouse = false;
-
   const handleTap = (e) => {
-    // 🚨 THE GHOST CLICK ASSASSIN
+    // 🚨 THE DEFINITIVE GHOST CLICK ASSASSIN
     if (e.type === 'touchstart') {
-      ignoreMouse = true; // Lock out the mouse
-      setTimeout(() => { ignoreMouse = false; }, 500); // Unlock it half a second later
-    } else if (ignoreMouse) {
-      return; // If the lock is active, kill the fake mouse click instantly!
+      touchLock.current = true; // Lock the door
+      setTimeout(() => { touchLock.current = false; }, 500); // Unlock 0.5s later
+    } else if ((e.type === 'mousedown' || e.type === 'click') && touchLock.current) {
+      return; // If the lock is active, completely ignore the mouse/click!
     }
 
-    // 1. SCAN FOR MULTIPLE FINGERS
+    // SCAN FOR MULTIPLE FINGERS
     let tapPoints = [];
     if (e.type === 'touchstart') {
-      // Loop through every finger that just touched the screen
       for (let i = 0; i < e.changedTouches.length; i++) {
         tapPoints.push({ x: e.changedTouches[i].clientX, y: e.changedTouches[i].clientY });
       }
     } else {
-      // Fallback for PC mouse clicks
       tapPoints.push({ x: e.clientX, y: e.clientY });
     }
 
