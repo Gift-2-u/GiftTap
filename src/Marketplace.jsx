@@ -297,6 +297,7 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, tgUser, 
                 <button 
                   style={{ background: balance >= item.cost ? '#ffd700' : '#333', color: balance >= item.cost ? '#000' : '#666', border: 'none', padding: '10px 15px', borderRadius: '10px', fontWeight: 'bold', cursor: balance >= item.cost ? 'pointer' : 'not-allowed', marginLeft: '10px' }}
                   onClick={() => {
+                    console.log("CLICKED ITEM:", item);
                     setItemToBuy(item); // Note: make sure your item object has 'isPremium: true' if it costs SOL!
                     setShowConfirmModal(true);
                   }}
