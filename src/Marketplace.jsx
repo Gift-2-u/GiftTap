@@ -299,13 +299,11 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, tgUser, 
                 <button 
                   style={{ background: balance >= item.cost ? '#ffd700' : '#333', color: balance >= item.cost ? '#000' : '#666', border: 'none', padding: '10px 15px', borderRadius: '10px', fontWeight: 'bold', cursor: balance >= item.cost ? 'pointer' : 'not-allowed', marginLeft: '10px' }}
                   onClick={() => {
-                    console.log("CLICKED ITEM:", item);
-                    setItemToBuy(item); // Note: make sure your item object has 'isPremium: true' if it costs SOL!
-                    setShowConfirmModal(true);
+                    setItemToBuy(item); // Load the item into state
+                    setShowConfirmModal(true); // Open the pop-up
                   }}
-                  disabled={balance < item.cost}
                 >
-                  {item.cost.toLocaleString()} 💎
+                  {item.price ? 'Buy' : item.cost}
                 </button>
               </div>
             ))}
@@ -350,12 +348,12 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, tgUser, 
                     </div>
                     <button 
                       onClick={() => {
-                        setItemToBuy(item); 
-                        setShowConfirmModal(true);
+                        setItemToBuy(item); // Load the item into state
+                        setShowConfirmModal(true); // Open the pop-up
                       }}
                       style={{ width: '100%', background: '#9945FF', color: '#fff', border: 'none', padding: '6px 0', borderRadius: '6px', fontWeight: 'bold', fontSize: '12px', cursor: 'pointer' }}
                     >
-                      Buy
+                      {item.price ? 'Buy' : item.cost}
                     </button>
                   </div>
                 </div>
@@ -396,6 +394,39 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, tgUser, 
         )}
 
       </div>
+
+      {/* --- ADD THIS AT THE BOTTOM OF MARKETPLACE.JSX --- */}
+      {showConfirmModal && itemToBuy && (
+        <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', background: 'rgba(0,0,0,0.9)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 10000 }}>
+          <div style={{ background: '#1c1e22', padding: '25px', borderRadius: '15px', border: '2px solid #ffd700', textAlign: 'center', width: '80%', maxWidth: '320px' }}>
+            <h3 style={{ color: '#fff', marginTop: 0 }}>Confirm Purchase?</h3>
+            <p style={{ color: '#ccc', fontSize: '14px' }}>Do you want to buy <strong>{itemToBuy.name}</strong>?</p>
+            
+            <div style={{ display: 'flex', gap: '10px', marginTop: '20px' }}>
+              <button 
+                onClick={() => setShowConfirmModal(false)} 
+                style={{ flex: 1, padding: '12px', background: '#333', color: '#fff', borderRadius: '10px', border: 'none', fontWeight: 'bold' }}
+              >
+                Cancel
+              </button>
+              <button 
+                onClick={() => {
+                  setShowConfirmModal(false);
+                  if (itemToBuy.price) {
+                    handlePremiumBuy(itemToBuy); // Triggers SOL transaction
+                  } else {
+                    handleShardBuy(itemToBuy); // Triggers Shard purchase
+                  }
+                }} 
+                style={{ flex: 1, padding: '12px', background: '#4ade80', color: '#000', borderRadius: '10px', border: 'none', fontWeight: 'bold' }}
+              >
+                Confirm
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 };
