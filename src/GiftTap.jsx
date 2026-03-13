@@ -909,6 +909,68 @@ const GiftTapGame = () => {
         /* 2. Show the ACTUAL GAME if they have access */
         <div style={{ ...styles.container, flexDirection: 'column', height: '100%', width: '100%', overflow: 'hidden' }}>
           
+          {/* --- FINAL PURCHASE CONFIRMATION MODAL --- */}
+          {showConfirmModal && itemToBuy && (
+            <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', background: 'rgba(0,0,0,0.95)', zIndex: 9999, display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '20px', boxSizing: 'border-box' }}>
+              <div style={{ background: '#1c1e22', padding: '25px', borderRadius: '20px', border: '1px solid #ffd700', width: '100%', maxWidth: '350px', textAlign: 'center' }}>
+                
+                <h2 style={{ color: '#ffd700', marginTop: 0, marginBottom: '5px' }}>Confirm Purchase</h2>
+                <p style={{ color: '#aaa', fontSize: '13px', marginBottom: '20px' }}>Please review your item before completing the transaction.</p>
+
+                {/* Dynamic Item Details Box */}
+                <div style={{ background: '#111', padding: '15px', borderRadius: '12px', border: '1px solid #333', marginBottom: '20px' }}>
+                  <h3 style={{ color: '#fff', margin: '0 0 10px 0' }}>{itemToBuy.name}</h3>
+                  
+                  {/* Shows the description for Shard items, or the boost for Premium items */}
+                  {itemToBuy.desc && <p style={{ color: '#888', fontSize: '12px', marginTop: 0 }}>{itemToBuy.desc}</p>}
+                  {itemToBuy.boost && <p style={{ color: '#888', fontSize: '12px', marginTop: 0 }}>{itemToBuy.boost}</p>}
+
+                  <div style={{ marginTop: '15px', paddingTop: '15px', borderTop: '1px dashed #444', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ color: '#aaa', fontSize: '14px' }}>Total Cost:</span>
+                    <span style={{ color: itemToBuy.price ? '#14F195' : '#ffd700', fontWeight: 'bold', fontSize: '16px' }}>
+                      {/* If it has a SOL price, show SOL. Otherwise, show Shard cost */}
+                      {itemToBuy.price ? `${itemToBuy.price} SOL` : `${itemToBuy.cost?.toLocaleString()} 💎`}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Action Buttons */}
+                <div style={{ display: 'flex', gap: '10px' }}>
+                  <button 
+                    onClick={() => {
+                      setShowConfirmModal(false);
+                      setItemToBuy(null);
+                    }}
+                    style={{ flex: 1, background: '#333', color: '#fff', padding: '12px', borderRadius: '10px', fontWeight: 'bold', border: 'none' }}
+                  >
+                    Cancel
+                  </button>
+
+                  <button 
+                    onClick={() => {
+                      setShowConfirmModal(false); 
+                      
+                      // SMART ROUTING: 
+                      // If the item has a 'price', it goes to Solana.
+                      // If it has a 'cost', it goes to your internal Shard function.
+                      if (itemToBuy.price) {
+                        handlePremiumBuy(itemToBuy);
+                      } else {
+                        // ⚠️ IMPORTANT: Replace 'buyUpgrade' below with the actual name 
+                        // of the function you use to buy items with Shards!
+                        handleShardBuy(itemToBuy); 
+                      }
+                    }}
+                    style={{ flex: 1, background: '#4ade80', color: '#000', padding: '12px', borderRadius: '10px', fontWeight: 'bold', border: 'none' }}
+                  >
+                    Confirm Buy
+                  </button>
+                </div>
+
+              </div>
+            </div>
+          )}
+
           {/* ASCENSION WALL MODAL */}
           {showAscensionModal && ASCENSION_WALLS[maxUnlockedLevel] && (
             <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', background: 'rgba(0,0,0,0.9)', zIndex: 1000, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
@@ -1540,68 +1602,6 @@ const GiftTapGame = () => {
 
         </div>
         
-      )}
-
-      {/* --- FINAL PURCHASE CONFIRMATION MODAL --- */}
-      {showConfirmModal && itemToBuy && (
-        <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', background: 'rgba(0,0,0,0.95)', zIndex: 9999, display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '20px', boxSizing: 'border-box' }}>
-          <div style={{ background: '#1c1e22', padding: '25px', borderRadius: '20px', border: '1px solid #ffd700', width: '100%', maxWidth: '350px', textAlign: 'center' }}>
-            
-            <h2 style={{ color: '#ffd700', marginTop: 0, marginBottom: '5px' }}>Confirm Purchase</h2>
-            <p style={{ color: '#aaa', fontSize: '13px', marginBottom: '20px' }}>Please review your item before completing the transaction.</p>
-
-            {/* Dynamic Item Details Box */}
-            <div style={{ background: '#111', padding: '15px', borderRadius: '12px', border: '1px solid #333', marginBottom: '20px' }}>
-              <h3 style={{ color: '#fff', margin: '0 0 10px 0' }}>{itemToBuy.name}</h3>
-              
-              {/* Shows the description for Shard items, or the boost for Premium items */}
-              {itemToBuy.desc && <p style={{ color: '#888', fontSize: '12px', marginTop: 0 }}>{itemToBuy.desc}</p>}
-              {itemToBuy.boost && <p style={{ color: '#888', fontSize: '12px', marginTop: 0 }}>{itemToBuy.boost}</p>}
-
-              <div style={{ marginTop: '15px', paddingTop: '15px', borderTop: '1px dashed #444', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ color: '#aaa', fontSize: '14px' }}>Total Cost:</span>
-                <span style={{ color: itemToBuy.price ? '#14F195' : '#ffd700', fontWeight: 'bold', fontSize: '16px' }}>
-                  {/* If it has a SOL price, show SOL. Otherwise, show Shard cost */}
-                  {itemToBuy.price ? `${itemToBuy.price} SOL` : `${itemToBuy.cost?.toLocaleString()} 💎`}
-                </span>
-              </div>
-            </div>
-
-            {/* Action Buttons */}
-            <div style={{ display: 'flex', gap: '10px' }}>
-              <button 
-                onClick={() => {
-                  setShowConfirmModal(false);
-                  setItemToBuy(null);
-                }}
-                style={{ flex: 1, background: '#333', color: '#fff', padding: '12px', borderRadius: '10px', fontWeight: 'bold', border: 'none' }}
-              >
-                Cancel
-              </button>
-
-              <button 
-                onClick={() => {
-                  setShowConfirmModal(false); 
-                  
-                  // SMART ROUTING: 
-                  // If the item has a 'price', it goes to Solana.
-                  // If it has a 'cost', it goes to your internal Shard function.
-                  if (itemToBuy.price) {
-                    handlePremiumBuy(itemToBuy);
-                  } else {
-                    // ⚠️ IMPORTANT: Replace 'buyUpgrade' below with the actual name 
-                    // of the function you use to buy items with Shards!
-                    handleShardBuy(itemToBuy); 
-                  }
-                }}
-                style={{ flex: 1, background: '#4ade80', color: '#000', padding: '12px', borderRadius: '10px', fontWeight: 'bold', border: 'none' }}
-              >
-                Confirm Buy
-              </button>
-            </div>
-
-          </div>
-        </div>
       )}
       
     </div>
