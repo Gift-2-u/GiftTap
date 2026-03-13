@@ -500,9 +500,17 @@ const GiftTapGame = () => {
     }, 800); // Slightly faster save
   };
 
+  // Add this right ABOVE your handleTap function
+  let ignoreMouse = false;
+
   const handleTap = (e) => {
-    // 🚨 Add this line right here! It kills the ghost click.
-    if (e.cancelable) e.preventDefault();
+    // 🚨 THE GHOST CLICK ASSASSIN
+    if (e.type === 'touchstart') {
+      ignoreMouse = true; // Lock out the mouse
+      setTimeout(() => { ignoreMouse = false; }, 500); // Unlock it half a second later
+    } else if (ignoreMouse) {
+      return; // If the lock is active, kill the fake mouse click instantly!
+    }
 
     // 1. SCAN FOR MULTIPLE FINGERS
     let tapPoints = [];
