@@ -501,6 +501,18 @@ const GiftTapGame = () => {
   };
 
   const handleTap = (e) => {
+    // 1. SCAN FOR MULTIPLE FINGERS
+    let tapPoints = [];
+    if (e.type === 'touchstart') {
+      // Loop through every finger that just touched the screen
+      for (let i = 0; i < e.changedTouches.length; i++) {
+        tapPoints.push({ x: e.changedTouches[i].clientX, y: e.changedTouches[i].clientY });
+      }
+    } else {
+      // Fallback for PC mouse clicks
+      tapPoints.push({ x: e.clientX, y: e.clientY });
+    }
+
     const todayObj = new Date();
     const today = todayObj.toISOString().split('T')[0];
   
@@ -559,21 +571,27 @@ const GiftTapGame = () => {
       payoutMultiplier *= (stats.premium_multiplier || 1); 
     }
 
-    // Prevent multi-clicks from draining past 0 or breaking the dynamic limit
-    if (energy - costMultiplier < 0 || currentDailyTaps + costMultiplier > currentMaxLimit) {
-        return; 
-    }
+    // 3. CALCULATE VALID FINGERS
+    // Prevent 3 fingers from bypassing the limit if you only have 1 energy left
+    const availableByEnergy = Math.floor(energy / costMultiplier);
+    const availableByDailyLimit = Math.floor((currentMaxLimit - currentDailyTaps) / costMultiplier);
+    const validTaps = Math.min(tapPoints.length, availableByEnergy, availableByDailyLimit);
 
-    const rawShardsEarned = baseRate * payoutMultiplier;
+    if (validTaps <= 0) return; // Not enough energy for even 1 tap
+
+    // 4. MULTIPLY BY FINGER COUNT
+    const rawShardsEarned = (baseRate * payoutMultiplier) * validTaps;
     const shardsEarned = Math.round(rawShardsEarned * 1000) / 1000;
+    const perTapAmount = Math.round((baseRate * payoutMultiplier) * 1000) / 1000; // For the floating text
     
     const nextBalance = Math.round((balance + shardsEarned) * 1000) / 1000;
 
     const safeLifetimeTaps = Number(lifetimeTaps) || 0;
-    const nextLifetimeTaps = Math.round((lifetimeTaps + shardsEarned) * 1000) / 1000;
+    const nextLifetimeTaps = Math.round((safeLifetimeTaps + shardsEarned) * 1000) / 1000;
 
-    let nextEnergy = energy - costMultiplier;
-    const nextDaily = currentDailyTaps + costMultiplier;
+    const totalCost = costMultiplier * validTaps;
+    let nextEnergy = energy - totalCost;
+    const nextDaily = currentDailyTaps + totalCost;
 
     // --- FREE ENERGY RESET ON BASE LEVEL UP ---
     const newCalculatedLevel = calculateLevel(nextLifetimeTaps);
@@ -592,9 +610,19 @@ const GiftTapGame = () => {
     // <-- Added nextLifetimeTaps and maxUnlockedLevel to the save payload!
     saveToDatabase(nextBalance, nextEnergy, nextDaily, today, currentStreak, nextLifetimeTaps, maxUnlockedLevel); 
     
-    const id = Date.now();
-    setTaps(t => [...t, { id, x: e.clientX, y: e.clientY, amount: shardsEarned }]);
-    setTimeout(() => setTaps(t => t.filter(tap => tap.id !== id)), 500);
+    // 5. GENERATE FLOATING TEXT FOR EVERY FINGER
+    const nowMs = Date.now();
+    const newTapVisuals = tapPoints.slice(0, validTaps).map((point, index) => ({
+      id: nowMs + index,
+      x: point.x,
+      y: point.y,
+      amount: perTapAmount
+    }));
+
+    setTaps(t => [...t, ...newTapVisuals]);
+    setTimeout(() => {
+      setTaps(t => t.filter(tap => !newTapVisuals.map(nt => nt.id).includes(tap.id)));
+    }, 500);
   };
 
   const handleAscensionPayment = async (method) => {
@@ -1030,14 +1058,17 @@ const GiftTapGame = () => {
 
                 {/* 3. RESPONSIVE GIFT ZONE */}
                 {/* Added marginTop: '-30px' to pull the gift higher up the page */}
-                <div onClick={handleTap} style={{ ...styles.giftZone, paddingBottom: '20px', marginTop: '-30px' }}>
+                <div style={{ ...styles.giftZone, paddingBottom: '20px', marginTop: '-50px' }}>
                   <img 
                     src="/Gift2u_logo.png" 
-                    alt="Gift"  
+                    alt="Gift"
+                    onTouchStart={handleTap} 
+                    onMouseDown={handleTap}  
                     onDragStart={(e) => e.preventDefault()} 
                     onContextMenu={(e) => e.preventDefault()} 
                     style={{ 
-                      ...styles.giftImage, 
+                      ...styles.giftImage,
+                      touchAction: 'none', /* <-- THIS PREVENTS MOBILE ZOOM BUGS */ 
                       width: 'auto',
                       maxWidth: '80%',
                       maxHeight: '38vh', 
