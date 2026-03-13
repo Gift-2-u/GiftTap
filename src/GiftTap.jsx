@@ -1542,62 +1542,19 @@ const GiftTapGame = () => {
         
       )}
 
-      {/* --- PURCHASE CONFIRMATION MODAL --- */}
-      {showConfirmModal && itemToBuy && (
-        <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', background: 'rgba(0,0,0,0.95)', zIndex: 1000, display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '20px', boxSizing: 'border-box' }}>
-          <div style={{ background: '#1c1e22', padding: '25px', borderRadius: '20px', border: '1px solid #ffd700', width: '100%', maxWidth: '350px', textAlign: 'center' }}>
-                
-            <h2 style={{ color: '#ffd700', marginTop: 0, marginBottom: '5px' }}>Confirm Purchase</h2>
-            <p style={{ color: '#aaa', fontSize: '13px', marginBottom: '20px' }}>Please review your item before completing the transaction.</p>
-
-            {/* Item Details Box */}
-            <div style={{ background: '#111', padding: '15px', borderRadius: '12px', border: '1px solid #333', marginBottom: '20px' }}>
-              <h3 style={{ color: '#fff', margin: '0 0 10px 0' }}>{itemToBuy.name}</h3>
-                  
-              {/* If you have descriptions for your items, you can render them here */}
-              {itemToBuy.description && (
-                <p style={{ color: '#888', fontSize: '12px', marginTop: 0 }}>{itemToBuy.description}</p>
-              )}
-
-              <div style={{ marginTop: '15px', paddingTop: '15px', borderTop: '1px dashed #444', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ color: '#aaa', fontSize: '14px' }}>Total Cost:</span>
-                <span style={{ color: itemToBuy.isPremium ? '#14F195' : '#ffd700', fontWeight: 'bold', fontSize: '16px' }}>
-                  {itemToBuy.price} {itemToBuy.isPremium ? 'SOL' : 'Shards'}
-                </span>
-              </div>
-            </div>
-
-            {/* Action Buttons */}
-            <div style={{ display: 'flex', gap: '10px' }}>
-               <button 
-                onClick={() => {
-                  setShowConfirmModal(false);
-                  setItemToBuy(null);
-                }}
-                style={{ flex: 1, background: '#333', color: '#fff', padding: '12px', borderRadius: '10px', fontWeight: 'bold', border: 'none' }}
-              >
-                Cancel
-              </button>
-
-              <button 
-                onClick={() => {
-                  // Close the modal immediately so they can see the loading state
-                  setShowConfirmModal(false); 
-                      
-                  // Route to the correct buy function
-                  if (itemToBuy.isPremium) {
-                      handlePremiumBuy(itemToBuy);
-                  } else {
-                    // Replace 'handleShardBuy' with whatever your shard purchase function is called
-                    handleShardBuy(itemToBuy); 
-                  }
-                }}
-                style={{ flex: 1, background: '#4ade80', color: '#000', padding: '12px', borderRadius: '10px', fontWeight: 'bold', border: 'none' }}
-              >
-                Confirm Buy
-              </button>
-            </div>
-
+      {/* --- GIANT RED BOX TEST --- */}
+      {showConfirmModal && (
+        <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', background: 'rgba(255,0,0,0.8)', zIndex: 9999, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+          <div style={{ background: 'white', padding: '40px', borderRadius: '20px', textAlign: 'center' }}>
+            <h1 style={{ color: 'black', margin: '0 0 20px 0' }}>🚨 THE POPUP WORKS! 🚨</h1>
+            <p style={{ color: 'black', marginBottom: '20px' }}>If you see this, the button click is perfectly fine.</p>
+            
+            <button 
+              onClick={() => setShowConfirmModal(false)}
+              style={{ padding: '15px 30px', background: 'black', color: 'white', fontSize: '18px', fontWeight: 'bold', borderRadius: '10px', border: 'none' }}
+            >
+              Close Box
+            </button>
           </div>
         </div>
       )}
