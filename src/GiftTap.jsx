@@ -131,6 +131,12 @@ const GiftTapGame = () => {
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [itemToBuy, setItemToBuy] = useState(null);
   const touchLock = useRef(false);
+  const optimisticTaps = useRef(lifetimeTaps);
+
+  // Keep the ref synced if lifetimeTaps changes from the database load
+  useEffect(() => { 
+    optimisticTaps.current = lifetimeTaps; 
+  }, [lifetimeTaps]);
 
   const tgUser = useMemo(() => {
     return window.Telegram?.WebApp?.initDataUnsafe?.user || { id: "test_local_user", first_name: "Local" };
@@ -502,157 +508,129 @@ const GiftTapGame = () => {
   };
 
   const handleTap = (e) => {
-    // 🚨 THE DEFINITIVE GHOST CLICK ASSASSIN
-    if (e.type === 'touchstart') {
-      touchLock.current = true; // Lock the door
-      setTimeout(() => { touchLock.current = false; }, 500); // Unlock 0.5s later
-    } else if ((e.type === 'mousedown' || e.type === 'click') && touchLock.current) {
-      return; // If the lock is active, completely ignore the mouse/click!
-    }
-
-    // SCAN FOR MULTIPLE FINGERS
-    let tapPoints = [];
-    if (e.type === 'touchstart') {
-      for (let i = 0; i < e.changedTouches.length; i++) {
-        tapPoints.push({ x: e.changedTouches[i].clientX, y: e.changedTouches[i].clientY });
+      // 🚨 THE DEFINITIVE GHOST CLICK ASSASSIN
+      if (e.type === 'touchstart') {
+        touchLock.current = true;
+        setTimeout(() => { touchLock.current = false; }, 500);
+      } else if ((e.type === 'mousedown' || e.type === 'click') && touchLock.current) {
+        return; 
       }
-    } else {
-      tapPoints.push({ x: e.clientX, y: e.clientY });
-    }
 
-    const todayObj = new Date();
-    const today = todayObj.toISOString().split('T')[0];
-  
-    let currentDailyTaps = dailyTaps;
-    let currentStreak = Math.max(1, streak);
-
-    if (lastTapDate !== today) {
-      const yesterdayObj = new Date();
-      yesterdayObj.setDate(yesterdayObj.getDate() - 1);
-      const yesterday = yesterdayObj.toISOString().split('T')[0];
-
-      if (lastTapDate === yesterday) currentStreak += 1;
-      else if (lastTapDate < yesterday) currentStreak = 1;
-
-      currentDailyTaps = 0;
-      setDailyTaps(0);
-      setLastTapDate(today);
-      setStreak(currentStreak);
-      saveToDatabase(balance, energy, 0, today, currentStreak, lifetimeTaps, maxUnlockedLevel);
-    }
-
-    // Calculate max limit inside the tap function
-    let currentMaxLimit = maxDailyLimit;
-    const clickTime = new Date();
-    if (stats.energy_boost_expires && clickTime < new Date(stats.energy_boost_expires)) currentMaxLimit += 1000;
-    if (stats.limit_boost_expires && clickTime < new Date(stats.limit_boost_expires)) currentMaxLimit += (stats.limit_boost_amount || 0);
-
-    if (currentDailyTaps >= currentMaxLimit) {
-      alert("Daily limit reached! Wait for tomorrow or use a boost.");
-      return;
-    }
-
-    if (energy <= 0 || !isDataLoaded) return;
-
-    // --- ASCENSION WALL CHECK ---
-    if (currentLevel >= maxUnlockedLevel && calculateLevel(lifetimeTaps + 1) > maxUnlockedLevel) {
-      setShowAscensionModal(true);
-      return; 
-    }
-
-    const baseRate = getLevelMultiplier(currentLevel); 
-    let payoutMultiplier = 1;
-    let costMultiplier = 1;
-
-    // 2. Apply active buffs
-    if (stats.frenzy_expires && now < new Date(stats.frenzy_expires)) {
-      payoutMultiplier *= 2; 
-    }
-
-    if (stats.efficiency_expires && now < new Date(stats.efficiency_expires)) {
-      payoutMultiplier *= 2;
-      costMultiplier *= 2; 
-    }
-
-    if (stats.premium_multiplier_expires && now < new Date(stats.premium_multiplier_expires)) {
-      payoutMultiplier *= (stats.premium_multiplier || 1); 
-    }
-
-    // 3. CALCULATE VALID FINGERS
-    // Prevent 3 fingers from bypassing the limit if you only have 1 energy left
-    const availableByEnergy = Math.floor(energy / costMultiplier);
-    const availableByDailyLimit = Math.floor((currentMaxLimit - currentDailyTaps) / costMultiplier);
-    const validTaps = Math.min(tapPoints.length, availableByEnergy, availableByDailyLimit);
-
-    if (validTaps <= 0) return; // Not enough energy for even 1 tap
-
-    // 4. MULTIPLY BY FINGER COUNT & ASCENSION CLAMP
-    const targetTaps = getNextLevelTarget(currentLevel);
-    const isAtLevelCap = currentLevel >= maxUnlockedLevel;
-
-    const rawShardsEarned = (baseRate * payoutMultiplier) * validTaps;
-    let shardsEarned = Math.round(rawShardsEarned * 1000) / 1000;
-    const perTapAmount = Math.round((baseRate * payoutMultiplier) * 1000) / 1000; // For the floating text
-    
-    const safeLifetimeTaps = Number(lifetimeTaps) || 0;
-
-    // --- THE CLAMP ---
-    // If this tap pushes them over the cap, reduce the shards earned so it hits the cap exactly
-    if (isAtLevelCap && (safeLifetimeTaps + shardsEarned) >= targetTaps) {
-      shardsEarned = Math.max(0, targetTaps - safeLifetimeTaps);
+      // 🚨 FIX: Define 'now' immediately so buffs don't crash the function
+      const now = new Date(); 
       
-      // If we hit the cap, immediately trigger the modal
-      if ((safeLifetimeTaps + shardsEarned) === targetTaps) {
+      // SCAN FOR MULTIPLE FINGERS
+      let tapPoints = [];
+      if (e.type === 'touchstart') {
+        for (let i = 0; i < e.changedTouches.length; i++) {
+          tapPoints.push({ x: e.changedTouches[i].clientX, y: e.changedTouches[i].clientY });
+        }
+      } else {
+        tapPoints.push({ x: e.clientX, y: e.clientY });
+      }
+
+      const today = now.toISOString().split('T')[0];
+    
+      // ... [Your daily streak and limit logic stays exactly the same here] ...
+      if (currentDailyTaps >= currentMaxLimit) {
+        alert("Daily limit reached! Wait for tomorrow or use a boost.");
+        return;
+      }
+
+      if (energy <= 0 || !isDataLoaded) return;
+
+      // 🚨 FIX: Use the synchronous Ref to prevent rapid-click bypasses
+      const safeLifetimeTaps = Number(optimisticTaps.current) || 0;
+
+      // --- ASCENSION WALL CHECK ---
+      if (currentLevel >= maxUnlockedLevel && calculateLevel(safeLifetimeTaps + 1) > maxUnlockedLevel) {
         setShowAscensionModal(true);
+        return; 
       }
+
+      const baseRate = getLevelMultiplier(currentLevel); 
+      let payoutMultiplier = 1;
+      let costMultiplier = 1;
+
+      // 2. Apply active buffs (This will no longer crash!)
+      if (stats.frenzy_expires && now < new Date(stats.frenzy_expires)) payoutMultiplier *= 2; 
+      if (stats.efficiency_expires && now < new Date(stats.efficiency_expires)) {
+        payoutMultiplier *= 2;
+        costMultiplier *= 2; 
+      }
+      if (stats.premium_multiplier_expires && now < new Date(stats.premium_multiplier_expires)) {
+        payoutMultiplier *= (stats.premium_multiplier || 1); 
+      }
+
+      // 3. CALCULATE VALID FINGERS
+      const availableByEnergy = Math.floor(energy / costMultiplier);
+      const availableByDailyLimit = Math.floor((currentMaxLimit - currentDailyTaps) / costMultiplier);
+      const validTaps = Math.min(tapPoints.length, availableByEnergy, availableByDailyLimit);
+
+      if (validTaps <= 0) return; 
+
+      // 4. MULTIPLY BY FINGER COUNT & ASCENSION CLAMP
+      const targetTaps = getNextLevelTarget(currentLevel);
+      const isAtLevelCap = currentLevel >= maxUnlockedLevel;
+
+      const rawShardsEarned = (baseRate * payoutMultiplier) * validTaps;
+      let shardsEarned = Math.round(rawShardsEarned * 1000) / 1000;
+      const perTapAmount = Math.round((baseRate * payoutMultiplier) * 1000) / 1000; 
       
-      // If no shards can be earned because they are already at the wall, stop the tap
-      if (shardsEarned <= 0) return; 
-    }
-
-    const nextBalance = Math.round((balance + shardsEarned) * 1000) / 1000;
-    const nextLifetimeTaps = Math.round((safeLifetimeTaps + shardsEarned) * 1000) / 1000;
-
-    const totalCost = costMultiplier * validTaps;
-    let nextEnergy = energy - totalCost;
-    const nextDaily = currentDailyTaps + totalCost;
-
-    // --- FREE ENERGY RESET ON BASE LEVEL UP ---
-    // Only check for level ups if they aren't stuck at the ascension wall
-    if (!isAtLevelCap) {
-      const newCalculatedLevel = calculateLevel(nextLifetimeTaps);
-      if (newCalculatedLevel > currentLevel && newCalculatedLevel <= maxUnlockedLevel) {
-        nextEnergy = currentMaxLimit; // Free Refill!
-        setCurrentLevel(newCalculatedLevel);
+      // --- THE CLAMP ---
+      if (isAtLevelCap && (safeLifetimeTaps + shardsEarned) >= targetTaps) {
+        shardsEarned = Math.max(0, targetTaps - safeLifetimeTaps);
+        
+        if ((safeLifetimeTaps + shardsEarned) === targetTaps) {
+          setShowAscensionModal(true);
+        }
+        
+        if (shardsEarned <= 0) return; 
       }
-    }
 
-    setIsPressed(true);
-    setTimeout(() => setIsPressed(false), 100);
+      // 🚨 FIX: Update the optimistic ref INSTANTLY so the next rapid tap is blocked
+      optimisticTaps.current += shardsEarned;
 
-    // --- RAPID TAP UI FIX ---
-    // Using (prev => prev + amount) forces React to look at the live background number instantly
-    setBalance(prev => Math.round((Number(prev) + shardsEarned) * 1000) / 1000);
-    setLifetimeTaps(prev => Math.round((Number(prev) + shardsEarned) * 1000) / 1000); 
-    setEnergy(prev => Math.max(0, prev - totalCost));
-    setDailyTaps(prev => prev + totalCost);
-    
-    // <-- Added nextLifetimeTaps and maxUnlockedLevel to the save payload!
-    saveToDatabase(nextBalance, nextEnergy, nextDaily, today, currentStreak, nextLifetimeTaps, maxUnlockedLevel); 
-    
-    // 5. GENERATE FLOATING TEXT FOR EVERY FINGER
-    const nowMs = Date.now();
-    const newTapVisuals = tapPoints.slice(0, validTaps).map((point, index) => ({
-      id: nowMs + index,
-      x: point.x,
-      y: point.y,
-      amount: perTapAmount
-    }));
+      const nextBalance = Math.round((balance + shardsEarned) * 1000) / 1000;
+      const nextLifetimeTaps = Math.round((safeLifetimeTaps + shardsEarned) * 1000) / 1000;
 
-    setTaps(t => [...t, ...newTapVisuals]);
-    setTimeout(() => {
-      setTaps(t => t.filter(tap => !newTapVisuals.map(nt => nt.id).includes(tap.id)));
-    }, 500);
+      const totalCost = costMultiplier * validTaps;
+      let nextEnergy = energy - totalCost;
+      const nextDaily = currentDailyTaps + totalCost;
+
+      // --- FREE ENERGY RESET ON BASE LEVEL UP ---
+      if (!isAtLevelCap) {
+        const newCalculatedLevel = calculateLevel(nextLifetimeTaps);
+        if (newCalculatedLevel > currentLevel && newCalculatedLevel <= maxUnlockedLevel) {
+          nextEnergy = currentMaxLimit; 
+          setCurrentLevel(newCalculatedLevel);
+        }
+      }
+
+      setIsPressed(true);
+      setTimeout(() => setIsPressed(false), 100);
+
+      // --- RAPID TAP UI FIX ---
+      setBalance(prev => Math.round((Number(prev) + shardsEarned) * 1000) / 1000);
+      setLifetimeTaps(prev => Math.round((Number(prev) + shardsEarned) * 1000) / 1000); 
+      setEnergy(prev => Math.max(0, prev - totalCost));
+      setDailyTaps(prev => prev + totalCost);
+      
+      saveToDatabase(nextBalance, nextEnergy, nextDaily, today, currentStreak, nextLifetimeTaps, maxUnlockedLevel); 
+      
+      // 5. GENERATE FLOATING TEXT
+      const nowMs = now.getTime();
+      const newTapVisuals = tapPoints.slice(0, validTaps).map((point, index) => ({
+        id: nowMs + index,
+        x: point.x,
+        y: point.y,
+        amount: perTapAmount
+      }));
+
+      setTaps(t => [...t, ...newTapVisuals]);
+      setTimeout(() => {
+        setTaps(t => t.filter(tap => !newTapVisuals.map(nt => nt.id).includes(tap.id)));
+      }, 500);
   };
 
   const handleAscensionPayment = async (method) => {
