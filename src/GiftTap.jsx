@@ -532,6 +532,30 @@ const GiftTapGame = () => {
       const today = now.toISOString().split('T')[0];
     
       // ... [Your daily streak and limit logic stays exactly the same here] ...
+      const todayObj = new Date();
+      const today = todayObj.toISOString().split('T')[0];
+      let currentDailyTaps = dailyTaps;
+      let currentStreak = Math.max(1, streak);
+
+      if (lastTapDate !== today) {
+        const yesterdayObj = new Date();
+        yesterdayObj.setDate(yesterdayObj.getDate() - 1);
+        const yesterday = yesterdayObj.toISOString().split('T')[0];
+
+        if (lastTapDate === yesterday) currentStreak += 1;
+        else if (lastTapDate < yesterday) currentStreak = 1;
+
+        currentDailyTaps = 0;
+        setDailyTaps(0);
+        setLastTapDate(today);
+        setStreak(currentStreak);
+        saveToDatabase(balance, energy, 0, today, currentStreak, lifetimeTaps, maxUnlockedLevel);
+      }
+      // Calculate max limit inside the tap function
+      let currentMaxLimit = maxDailyLimit;
+      const clickTime = new Date();
+      if (stats.energy_boost_expires && clickTime < new Date(stats.energy_boost_expires)) currentMaxLimit += 1000;
+      if (stats.limit_boost_expires && clickTime < new Date(stats.limit_boost_expires)) currentMaxLimit += (stats.limit_boost_amount || 0);
       if (currentDailyTaps >= currentMaxLimit) {
         alert("Daily limit reached! Wait for tomorrow or use a boost.");
         return;
