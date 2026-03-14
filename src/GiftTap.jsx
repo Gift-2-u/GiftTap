@@ -586,14 +586,31 @@ const GiftTapGame = () => {
 
     if (validTaps <= 0) return; // Not enough energy for even 1 tap
 
-    // 4. MULTIPLY BY FINGER COUNT
+    // 4. MULTIPLY BY FINGER COUNT & ASCENSION CLAMP
+    const targetTaps = getNextLevelTarget(currentLevel);
+    const isAtLevelCap = currentLevel >= maxUnlockedLevel;
+
     const rawShardsEarned = (baseRate * payoutMultiplier) * validTaps;
-    const shardsEarned = Math.round(rawShardsEarned * 1000) / 1000;
+    let shardsEarned = Math.round(rawShardsEarned * 1000) / 1000;
     const perTapAmount = Math.round((baseRate * payoutMultiplier) * 1000) / 1000; // For the floating text
     
-    const nextBalance = Math.round((balance + shardsEarned) * 1000) / 1000;
-
     const safeLifetimeTaps = Number(lifetimeTaps) || 0;
+
+    // --- THE CLAMP ---
+    // If this tap pushes them over the cap, reduce the shards earned so it hits the cap exactly
+    if (isAtLevelCap && (safeLifetimeTaps + shardsEarned) >= targetTaps) {
+      shardsEarned = Math.max(0, targetTaps - safeLifetimeTaps);
+      
+      // If we hit the cap, immediately trigger the modal
+      if ((safeLifetimeTaps + shardsEarned) === targetTaps) {
+        setShowAscensionModal(true);
+      }
+      
+      // If no shards can be earned because they are already at the wall, stop the tap
+      if (shardsEarned <= 0) return; 
+    }
+
+    const nextBalance = Math.round((balance + shardsEarned) * 1000) / 1000;
     const nextLifetimeTaps = Math.round((safeLifetimeTaps + shardsEarned) * 1000) / 1000;
 
     const totalCost = costMultiplier * validTaps;
@@ -601,19 +618,25 @@ const GiftTapGame = () => {
     const nextDaily = currentDailyTaps + totalCost;
 
     // --- FREE ENERGY RESET ON BASE LEVEL UP ---
-    const newCalculatedLevel = calculateLevel(nextLifetimeTaps);
-    if (newCalculatedLevel > currentLevel && newCalculatedLevel <= maxUnlockedLevel) {
-      nextEnergy = currentMaxLimit; // Free Refill!
-      setCurrentLevel(newCalculatedLevel);
+    // Only check for level ups if they aren't stuck at the ascension wall
+    if (!isAtLevelCap) {
+      const newCalculatedLevel = calculateLevel(nextLifetimeTaps);
+      if (newCalculatedLevel > currentLevel && newCalculatedLevel <= maxUnlockedLevel) {
+        nextEnergy = currentMaxLimit; // Free Refill!
+        setCurrentLevel(newCalculatedLevel);
+      }
     }
 
     setIsPressed(true);
     setTimeout(() => setIsPressed(false), 100);
 
-    setBalance(nextBalance);
-    setLifetimeTaps(nextLifetimeTaps); // <-- This updates the UI!
-    setEnergy(nextEnergy);
-    setDailyTaps(nextDaily);
+    // --- RAPID TAP UI FIX ---
+    // Using (prev => prev + amount) forces React to look at the live background number instantly
+    setBalance(prev => Math.round((Number(prev) + shardsEarned) * 1000) / 1000);
+    setLifetimeTaps(prev => Math.round((Number(prev) + shardsEarned) * 1000) / 1000); 
+    setEnergy(prev => Math.max(0, prev - totalCost));
+    setDailyTaps(prev => prev + totalCost);
+    
     // <-- Added nextLifetimeTaps and maxUnlockedLevel to the save payload!
     saveToDatabase(nextBalance, nextEnergy, nextDaily, today, currentStreak, nextLifetimeTaps, maxUnlockedLevel); 
     
