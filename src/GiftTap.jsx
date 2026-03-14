@@ -1073,19 +1073,12 @@ const GiftTapGame = () => {
                       </span>
                     </div>
 
-                    {/* Level Progress Bar OR Ascend Button */}
-                    {currentLevel < maxUnlockedLevel ? (
+                    {/* Level Progress Bar */}
+                    {currentLevel < 50 && (
                       <div style={{ width: '100%', background: '#000', borderRadius: '10px', height: '6px', overflow: 'hidden' }}>
                         <div style={{ height: '100%', background: '#4ade80', width: `${Math.min((lifetimeTaps / getNextLevelTarget(currentLevel)) * 100, 100)}%` }} />
                       </div>
-                    ) : currentLevel < 50 ? (
-                      <button 
-                        onClick={() => setShowAscensionModal(true)}
-                        style={{ width: '100%', background: '#ffd700', color: '#000', padding: '10px', borderRadius: '10px', border: 'none', fontWeight: 'bold', fontSize: '14px', cursor: 'pointer', boxShadow: '0 0 10px rgba(255, 215, 0, 0.4)' }}
-                      >
-                        ⭐ Ascend Tier ⭐
-                      </button>
-                    ) : null}
+                    )}
                   </div>
 
                   {/* 2. COMPRESSED ENERGY & DAILY TAPS */}
