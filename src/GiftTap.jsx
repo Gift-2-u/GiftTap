@@ -693,6 +693,12 @@ const GiftTapGame = () => {
           })
         });
 
+        // FIX 1: Catch HTTP errors (like 500, 403, or CORS) before they break the JSON parser
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`Server Error ${response.status}: ${errorText}`);
+        }
+
         const result = await response.json();
 
         // 2. If the backend confirms the SOL was paid, unlock the tier
