@@ -532,8 +532,6 @@ const GiftTapGame = () => {
       const today = now.toISOString().split('T')[0];
     
       // ... [Your daily streak and limit logic stays exactly the same here] ...
-      const todayObj = new Date();
-      const today = todayObj.toISOString().split('T')[0];
       let currentDailyTaps = dailyTaps;
       let currentStreak = Math.max(1, streak);
 
