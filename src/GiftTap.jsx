@@ -719,7 +719,8 @@ const GiftTapGame = () => {
         }
       } catch (err) {
         console.error("SOL Payment Error:", err);
-        alert("An error occurred while processing the SOL payment.");
+        // FIX 3: Display the ACTUAL error in the alert so you can debug the backend issue
+        alert(`Payment Error: ${err.message || "Could not connect to the server."}`);
       }
     }
   };
