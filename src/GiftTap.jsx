@@ -946,7 +946,14 @@ const GiftTapGame = () => {
           
           {/* ASCENSION WALL MODAL */}
           {showAscensionModal && ASCENSION_WALLS[maxUnlockedLevel] && (
-            <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', background: 'rgba(0,0,0,0.9)', zIndex: 1000, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+            <div style={{ position: 'relative', top: 0, left: 0, width: '100%', height: '100%', background: 'rgba(0,0,0,0.9)', zIndex: 1000, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+              {/* Drop this inside your Ascension Modal's main content <div> */}
+              <button 
+                onClick={() => setShowAscensionModal(false)}
+                style={{ position: 'absolute', top: '15px', right: '15px', background: 'transparent', color: '#888', border: 'none', fontSize: '20px', fontWeight: 'bold', cursor: 'pointer' }}
+              >
+                ✕
+              </button>
               <div style={{ background: '#1c1e22', border: '1px solid #ffd700', borderRadius: '20px', padding: '30px', textAlign: 'center', maxWidth: '300px' }}>
                 <h2 style={{ color: '#ffd700', marginTop: 0 }}>Tier Complete! 🏆</h2>
                 <p style={{ color: '#ddd', fontSize: '14px' }}>
@@ -1043,13 +1050,19 @@ const GiftTapGame = () => {
                       </span>
                     </div>
 
-                    {/* Level Progress Bar */}
-                    {currentLevel < 50 && (
-                      <div style={{ width: '100%', background: '#000', borderRadius: '10px', height: '6px', overflow: 'hidden' }}>
-                        <div style={{ height: '100%', background: '#4ade80', width: `${Math.min((lifetimeTaps / getNextLevelTarget(currentLevel)) * 100, 100)}%` }} />
-                      </div>
-                    )}
-                  </div>
+                    {/* Level Progress Bar OR Ascend Button */}
+                  {currentLevel < maxUnlockedLevel ? (
+                    <div style={{ width: '100%', background: '#000', borderRadius: '10px', height: '6px', overflow: 'hidden' }}>
+                      <div style={{ height: '100%', background: '#4ade80', width: `${Math.min((lifetimeTaps / getNextLevelTarget(currentLevel)) * 100, 100)}%` }} />
+                    </div>
+                  ) : currentLevel < 50 ? (
+                    <button 
+                      onClick={() => setShowAscensionModal(true)}
+                      style={{ width: '100%', background: '#ffd700', color: '#000', padding: '10px', borderRadius: '10px', border: 'none', fontWeight: 'bold', fontSize: '14px', cursor: 'pointer', boxShadow: '0 0 10px rgba(255, 215, 0, 0.4)' }}
+                    >
+                      ⭐ Ascend Tier ⭐
+                    </button>
+                  ) : null}
 
                   {/* 2. COMPRESSED ENERGY & DAILY TAPS */}
                   {/* Added a small marginTop here to separate it cleanly from the yellow box */}
