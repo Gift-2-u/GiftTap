@@ -731,21 +731,12 @@ const GiftTapGame = () => {
       
     } else if (method === 'sol') {
       try {
-        // --- 1. SECURE VAULT DECRYPTION ---
-        const encryptedVault = await getFromCloud(`wallet_encrypted_${tgUser.id}`);
-        if (!encryptedVault) {
-          throw new Error("No secure wallet found! Please back up your wallet in the settings first.");
-        }
-
-        const userPwd = window.prompt(`Authorize Transaction\n\nEnter your wallet password to pay the ascension fee:`);
-        if (!userPwd) {
-          console.log("Transaction cancelled by user.");
-          return; 
-        }
-
-        const storedSecret = decryptWallet(encryptedVault, userPwd);
+        // --- 1. GET UNLOCKED WALLET FROM MEMORY ---
+        // Looks for the wallet they already unlocked in the settings, or the one just generated
+        const storedSecret = decryptedPhrase || generatedSecret;
+        
         if (!storedSecret) {
-          throw new Error("Incorrect password. Transaction cancelled.");
+          throw new Error("Wallet is locked. Please open your Wallet settings and unlock it to authorize transactions.");
         }
 
         // Temporary alert so the player knows the transaction is processing
