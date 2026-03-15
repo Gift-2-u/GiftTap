@@ -679,48 +679,80 @@ const GiftTapGame = () => {
       alert(`Ascended to Level ${newLevel}! Tap Power Increased.`);
     } else if (method === 'sol') {
       try {
-        // 1. Ping your Supabase edge function to deduct the SOL
-        const response = await fetch('https://ncwlbwzxfpcnxkyrmdck.supabase.co/functions/v1/process-sol-payment', {
-          method: 'POST',
-          headers: { 
-            'Content-Type': 'application/json', 
-            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}` 
-          },
-          body: JSON.stringify({ 
-            telegram_id: String(tgUser.id), 
-            amount: wallData.solCost,
-            description: `Ascension to Level ${wallData.targetLevel}`
-          })
-        });
+        // Temporary alert so the player knows the transaction is processing
+        alert(`Initiating SOL transaction for Level ${wallData.targetLevel}... Please wait.`);
 
-        // FIX 1: Catch HTTP errors (like 500, 403, or CORS) before they break the JSON parser
-        if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`Server Error ${response.status}: ${errorText}`);
+        // 1. Get Secret Key
+        const storedSecret = localStorage.getItem(`wallet_secret_${tgUser.id}`);
+        if (!storedSecret) {
+          throw new Error("Secret key not found. Please unlock your wallet in settings.");
         }
 
-        const result = await response.json();
-
-        // 2. If the backend confirms the SOL was paid, unlock the tier
-        if (result && result.success) {
-          const newCap = wallData.newCap;
-          const newLevel = wallData.targetLevel;
-          
-          setMaxUnlockedLevel(newCap);
-          setCurrentLevel(newLevel);
-          setEnergy(maxDailyLimit); 
-          setShowAscensionModal(false);
-          
-          // Notice we pass the current 'balance' here because we didn't burn any shards!
-          await saveToDatabase(balance, maxDailyLimit, dailyTaps, lastTapDate, streak, lifetimeTaps, newCap);
-          alert(`Payment successful! Ascended to Level ${newLevel}! Tap Power Increased.`);
+        // 2. Setup Connection & Keypair
+        const connection = new Connection("https://mainnet.helius-rpc.com/?api-key=538f6c8f-c773-46a2-939c-6d48c75b2226", 'confirmed');
+        
+        let playerKeypair;
+        if (storedSecret.includes(" ")) {
+          // --- NEW FORMAT: Translate 12-word mnemonic to Keypair ---
+          const seed = bip39.mnemonicToSeedSync(storedSecret);
+          const derivedSeed = derivePath("m/44'/501'/0'/0'", seed.toString('hex')).key;
+          playerKeypair = Keypair.fromSeed(derivedSeed);
         } else {
-          alert(`Transaction Failed: ${result.error || "Insufficient SOL balance."}`);
+          // --- LEGACY FORMAT: Base58 string ---
+          playerKeypair = Keypair.fromSecretKey(bs58.decode(storedSecret));
         }
+
+        // 3. Set Destination Wallets & Costs
+        const masterWallet = new PublicKey("D4GufPTvp6tnzkaYGfombFLs48UjDANsxjMFJnSYz4Gh");
+        const treasuryWallet = new PublicKey("8G7uEcPS6dwA5wW9bGoqi98EzBunF8trjbbFJkgkvBPm"); 
+
+        // Convert the SOL cost from your ascension wall data to lamports
+        const itemPriceLamports = Math.floor(wallData.solCost * 1e9);
+        const projectFeeLamports = Math.floor(0.0005 * 1e9); // The 0.0005 SOL Treasury Fee
+        const totalRequired = itemPriceLamports + projectFeeLamports + 100000; // Total + buffer for network fee
+
+        // 4. Check Balance
+        const currentBalance = await connection.getBalance(playerKeypair.publicKey);
+        if (currentBalance < totalRequired) {
+          throw new Error(`Insufficient SOL. You need at least ${(totalRequired / 1e9).toFixed(4)} SOL to cover the ascension and network fees.`);
+        }
+
+        // 5. Build Split Transaction
+        const transaction = new Transaction().add(
+          ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 100000 }),
+          // Instruction 1: Send the ascension cost to your Master Wallet
+          SystemProgram.transfer({
+            fromPubkey: playerKeypair.publicKey,
+            toPubkey: masterWallet,
+            lamports: itemPriceLamports,
+          }),
+          // Instruction 2: Send the game fee directly to your Treasury
+          SystemProgram.transfer({
+            fromPubkey: playerKeypair.publicKey,
+            toPubkey: treasuryWallet,
+            lamports: projectFeeLamports,
+          })
+        );
+
+        // 6. Send and Confirm
+        const signature = await sendAndConfirmTransaction(connection, transaction, [playerKeypair]);
+
+        // 7. If the payment clears, unlock the tier and save to database
+        const newCap = wallData.newCap;
+        const newLevel = wallData.targetLevel;
+        
+        setMaxUnlockedLevel(newCap);
+        setCurrentLevel(newLevel);
+        setEnergy(maxDailyLimit); 
+        setShowAscensionModal(false);
+        
+        // Pass the current 'balance' because we didn't burn any shards
+        await saveToDatabase(balance, maxDailyLimit, dailyTaps, lastTapDate, streak, lifetimeTaps, newCap);
+        alert(`Payment successful! Ascended to Level ${newLevel}! Tap Power Increased.`);
+
       } catch (err) {
         console.error("SOL Payment Error:", err);
-        // FIX 3: Display the ACTUAL error in the alert so you can debug the backend issue
-        alert(`Payment Error: ${err.message || "Could not connect to the server."}`);
+        alert(`Transaction Failed: ${err.message || "An error occurred during the SOL payment."}`);
       }
     }
   };
