@@ -1045,6 +1045,24 @@ const GiftTapGame = () => {
     dynamicMaxLimit += (stats.limit_boost_amount || 0);
   }
 
+  const handleCopyPhrase = async () => {
+    // Pure state-only retrieval. Zero browser storage.
+    const phraseToCopy = decryptedPhrase || generatedSecret;
+    
+    if (!phraseToCopy) {
+      alert("Error: No secret phrase found to copy.");
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(phraseToCopy);
+      alert("✅ 12-Word Phrase Copied to clipboard!");
+    } catch (err) {
+      console.error("Failed to copy text: ", err);
+      alert("❌ Clipboard access denied. Please write it down manually.");
+    }
+  };
+
   if (isLoading) return <div style={styles.container}>Loading Gift...</div>;
 
   return (
@@ -1304,6 +1322,15 @@ const GiftTapGame = () => {
                       </div>
                     </div>
 
+                    {/* --- THE COPY BUTTON --- */}
+                    <button 
+                      onClick={handleCopyPhrase}
+                      style={{ width: '100%', padding: '10px', marginTop: '15px', marginBottom: '15px', background: '#222', color: '#4ade80', border: '1px solid #4ade80', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', fontSize: '14px' }}
+                    >
+                      📋 COPY 12-WORD PHRASE
+                    </button>
+
+                    {/* --- THE CLOUD SAVE BUTTON --- */}
                     <button 
                       disabled={setupPwd.length < 4}
                       onClick={async () => {
@@ -1317,7 +1344,7 @@ const GiftTapGame = () => {
                         await saveToCloud(`wallet_encrypted_${tgUser.id}`, encryptedVault);
                         await saveToCloud(`wallet_backed_up_${tgUser.id}`, "true");
                         
-                        // We also save a hashed version of the password to verify logins without saving the raw password
+                        // We also save a hashed version of the password to verify logins
                         const passwordCheck = encryptWallet("valid_password", setupPwd);
                         await saveToCloud(`wallet_pwd_check_${tgUser.id}`, passwordCheck);
                         
