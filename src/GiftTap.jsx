@@ -728,18 +728,30 @@ const GiftTapGame = () => {
       
       await saveToDatabase(newBalance, maxDailyLimit, dailyTaps, lastTapDate, streak, lifetimeTaps, newCap);
       alert(`Ascended to Level ${newLevel}! Tap Power Increased.`);
+      
     } else if (method === 'sol') {
       try {
+        // --- 1. SECURE VAULT DECRYPTION ---
+        const encryptedVault = await getFromCloud(`wallet_encrypted_${tgUser.id}`);
+        if (!encryptedVault) {
+          throw new Error("No secure wallet found! Please back up your wallet in the settings first.");
+        }
+
+        const userPwd = window.prompt(`Authorize Transaction\n\nEnter your wallet password to pay the ascension fee:`);
+        if (!userPwd) {
+          console.log("Transaction cancelled by user.");
+          return; 
+        }
+
+        const storedSecret = decryptWallet(encryptedVault, userPwd);
+        if (!storedSecret) {
+          throw new Error("Incorrect password. Transaction cancelled.");
+        }
+
         // Temporary alert so the player knows the transaction is processing
         alert(`Initiating SOL transaction for Level ${wallData.targetLevel}... Please wait.`);
 
-        // 1. Get Secret Key
-        const storedSecret = localStorage.getItem(`wallet_secret_${tgUser.id}`);
-        if (!storedSecret) {
-          throw new Error("Secret key not found. Please unlock your wallet in settings.");
-        }
-
-        // 2. Setup Connection & Keypair
+        // --- 2. Setup Connection & Keypair (Using the decrypted storedSecret) ---
         const connection = new Connection("https://mainnet.helius-rpc.com/?api-key=538f6c8f-c773-46a2-939c-6d48c75b2226", 'confirmed');
         
         let playerKeypair;
@@ -753,7 +765,7 @@ const GiftTapGame = () => {
           playerKeypair = Keypair.fromSecretKey(bs58.decode(storedSecret));
         }
 
-        // 3. Set Destination Wallets & Costs
+        // --- 3. Set Destination Wallets & Costs ---
         const masterWallet = new PublicKey("D4GufPTvp6tnzkaYGfombFLs48UjDANsxjMFJnSYz4Gh");
         const treasuryWallet = new PublicKey("8G7uEcPS6dwA5wW9bGoqi98EzBunF8trjbbFJkgkvBPm"); 
 
@@ -762,13 +774,13 @@ const GiftTapGame = () => {
         const projectFeeLamports = Math.floor(0.0005 * 1e9); // The 0.0005 SOL Treasury Fee
         const totalRequired = itemPriceLamports + projectFeeLamports + 100000; // Total + buffer for network fee
 
-        // 4. Check Balance
+        // --- 4. Check Balance ---
         const currentBalance = await connection.getBalance(playerKeypair.publicKey);
         if (currentBalance < totalRequired) {
           throw new Error(`Insufficient SOL. You need at least ${(totalRequired / 1e9).toFixed(4)} SOL to cover the ascension and network fees.`);
         }
 
-        // 5. Build Split Transaction
+        // --- 5. Build Split Transaction ---
         const transaction = new Transaction().add(
           ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 100000 }),
           // Instruction 1: Send the ascension cost to your Master Wallet
@@ -785,10 +797,10 @@ const GiftTapGame = () => {
           })
         );
 
-        // 6. Send and Confirm
+        // --- 6. Send and Confirm ---
         const signature = await sendAndConfirmTransaction(connection, transaction, [playerKeypair]);
 
-        // 7. If the payment clears, unlock the tier and save to database
+        // --- 7. If the payment clears, unlock the tier and save to database ---
         const newCap = wallData.newCap;
         const newLevel = wallData.targetLevel;
         
