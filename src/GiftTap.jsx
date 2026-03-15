@@ -8,6 +8,59 @@ import Tasks from './Tasks';
 import Friends from './Friends';
 import bs58 from "bs58";
 import { derivePath } from 'ed25519-hd-key';
+import CryptoJS from 'crypto-js';
+
+// --- 1. CLOUD STORAGE HELPERS ---
+const saveToCloud = (key, value) => {
+  return new Promise((resolve, reject) => {
+    if (window.Telegram?.WebApp?.CloudStorage) {
+      window.Telegram.WebApp.CloudStorage.setItem(key, value, (err, success) => {
+        if (err) reject(err); else resolve(success);
+      });
+    } else {
+      localStorage.setItem(key, value); resolve(true);
+    }
+  });
+};
+
+const getFromCloud = (key) => {
+  return new Promise((resolve, reject) => {
+    if (window.Telegram?.WebApp?.CloudStorage) {
+      window.Telegram.WebApp.CloudStorage.getItem(key, (err, value) => {
+        if (err) reject(err); else resolve(value || "");
+      });
+    } else {
+      resolve(localStorage.getItem(key) || "");
+    }
+  });
+};
+
+const removeFromCloud = (key) => {
+  return new Promise((resolve, reject) => {
+    if (window.Telegram?.WebApp?.CloudStorage) {
+      window.Telegram.WebApp.CloudStorage.removeItem(key, (err, success) => {
+        if (err) reject(err); else resolve(success);
+      });
+    } else {
+      localStorage.removeItem(key); resolve(true);
+    }
+  });
+};
+
+// --- 2. ENCRYPTION HELPERS ---
+const encryptWallet = (secretPhrase, password) => {
+  return CryptoJS.AES.encrypt(secretPhrase, password).toString();
+};
+
+const decryptWallet = (encryptedData, password) => {
+  try {
+    const bytes = CryptoJS.AES.decrypt(encryptedData, password);
+    const decryptedText = bytes.toString(CryptoJS.enc.Utf8);
+    return decryptedText || null;
+  } catch (error) {
+    return null;
+  }
+};
 
 export const calculateLevel = (taps) => {
   if (taps < 50000) return Math.floor(taps / 10000); 
@@ -132,6 +185,7 @@ const GiftTapGame = () => {
   const [itemToBuy, setItemToBuy] = useState(null);
   const touchLock = useRef(false);
   const optimisticTaps = useRef(lifetimeTaps);
+  const [decryptedPhrase, setDecryptedPhrase] = useState("");
 
   // Keep the ref synced if lifetimeTaps changes from the database load
   useEffect(() => { 
@@ -1065,9 +1119,10 @@ const GiftTapGame = () => {
             {/* Premium Wallet Button */}
             <div style={styles.walletWrapper}>
               <button 
-                onClick={() => { 
+                onClick={async () => { 
                   setIsModalOpen(true); 
-                  const isBackedUp = localStorage.getItem(`wallet_backed_up_${tgUser.id}`);
+                  const isBackedUp = await getFromCloud(`wallet_backed_up_${tgUser.id}`);
+                  
                   if (isBackedUp !== "true") {
                     setMustBackup(true); 
                   } else {
@@ -1081,7 +1136,6 @@ const GiftTapGame = () => {
                 {playerWallet?.slice(0, 4)}...{playerWallet?.slice(-4)}
               </button>
             </div>
-          </div>
 
           {/* 2. DYNAMIC CONTENT (This is your "Pages") */}
           <div style={styles.mainContent}>
@@ -1214,7 +1268,7 @@ const GiftTapGame = () => {
           {/* Wallet Modal */}
           {isModalOpen && (
             <div style={styles.modalOverlay} onClick={() => { 
-              if (!mustBackup) { setIsModalOpen(false); setShowSettings(false); setIsRevealed(false); }
+              if (!mustBackup) { setIsModalOpen(false); setShowSettings(false); setIsRevealed(false); setDecryptedPhrase(""); }
             }}>
               <div style={styles.modalContent} onClick={e => e.stopPropagation()}>
                 
@@ -1238,6 +1292,7 @@ const GiftTapGame = () => {
                     <div style={{ background: '#000', padding: '15px', borderRadius: '10px', border: '1px solid #ffd700', marginBottom: '15px' }}>
                       <label style={{ color: '#ffd700', fontSize: '11px', fontWeight: 'bold' }}>YOUR SECRET PHRASE:</label>
                       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px', marginTop: '10px' }}>
+                        {/* Fallback to localStorage ONLY for the initial generation step before it gets encrypted */}
                         {(localStorage.getItem(`wallet_secret_${tgUser.id}`) || "").split(" ").map((word, i) => (
                           word ? (
                             <div key={i} style={{ background: '#222', padding: '6px', borderRadius: '6px', fontSize: '12px', color: '#4ade80', textAlign: 'center', border: '1px solid #333' }}>
@@ -1249,21 +1304,25 @@ const GiftTapGame = () => {
                     </div>
 
                     <button 
-                      onClick={() => {
-                        navigator.clipboard.writeText(localStorage.getItem(`wallet_secret_${tgUser.id}`));
-                        alert("Copied!");
-                      }}
-                      style={{ width: '100%', background: '#333', color: '#fff', padding: '10px', borderRadius: '8px', marginBottom: '10px', border: '1px solid #555' }}
-                    >
-                      📋 Copy Phrase
-                    </button>
-
-                    <button 
                       disabled={setupPwd.length < 4}
-                      onClick={() => {
-                        // Save the password and mark as backed up
-                        localStorage.setItem(`wallet_pwd_${tgUser.id}`, setupPwd);
-                        localStorage.setItem(`wallet_backed_up_${tgUser.id}`, "true");
+                      onClick={async () => {
+                        const rawSecret = localStorage.getItem(`wallet_secret_${tgUser.id}`);
+                        if (!rawSecret) return alert("Error finding generated wallet.");
+
+                        // 1. Encrypt the raw words using the password
+                        const encryptedVault = encryptWallet(rawSecret, setupPwd);
+
+                        // 2. Save the encrypted vault and backup status to Telegram Cloud
+                        await saveToCloud(`wallet_encrypted_${tgUser.id}`, encryptedVault);
+                        await saveToCloud(`wallet_backed_up_${tgUser.id}`, "true");
+                        
+                        // We also save a hashed version of the password to verify logins without saving the raw password
+                        const passwordCheck = encryptWallet("valid_password", setupPwd);
+                        await saveToCloud(`wallet_pwd_check_${tgUser.id}`, passwordCheck);
+                        
+                        // 3. WIPE the raw secret from the insecure local browser cache
+                        localStorage.removeItem(`wallet_secret_${tgUser.id}`);
+
                         setMustBackup(false);
                         fetchBalances();
                       }}
@@ -1281,7 +1340,7 @@ const GiftTapGame = () => {
                         {!showSettings && (
                           <button onClick={() => setShowSettings(true)} style={{ background: 'none', border: 'none', color: '#888', fontSize: '18px', marginRight: '15px', cursor: 'pointer' }}>⚙️</button>
                         )}
-                        <button onClick={() => { setIsModalOpen(false); setShowSettings(false); setIsRevealed(false); }} style={{ background: 'none', border: 'none', color: '#888', fontSize: '18px', cursor: 'pointer' }}>✕</button>
+                        <button onClick={() => { setIsModalOpen(false); setShowSettings(false); setIsRevealed(false); setDecryptedPhrase(""); }} style={{ background: 'none', border: 'none', color: '#888', fontSize: '18px', cursor: 'pointer' }}>✕</button>
                       </div>
                     </div>
 
@@ -1299,9 +1358,15 @@ const GiftTapGame = () => {
                               style={{ width: '100%', padding: '10px', borderRadius: '8px', background: '#000', border: '1px solid #444', color: '#fff', boxSizing: 'border-box' }}
                             />
                             <button 
-                              onClick={() => {
-                                const savedPwd = localStorage.getItem(`wallet_pwd_${tgUser.id}`);
-                                if (savedPwd === walletPwd) {
+                              onClick={async () => {
+                                // Fetch the encrypted vault from the cloud
+                                const encryptedVault = await getFromCloud(`wallet_encrypted_${tgUser.id}`);
+                                
+                                // Attempt to decrypt it
+                                const unlockedPhrase = decryptWallet(encryptedVault, walletPwd);
+                                
+                                if (unlockedPhrase) {
+                                  setDecryptedPhrase(unlockedPhrase); // Save to local state temporarily to render
                                   setIsRevealed(true);
                                 } else {
                                   alert("Incorrect password!");
@@ -1314,11 +1379,12 @@ const GiftTapGame = () => {
                             {/* --- THE "FORGOT PASSWORD" RESET --- */}
                             <div style={{ textAlign: 'center', marginTop: '15px' }}>
                               <span 
-                                onClick={() => {
+                                onClick={async () => {
                                   if(window.confirm("WARNING: This will log you out and delete your wallet from this device. You will need your 12 words to recover your account. Continue?")) {
-                                    localStorage.removeItem(`wallet_secret_${tgUser.id}`);
-                                    localStorage.removeItem(`wallet_pwd_${tgUser.id}`);
-                                    localStorage.removeItem(`wallet_backed_up_${tgUser.id}`);
+                                    await removeFromCloud(`wallet_encrypted_${tgUser.id}`);
+                                    await removeFromCloud(`wallet_pwd_check_${tgUser.id}`);
+                                    await removeFromCloud(`wallet_backed_up_${tgUser.id}`);
+                                    localStorage.removeItem(`wallet_secret_${tgUser.id}`); // Catch-all
                                     window.location.reload();
                                   }
                                 }}
@@ -1334,7 +1400,7 @@ const GiftTapGame = () => {
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                               <label style={{ color: '#ffd700', fontSize: '11px', fontWeight: 'bold' }}>YOUR 12 SECRET WORDS:</label>
                               <button 
-                                onClick={() => setIsRevealed(false)} 
+                                onClick={() => { setIsRevealed(false); setDecryptedPhrase(""); }} 
                                 style={{ background: 'none', border: 'none', color: '#888', fontSize: '12px', cursor: 'pointer' }}
                               >
                                 Lock 🔒
@@ -1342,7 +1408,8 @@ const GiftTapGame = () => {
                             </div>
                             
                             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px', marginTop: '10px' }}>
-                              {(localStorage.getItem(`wallet_secret_${tgUser.id}`) || "").split(" ").map((word, i) => (
+                              {/* Uses the securely decrypted phrase temporarily held in React State */}
+                              {(decryptedPhrase || "").split(" ").map((word, i) => (
                                 word ? (
                                   <div key={i} style={{ background: '#222', padding: '6px', borderRadius: '6px', fontSize: '12px', color: '#4ade80', textAlign: 'center', border: '1px solid #333' }}>
                                     <span style={{ color: '#888', marginRight: '4px', fontSize: '10px' }}>{i + 1}.</span>{word}
@@ -1352,7 +1419,7 @@ const GiftTapGame = () => {
                             </div>
                           </div>
                         )}
-                        <button onClick={() => { setShowSettings(false); setIsRevealed(false); setWalletPwd(''); }} style={{ width: '100%', marginTop: '20px', background: 'none', color: '#888', border: 'none', cursor: 'pointer' }}>← Back to Balances</button>
+                        <button onClick={() => { setShowSettings(false); setIsRevealed(false); setWalletPwd(''); setDecryptedPhrase(''); }} style={{ width: '100%', marginTop: '20px', background: 'none', color: '#888', border: 'none', cursor: 'pointer' }}>← Back to Balances</button>
                       </div>
                     ) : (
                       <>
