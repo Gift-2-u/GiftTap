@@ -310,17 +310,28 @@ const GiftTapGame = () => {
         const result = await response.json();
 
         if (result && result.publicKey) {
-          // --- THE NEW BACKUP TRIGGER LOGIC ---
-          if (result.mnemonic) {
-            localStorage.setItem(`wallet_secret_${userId}`, result.mnemonic);
-            localStorage.setItem(`wallet_backed_up_${userId}`, "false"); // Forces password screen
-            localStorage.removeItem(`wallet_pwd_${userId}`); // Clears old passwords
-          } 
-          // Failsafe: Just in case Supabase is still sending the old code
-          else if (result.secretKey) {
-            localStorage.setItem(`wallet_secret_${userId}`, result.secretKey);
-            localStorage.setItem(`wallet_backed_up_${userId}`, "false"); 
-            localStorage.removeItem(`wallet_pwd_${userId}`); 
+          // --- THE SECURE CLOUD BACKUP TRIGGER ---
+          if (result.mnemonic || result.secretKey) {
+            const rawSecret = result.mnemonic || result.secretKey;
+            
+            const setupPwd = window.prompt("⚠️ SECURE YOUR NEW WALLET\n\nCreate a strong password to lock your new 12-word Secret Phrase in the Cloud:");
+
+            if (!setupPwd || setupPwd.length < 4) {
+              alert("You must provide a password (min 4 characters) to secure your wallet.");
+              return;
+            }
+
+            // Encrypt and shoot directly to Telegram Cloud
+            const encryptedVault = encryptWallet(rawSecret, setupPwd);
+            const passwordCheck = encryptWallet("valid_password", setupPwd);
+
+            await saveToCloud(`wallet_encrypted_${userId}`, encryptedVault);
+            await saveToCloud(`wallet_pwd_check_${userId}`, passwordCheck);
+            await saveToCloud(`wallet_backed_up_${userId}`, "true");
+
+            // Hold temporarily in memory to show the player
+            setDecryptedPhrase(rawSecret);
+            setGeneratedSecret(rawSecret);
           }
           
           // --- NEW: FORCE CREATE THE PLAYER ROW IN SUPABASE ---
@@ -400,12 +411,24 @@ const GiftTapGame = () => {
       console.log("🚨 RAW EDGE RESPONSE:", newWallet);
 
       if (newWallet && newWallet.publicKey) {
-        // 4. Save Secret Silently (No Popup yet, just storing it for the Wallet Modal)
+        // 4. Secure Secret Instantly in the Cloud
         if (newWallet.mnemonic) {
-          localStorage.setItem(`wallet_secret_${userId}`, newWallet.mnemonic);
-          localStorage.setItem(`wallet_backed_up_${userId}`, "false"); 
-          localStorage.removeItem(`wallet_pwd_${userId}`);
-          setGeneratedSecret(newWallet.mnemonic); // Keeps your wallet generator overlay working
+          const setupPwd = window.prompt("⚠️ SECURE YOUR NEW WALLET\n\nCreate a strong password to lock your new 12-word Secret Phrase in the Cloud:");
+
+          if (!setupPwd || setupPwd.length < 4) {
+            alert("You must provide a password (min 4 characters) to secure your wallet.");
+            return;
+          }
+
+          const encryptedVault = encryptWallet(newWallet.mnemonic, setupPwd);
+          const passwordCheck = encryptWallet("valid_password", setupPwd);
+
+          await saveToCloud(`wallet_encrypted_${userId}`, encryptedVault);
+          await saveToCloud(`wallet_pwd_check_${userId}`, passwordCheck);
+          await saveToCloud(`wallet_backed_up_${userId}`, "true");
+
+          setDecryptedPhrase(newWallet.mnemonic);
+          setGeneratedSecret(newWallet.mnemonic);
         }
 
         // --- NEW: PERMANENTLY UNLOCK BETA ACCESS IN SUPABASE ---
@@ -1291,7 +1314,7 @@ const GiftTapGame = () => {
                     </div>
 
                     <div style={{ background: '#000', padding: '15px', borderRadius: '10px', border: '1px solid #ffd700', marginBottom: '15px' }}>
-                      <label style={{ color: '#ffd700', fontSize: '11px', fontWeight: 'bold' }}>YOUR SECRET PHRASE:</label>
+                      <label style={{ color: '#ffd700', fontSize: '11px', fontWeight: 'bold' }}>YOUR 12 SECRET WORDS:</label>
                       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px', marginTop: '10px' }}>
                         {/* Fallback to localStorage ONLY for the initial generation step before it gets encrypted */}
                         {(localStorage.getItem(`wallet_secret_${tgUser.id}`) || "").split(" ").map((word, i) => (
