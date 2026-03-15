@@ -1136,6 +1136,7 @@ const GiftTapGame = () => {
                 {playerWallet?.slice(0, 4)}...{playerWallet?.slice(-4)}
               </button>
             </div>
+          </div>
 
           {/* 2. DYNAMIC CONTENT (This is your "Pages") */}
           <div style={styles.mainContent}>
