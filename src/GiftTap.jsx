@@ -1173,6 +1173,10 @@ const GiftTapGame = () => {
             <div style={styles.walletWrapper}>
               <button 
                 onClick={() => { 
+                  // --- DIAGNOSTIC LOG ---
+                  console.log("DEBUG - Phrase in RAM:", decryptedPhrase);
+                  console.log("DEBUG - Generated Secret:", generatedSecret);
+                  
                   // 1. Synchronous check prevents UI flickering
                   const isBackedUp = localStorage.getItem(`wallet_backed_up_${tgUser.id}`);
                   
