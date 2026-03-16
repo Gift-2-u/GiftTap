@@ -766,12 +766,25 @@ const GiftTapGame = () => {
       
     } else if (method === 'sol') {
       try {
-        // --- 1. GET UNLOCKED WALLET FROM MEMORY ---
-        // Looks for the wallet they already unlocked in the settings, or the one just generated
-        const storedSecret = decryptedPhrase || generatedSecret;
+        // --- 1. ZERO-DELAY INSTANT DECRYPTION ---
+        let storedSecret = decryptedPhrase || generatedSecret;
         
+        // Failsafe: If React memory is lagging, fetch and unlock straight from the Supabase vault
         if (!storedSecret) {
-          throw new Error("Wallet is locked. Please open your Wallet settings and unlock it to authorize transactions.");
+          const { data, error } = await supabase
+            .from('players')
+            .select('encrypted_vault')
+            .eq('telegram_id', tgUser.id)
+            .single();
+
+          if (data && data.encrypted_vault) {
+            const invisibleKey = `${tgUser.id}_GIFT_memecoin_secure_salt_2026`;
+            storedSecret = decryptWallet(data.encrypted_vault, invisibleKey);
+          }
+        }
+
+        if (!storedSecret) {
+          throw new Error("Wallet connection lost. Please completely refresh the game to resync your session.");
         }
 
         // Temporary alert so the player knows the transaction is processing
@@ -1176,7 +1189,7 @@ const GiftTapGame = () => {
                   // --- DIAGNOSTIC LOG ---
                   console.log("DEBUG - Phrase in RAM:", decryptedPhrase);
                   console.log("DEBUG - Generated Secret:", generatedSecret);
-                  
+
                   // 1. Synchronous check prevents UI flickering
                   const isBackedUp = localStorage.getItem(`wallet_backed_up_${tgUser.id}`);
                   
