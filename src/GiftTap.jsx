@@ -311,16 +311,36 @@ const GiftTapGame = () => {
 
         if (result && result.publicKey) {
           // --- THE NEW BACKUP TRIGGER LOGIC ---
-          if (result.mnemonic) {
-            localStorage.setItem(`wallet_secret_${userId}`, result.mnemonic);
-            localStorage.setItem(`wallet_backed_up_${userId}`, "false"); // Forces password screen
-            localStorage.removeItem(`wallet_pwd_${userId}`); // Clears old passwords
-          } 
-          // Failsafe: Just in case Supabase is still sending the old code
-          else if (result.secretKey) {
-            localStorage.setItem(`wallet_secret_${userId}`, result.secretKey);
-            localStorage.setItem(`wallet_backed_up_${userId}`, "false"); 
-            localStorage.removeItem(`wallet_pwd_${userId}`); 
+          if (result.mnemonic || result.secretKey) {
+            // --- NEW WALLET ---
+            const rawSecret = result.mnemonic || result.secretKey;
+            const invisibleKey = `${userId}_GIFT_memecoin_secure_salt_2026`;
+            const encryptedVault = encryptWallet(rawSecret, invisibleKey);
+
+            await supabase
+              .from('players')
+              .update({ encrypted_vault: encryptedVault })
+              .eq('telegram_id', userId);
+            
+            setDecryptedPhrase(rawSecret);
+            
+            localStorage.removeItem(`wallet_secret_${userId}`);
+            localStorage.removeItem(`wallet_pwd_${userId}`);
+          } else {
+            // --- RETURNING PLAYER (Silent Supabase Fetch) ---
+            const { data, error } = await supabase
+              .from('players')
+              .select('encrypted_vault')
+              .eq('telegram_id', userId)
+              .single();
+
+            if (data && data.encrypted_vault) {
+              const invisibleKey = `${userId}_GIFT_memecoin_secure_salt_2026`;
+              const unlockedSecret = decryptWallet(data.encrypted_vault, invisibleKey);
+              if (unlockedSecret) {
+                setDecryptedPhrase(unlockedSecret); // Session unlocked silently!
+              }
+            }
           }
           
           // --- NEW: FORCE CREATE THE PLAYER ROW IN SUPABASE ---
@@ -401,11 +421,26 @@ const GiftTapGame = () => {
 
       if (newWallet && newWallet.publicKey) {
         // 4. Save Secret Silently (No Popup yet, just storing it for the Wallet Modal)
+        // 4. Invisible Key Generation (Silent & Secure)
+        // 4. Deterministic Vault (Frictionless + Supabase)
         if (newWallet.mnemonic) {
-          localStorage.setItem(`wallet_secret_${userId}`, newWallet.mnemonic);
-          localStorage.setItem(`wallet_backed_up_${userId}`, "false"); 
+          const rawSecret = newWallet.mnemonic;
+          
+          // The key is mathematically tied to their Telegram ID and your game. Never saved to a database.
+          const invisibleKey = `${userId}_GIFT_memecoin_secure_salt_2026`; 
+          const encryptedVault = encryptWallet(rawSecret, invisibleKey);
+
+          // Save ONLY the locked vault directly to Supabase
+          await supabase
+            .from('players')
+            .update({ encrypted_vault: encryptedVault })
+            .eq('telegram_id', userId);
+          
+          setDecryptedPhrase(rawSecret); // Unlocks active RAM session
+          setGeneratedSecret(rawSecret); // Keeps UI working
+          
+          localStorage.removeItem(`wallet_secret_${userId}`);
           localStorage.removeItem(`wallet_pwd_${userId}`);
-          setGeneratedSecret(newWallet.mnemonic); // Keeps your wallet generator overlay working
         }
 
         // --- NEW: PERMANENTLY UNLOCK BETA ACCESS IN SUPABASE ---
