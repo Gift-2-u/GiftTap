@@ -189,8 +189,43 @@ const GiftTapGame = () => {
   const [decryptedPhrase, setDecryptedPhrase] = useState("");
   // Settings Menu State
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const [displayCurrency, setDisplayCurrency] = useState('USD'); // Default currency
   const [appLanguage, setAppLanguage] = useState('EN'); // Default language
+  // The Master Currency Array (Top 30 Global Fiat Currencies)
+  const ALL_CURRENCIES = [
+    'USD', 'EUR', 'CAD', 'GBP', 'AUD', 'JPY', 'CNY', 'INR', 'PHP', 'IDR', 
+    'BRL', 'MXN', 'ARS', 'NGN', 'ZAR', 'TRY', 'AED', 'SGD', 'HKD', 'NZD', 
+    'KRW', 'THB', 'VND', 'MYR', 'CHF', 'SEK', 'NOK', 'DKK', 'PLN', 'CZK'
+  ];
+
+  const [displayCurrency, setDisplayCurrency] = useState('USD'); 
+  const [solFiatRates, setSolFiatRates] = useState({}); // Now an empty object that fills dynamically
+
+  // Fetch real-time SOL price for ALL currencies instantly
+  useEffect(() => {
+    const fetchFiatPrices = async () => {
+      try {
+        // Automatically formats the array into a comma-separated string for the API
+        const coinString = ALL_CURRENCIES.join(',').toLowerCase();
+        const res = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=${coinString}`);
+        const data = await res.json();
+        
+        if (data && data.solana) {
+          // Dynamically map the API response to uppercase keys
+          const rates = {};
+          ALL_CURRENCIES.forEach(currency => {
+            const lowerKey = currency.toLowerCase();
+            if (data.solana[lowerKey]) {
+              rates[currency] = data.solana[lowerKey];
+            }
+          });
+          setSolFiatRates(rates);
+        }
+      } catch (err) {
+        console.error("Failed to fetch global fiat prices:", err);
+      }
+    };
+    fetchFiatPrices();
+  }, []);
 
   // Keep the ref synced if lifetimeTaps changes from the database load
   useEffect(() => { 
@@ -1815,12 +1850,29 @@ const GiftTapGame = () => {
                   </button>
                 </div>
 
-                {/* 2. Currency Toggle */}
+                {/* 2. Global Fiat Dropdown */}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#111', padding: '15px', borderRadius: '12px', marginBottom: '10px', border: '1px solid #222' }}>
                   <span style={{ color: '#fff', fontWeight: 'bold' }}>💱 Currency</span>
-                  <button onClick={() => setDisplayCurrency(displayCurrency === 'USD' ? 'SOL' : 'USD')} style={{ background: '#333', color: '#fff', border: 'none', padding: '8px 15px', borderRadius: '8px', cursor: 'pointer' }}>
-                    {displayCurrency}
-                  </button>
+                  <select 
+                    value={displayCurrency}
+                    onChange={(e) => setDisplayCurrency(e.target.value)}
+                    style={{ 
+                      background: '#333', 
+                      color: '#fff', 
+                      border: '1px solid #555', 
+                      padding: '8px 10px', 
+                      borderRadius: '8px', 
+                      cursor: 'pointer', 
+                      fontWeight: 'bold',
+                      outline: 'none'
+                    }}
+                  >
+                    {ALL_CURRENCIES.map(currency => (
+                      <option key={currency} value={currency}>
+                        {currency}
+                      </option>
+                    ))}
+                  </select>
                 </div>
 
                 {/* 3. Security Words (Reuses your existing Invisible Key UI!) */}
