@@ -493,7 +493,8 @@ const GiftTapGame = () => {
         // --- NEW: PERMANENTLY UNLOCK BETA ACCESS IN SUPABASE ---
         const { error: accessError } = await supabase
           .from('players')
-          .update({ has_beta_access: true })
+          .update({ has_beta_access: true, referred_by: referrerId ? String(referrerId) : null,
+            shard_balance: startingShards })
           .eq('telegram_id', userId);
 
         if (accessError) {
@@ -504,19 +505,19 @@ const GiftTapGame = () => {
         if (referrerId && referrerId !== userId) {
           await supabase.from('players').update({ referred_by: String(referrerId) }).eq('telegram_id', userId);
           
-          // 4. Pay the person who invited them +10,000 Shards
+          // 4. Pay the person who invited them +2000 Shards
           // We read their current balance and add to it directly in the database
           const { data: referrerData } = await supabase.from('players').select('shard_balance').eq('telegram_id', String(referrerId)).maybeSingle();
           if (referrerData) {
             await supabase.from('players')
-              .update({ shard_balance: Number(referrerData.shard_balance) + 10000 })
+              .update({ shard_balance: Number(referrerData.shard_balance) + 2000 })
               .eq('telegram_id', String(referrerId));
           }
         }
         
         // 5. Update game state to enter the game
         setPlayerWallet(newWallet.publicKey);
-        setBalance(0);
+        setBalance(startingShards);
         setEnergy(500);
         setHasAccess(true);
         setIsDataLoaded(true);
