@@ -9,8 +9,8 @@ const Friends = ({ tgUser }) => {
   const REFERRAL_REWARD = 2000;
   const JOINER_REWARD = 500;
 
-  // Generate the unique link using their Telegram ID
-  const inviteLink = `https://t.me/Gift2uTapBot?start=${tgUser.id}`;
+  // Generate the unique link using their Telegram ID and your exact Mini App short name
+  const inviteLink = `https://t.me/Gift2uTapBot/GiftTap?startapp=${tgUser?.id}`;
 
   const fetchFriends = useCallback(async () => {
     setIsLoading(true);
@@ -55,7 +55,7 @@ const Friends = ({ tgUser }) => {
   // --- NEW X (TWITTER) SHARE FUNCTION ---
   const handleInviteX = () => {
     const tweetText = `🎁I'm grinding levels in Gift Tap! Tap, level up, and earn real $GFT on Telegram. Jump in with my link, and get 500 free GFTshards.: 🎁\n\n${inviteLink}`;
-    const twitterUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(tweetText)}`;
+    const twitterUrl = `https://x.com/intent/tweet?text=${encodeURIComponent(tweetText)}`;
     window.open(twitterUrl, '_blank');
   };
 
