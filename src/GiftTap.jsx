@@ -187,6 +187,10 @@ const GiftTapGame = () => {
   const touchLock = useRef(false);
   const optimisticTaps = useRef(lifetimeTaps);
   const [decryptedPhrase, setDecryptedPhrase] = useState("");
+  // Settings Menu State
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [displayCurrency, setDisplayCurrency] = useState('USD'); // Default currency
+  const [appLanguage, setAppLanguage] = useState('EN'); // Default language
 
   // Keep the ref synced if lifetimeTaps changes from the database load
   useEffect(() => { 
@@ -1211,6 +1215,13 @@ const GiftTapGame = () => {
           <div style={styles.headerContainer}>
             {/* Sleek Toggle Pill */}
             <div style={styles.toggleWrapper}>
+              {/* Menu Trigger Button */}
+              <button 
+                onClick={() => setIsMenuOpen(true)}
+                style={{ background: 'none', border: 'none', fontSize: '24px', cursor: 'pointer', padding: '5px', color: '#fff' }}
+              >
+                ☰
+              </button>
               <button 
                 style={leaderboardType === 'all_time' ? styles.activeToggleBtn : styles.toggleBtn}
                 onClick={() => { setLeaderboardType('all_time'); fetchFullLeaderboard('all_time'); }}
@@ -1782,6 +1793,58 @@ const GiftTapGame = () => {
                 >
                   I'VE SAVED IT, LET'S PLAY!
                 </button>
+              </div>
+            </div>
+          )}
+
+          {/* --- MAIN MENU MODAL --- */}
+          {isMenuOpen && (
+            <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.85)', zIndex: 10000, display: 'flex', justifyContent: 'center', alignItems: 'flex-end' }}>
+              <div style={{ background: '#1c1e22', width: '100%', borderTopLeftRadius: '20px', borderTopRightRadius: '20px', padding: '25px', paddingBottom: '40px', boxSizing: 'border-box', borderTop: '1px solid #333' }}>
+                
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+                  <h2 style={{ color: '#fff', margin: 0, fontSize: '22px' }}>Menu</h2>
+                  <button onClick={() => setIsMenuOpen(false)} style={{ background: 'none', border: 'none', color: '#888', fontSize: '24px', cursor: 'pointer' }}>×</button>
+                </div>
+
+                {/* 1. Language Toggle */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#111', padding: '15px', borderRadius: '12px', marginBottom: '10px', border: '1px solid #222' }}>
+                  <span style={{ color: '#fff', fontWeight: 'bold' }}>🌐 Language</span>
+                  <button onClick={() => setAppLanguage(appLanguage === 'EN' ? 'FR' : 'EN')} style={{ background: '#333', color: '#fff', border: 'none', padding: '8px 15px', borderRadius: '8px', cursor: 'pointer' }}>
+                    {appLanguage}
+                  </button>
+                </div>
+
+                {/* 2. Currency Toggle */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#111', padding: '15px', borderRadius: '12px', marginBottom: '10px', border: '1px solid #222' }}>
+                  <span style={{ color: '#fff', fontWeight: 'bold' }}>💱 Currency</span>
+                  <button onClick={() => setDisplayCurrency(displayCurrency === 'USD' ? 'SOL' : 'USD')} style={{ background: '#333', color: '#fff', border: 'none', padding: '8px 15px', borderRadius: '8px', cursor: 'pointer' }}>
+                    {displayCurrency}
+                  </button>
+                </div>
+
+                {/* 3. Security Words (Reuses your existing Invisible Key UI!) */}
+                <button 
+                  onClick={() => {
+                    setIsSettingsOpen(false);
+                    setMustBackup(true); 
+                    setIsModalOpen(true);
+                  }}
+                  style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#111', padding: '15px', borderRadius: '12px', marginBottom: '10px', border: '1px solid #222', cursor: 'pointer' }}
+                >
+                  <span style={{ color: '#ef4444', fontWeight: 'bold' }}>🔐 View Secret Phrase</span>
+                  <span style={{ color: '#888' }}>{'❯'}</span>
+                </button>
+
+                {/* 4. Whitepaper & Rules */}
+                <button 
+                  onClick={() => window.open('YOUR_WHITEPAPER_URL_HERE', '_blank')}
+                  style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#111', padding: '15px', borderRadius: '12px', marginBottom: '10px', border: '1px solid #222', cursor: 'pointer' }}
+                >
+                  <span style={{ color: '#fff', fontWeight: 'bold' }}>📄 Whitepaper & Rules</span>
+                  <span style={{ color: '#888' }}>{'❯'}</span>
+                </button>
+
               </div>
             </div>
           )}
