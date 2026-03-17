@@ -401,9 +401,55 @@ const GiftTapGame = () => {
         .update({ is_used: true, used_by: userId })
         .eq('code', inputCode);
 
-      // --- NEW REFERRAL LOGIC ---
-      // 1. Check if they clicked an invite link (e.g., ?start=123456789)
-      const referrerId = window.Telegram?.WebApp?.initDataUnsafe?.start_param || null;
+      // --- YOUR EXISTING REFERRAL LOGIC ---
+      // 1. Check if they clicked an invite link (e.g., ?startapp=123456789)
+      const referrerId = window.Telegram?.WebApp?.initDataUnsafe?.start_param || null; 
+
+      // --- NEW: THE BALANCED ECONOMY PAYOUTS ---
+      const REFERRER_BONUS = 2000;
+      const JOINER_BONUS = 500;
+
+      // 2. Calculate the new player's starting balance
+      const startingShards = referrerId ? JOINER_BONUS : 0;
+
+      // ... (Your Invisible Key wallet generation code stays exactly here) ...
+
+      // 3. Create the player with their starting balance and referrer tagged
+      const { data: newPlayer, error: insertError } = await supabase
+        .from('players')
+        .insert([{
+          telegram_id: String(tgUser.id),
+          username: tgUser.username || 'Player',
+          shard_balance: startingShards, // Now accurately drops in 0 or 500
+          referred_by: referrerId ? String(referrerId) : null,
+          // encrypted_vault: encryptedVault (make sure this is here from the wallet build!)
+        }])
+        .select()
+        .single();
+
+      // 4. The Referrer Payout (Executes securely in the background)
+      if (referrerId && !insertError) {
+        try {
+          const { data: referrerData } = await supabase
+            .from('players')
+            .select('shard_balance')
+            .eq('telegram_id', String(referrerId))
+            .single();
+
+          if (referrerData) {
+            const newBalance = (referrerData.shard_balance || 0) + REFERRER_BONUS;
+
+            await supabase
+              .from('players')
+              .update({ shard_balance: newBalance })
+              .eq('telegram_id', String(referrerId));
+              
+            console.log(`Secured payment: ${REFERRER_BONUS} Shards to referrer ID: ${referrerId}`);
+          }
+        } catch (rewardError) {
+          console.error("Critical error paying referrer:", rewardError);
+        }
+      }
 
       // 3. EXACT SAME FETCH AS SYNCPLAYER (This guarantees the Secret Phrase)
       const response = await fetch('https://ncwlbwzxfpcnxkyrmdck.supabase.co/functions/v1/create-user-wallet', {

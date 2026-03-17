@@ -6,7 +6,7 @@ const Friends = ({ tgUser }) => {
   const [isLoading, setIsLoading] = useState(true);
   
   // The reward you give for a successful invite
-  const REFERRAL_REWARD = 10000; 
+  const REFERRAL_REWARD = 2000; 
 
   // Generate the unique link using their Telegram ID
   const inviteLink = `https://t.me/Gift2uTapBot?start=${tgUser.id}`;
@@ -39,7 +39,7 @@ const Friends = ({ tgUser }) => {
   }, [fetchFriends, tgUser.id]);
 
   const handleInvite = () => {
-    const text = `🎁 Join me on Gift! Tap to earn shards and move your way up the leaderboard! You get a head start, and we both earn bonuses.`;
+    const text = `🎁I'm grinding levels in Gift Tap! Tap, level up, and earn real $GFT on Telegram. Jump in with my link, and we both earn bonuses.`;
     const url = `https://t.me/share/url?url=${encodeURIComponent(inviteLink)}&text=${encodeURIComponent(text)}`;
     
     // Opens the Telegram native share menu
@@ -49,6 +49,13 @@ const Friends = ({ tgUser }) => {
       // Fallback for browser testing
       window.open(url, '_blank');
     }
+  };
+
+  // --- NEW X (TWITTER) SHARE FUNCTION ---
+  const handleInviteX = () => {
+    const tweetText = `🎁I'm grinding levels in Gift Tap! Tap, level up, and earn real $GFT on Telegram. Jump in with my link, and we both earn bonuses.: 🎁\n\n${inviteLink}`;
+    const twitterUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(tweetText)}`;
+    window.open(twitterUrl, '_blank');
   };
 
   const handleCopy = () => {
@@ -75,6 +82,14 @@ const Friends = ({ tgUser }) => {
           style={{ width: '100%', background: '#9945FF', color: '#fff', border: 'none', padding: '15px', borderRadius: '12px', fontWeight: 'bold', fontSize: '16px', cursor: 'pointer', marginBottom: '10px', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px' }}
         >
           <span>↗️</span> Send Telegram Invite
+        </button>
+
+        {/* --- NEW X SHARE BUTTON --- */}
+        <button 
+          onClick={handleInviteX}
+          style={{ width: '100%', background: '#000000', color: '#ffffff', border: '1px solid #333', padding: '12px', borderRadius: '12px', fontWeight: 'bold', fontSize: '14px', cursor: 'pointer', marginBottom: '10px', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px' }}
+        >
+          <span>𝕏</span> Share on X
         </button>
         
         <button 
