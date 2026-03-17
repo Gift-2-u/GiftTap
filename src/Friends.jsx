@@ -6,7 +6,8 @@ const Friends = ({ tgUser }) => {
   const [isLoading, setIsLoading] = useState(true);
   
   // The reward you give for a successful invite
-  const REFERRAL_REWARD = 2000; 
+  const REFERRAL_REWARD = 2000;
+  const JOINER_REWARD = 500;
 
   // Generate the unique link using their Telegram ID
   const inviteLink = `https://t.me/Gift2uTapBot?start=${tgUser.id}`;
@@ -39,7 +40,7 @@ const Friends = ({ tgUser }) => {
   }, [fetchFriends, tgUser.id]);
 
   const handleInvite = () => {
-    const text = `🎁I'm grinding levels in Gift Tap! Tap, level up, and earn real $GFT on Telegram. Jump in with my link, and we both earn bonuses.`;
+    const text = `🎁I'm grinding levels in Gift Tap! Tap, level up, and earn real $GFT on Telegram. Jump in with my link, and get 500 free GFTshards.`;
     const url = `https://t.me/share/url?url=${encodeURIComponent(inviteLink)}&text=${encodeURIComponent(text)}`;
     
     // Opens the Telegram native share menu
@@ -53,7 +54,7 @@ const Friends = ({ tgUser }) => {
 
   // --- NEW X (TWITTER) SHARE FUNCTION ---
   const handleInviteX = () => {
-    const tweetText = `🎁I'm grinding levels in Gift Tap! Tap, level up, and earn real $GFT on Telegram. Jump in with my link, and we both earn bonuses.: 🎁\n\n${inviteLink}`;
+    const tweetText = `🎁I'm grinding levels in Gift Tap! Tap, level up, and earn real $GFT on Telegram. Jump in with my link, and get 500 free GFTshards.: 🎁\n\n${inviteLink}`;
     const twitterUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(tweetText)}`;
     window.open(twitterUrl, '_blank');
   };
@@ -70,8 +71,9 @@ const Friends = ({ tgUser }) => {
       <div style={{ textAlign: 'center', marginBottom: '20px' }}>
         <div style={{ fontSize: '50px', marginBottom: '10px' }}>🤝</div>
         <h2 style={{ color: '#ffd700', fontSize: '24px', margin: '0 0 5px 0' }}>Invite Friends</h2>
-        <p style={{ color: '#888', fontSize: '13px', margin: 0 }}>
-          Earn <span style={{ color: '#4ade80', fontWeight: 'bold' }}>+{REFERRAL_REWARD.toLocaleString()} Shards</span> for every friend who joins using your link!
+        <p style={{ color: '#888', fontSize: '13px', margin: 0, lineHeight: '1.5' }}>
+          Earn <span style={{ color: '#4ade80', fontWeight: 'bold' }}>+{REFERRAL_REWARD.toLocaleString()} Shards</span> for every friend who joins, <br/>
+          and they get <span style={{ color: '#ffd700', fontWeight: 'bold' }}>+{JOINER_REWARD.toLocaleString()} Shards</span> instantly!
         </p>
       </div>
 
@@ -92,7 +94,7 @@ const Friends = ({ tgUser }) => {
           onClick={handleInviteX}
           style={{ width: '100%', background: '#000000', color: '#ffffff', border: '1px solid #333', padding: '12px', borderRadius: '12px', fontWeight: 'bold', fontSize: '14px', cursor: 'pointer', marginBottom: '10px', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px' }}
         >
-          <span>𝕏</span> Share on X
+          <span>𝕏</span> Send invite on X
         </button>
         
         <button 
