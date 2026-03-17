@@ -189,7 +189,18 @@ const GiftTapGame = () => {
   const [decryptedPhrase, setDecryptedPhrase] = useState("");
   // Settings Menu State
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const [appLanguage, setAppLanguage] = useState('EN'); // Default language
+  // The Master Language Array
+  const ALL_LANGUAGES = [
+    { code: 'EN', label: 'English' },
+    { code: 'FR', label: 'Français' },
+    { code: 'ES', label: 'Español' },
+    { code: 'PT', label: 'Português' },
+    { code: 'RU', label: 'Русский' },
+    { code: 'ID', label: 'Bahasa Indonesia' },
+    { code: 'ZH', label: '中文' }
+  ];
+
+  const [appLanguage, setAppLanguage] = useState('EN');
   // The Master Currency Array (Top 30 Global Fiat Currencies)
   const ALL_CURRENCIES = [
     'USD', 'EUR', 'CAD', 'GBP', 'AUD', 'JPY', 'CNY', 'INR', 'PHP', 'IDR', 
@@ -226,6 +237,30 @@ const GiftTapGame = () => {
     };
     fetchFiatPrices();
   }, []);
+
+  // The Translation Engine Dictionary
+  const TRANSLATIONS = {
+    EN: {
+      menu: "Menu",
+      language: "Language",
+      currency: "Currency",
+      secret: "View Secret Phrase",
+      rules: "Whitepaper & Rules"
+    },
+    FR: {
+      menu: "Menu",
+      language: "Langue",
+      currency: "Devise",
+      secret: "Voir la phrase secrète",
+      rules: "Livre blanc & Règles"
+    }
+    // You can add ES, PT, etc., as you expand!
+  };
+  // Universal Translation Formatter
+  // Usage: t('currency') -> returns "Currency" (if EN) or "Devise" (if FR)
+  const t = (key) => {
+    return TRANSLATIONS[appLanguage]?.[key] || TRANSLATIONS['EN'][key] || key;
+  };
 
   // Keep the ref synced if lifetimeTaps changes from the database load
   useEffect(() => { 
@@ -1842,12 +1877,29 @@ const GiftTapGame = () => {
                   <button onClick={() => setIsMenuOpen(false)} style={{ background: 'none', border: 'none', color: '#888', fontSize: '24px', cursor: 'pointer' }}>×</button>
                 </div>
 
-                {/* 1. Language Toggle */}
+                {/* 1. Global Language Dropdown */}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#111', padding: '15px', borderRadius: '12px', marginBottom: '10px', border: '1px solid #222' }}>
-                  <span style={{ color: '#fff', fontWeight: 'bold' }}>🌐 Language</span>
-                  <button onClick={() => setAppLanguage(appLanguage === 'EN' ? 'FR' : 'EN')} style={{ background: '#333', color: '#fff', border: 'none', padding: '8px 15px', borderRadius: '8px', cursor: 'pointer' }}>
-                    {appLanguage}
-                  </button>
+                  <span style={{ color: '#fff', fontWeight: 'bold' }}>🌐 {t('language')}</span>
+                  <select 
+                    value={appLanguage}
+                    onChange={(e) => setAppLanguage(e.target.value)}
+                    style={{ 
+                      background: '#333', 
+                      color: '#fff', 
+                      border: '1px solid #555', 
+                      padding: '8px 10px', 
+                      borderRadius: '8px', 
+                      cursor: 'pointer', 
+                      fontWeight: 'bold',
+                      outline: 'none'
+                    }}
+                  >
+                    {ALL_LANGUAGES.map(lang => (
+                      <option key={lang.code} value={lang.code}>
+                        {lang.code} - {lang.label}
+                      </option>
+                    ))}
+                  </select>
                 </div>
 
                 {/* 2. Global Fiat Dropdown */}
