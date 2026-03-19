@@ -192,6 +192,13 @@ const GiftTapGame = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [displayCurrency, setDisplayCurrency] = useState('USD'); 
   const [solFiatRates, setSolFiatRates] = useState({}); // Now an empty object that fills dynamically
+  const [appLanguage, setAppLanguage] = useState('EN');
+
+  const ALL_CURRENCIES = [
+    'USD', 'EUR', 'CAD', 'GBP', 'AUD', 'JPY', 'CNY', 'INR', 'PHP', 'IDR', 
+    'BRL', 'MXN', 'ARS', 'NGN', 'ZAR', 'TRY', 'AED', 'SGD', 'HKD', 'NZD', 
+    'KRW', 'THB', 'VND', 'MYR', 'CHF', 'SEK', 'NOK', 'DKK', 'PLN', 'CZK'
+  ];
 
   // Fetch real-time SOL price for ALL currencies instantly
   useEffect(() => {
@@ -1858,6 +1865,7 @@ const GiftTapGame = () => {
             displayCurrency={displayCurrency}
             setDisplayCurrency={setDisplayCurrency}
             t={t}
+            ALL_CURRENCIES={ALL_CURRENCIES} // <--- Add this new line
             onOpenWhitepaper={() => setIsWhitepaperOpen(true)}
             onOpenSecret={() => { setMustBackup(true); setIsModalOpen(true); }}
           />
