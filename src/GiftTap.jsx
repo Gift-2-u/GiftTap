@@ -7,6 +7,7 @@ import Marketplace from './Marketplace';
 import Tasks from './Tasks';
 import Friends from './Friends';
 import Menu from './Menu';
+import whitepaperModal from './whitepaperModal';
 import bs58 from "bs58";
 import * as bip39 from 'bip39';
 import { derivePath } from 'ed25519-hd-key';
@@ -1868,6 +1869,12 @@ const GiftTapGame = () => {
             ALL_CURRENCIES={ALL_CURRENCIES} // <--- Add this new line
             onOpenWhitepaper={() => setIsWhitepaperOpen(true)}
             onOpenSecret={() => { setMustBackup(true); setIsModalOpen(true); }}
+          />
+
+          {/* --- REFACTORED WHITEPAPER COMPONENT --- */}
+          <WhitepaperModal 
+            isWhitepaperOpen={isWhitepaperOpen} 
+            setIsWhitepaperOpen={setIsWhitepaperOpen} 
           />
 
         </div>
