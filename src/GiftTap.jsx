@@ -7,7 +7,7 @@ import Marketplace from './Marketplace';
 import Tasks from './Tasks';
 import Friends from './Friends';
 import Menu from './Menu';
-import whitepaperModal from './whitepaperModal';
+import WhitepaperModal from './WhitepaperModal';
 import bs58 from "bs58";
 import * as bip39 from 'bip39';
 import { derivePath } from 'ed25519-hd-key';
