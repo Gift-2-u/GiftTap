@@ -6,6 +6,7 @@ import BetaGate from './BetaGate';
 import Marketplace from './Marketplace';
 import Tasks from './Tasks';
 import Friends from './Friends';
+import Menu from './Menu';
 import bs58 from "bs58";
 import * as bip39 from 'bip39';
 import { derivePath } from 'ed25519-hd-key';
@@ -189,25 +190,6 @@ const GiftTapGame = () => {
   const [decryptedPhrase, setDecryptedPhrase] = useState("");
   // Settings Menu State
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  // The Master Language Array
-  const ALL_LANGUAGES = [
-    { code: 'EN', label: 'English' },
-    { code: 'FR', label: 'Français' },
-    { code: 'ES', label: 'Español' },
-    { code: 'PT', label: 'Português' },
-    { code: 'RU', label: 'Русский' },
-    { code: 'ID', label: 'Bahasa Indonesia' },
-    { code: 'ZH', label: '中文' }
-  ];
-
-  const [appLanguage, setAppLanguage] = useState('EN');
-  // The Master Currency Array (Top 30 Global Fiat Currencies)
-  const ALL_CURRENCIES = [
-    'USD', 'EUR', 'CAD', 'GBP', 'AUD', 'JPY', 'CNY', 'INR', 'PHP', 'IDR', 
-    'BRL', 'MXN', 'ARS', 'NGN', 'ZAR', 'TRY', 'AED', 'SGD', 'HKD', 'NZD', 
-    'KRW', 'THB', 'VND', 'MYR', 'CHF', 'SEK', 'NOK', 'DKK', 'PLN', 'CZK'
-  ];
-
   const [displayCurrency, setDisplayCurrency] = useState('USD'); 
   const [solFiatRates, setSolFiatRates] = useState({}); // Now an empty object that fills dynamically
 
@@ -1867,91 +1849,18 @@ const GiftTapGame = () => {
             </div>
           )}
 
-          {/* --- MAIN MENU MODAL --- */}
-          {isMenuOpen && (
-            <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.85)', zIndex: 10000, display: 'flex', justifyContent: 'center', alignItems: 'flex-end' }}>
-              <div style={{ background: '#1c1e22', width: '100%', borderTopLeftRadius: '20px', borderTopRightRadius: '20px', padding: '25px', paddingBottom: '40px', boxSizing: 'border-box', borderTop: '1px solid #333' }}>
-                
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-                  <h2 style={{ color: '#fff', margin: 0, fontSize: '22px' }}>Menu</h2>
-                  <button onClick={() => setIsMenuOpen(false)} style={{ background: 'none', border: 'none', color: '#888', fontSize: '24px', cursor: 'pointer' }}>×</button>
-                </div>
-
-                {/* 1. Global Language Dropdown */}
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#111', padding: '15px', borderRadius: '12px', marginBottom: '10px', border: '1px solid #222' }}>
-                  <span style={{ color: '#fff', fontWeight: 'bold' }}>🌐 {t('language')}</span>
-                  <select 
-                    value={appLanguage}
-                    onChange={(e) => setAppLanguage(e.target.value)}
-                    style={{ 
-                      background: '#333', 
-                      color: '#fff', 
-                      border: '1px solid #555', 
-                      padding: '8px 10px', 
-                      borderRadius: '8px', 
-                      cursor: 'pointer', 
-                      fontWeight: 'bold',
-                      outline: 'none'
-                    }}
-                  >
-                    {ALL_LANGUAGES.map(lang => (
-                      <option key={lang.code} value={lang.code}>
-                        {lang.code} - {lang.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* 2. Global Fiat Dropdown */}
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#111', padding: '15px', borderRadius: '12px', marginBottom: '10px', border: '1px solid #222' }}>
-                  <span style={{ color: '#fff', fontWeight: 'bold' }}>💱 Currency</span>
-                  <select 
-                    value={displayCurrency}
-                    onChange={(e) => setDisplayCurrency(e.target.value)}
-                    style={{ 
-                      background: '#333', 
-                      color: '#fff', 
-                      border: '1px solid #555', 
-                      padding: '8px 10px', 
-                      borderRadius: '8px', 
-                      cursor: 'pointer', 
-                      fontWeight: 'bold',
-                      outline: 'none'
-                    }}
-                  >
-                    {ALL_CURRENCIES.map(currency => (
-                      <option key={currency} value={currency}>
-                        {currency}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* 3. Security Words (Reuses your existing Invisible Key UI!) */}
-                <button 
-                  onClick={() => {
-                    setIsSettingsOpen(false);
-                    setMustBackup(true); 
-                    setIsModalOpen(true);
-                  }}
-                  style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#111', padding: '15px', borderRadius: '12px', marginBottom: '10px', border: '1px solid #222', cursor: 'pointer' }}
-                >
-                  <span style={{ color: '#ef4444', fontWeight: 'bold' }}>🔐 View Secret Phrase</span>
-                  <span style={{ color: '#888' }}>{'❯'}</span>
-                </button>
-
-                {/* 4. Whitepaper & Rules */}
-                <button 
-                  onClick={() => window.open('YOUR_WHITEPAPER_URL_HERE', '_blank')}
-                  style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#111', padding: '15px', borderRadius: '12px', marginBottom: '10px', border: '1px solid #222', cursor: 'pointer' }}
-                >
-                  <span style={{ color: '#fff', fontWeight: 'bold' }}>📄 Whitepaper & Rules</span>
-                  <span style={{ color: '#888' }}>{'❯'}</span>
-                </button>
-
-              </div>
-            </div>
-          )}
+          {/* --- REFACTORED MENU COMPONENT --- */}
+          <Menu 
+            isMenuOpen={isMenuOpen} 
+            setIsMenuOpen={setIsMenuOpen}
+            appLanguage={appLanguage}
+            setAppLanguage={setAppLanguage}
+            displayCurrency={displayCurrency}
+            setDisplayCurrency={setDisplayCurrency}
+            t={t}
+            onOpenWhitepaper={() => setIsWhitepaperOpen(true)}
+            onOpenSecret={() => { setMustBackup(true); setIsModalOpen(true); }}
+          />
 
         </div>
         
