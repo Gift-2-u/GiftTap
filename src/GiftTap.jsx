@@ -194,7 +194,7 @@ const GiftTapGame = () => {
   const [displayCurrency, setDisplayCurrency] = useState('USD'); 
   const [solFiatRates, setSolFiatRates] = useState({}); // Now an empty object that fills dynamically
   const [appLanguage, setAppLanguage] = useState('EN');
-  const [isWhitepaperModalOpen, setIsWhitepaperModalOpen] = useState(false);
+  const [isWhitepaperOpen, setIsWhitepaperOpen] = useState(false);
 
   const ALL_CURRENCIES = [
     'USD', 'EUR', 'CAD', 'GBP', 'AUD', 'JPY', 'CNY', 'INR', 'PHP', 'IDR', 
