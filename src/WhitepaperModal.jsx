@@ -10,8 +10,8 @@ const WhitepaperModal = ({ isWhitepaperOpen, setIsWhitepaperOpen }) => {
   const PLAYBOOK = [
     {
       id: 1,
-      title: "1. Shards",
-      content: "Shards are the core off-chain currency of Gift Tap. Your primary objective is to tap the gift to weaken the wrapping and extract Shards. Accumulating Shards is your main method of climbing the global leaderboard and securing your future allocation of the on-chain token."
+      title: "1. GFTshards",
+      content: "Shards are the core off-chain currency of Gift Tap. Your primary objective is simple: tap the gift to extract Shards.\n\nAll new players begin at Level 0, earning exactly 1 Shard per tap. Accumulating Shards is your main method of climbing the global leaderboard and securing your future allocation of the on-chain $GFT token.\n\nCritical Taps: Earning massive bonus Shards in a single tap is possible, but this mechanic is exclusively unlocked through the Luck stat provided by specific NFT classes."
     },
     {
       id: 2,
