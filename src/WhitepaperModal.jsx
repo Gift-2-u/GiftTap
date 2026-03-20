@@ -16,12 +16,12 @@ const WhitepaperModal = ({ isWhitepaperOpen, setIsWhitepaperOpen }) => {
     {
       id: 2,
       title: "2. Energy",
-      content: "You cannot tap infinitely. Every tap consumes a portion of your Energy pool. Once depleted, you must wait for it to automatically recharge. As you progress, you can unlock upgrades that increase your Maximum Energy Cap and accelerate your Recharge Rate."
+      content: "You cannot tap infinitely. Every tap costs exactly 1 Energy from your active pool.\n\nAt Level 0, your maximum Energy Bar holds 500 Energy, which regenerates automatically at a rate of 1 Energy every 2 seconds. To ensure a balanced and fair economy, every player is limited to a maximum of 1,000 Total Energy per day.\n\nAs you progress, you can unlock upgrades that increase your Energy Bar capacity and accelerate your Recharge Rate."
     },
     {
       id: 3,
-      title: "3. Levels",
-      content: "Using your mined Shards, you can level up your account stats. Leveling up is crucial for increasing your passive income and tap efficiency, allowing you to mine exponentially more Shards as you reach the late game."
+      title: "3. Levels & Progression",
+      content: "Your account automatically levels up as you accumulate total lifetime taps. Reaching higher level tiers unlocks permanent, powerful multipliers to your base Tap Power.\n\nThe Progression Tiers:\n• Levels 0 to 4: 1.00x Multiplier (10,000 taps per level)\n• Levels 5 to 9: 1.15x Multiplier (12,000 taps per level)\n• Levels 10 to 19: 1.30x Multiplier (15,000 taps per level)\n• Levels 20 to 29: 1.50x Multiplier\n• Levels 30 to 49: 1.75x Multiplier\n\nConsistently hitting these tap milestones and leveling up is the ultimate key to maximizing your Shard production and dominating the late-game economy."
     },
     {
       id: 4,
