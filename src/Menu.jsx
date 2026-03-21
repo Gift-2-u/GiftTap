@@ -97,6 +97,23 @@ const Menu = ({
           <span style={{ color: '#888' }}>{'❯'}</span>
         </button>
 
+        {/* --- LEGAL FOOTER --- */}
+        <div style={{ display: 'flex', justifyContent: 'center', gap: '20px', marginTop: '30px', borderTop: '1px solid #333', paddingTop: '15px' }}>
+          <button 
+            onClick={() => {/* TODO: Open Terms */}}
+            style={{ background: 'none', border: 'none', color: '#666', fontSize: '12px', cursor: 'pointer', textDecoration: 'underline' }}
+          >
+            {t('terms') || "Terms of Use"}
+          </button>
+          
+          <button 
+            onClick={() => {/* TODO: Open Privacy */}}
+            style={{ background: 'none', border: 'none', color: '#666', fontSize: '12px', cursor: 'pointer', textDecoration: 'underline' }}
+          >
+            {t('privacy') || "Privacy Policy"}
+          </button>
+        </div>
+
       </div>
     </div>
   );
