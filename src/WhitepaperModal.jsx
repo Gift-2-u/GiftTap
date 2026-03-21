@@ -21,7 +21,7 @@ const WhitepaperModal = ({ isWhitepaperOpen, setIsWhitepaperOpen }) => {
     {
       id: 3,
       title: "3. Levels & Progression",
-      content: "Your account automatically levels up as you accumulate total lifetime taps. Reaching higher level tiers unlocks permanent, powerful multipliers to your base Tap Power.\n\nThe Progression Tiers:\n• Levels 0 to 4: 1.00x Multiplier (10,000 taps per level)\n• Levels 5 to 9: 1.15x Multiplier (12,000 taps per level)\n• Levels 10 to 19: 1.30x Multiplier (15,000 taps per level)\n• Levels 20 to 29: 1.50x Multiplier\n• Levels 30 to 49: 1.75x Multiplier\n\nConsistently hitting these tap milestones and leveling up is the ultimate key to maximizing your Shard production and dominating the late-game economy."
+      content: "Your account automatically levels up as you accumulate total lifetime taps. Reaching higher level tiers unlocks permanent, powerful multipliers to your base Tap Power.\n\nThe Progression Tiers:\n• Levels 0 to 4: 1.00x Multiplier (10,000 taps per level)\n• Levels 5 to 9: 1.15x Multiplier (15,000 taps per level)\n• Levels 10 to 19: 1.30x Multiplier (25,000 taps per level)\n• Levels 20 to 29: 1.50x Multiplier (50,000 taps per level)\n• Levels 30 to 49: 1.75x Multiplier (100,000 taps per level)\n• Level 50: 2.00x Multiplier\n\nConsistently hitting these tap milestones and leveling up is the ultimate key to maximizing your Shard production and dominating the late-game economy."
     },
     {
       id: 4,

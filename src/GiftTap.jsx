@@ -84,6 +84,7 @@ export const getNextLevelTarget = (currentLevel) => {
 };
 
 export const getLevelMultiplier = (level) => {
+  if (level >= 50) return 2.00;
   if (level >= 30) return 1.75;
   if (level >= 20) return 1.50;
   if (level >= 10) return 1.30;
@@ -92,8 +93,8 @@ export const getLevelMultiplier = (level) => {
 };
 
 export const ASCENSION_WALLS = {
-  4: { targetLevel: 5, shardCost: 10000, solCost: 0.02, newCap: 9 },
-  9: { targetLevel: 10, shardCost: 15000, solCost: 0.03, newCap: 19 },
+  4: { targetLevel: 5, shardCost: 15000, solCost: 0.025, newCap: 9 },
+  9: { targetLevel: 10, shardCost: 25000, solCost: 0.05, newCap: 19 },
   19: { targetLevel: 20, shardCost: 50000, solCost: 0.10, newCap: 29 },
   29: { targetLevel: 30, shardCost: 100000, solCost: 0.20, newCap: 49 },
   49: { targetLevel: 50, shardCost: 400000, solCost: 0.75, newCap: 50 }
