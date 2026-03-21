@@ -35,13 +35,13 @@ const WhitepaperModal = ({ isWhitepaperOpen, setIsWhitepaperOpen }) => {
     },
     {
       id: 6,
-      title: "6. $GFT Token & Wallet",
-      content: "Gift Tap operates on a Play-to-Airdrop model. Your off-chain Shard balance and NFT levels will dictate your airdrop allocation of the official $GFT Token on the Solana network. An encrypted, Invisible Wallet has automatically been generated for you to securely hold these future assets."
+      title: "6. GFT Token & Wallet",
+      content: "Gift Tap does not rely on a randomized airdrop. Instead, the GFTshards you extract and accumulate in-game will be directly swappable for official on-chain $GFT tokens following the official token launch.\n\nYour Web3 Wallet:\nUpon joining, a secure Solana wallet was automatically generated for your account. This in-app wallet is built to manage your GFTshards, $GFT, SOL, and USDC seamlessly.\n\nSecurity Reminder: You have full, non-custodial ownership of this wallet. While you were prompted to save your 12-word Secret Phrase during onboarding, you can view and back it up at any time via the main Menu. Never share your Secret Phrase with anyone."
     },
     {
       id: 7,
       title: "7. Code of Conduct",
-      content: "The use of auto-clickers, scripts, or fake referral accounts (Sybil attacks) is strictly prohibited. Flagged accounts will have their encrypted vaults permanently locked, forfeiting all $GFT airdrop eligibility. Play fair and earn together."
+      content: "The use of auto-clickers, scripts, or fake referral accounts (Sybil attacks) is strictly prohibited. Flagged accounts will have their encrypted vaults permanently locked, forfeiting all GFTshard-to-GFT swap eligibility. Play fair and earn together."
     }
   ];
 
