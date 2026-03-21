@@ -26,7 +26,7 @@ const WhitepaperModal = ({ isWhitepaperOpen, setIsWhitepaperOpen }) => {
     {
       id: 4,
       title: "4. NFT Classes & Synergy",
-      content: "To master the economy and maximize your extraction, players can purchase exclusive NFT Classes directly with SOL. \n\nSynergy: You are not limited to equipping just one. All NFTs you own work together simultaneously, permanently stacking their bonuses to accelerate your production.\n\nThe Classes:\n• Data Bot: Mines Shards passively for you while the app is closed.\n• Solar Tap Forger: Increases your tap efficiency, granting more Shards per single unit of Energy.\n• Energy Fusion Operator: Expands your maximum daily Energy limit, allowing you to tap longer.\n• Luck's Oracle: Grants a percentage chance to trigger a 'Critical Tap', randomly multiplying the Shards extracted in a single strike."
+      content: "To master the economy and maximize your extraction, players can purchase exclusive NFT Classes directly with SOL. \n\nSynergy: You are not limited to equipping just one. All NFTs you own work together simultaneously, permanently stacking their bonuses to accelerate your production.\n\nThe Classes:\n• Data Bot: Mines Shards passively for you while the app is closed.\n• Solar Tap Forger: Increases your tap efficiency, granting more Shards per single unit of Energy.\n• Energy Fusion Operator: Expands your maximum daily Energy limit, allowing you to tap longer.\n• Luck's Oracle: Grants a percentage chance to trigger a 'Critical Tap', randomly multiplying the Shards extracted in a single strike.\n• Coming soon"
     },
     {
       id: 5,
