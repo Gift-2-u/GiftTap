@@ -203,7 +203,7 @@ const GiftTapGame = () => {
   const getSwapBalance = (token) => {
     if (token === 'SOL') return balances.sol?.toFixed(4) || '0.0000';
     if (token === 'USDC') return balances.usdc?.toFixed(2) || '0.00'; // Adjust if your USDC state name is different
-    if (token === 'GFT') return balance?.toLocaleString() || '0';
+    if (token === 'GFT') return balances?.toLocaleString() || '0';
     return '0.00';
   };
 
