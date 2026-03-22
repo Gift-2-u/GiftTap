@@ -298,13 +298,33 @@ const GiftTapGame = () => {
 
   // 3. FETCH FULL LEADERBOARD (Modal)
   const fetchFullLeaderboard = async (typeOverride) => {
-    // Use the override if provided, otherwise fallback to state
     const targetType = typeOverride || leaderboardType;
+    
+    // Determine table and column based on selection
     const tableName = targetType === 'all_time' ? 'leaderboard_all_time' : 'leaderboard_season';
-   
-    const { data } = await supabase.from('leaderboard_all_time').select('*').order('lifetime_taps', { ascending: false }).limit(100);
-    setLeaderboard(data || []);
-    setIsLeaderboardOpen(true);
+    const scoreColumn = targetType === 'all_time' ? 'lifetime_taps' : 'season_taps';
+
+    try {
+      const { data, error } = await supabase
+        .from(tableName)
+        .select('*')
+        .order(scoreColumn, { ascending: false })
+        .limit(100);
+
+      if (error) throw error;
+
+      // Normalize data so the UI always finds a ".score" property
+      const normalizedData = (data || []).map(user => ({
+        ...user,
+        displayScore: user[scoreColumn] || 0,
+        displayName: user.username || (user.telegram_id ? `ID:..${String(user.telegram_id).slice(-4)}` : 'Anon')
+      }));
+
+      setLeaderboard(normalizedData);
+      setIsLeaderboardOpen(true);
+    } catch (err) {
+      console.error("Full leaderboard fetch error:", err);
+    }
   };
 
   const syncPlayer = useCallback(async () => {
