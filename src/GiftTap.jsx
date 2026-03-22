@@ -363,7 +363,7 @@ const GiftTapGame = () => {
         const lastDate = new Date(player.last_updated).getTime();
         const now = new Date().getTime();
         const secondsPassed = Math.floor((now - lastDate) / 1000);
-        const recovered = Math.floor(secondsPassed / 2); 
+        const recovered = Math.floor(secondsPassed / 3); 
         // Apply Expanded Battery logic to max energy cap
         setEnergy(Math.min((player.last_energy || 0) + recovered, 500));
         
