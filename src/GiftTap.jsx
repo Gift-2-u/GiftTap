@@ -302,7 +302,7 @@ const GiftTapGame = () => {
     const targetType = typeOverride || leaderboardType;
     const tableName = targetType === 'all_time' ? 'leaderboard_all_time' : 'leaderboard_season';
    
-    const { data } = await supabase.from(tableName).select('*').order('lifetime_taps', { ascending: false }).limit(100);
+    const { data } = await supabase.from('leaderboard_all_time').select('*').order('lifetime_taps', { ascending: false }).limit(100);
     setLeaderboard(data || []);
     setIsLeaderboardOpen(true);
   };
