@@ -1592,16 +1592,7 @@ const GiftTapGame = () => {
           {isReceiveOpen && (
             <div style={styles.modalOverlay} onClick={() => setIsReceiveOpen(false)}>
               <div style={styles.modalContent} onClick={e => e.stopPropagation()}>
-                {/* Unified Header with Back Arrow */}
-                <div style={{ display: 'flex', alignItems: 'center', marginBottom: '20px' }}>
-                  <button onClick={() => setIsReceiveOpen(false)} style={{ background: 'none', border: 'none', color: '#888', padding: '0 15px 0 0', cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <line x1="19" y1="12" x2="5" y2="12"></line>
-                      <polyline points="12 19 5 12 12 5"></polyline>
-                    </svg>
-                  </button>
-                  <h3 style={{ color: '#ffd700', margin: 0 }}>Receive Assets</h3>
-                </div>
+                <h3 style={{ color: '#ffd700', marginBottom: '10px' }}>Receive Assets</h3>
                 
                 {/* QR Code Section */}
                 <div style={{ background: '#fff', padding: '10px', borderRadius: '10px', display: 'inline-block' }}>
@@ -1635,6 +1626,18 @@ const GiftTapGame = () => {
                   Only send Solana (SOL) or SPL tokens (like GFT) to this address.
                 </p>
                 
+                <button 
+                  onClick={() => { 
+                    setIsReceiveOpen(false); 
+                    setIsWalletOpen(true); // <--- THIS BRINGS THE WALLET BACK
+                  }} 
+                  style={{ background: '#2a2d35', border: '1px solid #333', color: '#fff', width: '50px', height: '50px', borderRadius: '50%', display: 'flex', justifyContent: 'center', alignItems: 'center', cursor: 'pointer' }}
+                >
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <line x1="19" y1="12" x2="5" y2="12"></line>
+                    <polyline points="12 19 5 12 12 5"></polyline>
+                  </svg>
+                </button>
               </div>
             </div>
           )}
