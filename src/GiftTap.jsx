@@ -283,55 +283,50 @@ const GiftTapGame = () => {
 
   const GIFT_TREASURY_WALLET = new PublicKey("8G7uEcPS6dwA5wW9bGoqi98EzBunF8trjbbFJkgkvBPm");
 
+  // --- NEW BETA LOGIC (ADDITIVE ONLY) ---
+  if (typeOverride === 'Beta') {
+    const { data: betaData } = await supabase
+      .from('leaderboard_beta')
+      .select('*')
+      // Using shard_balance to match your existing leaderboard columns
+      .order('shard_balance', { ascending: false }) 
+      .limit(100);
+    
+    setLeaderboard(betaData || []);
+    
+    const { count: betaRank } = await supabase
+      .from('leaderboard_beta')
+      .select('*', { count: 'exact', head: true })
+      .gt('shard_balance', balances.GFTshards || 0); // Using your exact state name
+      
+    setUserRank((betaRank || 0) + 1);
+    setIsLeaderboardOpen(true);
+    return; 
+  }
+  // --- END OF BETA LOGIC ---
+
   // 2. FETCH TOP LEADER (Individual Badge)
   const fetchTopLeader = useCallback(async () => {
     try {
-      const { data } = await supabase.from('leaderboard_all_time').select('*').limit(1).maybeSingle();
+      const { data } = await supabase.from('leaderboard_all_time').select('*').order('lifetime_taps', { ascending: false }).limit(1).maybeSingle();
       if (data) {
         setTopLeader({
           name: data.username || (data.telegram_id ? `ID:..${String(data.telegram_id).slice(-4)}` : 'Anon'),
-          score: data.shard_balance
+          score: data.lifetime_taps
         });
       }
     } catch (err) { console.error("Badge fetch error:", err); }
   }, []);
 
+  // 3. FETCH FULL LEADERBOARD (Modal)
   const fetchFullLeaderboard = async (typeOverride) => {
-    const targetType = typeOverride || leaderboardType; 
-    let tableName = 'leaderboard_all_time';
-    let orderColumn = 'lifetime_taps';
-    let userScore = player.lifetime_taps || 0; // The current user's score
-
-    if (targetType === 'Beta') {
-      tableName = 'leaderboard_beta';
-      orderColumn = 'beta_shards';
-      userScore = player.beta_shards || 0;
-    }
-
-    try {
-      // 1. Fetch Top 100 for the list
-      const { data: topData } = await supabase
-        .from(tableName)
-        .select('*')
-        .order(orderColumn, { ascending: false })
-        .limit(100);
-
-      setLeaderboard(topData || []);
-
-      // 2. Calculate User's Rank (Count players with a higher score)
-      const { count, error: rankError } = await supabase
-        .from(tableName)
-        .select('*', { count: 'exact', head: true })
-        .gt(orderColumn, userScore);
-
-      if (!rankError) {
-        setUserRank(count + 1); // If 5 people are above you, you are #6
-      }
-
-      setIsLeaderboardOpen(true);
-    } catch (err) {
-      console.error("Leaderboard error:", err);
-    }
+    // Use the override if provided, otherwise fallback to state
+    const targetType = typeOverride || leaderboardType;
+    const tableName = targetType === 'all_time' ? 'leaderboard_all_time' : 'leaderboard_season';
+   
+    const { data } = await supabase.from(tableName).select('*').limit(100);
+    setLeaderboard(data || []);
+    setIsLeaderboardOpen(true);
   };
 
   const syncPlayer = useCallback(async () => {
