@@ -1591,7 +1591,7 @@ const GiftTapGame = () => {
                           <button style={styles.actionBtn} onClick={() => { setIsModalOpen(false); setIsReceiveOpen(true); }}>Receive</button>
                           <button style={styles.actionBtn} onClick={() => { setIsModalOpen(false); setIsWithdrawOpen(true); }}>Send</button>
                           <button style={styles.actionBtn} onClick={() => { setIsModalOpen(false); setIsSwapOpen(true); }}>Swap</button>
-                          <button style={styles.actionBtn} onClick={() => { setIsModalOpen(false); setIsSwapOpen(true); }}>Shard</button>
+                          <button style={styles.actionBtn} onClick={() => { setIsModalOpen(false); isShardSwapOpen(true); }}>Shard</button>
                         </div>
                       </>
                     )}
