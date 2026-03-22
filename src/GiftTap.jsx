@@ -283,28 +283,6 @@ const GiftTapGame = () => {
 
   const GIFT_TREASURY_WALLET = new PublicKey("8G7uEcPS6dwA5wW9bGoqi98EzBunF8trjbbFJkgkvBPm");
 
-  // --- NEW BETA LOGIC (ADDITIVE ONLY) ---
-  if (typeOverride === 'Beta') {
-    const { data: betaData } = await supabase
-      .from('leaderboard_beta')
-      .select('*')
-      // Using shard_balance to match your existing leaderboard columns
-      .order('shard_balance', { ascending: false }) 
-      .limit(100);
-    
-    setLeaderboard(betaData || []);
-    
-    const { count: betaRank } = await supabase
-      .from('leaderboard_beta')
-      .select('*', { count: 'exact', head: true })
-      .gt('shard_balance', balances.GFTshards || 0); // Using your exact state name
-      
-    setUserRank((betaRank || 0) + 1);
-    setIsLeaderboardOpen(true);
-    return; 
-  }
-  // --- END OF BETA LOGIC ---
-
   // 2. FETCH TOP LEADER (Individual Badge)
   const fetchTopLeader = useCallback(async () => {
     try {
