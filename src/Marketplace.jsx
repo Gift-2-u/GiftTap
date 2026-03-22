@@ -24,16 +24,16 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, tgUser, 
 
   // --- ITEM DEFINITIONS ---
   const shardListings = [
-    { id: 'frenzy', name: "90-Second Frenzy", desc: "2x Payout per energy", duration: "90 Seconds", cost: 500, icon: "🔥" },
-    { id: 'battery', name: "Expanded Battery", desc: "+1,000 Max Energy", duration: "24 Hours", cost: 500, icon: "🔋" },
+    { id: 'frenzy', name: "90-Second Frenzy", desc: "2x Payout per energy", duration: "90 Seconds", cost: 600, icon: "🔥" },
+    { id: 'battery', name: "Expanded Battery", desc: "+1,000 Max Energy", duration: "24 Hours", cost: 750, icon: "🔋" },
     { id: 'heavy', name: "Heavy Hands", desc: "2x Efficiency (Drains 2x, Pays 2x)", duration: "24 Hours", cost: 750, icon: "🥊" },
     { id: 'refill', name: "Instant Refill", desc: "Fills energy to max", duration: "Instant", cost: 300, icon: "⚡" }
   ];
 
   const premiumListings = [
     { id: 'bot', name: "Weekend Bot", type: "Misc", rarity: "Epic", boost: "Auto-tap max limits", duration: "3 Days", price: 0.01, currency: "SOL", image: "🤖" },
-    { id: 'grinder', name: "Grinder's Contract", type: "Power", rarity: "Rare", boost: "+2,000 Daily Limit", duration: "7 Days", price: 0.01, currency: "SOL", image: "📜" },
-    { id: 'whale', name: "Whale's Contract", type: "Power", rarity: "Legendary", boost: "+5,000 Daily Limit", duration: "7 Days", price: 0.03, currency: "SOL", image: "🐳" },
+    { id: 'grinder', name: "Grinder's Contract", type: "Power", rarity: "Rare", boost: "2,000 Daily Limit", duration: "7 Days", price: 0.01, currency: "SOL", image: "📜" },
+    { id: 'whale', name: "Whale's Contract", type: "Power", rarity: "Legendary", boost: "5,000 Daily Limit", duration: "7 Days", price: 0.03, currency: "SOL", image: "🐳" },
     { id: 'crate', name: "The Vault Drop", type: "Misc", rarity: "Legendary", boost: "+50,000 Shards", duration: "Instant", price: 0.05, currency: "SOL", image: "💎" },
     { id: 'x2_boost', name: "Double Power", type: "Power", rarity: "Epic", boost: "2x Shards", duration: "7 Days", price: 0.0125, currency: "SOL", image: "🔥" },
     { id: 'x3_boost', name: "Triple Power", type: "Power", rarity: "Legendary", boost: "3x Shards", duration: "7 Days", price: 0.025, currency: "SOL", image: "🚀" }
