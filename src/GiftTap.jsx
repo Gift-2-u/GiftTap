@@ -290,7 +290,7 @@ const GiftTapGame = () => {
       if (data) {
         setTopLeader({
           name: data.username || (data.telegram_id ? `ID:..${String(data.telegram_id).slice(-4)}` : 'Anon'),
-          score: data.lifetime_taps
+          score: data.lifetime_taps || 0
         });
       }
     } catch (err) { console.error("Badge fetch error:", err); }
