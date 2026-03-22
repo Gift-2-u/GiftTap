@@ -645,7 +645,7 @@ const GiftTapGame = () => {
   useEffect(() => {
     const ticker = setInterval(() => {
       setEnergy((prev) => (prev < 500 ? prev + 1 : 500 ));
-    }, 1500);
+    }, 2000);
     return () => clearInterval(ticker);
   }, [stats.energy_boost_expires]);
 
