@@ -1238,7 +1238,7 @@ const GiftTapGame = () => {
   };
 
   // For testing, set this to null. When ready to start, pass it a timestamp (e.g., Date.now())
-  const [betaStartTime] = useState(Date.now()); 
+  const [betaStartTime] = useState(new Date('2026-03-20T00:00:00Z').getTime()); 
 
   useEffect(() => {
     const calculateTimeLeft = () => {
