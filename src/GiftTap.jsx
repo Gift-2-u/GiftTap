@@ -1579,6 +1579,7 @@ const GiftTapGame = () => {
                           <button style={styles.actionBtn} onClick={() => { setIsModalOpen(false); setIsReceiveOpen(true); }}>Receive</button>
                           <button style={styles.actionBtn} onClick={() => { setIsModalOpen(false); setIsWithdrawOpen(true); }}>Send</button>
                           <button style={styles.actionBtn} onClick={() => { setIsModalOpen(false); setIsSwapOpen(true); }}>Swap</button>
+                          <button style={styles.actionBtn} onClick={() => { setIsModalOpen(false); setIsSwapOpen(true); }}>GFTshard Swap</button>
                         </div>
                       </>
                     )}
@@ -1628,20 +1629,6 @@ const GiftTapGame = () => {
                 <p style={{ fontSize: '10px', color: '#666', marginTop: '15px' }}>
                   Only send Solana (SOL) or SPL tokens (like GFT) to this address.
                 </p>
-                <div style={{ display: 'flex', justifyContent: 'center', marginTop: '20px' }}>
-                  <button 
-                    onClick={() => { 
-                      setIsReceiveOpen(false); 
-                      setIsModalOpen(true); // <--- THIS BRINGS THE WALLET BACK
-                    }} 
-                    style={{ background: '#2a2d35', border: '1px solid #333', color: '#fff', width: '50px', height: '50px', borderRadius: '50%', display: 'flex', justifyContent: 'center', alignItems: 'center', cursor: 'pointer' }}
-                  >
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <line x1="19" y1="12" x2="5" y2="12"></line>
-                      <polyline points="12 19 5 12 12 5"></polyline>
-                    </svg>
-                  </button>
-                </div>
               </div>
             </div>
           )}
