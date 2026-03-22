@@ -1592,7 +1592,10 @@ const GiftTapGame = () => {
           {isReceiveOpen && (
             <div style={styles.modalOverlay} onClick={() => setIsReceiveOpen(false)}>
               <div style={styles.modalContent} onClick={e => e.stopPropagation()}>
-                <h3 style={{ color: '#ffd700', marginBottom: '10px' }}>Receive Assets</h3>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+                  <h3 style={{ color: '#fff', margin: 0 }}>Receive Assets</h3>
+                  <button onClick={() => {setIsReceiveOpen(false); setIsModalOpen(true); }} style={{ background: 'none', border: 'none', color: '#888', fontSize: '20px' }}>✕</button>
+                </div>
                 
                 {/* QR Code Section */}
                 <div style={{ background: '#fff', padding: '10px', borderRadius: '10px', display: 'inline-block' }}>
@@ -1648,7 +1651,7 @@ const GiftTapGame = () => {
             <div style={styles.modalOverlay} onClick={() => setIsWithdrawOpen(false)}>
               <div style={{ ...styles.modalContent, background: '#131517', border: 'none', width: '90%', maxWidth: '360px' }} onClick={e => e.stopPropagation()}>
                   
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '20px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center',  marginBottom: '20px' }}>
                   <h3 style={{ color: '#fff', margin: 0 }}>Withdraw</h3>
                   <button onClick={() => {setIsWithdrawOpen(false); setIsModalOpen(true);}} style={{ background: 'none', border: 'none', color: '#888', fontSize: '20px' }}>✕</button>
                 </div>
@@ -1742,9 +1745,9 @@ const GiftTapGame = () => {
             <div style={styles.modalOverlay} onClick={() => setIsSwapOpen(false)}>
               <div style={{ ...styles.modalContent, background: '#131517', border: 'none', width: '90%', maxWidth: '360px' }} onClick={e => e.stopPropagation()}>
                 
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '20px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
                   <h3 style={{ color: '#fff', margin: 0 }}>Swap</h3>
-                  <button onClick={() => setIsSwapOpen(false)} style={{ background: 'none', border: 'none', color: '#888', fontSize: '20px' }}>✕</button>
+                  <button onClick={() => {setIsSwapOpen(false); setIsModalOpen(true); }} style={{ background: 'none', border: 'none', color: '#888', fontSize: '20px' }}>✕</button>
                 </div>
 
                 {/* From Section */}
