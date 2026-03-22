@@ -199,6 +199,8 @@ const GiftTapGame = () => {
   const [isWhitepaperOpen, setIsWhitepaperOpen] = useState(false);
   const [swapFromToken, setSwapFromToken] = useState('SOL');
   const [swapToToken, setSwapToToken] = useState('GFT');
+  const [isShardSwapOpen, setIsShardSwapOpen] = useState(false);
+  const [shardSwapAmount, setShardSwapAmount] = useState('');
 
   const getSwapBalance = (token) => {
     if (token === 'SOL') return balances.sol?.toFixed(4) || '0.0000';
@@ -1836,6 +1838,91 @@ const GiftTapGame = () => {
                   }}
                 >
                   Review Swap
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Shard Swap Pop-up (One-way conversion) */}
+          {isShardSwapOpen && (
+            <div style={styles.modalOverlay} onClick={() => setIsShardSwapOpen(false)}>
+              <div style={{ ...styles.modalContent, background: '#131517', border: 'none', width: '90%', maxWidth: '360px' }} onClick={e => e.stopPropagation()}>
+                
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+                  <h3 style={{ color: '#fff', margin: 0 }}>Shard Swap</h3>
+                  <button onClick={() => { setIsShardSwapOpen(false); setIsModalOpen(true); }} style={{ background: 'none', border: 'none', color: '#888', fontSize: '20px', cursor: 'pointer', padding: 0 }}>✕</button>
+                </div>
+
+                {/* You Pay Section (Hardcoded to Shards) */}
+                <div style={{ background: '#1c1e22', borderRadius: '16px', padding: '15px', textAlign: 'left', marginBottom: '5px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', color: '#888', fontSize: '12px' }}>
+                    <span>You pay</span>
+                    {/* Using 'balance' because it holds your off-chain game score */}
+                    <span>Balance: {balance?.toLocaleString() || '0'}</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '10px' }}>
+                    <input 
+                      type="number" 
+                      placeholder="0"
+                      value={shardSwapAmount}
+                      onChange={(e) => setShardSwapAmount(e.target.value)}
+                      style={{ background: 'none', border: 'none', color: '#fff', fontSize: '24px', width: '60%', outline: 'none' }}
+                    />
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#fff', fontWeight: 'bold' }}>
+                      <span>GFTshards</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Down Arrow (Not clickable, one-way flow) */}
+                <div style={{ height: '30px', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 2, position: 'relative', margin: '-15px 0' }}>
+                  <div style={{ background: '#131517', border: '2px solid #333', borderRadius: '50%', padding: '0', color: '#fbef43', width: '34px', height: '34px', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+                    ↓
+                  </div>
+                </div>
+
+                {/* You Receive Section (Hardcoded to real GFT) */}
+                <div style={{ background: '#1c1e22', borderRadius: '16px', padding: '15px', textAlign: 'left', marginTop: '5px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', color: '#888', fontSize: '12px' }}>
+                    <span>You receive</span>
+                    {/* Reusing the helper function so it doesn't say [object Object] */}
+                    <span>Balance: {getSwapBalance('GFT')}</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '10px' }}>
+                    <input 
+                      type="number" 
+                      placeholder="0.00"
+                      value={shardSwapAmount ? (shardSwapAmount / 1000) : ''} /* Adjust 1000 to your actual conversion rate later */
+                      readOnly
+                      style={{ background: 'none', border: 'none', color: '#fff', fontSize: '24px', width: '60%', outline: 'none' }}
+                    />
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#fff', fontWeight: 'bold' }}>
+                      <span>GFT</span>
+                    </div>
+                  </div>
+                </div>
+
+                <p style={{ fontSize: '12px', color: '#888', marginTop: '20px', textAlign: 'center' }}>
+                  Official conversion rate to be announced.
+                </p>
+
+                {/* Locked Action Button */}
+                <button 
+                  disabled={true}
+                  style={{ 
+                    width: '100%', 
+                    background: '#333', 
+                    color: '#888', 
+                    border: 'none', 
+                    padding: '16px', 
+                    borderRadius: '30px', 
+                    fontWeight: 'bold', 
+                    fontSize: '16px',
+                    marginTop: '20px',
+                    cursor: 'not-allowed'
+                  }}
+                >
+                  Unlocks at Token Launch
                 </button>
               </div>
             </div>
