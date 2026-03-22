@@ -1237,6 +1237,45 @@ const GiftTapGame = () => {
     }
   };
 
+  // For testing, set this to null. When ready to start, pass it a timestamp (e.g., Date.now())
+  const betaStartTime = null; 
+
+  useEffect(() => {
+    const calculateTimeLeft = () => {
+      // 1. If you haven't distributed 75% of codes yet
+      if (!betaStartTime) {
+        setSeasonTimeLeft("Awaiting Players");
+        return;
+      }
+
+      // 2. The 3-week exact countdown
+      const THREE_WEEKS_MS = 21 * 24 * 60 * 60 * 1000;
+      const endTime = betaStartTime + THREE_WEEKS_MS;
+      const now = Date.now();
+      const difference = endTime - now;
+
+      // 3. When the 3 weeks are over
+      if (difference <= 0) {
+        setSeasonTimeLeft("Beta Ended");
+        return;
+      }
+
+      // Calculate the remaining time
+      const days = Math.floor(difference / (1000 * 60 * 60 * 24));
+      const hours = Math.floor((difference % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+      const minutes = Math.floor((difference % (1000 * 60 * 60)) / (1000 * 60));
+
+      setSeasonTimeLeft(`${days}d ${hours}h ${minutes}m`);
+    };
+
+    calculateTimeLeft(); // Run immediately on load
+    
+    // Update every 60 seconds (better for performance than every 1 second)
+    const timer = setInterval(calculateTimeLeft, 60000); 
+
+    return () => clearInterval(timer);
+  }, [betaStartTime]);
+
   if (isLoading) return <div style={styles.container}>Loading Gift...</div>;
 
   return (
@@ -1307,10 +1346,10 @@ const GiftTapGame = () => {
                 </span>
               </button>
               <button 
-                style={leaderboardType === 'season' ? styles.activeToggleBtn : styles.toggleBtn} 
-                onClick={() => setLeaderboardType('season')}
+                style={leaderboardType === 'Beta' ? styles.activeToggleBtn : styles.toggleBtn} 
+                onClick={() => setLeaderboardType('Beta')}
               >
-                <span>⏳ Season 1</span>
+                <span>Beta Season</span>
                 <span style={{...styles.leaderBadgePremium, color: '#4ade80', fontWeight: 'bold'}}>{seasonTimeLeft}</span>
               </button>
             </div>
