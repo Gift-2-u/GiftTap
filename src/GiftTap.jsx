@@ -1650,7 +1650,7 @@ const GiftTapGame = () => {
                   
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '20px' }}>
                   <h3 style={{ color: '#fff', margin: 0 }}>Withdraw</h3>
-                  <button onClick={() => setIsWithdrawOpen(false)} style={{ background: 'none', border: 'none', color: '#888', fontSize: '20px' }}>✕</button>
+                  <button onClick={() => {setIsWithdrawOpen(false); setIsModalOpen(true);}} style={{ background: 'none', border: 'none', color: '#888', fontSize: '20px' }}>✕</button>
                 </div>
 
                 <div style={{ textAlign: 'left', marginBottom: '15px' }}>
