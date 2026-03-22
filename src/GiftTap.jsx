@@ -168,6 +168,7 @@ const GiftTapGame = () => {
   const [withdrawAddress, setWithdrawAddress] = useState('');
   const [withdrawAmount, setWithdrawAmount] = useState('');
   const [isSwapOpen, setIsSwapOpen] = useState(false);
+  const [isShardopen, setIsShardOpen] = useState(false);
   const [swapFromAmount, setSwapFromAmount] = useState('');
   const [swapToAmount, setSwapToAmount] = useState('');
   const [transactionCosts, setTransactionCosts] = useState({ baseFeeWithBuffer: 0, projectFee: 0.0005 });
@@ -196,6 +197,15 @@ const GiftTapGame = () => {
   const [solFiatRates, setSolFiatRates] = useState({}); // Now an empty object that fills dynamically
   const [appLanguage, setAppLanguage] = useState('EN');
   const [isWhitepaperOpen, setIsWhitepaperOpen] = useState(false);
+  const [swapFromToken, setSwapFromToken] = useState('SOL');
+  const [swapToToken, setSwapToToken] = useState('GFT');
+
+  const getSwapBalance = (token) => {
+    if (token === 'SOL') return balances.sol?.toFixed(4) || '0.0000';
+    if (token === 'USDC') return balances.usdc?.toFixed(2) || '0.00'; // Adjust if your USDC state name is different
+    if (token === 'GFT') return balance?.toLocaleString() || '0';
+    return '0.00';
+  };
 
   const ALL_CURRENCIES = [
     'USD', 'EUR', 'CAD', 'GBP', 'AUD', 'JPY', 'CNY', 'INR', 'PHP', 'IDR', 
@@ -1579,7 +1589,7 @@ const GiftTapGame = () => {
                           <button style={styles.actionBtn} onClick={() => { setIsModalOpen(false); setIsReceiveOpen(true); }}>Receive</button>
                           <button style={styles.actionBtn} onClick={() => { setIsModalOpen(false); setIsWithdrawOpen(true); }}>Send</button>
                           <button style={styles.actionBtn} onClick={() => { setIsModalOpen(false); setIsSwapOpen(true); }}>Swap</button>
-                          <button style={styles.actionBtn} onClick={() => { setIsModalOpen(false); setIsSwapOpen(true); }}>GFTshard Swap</button>
+                          <button style={styles.actionBtn} onClick={() => { setIsModalOpen(false); setIsSwapOpen(true); }}>Shard</button>
                         </div>
                       </>
                     )}
@@ -1734,14 +1744,14 @@ const GiftTapGame = () => {
                 
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
                   <h3 style={{ color: '#fff', margin: 0 }}>Swap</h3>
-                  <button onClick={() => {setIsSwapOpen(false); setIsModalOpen(true); }} style={{ background: 'none', border: 'none', color: '#888', fontSize: '20px' }}>✕</button>
+                  <button onClick={() => {setIsSwapOpen(false); setIsModalOpen(true); }} style={{ background: 'none', border: 'none', color: '#888', fontSize: '20px', cursor: 'pointer', padding: 0 }}>✕</button>
                 </div>
 
                 {/* From Section */}
                 <div style={{ background: '#1c1e22', borderRadius: '16px', padding: '15px', textAlign: 'left', marginBottom: '5px' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', color: '#888', fontSize: '12px' }}>
                     <span>You pay</span>
-                    <span>Balance: {balances.sol.toFixed(4)}</span>
+                    <span>Balance: {getSwapBalance(swapFromToken)}</span>
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '10px' }}>
                     <input 
@@ -1749,26 +1759,39 @@ const GiftTapGame = () => {
                       placeholder="0.00"
                       value={swapFromAmount}
                       onChange={(e) => setSwapFromAmount(e.target.value)}
-                      style={{ background: 'none', border: 'none', color: '#fff', fontSize: '24px', width: '60%', outline: 'none' }}
+                      style={{ background: 'none', border: 'none', color: '#fff', fontSize: '24px', width: '50%', outline: 'none' }}
                     />
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#fff' }}>
-                      <span>SOL</span>
-                    </div>
+                    <select 
+                      value={swapFromToken}
+                      onChange={(e) => setSwapFromToken(e.target.value)}
+                      style={{ background: '#2a2d35', color: '#fff', border: 'none', padding: '8px 12px', borderRadius: '12px', fontSize: '14px', outline: 'none', cursor: 'pointer', fontWeight: 'bold' }}
+                    >
+                      <option value="SOL">SOL</option>
+                      <option value="USDC">USDC</option>
+                      <option value="GFT">GFT</option>
+                    </select>
                   </div>
                 </div>
 
                 {/* Swap Arrow Icon */}
                 <div style={{ height: '30px', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 2, position: 'relative', margin: '-15px 0' }}>
-                  <div style={{ background: '#131517', border: '2px solid #333', borderRadius: '50%', padding: '5px', color: '#fbef43' }}>
-                    ↓
-                  </div>
+                  <button 
+                    onClick={() => {
+                      const temp = swapFromToken;
+                      setSwapFromToken(swapToToken);
+                      setSwapToToken(temp);
+                    }}
+                    style={{ background: '#131517', border: '2px solid #333', borderRadius: '50%', padding: '0', color: '#fbef43', cursor: 'pointer', width: '34px', height: '34px', display: 'flex', justifyContent: 'center', alignItems: 'center' }}
+                  >
+                    ↓↑
+                  </button>
                 </div>
 
                 {/* To Section */}
                 <div style={{ background: '#1c1e22', borderRadius: '16px', padding: '15px', textAlign: 'left', marginTop: '5px' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', color: '#888', fontSize: '12px' }}>
                     <span>You receive</span>
-                    <span>Balance: {balance.toLocaleString()}</span>
+                    <span>Balance: {getSwapBalance(swapToToken)}</span>
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '10px' }}>
                     <input 
@@ -1776,16 +1799,22 @@ const GiftTapGame = () => {
                       placeholder="0.00"
                       value={swapToAmount}
                       readOnly
-                      style={{ background: 'none', border: 'none', color: '#fff', fontSize: '24px', width: '60%', outline: 'none' }}
+                      style={{ background: 'none', border: 'none', color: '#fff', fontSize: '24px', width: '50%', outline: 'none' }}
                     />
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#fff' }}>
-                      <span>GFT</span>
-                    </div>
+                    <select 
+                      value={swapToToken}
+                      onChange={(e) => setSwapToToken(e.target.value)}
+                      style={{ background: '#2a2d35', color: '#fff', border: 'none', padding: '8px 12px', borderRadius: '12px', fontSize: '14px', outline: 'none', cursor: 'pointer', fontWeight: 'bold' }}
+                    >
+                      <option value="SOL">SOL</option>
+                      <option value="USDC">USDC</option>
+                      <option value="GFT">GFT</option>
+                    </select>
                   </div>
                 </div>
 
                 <p style={{ fontSize: '12px', color: '#888', marginTop: '20px' }}>
-                  1 SOL ≈ 1,000,000 GFT
+                  Swapping {swapFromToken} to {swapToToken}
                 </p>
 
                 <button 
@@ -1803,7 +1832,7 @@ const GiftTapGame = () => {
                     opacity: swapFromAmount > 0 ? 1 : 0.5
                   }}
                   onClick={() => {
-                    alert(`Swapping ${swapFromAmount} SOL for GFT...`);
+                    alert(`Swapping ${swapFromAmount} ${swapFromToken} for ${swapToToken}...`);
                   }}
                 >
                   Review Swap
