@@ -201,6 +201,7 @@ const GiftTapGame = () => {
   const [swapToToken, setSwapToToken] = useState('GFT');
   const [isShardSwapOpen, setIsShardSwapOpen] = useState(false);
   const [shardSwapAmount, setShardSwapAmount] = useState('');
+  const [userRank, setUserRank] = useState(null);
 
   const getSwapBalance = (token) => {
     if (token === 'SOL') return balances.sol?.toFixed(4) || '0.0000';
@@ -295,15 +296,42 @@ const GiftTapGame = () => {
     } catch (err) { console.error("Badge fetch error:", err); }
   }, []);
 
-  // 3. FETCH FULL LEADERBOARD (Modal)
   const fetchFullLeaderboard = async (typeOverride) => {
-    // Use the override if provided, otherwise fallback to state
     const targetType = typeOverride || leaderboardType; 
-    const tableName = targetType === 'all_time' ? 'leaderboard_all_time' : 'leaderboard_season';
-    
-    const { data } = await supabase.from(tableName).select('*').limit(20);
-    setLeaderboard(data || []);
-    setIsLeaderboardOpen(true);
+    let tableName = 'leaderboard_all_time';
+    let orderColumn = 'lifetime_taps';
+    let userScore = player.lifetime_taps || 0; // The current user's score
+
+    if (targetType === 'Beta') {
+      tableName = 'leaderboard_beta';
+      orderColumn = 'beta_shards';
+      userScore = player.beta_shards || 0;
+    }
+
+    try {
+      // 1. Fetch Top 100 for the list
+      const { data: topData } = await supabase
+        .from(tableName)
+        .select('*')
+        .order(orderColumn, { ascending: false })
+        .limit(100);
+
+      setLeaderboard(topData || []);
+
+      // 2. Calculate User's Rank (Count players with a higher score)
+      const { count, error: rankError } = await supabase
+        .from(tableName)
+        .select('*', { count: 'exact', head: true })
+        .gt(orderColumn, userScore);
+
+      if (!rankError) {
+        setUserRank(count + 1); // If 5 people are above you, you are #6
+      }
+
+      setIsLeaderboardOpen(true);
+    } catch (err) {
+      console.error("Leaderboard error:", err);
+    }
   };
 
   const syncPlayer = useCallback(async () => {
@@ -1347,7 +1375,7 @@ const GiftTapGame = () => {
               </button>
               <button 
                 style={leaderboardType === 'Beta' ? styles.activeToggleBtn : styles.toggleBtn} 
-                onClick={() => setLeaderboardType('Beta')}
+                onClick={() => { setLeaderboardType('Beta'); fetchFullLeaderboard('Beta'); }}
               >
                 <span>Beta Season</span>
                 <span style={{...styles.leaderBadgePremium, color: '#4ade80', fontWeight: 'bold'}}>{seasonTimeLeft}</span>
