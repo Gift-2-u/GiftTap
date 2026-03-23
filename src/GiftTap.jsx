@@ -202,6 +202,7 @@ const GiftTapGame = () => {
   const [isShardSwapOpen, setIsShardSwapOpen] = useState(false);
   const [shardSwapAmount, setShardSwapAmount] = useState('');
   const [userRank, setUserRank] = useState(null);
+  const [seasonShards, setSeasonShards] = useState(0);
 
   const getSwapBalance = (token) => {
     if (token === 'SOL') return balances.sol?.toFixed(4) || '0.0000';
