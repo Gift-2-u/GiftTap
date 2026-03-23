@@ -1052,7 +1052,7 @@ const GiftTapGame = () => {
           if (data) {
             setTopLeader({
               name: data.username || `ID:..${String(data.telegram_id).slice(-4)}`,
-              score: data.shard_balance
+              score: data.lifetime_taps
             });
           }
         }
