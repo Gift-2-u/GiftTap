@@ -300,12 +300,13 @@ const GiftTapGame = () => {
   const fetchFullLeaderboard = async (typeOverride) => {
     const targetType = typeOverride || leaderboardType;
     const tableName = targetType === 'all_time' ? 'leaderboard_all_time' : 'leaderboard_season';
+    const sortColumn = targetType === 'all_time' ? 'lifetime_taps' : 'season_shard';
     
     // Add this to ensure the list is ranked from #1 to #100
     const { data } = await supabase
       .from(tableName)
       .select('*')
-      .order('lifetime_taps', { ascending: false }) // Sorts by total effort
+      .order(sortColumn, { ascending: false }) // Sorts by total effort
       .limit(100);
       
     setLeaderboard(data || []);
@@ -1508,7 +1509,7 @@ const GiftTapGame = () => {
                   {leaderboard.map((player, index) => (
                     <div key={index} style={styles.balanceRow}>
                       <span>{index + 1}. {player.username || 'Anon'}</span>
-                      <span style={{color: '#528db0'}}>{player.lifetime_taps?.toLocaleString()}</span>
+                      <span style={{color: '#528db0'}}>{(player.season_shard || player.lifetime_taps || 0).toLocaleString()}</span>
                     </div>
                   ))}
                 </div>
