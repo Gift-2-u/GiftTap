@@ -1030,6 +1030,9 @@ const GiftTapGame = () => {
             setEnergy(Number(payload.new.last_energy));
             setTapPower(payload.new.tap_power);
             setMaxDailyLimit(payload.new.max_daily_limit);
+            // 🚨 ADDED: These lines instantly sync your taps to the other device
+            setLifetimeTaps(Number(payload.new.lifetime_taps)); 
+            setSeasonShards(Number(payload.new.season_shards));
             setStats({
               inventory: payload.new.inventory || {},
               frenzy_expires: payload.new.frenzy_expires,
