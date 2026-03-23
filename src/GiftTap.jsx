@@ -878,7 +878,7 @@ const GiftTapGame = () => {
       setEnergy(prev => Math.max(0, prev - totalCost));
       setDailyTaps(prev => prev + totalCost);
       
-      saveToDatabase(nextBalance, nextEnergy, nextDaily, today, currentStreak, nextLifetimeTaps, maxUnlockedLevel); 
+      saveToDatabase(nextBalance, nextEnergy, nextDaily, today, currentStreak, nextLifetimeTaps, maxUnlockedLevel, nextSeasonShards); 
       
       // 5. GENERATE FLOATING TEXT
       const nowMs = now.getTime();
