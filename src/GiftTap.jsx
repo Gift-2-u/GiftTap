@@ -718,7 +718,7 @@ const GiftTapGame = () => {
   }, [tgUser?.id]);
 
   // 6. SAVE PROGRESS
-  const saveToDatabase = (b, e, dt, ltd, strk, ltt, mul, seas) => {
+  const saveToDatabase = (b, e, dt, ltd, strk, ltt, mul, s) => {
     // 1. Don't save if we don't have a valid user ID
     if (!tgUser?.id || tgUser.id === "test_local_user") return;
 
@@ -729,7 +729,7 @@ const GiftTapGame = () => {
         telegram_id: String(tgUser.id),
         username: tgUser.username || tgUser.first_name,
         shard_balance: b,
-        season_shards: seas,
+        season_shards: s,
         last_energy: e,
         daily_taps: dt, // Make sure these columns exist in Supabase!
         last_tap_date: ltd,
@@ -741,9 +741,12 @@ const GiftTapGame = () => {
       .eq('telegram_id', String(tgUser.id)); // Match their specific row
 
       if (error) {
-      console.error("🔴 SUPABASE UPDATE FAILED:", error.message);
+        console.error("🚨 SUPABASE REJECTION:", error);
+        alert(`Save Failed: ${error.message} \nCode: ${error.code}`); 
+      } else if (!data || data.length === 0) {
+        alert(`Save Failed: No matching telegram_id found for ${tgUser.id}`);
       } else {
-         console.log("✅ SAVE SUCCESSFUL! Streaks and Dates updated.");
+        console.log("✅ SAVE SUCCESS:", data);
       }
     }, 800); // Slightly faster save
   };
