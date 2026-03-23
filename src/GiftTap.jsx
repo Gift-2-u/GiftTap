@@ -696,7 +696,7 @@ const GiftTapGame = () => {
   }, [tgUser?.id]);
 
   // 6. SAVE PROGRESS
-  const saveToDatabase = (b, e, dt, ltd, strk, ltt, mul) => {
+  const saveToDatabase = (b, e, dt, ltd, strk, ltt, mul, seas) => {
     // 1. Don't save if we don't have a valid user ID
     if (!tgUser?.id || tgUser.id === "test_local_user") return;
 
@@ -707,7 +707,7 @@ const GiftTapGame = () => {
         telegram_id: String(tgUser.id),
         username: tgUser.username || tgUser.first_name,
         shard_balance: b,
-        season_shards: b,
+        season_shards: seas,
         last_energy: e,
         daily_taps: dt, // Make sure these columns exist in Supabase!
         last_tap_date: ltd,
@@ -834,6 +834,8 @@ const GiftTapGame = () => {
 
       const nextBalance = Math.round((balance + shardsEarned) * 1000) / 1000;
       const nextLifetimeTaps = Math.round((safeLifetimeTaps + shardsEarned) * 1000) / 1000;
+      // ADD THIS LINE: Calculate the new season total
+      const nextSeasonShards = Math.round((seasonShards + shardsEarned) * 1000) / 1000;
 
       const totalCost = costMultiplier * validTaps;
       let nextEnergy = energy - totalCost;
