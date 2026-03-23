@@ -578,25 +578,44 @@ const GiftTapGame = () => {
         // --- NEW: PERMANENTLY UNLOCK BETA ACCESS IN SUPABASE ---
         const { error: accessError } = await supabase
           .from('players')
-          .update({ has_beta_access: true, referred_by: referrerId ? String(referrerId) : null,
-            shard_balance: startingShards })
+          .update({ 
+            has_beta_access: true, 
+            referred_by: referrerId ? String(referrerId) : null,
+            shard_balance: startingShards, // Wallet gets 500
+            season_shards: 0,              // Leaderboard stays at 0
+            lifetime_taps: 0               // All-Time stays at 0
+          })
           .eq('telegram_id', userId);
 
         if (accessError) {
           console.error("Failed to save beta access:", accessError.message);
         }
 
-        // 3. Save the referrer to the new player's database row
-        if (referrerId && referrerId !== userId) {
-          await supabase.from('players').update({ referred_by: String(referrerId) }).eq('telegram_id', userId);
-          
-          // 4. Pay the person who invited them +2000 Shards
-          // We read their current balance and add to it directly in the database
-          const { data: referrerData } = await supabase.from('players').select('shard_balance').eq('telegram_id', String(referrerId)).maybeSingle();
-          if (referrerData) {
-            await supabase.from('players')
-              .update({ shard_balance: Number(referrerData.shard_balance) + 2000 })
-              .eq('telegram_id', String(referrerId));
+        // --- THE SECURE REFERRER PAYOUT ---
+        if (referrerId && !insertError && referrerId !== userId) {
+          try {
+            const { data: referrerData } = await supabase
+              .from('players')
+              .select('shard_balance')
+              .eq('telegram_id', String(referrerId))
+              .maybeSingle();
+
+            if (referrerData) {
+              const newBalance = (Number(referrerData.shard_balance) || 0) + REFERRER_BONUS;
+
+              await supabase
+                .from('players')
+                .update({ 
+                  shard_balance: newBalance 
+                  // 🚨 NOTICE: We do NOT update season_shards or lifetime_taps here.
+                  // This keeps the leaderboards "Pure Effort Only".
+                })
+                .eq('telegram_id', String(referrerId));
+                
+              console.log(`✅ Paid ${REFERRER_BONUS} Shards to referrer: ${referrerId}`);
+            }
+          } catch (rewardError) {
+            console.error("Critical error paying referrer:", rewardError);
           }
         }
         
