@@ -350,7 +350,9 @@ const GiftTapGame = () => {
           limit_boost_amount: player.limit_boost_amount || 0, // <-- NEW
           limit_boost_expires: player.limit_boost_expires || null // <-- NEW
         });
-        setLifetimeTaps(Number(player.lifetime_taps) || 0); 
+        setLifetimeTaps(Number(player.lifetime_taps) || 0);
+        // 🚨 ADD THIS EXACT LINE RIGHT HERE:
+        setSeasonShards(Number(player.season_shards) || 0); 
         setMaxUnlockedLevel(player.max_unlocked_level || 4); 
         setCurrentLevel(calculateLevel(Number(player.lifetime_taps) || 0));
 
