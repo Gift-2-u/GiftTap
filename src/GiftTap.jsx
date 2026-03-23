@@ -791,7 +791,7 @@ const GiftTapGame = () => {
         setDailyTaps(0);
         setLastTapDate(today);
         setStreak(currentStreak);
-        saveToDatabase(balance, energy, 0, today, currentStreak, lifetimeTaps, maxUnlockedLevel);
+        saveToDatabase(balance, energy, 0, today, currentStreak, lifetimeTaps, maxUnlockedLevel, seasonShards);
       }
       // Calculate max limit inside the tap function
       let currentMaxLimit = maxDailyLimit;
