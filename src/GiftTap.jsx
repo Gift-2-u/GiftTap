@@ -290,7 +290,7 @@ const GiftTapGame = () => {
       if (data) {
         setTopLeader({
           name: data.username || (data.telegram_id ? `ID:..${String(data.telegram_id).slice(-4)}` : 'Anon'),
-          score: data.lifetime_taps || 0
+          score: data.lifetime_taps
         });
       }
     } catch (err) { console.error("Badge fetch error:", err); }
@@ -299,32 +299,17 @@ const GiftTapGame = () => {
   // 3. FETCH FULL LEADERBOARD (Modal)
   const fetchFullLeaderboard = async (typeOverride) => {
     const targetType = typeOverride || leaderboardType;
-    
-    // Determine table and column based on selection
     const tableName = targetType === 'all_time' ? 'leaderboard_all_time' : 'leaderboard_season';
-    const scoreColumn = targetType === 'all_time' ? 'lifetime_taps' : 'season_taps';
-
-    try {
-      const { data, error } = await supabase
-        .from(tableName)
-        .select('*')
-        .order(scoreColumn, { ascending: false })
-        .limit(100);
-
-      if (error) throw error;
-
-      // Normalize data so the UI always finds a ".score" property
-      const normalizedData = (data || []).map(user => ({
-        ...user,
-        displayScore: user[scoreColumn] || 0,
-        displayName: user.username || (user.telegram_id ? `ID:..${String(user.telegram_id).slice(-4)}` : 'Anon')
-      }));
-
-      setLeaderboard(normalizedData);
-      setIsLeaderboardOpen(true);
-    } catch (err) {
-      console.error("Full leaderboard fetch error:", err);
-    }
+    
+    // Add this to ensure the list is ranked from #1 to #100
+    const { data } = await supabase
+      .from(tableName)
+      .select('*')
+      .order('lifetime_taps', { ascending: false }) // Sorts by total effort
+      .limit(100);
+      
+    setLeaderboard(data || []);
+    setIsLeaderboardOpen(true);
   };
 
   const syncPlayer = useCallback(async () => {
@@ -1523,7 +1508,7 @@ const GiftTapGame = () => {
                   {leaderboard.map((player, index) => (
                     <div key={index} style={styles.balanceRow}>
                       <span>{index + 1}. {player.username || 'Anon'}</span>
-                      <span style={{color: '#528db0'}}>{player.shard_balance?.toLocaleString()}</span>
+                      <span style={{color: '#528db0'}}>{player.lifetime_taps?.toLocaleString()}</span>
                     </div>
                   ))}
                 </div>
