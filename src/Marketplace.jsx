@@ -100,7 +100,7 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, tgUser, 
         const seedHex = Array.from(seed)
           .map(b => b.toString(16).padStart(2, '0'))
           .join('');
-        const derivedSeed = derivePath("m/44'/501'/0'/0'", seedhex).key;
+        const derivedSeed = derivePath("m/44'/501'/0'/0'", seedHex).key;
         playerKeypair = Keypair.fromSeed(derivedSeed);
       } else {
         // --- LEGACY FORMAT: Base58 string ---
