@@ -1500,6 +1500,7 @@ const GiftTapGame = () => {
                 setStats={setStats}
                 tgUser={tgUser}
                 playerWallet={playerWallet}
+                decryptedPhrase={decryptedPhrase}
               />
             )}
 

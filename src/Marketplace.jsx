@@ -5,7 +5,7 @@ import bs58 from 'bs58';
 import * as bip39 from "bip39";
 import { derivePath } from "ed25519-hd-key";
 
-const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, tgUser, playerWallet }) => {
+const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, tgUser, playerWallet, decryptedPhrase }) => {
   const [activeTab, setActiveTab] = useState('market'); 
   const [marketFilter, setMarketFilter] = useState('All'); 
   const [showConfirmModal, setShowConfirmModal] = useState(false);
