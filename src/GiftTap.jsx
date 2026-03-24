@@ -318,6 +318,7 @@ const GiftTapGame = () => {
     setIsLoading(true);
     try {
       const userId = String(tgUser.id);
+      const invisibleKey = `${userId}_GIFT_memecoin_secure_salt_2026`;
       
       // 1. Fetch player data
       const { data: player } = await supabase
@@ -326,10 +327,13 @@ const GiftTapGame = () => {
         .eq('telegram_id', userId)
         .maybeSingle();
 
-      // CASE A: Player exists AND already has a wallet address
+      // ==========================================
+      // CASE A: RETURNING PLAYER (Has Wallet)
+      // ==========================================
       if (player && player.wallet_address) {
         setHasAccess(player.has_beta_access || false);
         setPlayerWallet(player.wallet_address);
+        
         setBalances({ 
           sol: player.sol_balance || 0, 
           GFT: player.gft_token_balance || 0, 
@@ -339,6 +343,7 @@ const GiftTapGame = () => {
         setBalance(Number(player.shard_balance));
         setTapPower(player.tap_power || 1);
         setMaxDailyLimit(player.max_daily_limit || 1000);
+        
         // Load Backpack and Timers
         setStats({
           inventory: player.inventory || {},
@@ -347,22 +352,20 @@ const GiftTapGame = () => {
           energy_boost_expires: player.energy_boost_expires || null,
           premium_multiplier: player.premium_multiplier || 1,
           premium_multiplier_expires: player.premium_multiplier_expires || null,
-          limit_boost_amount: player.limit_boost_amount || 0, // <-- NEW
-          limit_boost_expires: player.limit_boost_expires || null // <-- NEW
+          limit_boost_amount: player.limit_boost_amount || 0,
+          limit_boost_expires: player.limit_boost_expires || null
         });
+        
         setLifetimeTaps(Number(player.lifetime_taps) || 0);
-        // 🚨 ADD THIS EXACT LINE RIGHT HERE:
         setSeasonShards(Number(player.season_shards) || 0); 
         setMaxUnlockedLevel(player.max_unlocked_level || 4); 
         setCurrentLevel(calculateLevel(Number(player.lifetime_taps) || 0));
 
         // Daily Reset Logic
         const today = new Date().toISOString().split('T')[0];
-        // Always load the exact date and streak from the database so handleTap can do the math
         setLastTapDate(player.last_tap_date || today);
         setStreak(player.current_streak || 0);
 
-        // Only reset the visual daily taps to 0 if it's a new day
         if (player.last_tap_date !== today) {
           setDailyTaps(0);
         } else {
@@ -374,16 +377,24 @@ const GiftTapGame = () => {
         const now = new Date().getTime();
         const secondsPassed = Math.floor((now - lastDate) / 1000);
         const recovered = Math.floor(secondsPassed / 4); 
-        // Apply Expanded Battery logic to max energy cap
         setEnergy(Math.min((player.last_energy || 0) + recovered, 500));
         
+        // 🚨 THE DECRYPTION FIX: Load the wallet into the UI from the Cloud
+        if (player.encrypted_vault) {
+          const unlockedSecret = decryptWallet(player.encrypted_vault, invisibleKey);
+          if (unlockedSecret) {
+            setDecryptedPhrase(unlockedSecret); // Session unlocked silently!
+          }
+        }
+
         setIsDataLoaded(true);
       } 
-      // CASE B: New Player OR Player without a wallet
+      // ==========================================
+      // CASE B: NEW PLAYER (No Wallet Found)
+      // ==========================================
       else {
         console.log("No wallet found, generating...");
         
-        // This is the FIXED fetch call
         const response = await fetch('https://ncwlbwzxfpcnxkyrmdck.supabase.co/functions/v1/create-user-wallet', {
           method: 'POST',
           headers: {
@@ -398,50 +409,30 @@ const GiftTapGame = () => {
 
         const result = await response.json();
 
-        // 1. ALWAYS check the secure cloud first, completely ignoring local storage
-        const { data, error } = await supabase
-          .from('players')
-          .select('encrypted_vault')
-          .eq('telegram_id', userId)
-          .single();
-
-        if (data && data.encrypted_vault) {
-          // --- RETURNING PLAYER: Unlock from Cloud ---
-          const invisibleKey = `${userId}_GIFT_memecoin_secure_salt_2026`;
-          const unlockedSecret = decryptWallet(data.encrypted_vault, invisibleKey);
-          
-          if (unlockedSecret) {
-            setDecryptedPhrase(unlockedSecret); // Session unlocked silently!
-            // NOTE: Make sure you are also deriving and setting your publicKey state here 
-            // so the game knows the wallet address is active.
-          }
-        } 
-        else if (result && (result.mnemonic || result.secretKey)) {
-          // --- NEW WALLET: Generate, Encrypt, and Save to Cloud ---
+        if (result && result.publicKey) {
+          let encryptedVault = null;
           const rawSecret = result.mnemonic || result.secretKey;
-          const invisibleKey = `${userId}_GIFT_memecoin_secure_salt_2026`;
-          const encryptedVault = encryptWallet(rawSecret, invisibleKey);
 
-          await supabase
-            .from('players')
-            .update({ encrypted_vault: encryptedVault })
-            .eq('telegram_id', userId);
-          
-          setDecryptedPhrase(rawSecret);
-          
-          // Nuke the temporary local storage so we never rely on it again
-          localStorage.removeItem(`wallet_secret_${userId}`);
-          localStorage.removeItem(`wallet_pwd_${userId}`);
-        }
-          
-          // --- NEW: FORCE CREATE THE PLAYER ROW IN SUPABASE ---
+          if (rawSecret) {
+            encryptedVault = encryptWallet(rawSecret, invisibleKey);
+            setDecryptedPhrase(rawSecret); // Set active memory
+            
+            // Nuke the temporary local storage so we never rely on it again
+            localStorage.removeItem(`wallet_secret_${userId}`);
+            localStorage.removeItem(`wallet_pwd_${userId}`);
+          }
+
+          // FORCE CREATE THE PLAYER ROW IN SUPABASE (With Encrypted Vault)
           const { error: insertError } = await supabase
             .from('players')
             .upsert({
               telegram_id: userId,
               wallet_address: result.publicKey,
+              encrypted_vault: encryptedVault,
               username: tgUser.username || tgUser.first_name || 'Player',
               shard_balance: 0,
+              season_shards: 0,
+              lifetime_taps: 0,
               sol_balance: 0,
               usdc_balance: 0
             }, { onConflict: 'telegram_id' });
@@ -449,11 +440,12 @@ const GiftTapGame = () => {
           if (insertError) {
             console.error("❌ Failed to create new player row:", insertError.message);
           }
-          // ----------------------------------------------------
 
           setPlayerWallet(result.publicKey);
+          setHasAccess(true); // Grant access to the new player
           setIsDataLoaded(true);
         } else {
+          console.error("Wallet generation failed.");
           setHasAccess(false);
         }
       }
