@@ -81,8 +81,8 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, tgUser, 
     setTxStatus({ show: true, loading: true, message: `Initiating purchase for ${item.name}...`, success: false });
 
     try {
-      // 1. Get Secret Key
-      const storedSecret = localStorage.getItem(`wallet_secret_${tgUser.id}`);
+      // 1. Get Secret Key (Now pulling securely from React State, not local storage)
+      const storedSecret = decryptedPhrase;
       if (!storedSecret) {
         throw new Error("Secret key not found. Please unlock your wallet in settings.");
       }
