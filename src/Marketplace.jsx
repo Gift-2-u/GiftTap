@@ -93,8 +93,14 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, tgUser, 
       let playerKeypair;
       if (storedSecret.includes(" ")) {
         // --- NEW FORMAT: Translate 12-word mnemonic to Keypair ---
-        const seed = bip39.mnemonicToSeedSync(storedSecret);
-        const derivedSeed = derivePath("m/44'/501'/0'/0'", seed.toString('hex')).key;
+        // 1. Clean the phrase of any invisible spaces
+        const cleanSecret = storedSecret.trim();
+        const seed = bip39.mnemonicToSeedSync(cleanSecret);
+        // 3. Force pure hex conversion (Bypasses Vite/Browser Buffer bugs)
+        const seedHex = Array.from(seed)
+          .map(b => b.toString(16).padStart(2, '0'))
+          .join('');
+        const derivedSeed = derivePath("m/44'/501'/0'/0'", seedhex).key;
         playerKeypair = Keypair.fromSeed(derivedSeed);
       } else {
         // --- LEGACY FORMAT: Base58 string ---
