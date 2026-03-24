@@ -398,39 +398,41 @@ const GiftTapGame = () => {
 
         const result = await response.json();
 
-        if (result && result.publicKey) {
-          // --- THE NEW BACKUP TRIGGER LOGIC ---
-          if (result.mnemonic || result.secretKey) {
-            // --- NEW WALLET ---
-            const rawSecret = result.mnemonic || result.secretKey;
-            const invisibleKey = `${userId}_GIFT_memecoin_secure_salt_2026`;
-            const encryptedVault = encryptWallet(rawSecret, invisibleKey);
+        // 1. ALWAYS check the secure cloud first, completely ignoring local storage
+        const { data, error } = await supabase
+          .from('players')
+          .select('encrypted_vault')
+          .eq('telegram_id', userId)
+          .single();
 
-            await supabase
-              .from('players')
-              .update({ encrypted_vault: encryptedVault })
-              .eq('telegram_id', userId);
-            
-            setDecryptedPhrase(rawSecret);
-            
-            localStorage.removeItem(`wallet_secret_${userId}`);
-            localStorage.removeItem(`wallet_pwd_${userId}`);
-          } else {
-            // --- RETURNING PLAYER (Silent Supabase Fetch) ---
-            const { data, error } = await supabase
-              .from('players')
-              .select('encrypted_vault')
-              .eq('telegram_id', userId)
-              .single();
-
-            if (data && data.encrypted_vault) {
-              const invisibleKey = `${userId}_GIFT_memecoin_secure_salt_2026`;
-              const unlockedSecret = decryptWallet(data.encrypted_vault, invisibleKey);
-              if (unlockedSecret) {
-                setDecryptedPhrase(unlockedSecret); // Session unlocked silently!
-              }
-            }
+        if (data && data.encrypted_vault) {
+          // --- RETURNING PLAYER: Unlock from Cloud ---
+          const invisibleKey = `${userId}_GIFT_memecoin_secure_salt_2026`;
+          const unlockedSecret = decryptWallet(data.encrypted_vault, invisibleKey);
+          
+          if (unlockedSecret) {
+            setDecryptedPhrase(unlockedSecret); // Session unlocked silently!
+            // NOTE: Make sure you are also deriving and setting your publicKey state here 
+            // so the game knows the wallet address is active.
           }
+        } 
+        else if (result && (result.mnemonic || result.secretKey)) {
+          // --- NEW WALLET: Generate, Encrypt, and Save to Cloud ---
+          const rawSecret = result.mnemonic || result.secretKey;
+          const invisibleKey = `${userId}_GIFT_memecoin_secure_salt_2026`;
+          const encryptedVault = encryptWallet(rawSecret, invisibleKey);
+
+          await supabase
+            .from('players')
+            .update({ encrypted_vault: encryptedVault })
+            .eq('telegram_id', userId);
+          
+          setDecryptedPhrase(rawSecret);
+          
+          // Nuke the temporary local storage so we never rely on it again
+          localStorage.removeItem(`wallet_secret_${userId}`);
+          localStorage.removeItem(`wallet_pwd_${userId}`);
+        }
           
           // --- NEW: FORCE CREATE THE PLAYER ROW IN SUPABASE ---
           const { error: insertError } = await supabase
