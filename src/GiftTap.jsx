@@ -880,7 +880,8 @@ const GiftTapGame = () => {
 
       // --- RAPID TAP UI FIX ---
       setBalance(prev => Math.round((Number(prev) + shardsEarned) * 1000) / 1000);
-      setLifetimeTaps(prev => Math.round((Number(prev) + shardsEarned) * 1000) / 1000); 
+      setLifetimeTaps(prev => Math.round((Number(prev) + shardsEarned) * 1000) / 1000);
+      setSeasonShards(prev => Math.round((Number(prev) + shardsEarned) * 1000) / 1000); 
       setEnergy(prev => Math.max(0, prev - totalCost));
       setDailyTaps(prev => prev + totalCost);
       
