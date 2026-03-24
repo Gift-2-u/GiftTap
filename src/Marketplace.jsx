@@ -100,6 +100,8 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, tgUser, 
         // --- LEGACY FORMAT: Base58 string ---
         playerKeypair = Keypair.fromSecretKey(bs58.decode(storedSecret));
       }
+      console.log("✅ Expected Wallet (Database):", playerWallet);
+      console.log("❌ Derived Wallet (Transaction):", playerKeypair.publicKey.toString());
 
       // 3. Set Destination Wallets & Costs
       const masterWallet = new PublicKey("D4GufPTvp6tnzkaYGfombFLs48UjDANsxjMFJnSYz4Gh"); // <--- Add your Master Wallet here
