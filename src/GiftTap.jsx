@@ -430,6 +430,7 @@ const GiftTapGame = () => {
               wallet_address: result.publicKey,
               encrypted_vault: encryptedVault,
               username: tgUser.username || tgUser.first_name || 'Player',
+              has_beta_access: false,
               shard_balance: 0,
               season_shards: 0,
               lifetime_taps: 0,
@@ -442,6 +443,8 @@ const GiftTapGame = () => {
           }
 
           setPlayerWallet(result.publicKey);
+          // 🚨 LOCK 2: Force the browser to burn the old ghost receipt
+          localStorage.removeItem(`wallet_backed_up_${userId}`);
           setHasAccess(false); // Grant access to the new player
           setMustBackup(true); // Trigger your original backup warning
           setIsDataLoaded(true);
