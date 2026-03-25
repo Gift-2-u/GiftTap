@@ -442,7 +442,9 @@ const GiftTapGame = () => {
           }
 
           setPlayerWallet(result.publicKey);
-          setHasAccess(true); // Grant access to the new player
+          setHasAccess(false); // Grant access to the new player
+          setMustBackup(true); // Trigger your original backup warning
+          setIsModalOpen(true); // Open your original modal UI
           setIsDataLoaded(true);
         } else {
           console.error("Wallet generation failed.");

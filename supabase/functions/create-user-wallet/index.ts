@@ -25,10 +25,16 @@ serve(async (req) => {
     // 1. Generate the 12-word phrase
     const mnemonic = bip39.generateMnemonic();
 
-    // 2. Convert the phrase into a Solana Keypair
-    const seed = bip39.mnemonicToSeedSync(mnemonic).toString('hex');
-    const derivationPath = "m/44'/501'/0'/0'"; // The official Solana derivation path
-    const derivedSeed = derivePath(derivationPath, seed).key;
+    // 2. Convert the phrase into a Solana Keypair (Bulletproof Deno Fix)
+    const seedBuffer = bip39.mnemonicToSeedSync(mnemonic);
+    
+    // Force pure math hex conversion (Bypasses Deno Buffer bugs)
+    const seedHex = Array.from(seedBuffer)
+      .map(b => b.toString(16).padStart(2, '0'))
+      .join('');
+
+    const derivationPath = "m/44'/501'/0'/0'"; 
+    const derivedSeed = derivePath(derivationPath, seedHex).key;
     const keypair = Keypair.fromSeed(derivedSeed);
     
     const publicKey = keypair.publicKey.toBase58();
