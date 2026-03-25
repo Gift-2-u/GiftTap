@@ -238,7 +238,7 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, tgUser, 
       if (error) throw error;
 
       setLocalInventory(newInventory);
-      if (setStats) setStats({ ...stats, inventory: newInventory });
+      if (setStats) setStats({ ...stats, ...dbUpdates });
 
       setTxStatus({ show: true, loading: false, message: `⚡ ${item.name} is now ACTIVE!`, success: true });
       setTimeout(() => setTxStatus(prev => ({ ...prev, show: false })), 2000);
