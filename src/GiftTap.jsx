@@ -1311,7 +1311,11 @@ const GiftTapGame = () => {
     }
   };
 
-  const handleWatchAdForEnergy = async () => {
+  // 🚨 Add the 'e' inside the parentheses
+  const handleWatchAdForEnergy = async (e) => {
+    
+    // 🚨 ADD THIS LINE FIRST: Stop the click from passing through to the Gift
+    if (e) e.stopPropagation();
     // Prevent double-clicks from firing multiple ads
     if (isWatchingAd) return;
     setIsWatchingAd(true);
@@ -1558,6 +1562,8 @@ const GiftTapGame = () => {
                     onClick={handleWatchAdForEnergy}
                     disabled={isWatchingAd}
                     style={{
+                      position: 'relative', // 🚨 ADD THIS: Required for z-index to work
+                      zIndex: 50,           // 🚨 ADD THIS: Forces button to the top layer
                       background: isWatchingAd ? '#333' : '#fbef43',
                       color: isWatchingAd ? '#888' : '#000',
                       border: 'none',
