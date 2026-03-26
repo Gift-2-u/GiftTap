@@ -662,7 +662,7 @@ const GiftTapGame = () => {
         setPlayerWallet(newWallet.publicKey);
         setBalance(startingShards);
         setEnergy(500);
-        setHasAccess(true);
+        setHasAccess(false);
         setIsDataLoaded(true);
       }
     } catch (err) {
