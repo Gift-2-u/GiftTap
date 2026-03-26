@@ -8,6 +8,7 @@ import Tasks from './Tasks';
 import Friends from './Friends';
 import Menu from './Menu';
 import WhitepaperModal from './WhitepaperModal';
+import { showRewardedAdWaterfall } from './adService';
 import bs58 from "bs58";
 import * as bip39 from 'bip39';
 import { derivePath } from 'ed25519-hd-key';
@@ -203,6 +204,43 @@ const GiftTapGame = () => {
   const [shardSwapAmount, setShardSwapAmount] = useState('');
   const [userRank, setUserRank] = useState(null);
   const [seasonShards, setSeasonShards] = useState(0);
+  const [isWatchingAd, setIsWatchingAd] = useState(false);
+
+  const handleWatchAd = async () => {
+    if (isWatchingAd) return;
+    setIsWatchingAd(true);
+
+    // 1. Trigger the waterfall
+    const result = await showRewardedAdWaterfall();
+
+    if (result.success) {
+      // 2. The Ad was successfully watched! Give the reward.
+      const rewardAmount = 100; // 500 Shards
+      
+      try {
+        // Update database just like a purchase
+        const { error } = await supabase
+          .from('players')
+          .update({ shard_balance: balance + rewardAmount })
+          .eq('telegram_id', String(tgUser.id));
+
+        if (error) throw error;
+
+        // Update UI
+        setBalance(prev => prev + rewardAmount);
+        alert(`🎉 Thanks for watching! You earned ${rewardAmount} Shards via ${result.network}.`);
+
+      } catch (dbError) {
+        console.error("Failed to reward player:", dbError);
+        alert("❌ Ad watched, but failed to save reward to database.");
+      }
+    } else {
+      // 3. No ads loaded or player closed them all
+      alert("⚠️ No ads available right now. Please try again later.");
+    }
+
+    setIsWatchingAd(false);
+  };
 
   const getSwapBalance = (token) => {
     if (token === 'SOL') return balances.sol?.toFixed(4) || '0.0000';
@@ -1273,6 +1311,46 @@ const GiftTapGame = () => {
     }
   };
 
+  const [isWatchingAd, setIsWatchingAd] = useState(false);
+
+  const handleWatchAdForEnergy = async () => {
+    // Prevent double-clicks from firing multiple ads
+    if (isWatchingAd) return;
+    setIsWatchingAd(true);
+
+    try {
+      // 1. Trigger the Promise-based waterfall
+      const result = await showRewardedAdWaterfall();
+
+      if (result.success) {
+        // 2. Ad watched successfully! Calculate max energy (default 1000)
+        // If you have a variable for their current max energy, use it here instead of 1000.
+        const maxEnergy = 1000; 
+
+        // 3. Securely update the database
+        const { error } = await supabase
+          .from('players')
+          .update({ last_energy: maxEnergy }) 
+          .eq('telegram_id', String(tgUser.id));
+
+        if (error) throw error;
+
+        // 4. Update the live UI instantly
+        if (setEnergy) setEnergy(maxEnergy);
+        
+        console.log(`✅ Energy refilled via ${result.network}`);
+      } else {
+        // Player closed early or no ads available
+        console.log("⚠️ Ad skipped or unavailable.");
+      }
+    } catch (err) {
+      console.error("Ad Watch Error:", err);
+    } finally {
+      // Always unlock the button when done
+      setIsWatchingAd(false);
+    }
+  };
+
   // For testing, set this to null. When ready to start, pass it a timestamp (e.g., Date.now())
   const [betaStartTime] = useState(new Date('2026-03-20T00:00:00Z').getTime()); 
 
@@ -1465,6 +1543,29 @@ const GiftTapGame = () => {
                     </div>
                     <p style={{ color: '#888', fontSize: '11px', margin: '0', fontWeight: 'bold' }}>Daily Limit: {dailyTaps} / {dynamicMaxLimit}</p>
                   </div>
+
+                  {/* AD BUTTON: Drop this next to your Energy Bar */}
+                  <button 
+                    onClick={handleWatchAdForEnergy}
+                    disabled={isWatchingAd}
+                    style={{
+                      background: isWatchingAd ? '#333' : '#fbef43',
+                      color: isWatchingAd ? '#888' : '#000',
+                      border: 'none',
+                      borderRadius: '8px',
+                      padding: '6px 12px',
+                      fontSize: '12px',
+                      fontWeight: 'bold',
+                      cursor: isWatchingAd ? 'not-allowed' : 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      marginLeft: '10px',
+                      boxShadow: isWatchingAd ? 'none' : '0 2px 10px rgba(251, 239, 67, 0.2)'
+                    }}
+                  >
+                    {isWatchingAd ? '⏳ Loading...' : '📺 Free Energy'}
+                  </button>
                   
                 </div> {/* Keeping your closing div from the snippet */}
 
