@@ -1348,7 +1348,8 @@ const GiftTapGame = () => {
         
         console.log(`✅ Max Energy expanded by 100 via ${result.network}! Expires at midnight.`);
       } else {
-        // Player closed early or no ads available
+        // 🚨 ADD THIS ALERT: Force the game to tell you why it failed
+        alert(`Waterfall Failed: ${result.error}`);
         console.log("⚠️ Ad skipped or unavailable.");
       }
     } catch (err) {
