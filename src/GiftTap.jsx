@@ -1311,8 +1311,6 @@ const GiftTapGame = () => {
     }
   };
 
-  const [isWatchingAd, setIsWatchingAd] = useState(false);
-
   const handleWatchAdForEnergy = async () => {
     // Prevent double-clicks from firing multiple ads
     if (isWatchingAd) return;
