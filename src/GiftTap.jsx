@@ -1321,22 +1321,32 @@ const GiftTapGame = () => {
       const result = await showRewardedAdWaterfall();
 
       if (result.success) {
-        // 2. Ad watched successfully! Calculate max energy (default 1000)
-        // If you have a variable for their current max energy, use it here instead of 1000.
-        const maxEnergy = 1000; 
+        // 1. Calculate EXACTLY midnight tonight (Local Time)
+        const midnightTonight = new Date();
+        midnightTonight.setHours(23, 59, 59, 999);
 
-        // 3. Securely update the database
+        // 2. Calculate the new stacked limit
+        // We look at their current ad boost and add 100 to it.
+        const currentAdBoost = stats?.ad_energy_boost || 0;
+        const newTotalAdBoost = currentAdBoost + 100;
+
+        const dbUpdates = {
+          ad_energy_boost: newTotalAdBoost,
+          ad_energy_expires: midnightTonight.toISOString()
+        };
+
+        // 3. Securely update Supabase
         const { error } = await supabase
           .from('players')
-          .update({ last_energy: maxEnergy }) 
+          .update(dbUpdates)
           .eq('telegram_id', String(tgUser.id));
 
         if (error) throw error;
 
-        // 4. Update the live UI instantly
-        if (setEnergy) setEnergy(maxEnergy);
+        // 4. Inject the new limits directly into React's live state
+        if (setStats) setStats({ ...stats, ...dbUpdates });
         
-        console.log(`✅ Energy refilled via ${result.network}`);
+        console.log(`✅ Max Energy expanded by 100 via ${result.network}! Expires at midnight.`);
       } else {
         // Player closed early or no ads available
         console.log("⚠️ Ad skipped or unavailable.");
