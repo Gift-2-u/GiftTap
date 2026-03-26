@@ -468,7 +468,7 @@ const GiftTapGame = () => {
               wallet_address: result.publicKey,
               encrypted_vault: encryptedVault,
               username: tgUser.username || tgUser.first_name || 'Player',
-              has_beta_access: false,
+              has_beta_access: true,
               shard_balance: 0,
               season_shards: 0,
               lifetime_taps: 0,
