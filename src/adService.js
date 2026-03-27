@@ -29,14 +29,24 @@ const playAdsgram = () => {
 
 const playMonetag = () => {
   return new Promise((resolve, reject) => {
-    // Monetag and Adsterra inside Telegram often work best as Direct Links (SmartLinks)
-    // because Telegram sometimes blocks heavy 3rd-party scripts in the sandbox.
-    // If you have a Monetag direct link, you can open it like this:
-    // window.open('YOUR_MONETAG_DIRECT_LINK', '_blank');
-    // resolve(); 
-    
-    // For now, we simulate a failure to force it down the waterfall if not set up
-    reject("Monetag not configured yet");
+    // SECURITY CHECK: Verify Monetag actually loaded successfully
+    if (typeof show_10791512 !== 'function') {
+      console.warn("⚠️ Monetag blocked or not loaded. Falling back to Adsterra.");
+      return reject("Monetag script missing"); 
+    }
+
+    // FIRE THE AD
+    show_10791512('pop')
+      .then(() => {
+        // The user watched the ad or closed it properly.
+        console.log("✅ Monetag ad complete. Distributing reward...");
+        resolve(true); // This tells your React game to give the Shards!
+      })
+      .catch(e => {
+        // Monetag had no ads available, or the user encountered an error.
+        console.warn("❌ Monetag ad failed or no fill:", e);
+        reject(e); // This instantly triggers the Adsterra fallback!
+      });
   });
 };
 
