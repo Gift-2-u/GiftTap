@@ -12,7 +12,7 @@ const playAdsgram = () => {
 
     // 2. Initialize your specific ad block
     // REPLACE 'YOUR_BLOCK_ID' with the ID from your Adsgram dashboard
-    const adController = window.Adsgram.init({ blockId: "25133" });
+    const adController = window.Adsgram.init({ blockId: "25146" });
 
     // 3. Show the ad and wait for the result
     adController.show()
