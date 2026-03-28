@@ -1592,27 +1592,10 @@ const GiftTapGame = () => {
 
                   {/* AD BUTTON: Drop this next to your Energy Bar */}
                   <button 
-                    onClick={handleWatchAdForEnergy}
-                    disabled={isWatchingAd}
-                    style={{
-                      position: 'relative', // 🚨 ADD THIS: Required for z-index to work
-                      zIndex: 50,           // 🚨 ADD THIS: Forces button to the top layer
-                      background: isWatchingAd ? '#333' : '#fbef43',
-                      color: isWatchingAd ? '#888' : '#000',
-                      border: 'none',
-                      borderRadius: '8px',
-                      padding: '6px 12px',
-                      fontSize: '12px',
-                      fontWeight: 'bold',
-                      cursor: isWatchingAd ? 'not-allowed' : 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '6px',
-                      marginLeft: '10px',
-                      boxShadow: isWatchingAd ? 'none' : '0 2px 10px rgba(251, 239, 67, 0.2)'
-                    }}
+                    onClick={() => setIsAdModalOpen(true)}
+                    className="bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 px-4 rounded-xl shadow-lg flex items-center justify-center gap-2"
                   >
-                    {isWatchingAd ? '⏳ Loading...' : '📺 Free Energy'}
+                    ⚡ Free Energy
                   </button>
                   
                 </div> {/* Keeping your closing div from the snippet */}
@@ -2221,6 +2204,37 @@ const GiftTapGame = () => {
             isWhitepaperOpen={isWhitepaperOpen} 
             setIsWhitepaperOpen={setIsWhitepaperOpen} 
           />
+
+          {isAdModalOpen && (
+            <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50">
+              <div className="bg-gray-900 p-6 rounded-2xl border border-gray-700 text-center max-w-sm w-full mx-4">
+                <h2 className="text-2xl font-bold text-white mb-4">⚡ Expand Capacity</h2>
+                
+                <p className="text-gray-300 mb-6">
+                  Want to tap more? Watch a short ad to permanently expand your Daily Energy Limit by +100 for today!
+                  <br /><br />
+                  <span className="text-sm text-gray-500">
+                    (Max 10 ads per day. You have watched {dailyAdsWatched}/10)
+                  </span>
+                </p>
+                
+                <button 
+                  onClick={handleWatchAd}
+                  disabled={dailyAdsWatched >= 10}
+                  className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 px-4 rounded-xl mb-3 disabled:opacity-50 disabled:cursor-not-allowed flex justify-center items-center gap-2"
+                >
+                  {dailyAdsWatched >= 10 ? "Daily Limit Reached" : "▶ Watch Ad"}
+                </button>
+                
+                <button 
+                  onClick={() => setIsAdModalOpen(false)}
+                  className="w-full bg-transparent border border-gray-600 text-gray-400 hover:text-white font-bold py-3 px-4 rounded-xl"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          )}
 
         </div>
         
