@@ -215,22 +215,24 @@ const GiftTapGame = () => {
       return;
     }
 
-    try {
-      // 2. Trigger the Ad Waterfall (Adsgram -> Monetag)
-      // Replace 'playWaterfall()' with whatever you named your main ad function
-      await playWaterfall(); 
+    // 2. Trigger the Ad Waterfall from your adService
+    const result = await showRewardedAdWaterfall();
 
-      // 3. The Ad finished successfully! Calculate the expanded capacity.
+    // 3. Read the result object securely
+    if (result.success) {
+      console.log(`✅ Ad watched successfully via ${result.network}`);
+      
+      // Calculate the expanded capacity
       const newMaxLimit = maxDailyLimit + 100; // Expands the bar
       const newAdsCount = dailyAdsWatched + 1;
       const today = new Date().toISOString().split('T')[0];
 
-      // 4. Update the UI instantly so the player sees the bar grow
+      // Update the UI instantly so the player sees the bar grow
       setMaxDailyLimit(newMaxLimit);
       setDailyAdsWatched(newAdsCount);
       setIsAdModalOpen(false); // Closes the pop-up
 
-      // 5. Securely lock the newly expanded capacity into Supabase
+      // Securely lock the newly expanded capacity into Supabase
       const { error } = await supabase
         .from('players')
         .update({
@@ -243,10 +245,10 @@ const GiftTapGame = () => {
       if (error) {
         console.error("Database sync failed:", error.message);
       }
-
-    } catch (error) {
-      // This catches if BOTH Adsgram and Monetag fail/have no fill
-      console.warn("Waterfall failed:", error);
+      
+    } else {
+      // This catches if the waterfall returned { success: false }
+      console.warn("Waterfall failed:", result.error);
       alert("No ads available right now. Please try again later.");
     }
   };
