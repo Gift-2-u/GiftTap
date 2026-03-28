@@ -205,41 +205,50 @@ const GiftTapGame = () => {
   const [userRank, setUserRank] = useState(null);
   const [seasonShards, setSeasonShards] = useState(0);
   const [isWatchingAd, setIsWatchingAd] = useState(false);
+  const [isAdModalOpen, setIsAdModalOpen] = useState(false);
+  const [dailyAdsWatched, setDailyAdsWatched] = useState(0);
 
   const handleWatchAd = async () => {
-    if (isWatchingAd) return;
-    setIsWatchingAd(true);
-
-    // 1. Trigger the waterfall
-    const result = await showRewardedAdWaterfall();
-
-    if (result.success) {
-      // 2. The Ad was successfully watched! Give the reward.
-      const rewardAmount = 100; // 500 Shards
-      
-      try {
-        // Update database just like a purchase
-        const { error } = await supabase
-          .from('players')
-          .update({ shard_balance: balance + rewardAmount })
-          .eq('telegram_id', String(tgUser.id));
-
-        if (error) throw error;
-
-        // Update UI
-        setBalance(prev => prev + rewardAmount);
-        alert(`🎉 Thanks for watching! You earned ${rewardAmount} Shards via ${result.network}.`);
-
-      } catch (dbError) {
-        console.error("Failed to reward player:", dbError);
-        alert("❌ Ad watched, but failed to save reward to database.");
-      }
-    } else {
-      // 3. No ads loaded or player closed them all
-      alert("⚠️ No ads available right now. Please try again later.");
+    // 1. Enforce the strict 10-ad daily cap
+    if (dailyAdsWatched >= 10) {
+      alert("You've reached your daily limit of 10 ads! Come back tomorrow.");
+      return;
     }
 
-    setIsWatchingAd(false);
+    try {
+      // 2. Trigger the Ad Waterfall (Adsgram -> Monetag)
+      // Replace 'playWaterfall()' with whatever you named your main ad function
+      await playWaterfall(); 
+
+      // 3. The Ad finished successfully! Calculate the expanded capacity.
+      const newMaxLimit = maxDailyLimit + 100; // Expands the bar
+      const newAdsCount = dailyAdsWatched + 1;
+      const today = new Date().toISOString().split('T')[0];
+
+      // 4. Update the UI instantly so the player sees the bar grow
+      setMaxDailyLimit(newMaxLimit);
+      setDailyAdsWatched(newAdsCount);
+      setIsAdModalOpen(false); // Closes the pop-up
+
+      // 5. Securely lock the newly expanded capacity into Supabase
+      const { error } = await supabase
+        .from('players')
+        .update({
+          max_daily_limit: newMaxLimit, 
+          daily_ads_watched: newAdsCount,
+          last_ad_date: today
+        })
+        .eq('telegram_id', String(tgUser.id));
+
+      if (error) {
+        console.error("Database sync failed:", error.message);
+      }
+
+    } catch (error) {
+      // This catches if BOTH Adsgram and Monetag fail/have no fill
+      console.warn("Waterfall failed:", error);
+      alert("No ads available right now. Please try again later.");
+    }
   };
 
   const getSwapBalance = (token) => {
@@ -408,6 +417,30 @@ const GiftTapGame = () => {
           setDailyTaps(0);
         } else {
           setDailyTaps(player.daily_taps || 0);
+        }
+
+        // 🚨 NEW: Ad Capacity & Midnight Reset Logic
+        if (player.last_ad_date !== today) {
+          // New day: Reset their ad counter and return max limit to base 1000
+          setDailyAdsWatched(0);
+          setMaxDailyLimit(1000);
+
+          // Silently clean up Supabase in the background
+          supabase
+            .from('players')
+            .update({ 
+              daily_ads_watched: 0, 
+              max_daily_limit: 1000,
+              last_ad_date: today
+            })
+            .eq('telegram_id', userId)
+            .then(({ error }) => {
+              if (error) console.error("Midnight ad reset failed:", error.message);
+            });
+        } else {
+          // Same day: load their progress and expanded limits
+          setDailyAdsWatched(player.daily_ads_watched || 0);
+          setMaxDailyLimit(player.max_daily_limit || 1000);
         }
           
         // Energy Recovery Logic
