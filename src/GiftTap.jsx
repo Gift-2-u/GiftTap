@@ -1601,8 +1601,11 @@ const GiftTapGame = () => {
 
                   {/* AD BUTTON: Drop this next to your Energy Bar */}
                   <button 
-                    onClick={() => setIsAdModalOpen(true)}
-                    className="bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 px-4 rounded-xl shadow-lg flex items-center justify-center gap-2"
+                    onClick={() => {
+                      alert("Button successfully clicked!");
+                      setIsAdModalOpen(true);
+                    }}
+                    className="bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 px-4 rounded-xl shadow-lg flex items-center justify-center gap-2 relative z-50"
                   >
                     ⚡ Free Energy
                   </button>
