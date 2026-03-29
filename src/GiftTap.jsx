@@ -2217,11 +2217,11 @@ const GiftTapGame = () => {
             setIsWhitepaperOpen={setIsWhitepaperOpen} 
           />
 
+          {/* THE MODAL MUST BE DOWN HERE, OUTSIDE EVERYTHING ELSE */}
           {isAdModalOpen && (
-            <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50">
+            <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[9999]">
               <div className="bg-gray-900 p-6 rounded-2xl border border-gray-700 text-center max-w-sm w-full mx-4">
                 <h2 className="text-2xl font-bold text-white mb-4">⚡ Expand Capacity</h2>
-                
                 <p className="text-gray-300 mb-6">
                   Want to tap more? Watch a short ad to permanently expand your Daily Energy Limit by +100 for today!
                   <br /><br />
@@ -2229,7 +2229,6 @@ const GiftTapGame = () => {
                     (Max 10 ads per day. You have watched {dailyAdsWatched}/10)
                   </span>
                 </p>
-                
                 <button 
                   onClick={handleWatchAd}
                   disabled={dailyAdsWatched >= 10}
@@ -2237,7 +2236,6 @@ const GiftTapGame = () => {
                 >
                   {dailyAdsWatched >= 10 ? "Daily Limit Reached" : "▶ Watch Ad"}
                 </button>
-                
                 <button 
                   onClick={() => setIsAdModalOpen(false)}
                   className="w-full bg-transparent border border-gray-600 text-gray-400 hover:text-white font-bold py-3 px-4 rounded-xl"
