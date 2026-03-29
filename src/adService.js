@@ -29,24 +29,35 @@ const playAdsgram = () => {
 
 const playMonetag = () => {
   return new Promise((resolve, reject) => {
-    // SECURITY CHECK: Verify Monetag actually loaded successfully
-    if (typeof show_10791512 !== 'function') {
-      console.warn("⚠️ Monetag blocked or not loaded. Falling back to Adsterra.");
-      return reject("Monetag script missing"); 
+    // 1. You must create a "Direct Link" in your Monetag dashboard and paste it here.
+    const directLinkUrl = "YOUR_MONETAG_DIRECT_LINK_HERE";
+
+    if (!directLinkUrl || directLinkUrl === "YOUR_MONETAG_DIRECT_LINK_HERE") {
+      console.warn("⚠️ Monetag Direct Link missing. Falling back to Adsterra.");
+      return reject("Monetag not configured");
     }
 
-    // FIRE THE AD
-    show_10791512('pop')
-      .then(() => {
-        // The user watched the ad or closed it properly.
-        console.log("✅ Monetag ad complete. Distributing reward...");
-        resolve(true); // This tells your React game to give the Shards!
-      })
-      .catch(e => {
-        // Monetag had no ads available, or the user encountered an error.
-        console.warn("❌ Monetag ad failed or no fill:", e);
-        reject(e); // This instantly triggers the Adsterra fallback!
-      });
+    try {
+      // 2. Safely open the link using Telegram's native API to bypass the CSP block
+      if (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.openLink) {
+        window.Telegram.WebApp.openLink(directLinkUrl);
+      } else {
+        // Standard browser fallback
+        window.open(directLinkUrl, '_blank');
+      }
+
+      // 3. The Security Timer
+      // Since direct links don't have a callback, we force a 5-second delay 
+      // before giving the reward to prevent users from spamming the button.
+      setTimeout(() => {
+        console.log("✅ Monetag Direct Link viewed. Distributing fallback reward...");
+        resolve(true);
+      }, 5000);
+
+    } catch (e) {
+      console.warn("❌ Failed to launch Monetag link:", e);
+      reject(e);
+    }
   });
 };
 
