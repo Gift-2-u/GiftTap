@@ -17,20 +17,25 @@ import CryptoJS from 'crypto-js';
 // --- 1. CLOUD STORAGE HELPERS ---
 const saveToCloud = (key, value) => {
   return new Promise((resolve, reject) => {
-    if (window.Telegram?.WebApp?.CloudStorage) {
-      window.Telegram.WebApp.CloudStorage.setItem(key, value, (err, success) => {
+    const tg = window.Telegram?.WebApp;
+    // Strictly verify version 6.9+ before attempting CloudStorage
+    if (tg?.CloudStorage && tg.isVersionAtLeast && tg.isVersionAtLeast('6.9')) {
+      tg.CloudStorage.setItem(key, value, (err, success) => {
         if (err) reject(err); else resolve(success);
       });
     } else {
-      localStorage.setItem(key, value); resolve(true);
+      // Safe fallback for older devices
+      localStorage.setItem(key, value); 
+      resolve(true);
     }
   });
 };
 
 const getFromCloud = (key) => {
   return new Promise((resolve, reject) => {
-    if (window.Telegram?.WebApp?.CloudStorage) {
-      window.Telegram.WebApp.CloudStorage.getItem(key, (err, value) => {
+    const tg = window.Telegram?.WebApp;
+    if (tg?.CloudStorage && tg.isVersionAtLeast && tg.isVersionAtLeast('6.9')) {
+      tg.CloudStorage.getItem(key, (err, value) => {
         if (err) reject(err); else resolve(value || "");
       });
     } else {
@@ -41,12 +46,14 @@ const getFromCloud = (key) => {
 
 const removeFromCloud = (key) => {
   return new Promise((resolve, reject) => {
-    if (window.Telegram?.WebApp?.CloudStorage) {
-      window.Telegram.WebApp.CloudStorage.removeItem(key, (err, success) => {
+    const tg = window.Telegram?.WebApp;
+    if (tg?.CloudStorage && tg.isVersionAtLeast && tg.isVersionAtLeast('6.9')) {
+      tg.CloudStorage.removeItem(key, (err, success) => {
         if (err) reject(err); else resolve(success);
       });
     } else {
-      localStorage.removeItem(key); resolve(true);
+      localStorage.removeItem(key); 
+      resolve(true);
     }
   });
 };
