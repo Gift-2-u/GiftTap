@@ -818,6 +818,8 @@ const GiftTapGame = () => {
         current_streak: strk, // <--- Now it saves the streak!
         lifetime_taps: ltt,
         max_unlocked_level: mul,
+        limit_boost_amount: stats.limit_boost_amount,
+        limit_boost_expires: stats.limit_boost_expires,
         last_updated: new Date().toISOString()
       })
       .eq('telegram_id', String(tgUser.id)); // Match their specific row
