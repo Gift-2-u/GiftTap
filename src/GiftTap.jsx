@@ -216,47 +216,51 @@ const GiftTapGame = () => {
   const [dailyAdsWatched, setDailyAdsWatched] = useState(0);
 
   const handleWatchAd = async () => {
-    // 1. Enforce the strict 10-ad daily cap
     if (dailyAdsWatched >= 10) {
-      alert("You've reached your daily limit of 10 ads! Come back tomorrow.");
+      alert("Daily limit reached!");
       return;
     }
 
-    // 2. Trigger the Ad Waterfall from your adService
-    const result = await showRewardedAdWaterfall();
+    setIsWatchingAd(true); // Lock the UI so they can't spam clicks
 
-    // 3. Read the result object securely
-    if (result.success) {
-      console.log(`✅ Ad watched successfully via ${result.network}`);
-      
-      // Calculate the expanded capacity
-      const newMaxLimit = maxDailyLimit + 100; // Expands the bar
-      const newAdsCount = dailyAdsWatched + 1;
-      const today = new Date().toISOString().split('T')[0];
+    try {
+      // 1. Trigger the Ad and WAIT for the result
+      const result = await showRewardedAdWaterfall();
 
-      // Update the UI instantly so the player sees the bar grow
-      setMaxDailyLimit(newMaxLimit);
-      setDailyAdsWatched(newAdsCount);
-      setIsAdModalOpen(false); // Closes the pop-up
+      // 2. STRICT CHECK: ONLY reward if success is true
+      // If they switch pages, 'result.success' will be false or the promise will catch an error.
+      if (result && result.success === true) {
+        console.log(`✅ Ad verified via ${result.network}`);
+        
+        const newMaxLimit = maxDailyLimit + 100;
+        const newAdsCount = dailyAdsWatched + 1;
+        const today = new Date().toISOString().split('T')[0];
 
-      // Securely lock the newly expanded capacity into Supabase
-      const { error } = await supabase
-        .from('players')
-        .update({
-          max_daily_limit: newMaxLimit, 
-          daily_ads_watched: newAdsCount,
-          last_ad_date: today
-        })
-        .eq('telegram_id', String(tgUser.id));
+        // Update Local State
+        setMaxDailyLimit(newMaxLimit);
+        setDailyAdsWatched(newAdsCount);
+        setIsAdModalOpen(false);
 
-      if (error) {
-        console.error("Database sync failed:", error.message);
+        // 3. Sync to Supabase ONLY after verification
+        await supabase
+          .from('players')
+          .update({
+            max_daily_limit: newMaxLimit, 
+            daily_ads_watched: newAdsCount,
+            last_ad_date: today
+          })
+          .eq('telegram_id', String(tgUser.id));
+
+        alert("⚡ Energy Capacity Expanded!");
+      } else {
+        // This triggers if they closed the ad or switched pages
+        console.warn("❌ Ad skipped or interrupted. No reward.");
+        alert("You must watch the full ad to get the reward!");
       }
-      
-    } else {
-      // This catches if the waterfall returned { success: false }
-      console.warn("Waterfall failed:", result.error);
-      alert("No ads available right now. Please try again later.");
+    } catch (err) {
+      console.error("Ad Error:", err);
+    } finally {
+      setIsWatchingAd(false); // Unlock the button
     }
   };
 
