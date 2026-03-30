@@ -1601,12 +1601,22 @@ const GiftTapGame = () => {
 
                   {/* AD BUTTON: Drop this next to your Energy Bar */}
                   <button 
-                    onClick={() => {
-                      alert("SHIELD PIERCED!");
-                      setIsAdModalOpen(true);
+                    onClick={() => setIsAdModalOpen(true)}
+                    style={{ 
+                      background: '#2563eb', 
+                      color: '#ffffff', 
+                      fontWeight: 'bold', 
+                      padding: '10px 20px', 
+                      borderRadius: '12px', 
+                      border: 'none',
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      justifyContent: 'center', 
+                      gap: '8px',
+                      cursor: 'pointer',
+                      boxShadow: '0 4px 6px rgba(0,0,0,0.3)',
+                      marginTop: '15px'
                     }}
-                    style={{ position: 'relative', zIndex: 99999, pointerEvents: 'auto' }}
-                    className="bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 px-4 rounded-xl shadow-lg flex items-center justify-center gap-2"
                   >
                     ⚡ Free Energy
                   </button>
