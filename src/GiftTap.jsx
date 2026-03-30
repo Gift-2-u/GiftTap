@@ -1599,12 +1599,14 @@ const GiftTapGame = () => {
                     <p style={{ color: '#888', fontSize: '11px', margin: '0', fontWeight: 'bold' }}>Daily Limit: {dailyTaps} / {dynamicMaxLimit}</p>
                   </div>
 
-                  {/* AD BUTTON: Drop this next to your Energy Bar */}
+                  {/* AD BUTTON */}
                   <button 
                     onClick={() => setIsAdModalOpen(true)}
                     style={{ 
-                      background: '#2563eb', 
-                      color: '#ffffff', 
+                      position: 'relative', 
+                      zIndex: 50, /* Pierces the overlapping giftZone image boundary */
+                      background: '#ffffff', 
+                      color: '#000000', 
                       fontWeight: 'bold', 
                       padding: '10px 20px', 
                       borderRadius: '12px', 
@@ -1614,7 +1616,6 @@ const GiftTapGame = () => {
                       justifyContent: 'center', 
                       gap: '8px',
                       cursor: 'pointer',
-                      boxShadow: '0 4px 6px rgba(0,0,0,0.3)',
                       marginTop: '15px'
                     }}
                   >
