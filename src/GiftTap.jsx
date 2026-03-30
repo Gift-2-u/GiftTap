@@ -1206,6 +1206,9 @@ const GiftTapGame = () => {
         wallet_address: playerWallet, 
         sol_balance: realSol,
         usdc_balance: realUsdc,
+        shard_balance: balance, 
+        last_energy: energy, 
+        lifetime_taps: lifetimeTaps,
         username: tgUser.username || tgUser.first_name || 'Player'
       }, { onConflict: 'telegram_id' })
           .select();
@@ -1601,10 +1604,14 @@ const GiftTapGame = () => {
 
                   {/* AD BUTTON */}
                   <button 
-                    onClick={() => setIsAdModalOpen(true)}
+                    onClick={(e) => {
+                      e.stopPropagation(); // Stops the click from reaching the Gift Zone
+                      e.preventDefault();  // Prevents any ghost-click behavior
+                      setIsAdModalOpen(true);
+                    }}
                     style={{ 
                       position: 'relative', 
-                      zIndex: 50, /* Pierces the overlapping giftZone image boundary */
+                      zIndex: 101, // Ensure this is higher than the gift image z-index
                       background: '#ffffff', 
                       color: '#000000', 
                       fontWeight: 'bold', 
