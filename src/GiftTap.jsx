@@ -1610,23 +1610,26 @@ const GiftTapGame = () => {
                       setIsAdModalOpen(true);
                     }}
                     style={{ 
-                      position: 'relative', 
-                      zIndex: 101, // Ensure this is higher than the gift image z-index
-                      background: '#ffffff', 
-                      color: '#000000', 
-                      fontWeight: 'bold', 
-                      padding: '10px 20px', 
-                      borderRadius: '12px', 
-                      border: 'none',
-                      display: 'flex', 
-                      alignItems: 'center', 
-                      justifyContent: 'center', 
-                      gap: '8px',
+                      position: 'fixed', 
+                      bottom: '100px', // Sits just above your 80px Nav Bar
+                      right: '20px',
+                      width: '60px',
+                      height: '60px',
+                      borderRadius: '50%',
+                      background: 'linear-gradient(135deg, #fbef43 0%, #ffbb00 100%)',
+                      border: '3px solid #000',
+                      boxShadow: '0 4px 15px rgba(0,0,0,0.4), 0 0 10px rgba(251, 239, 67, 0.4)',
                       cursor: 'pointer',
-                      marginTop: '15px'
+                      zIndex: 1000,
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      animation: 'pulse 2s infinite' // Optional: adds a "look at me" glow
                     }}
                   >
-                    ⚡ Free Energy
+                    <span style={{ fontSize: '20px' }}>⚡</span>
+                    <span style={{ fontSize: '8px', fontWeight: 'bold', color: '#000', marginTop: '-2px' }}>FREE</span>
                   </button>
                   
                 </div> {/* Keeping your closing div from the snippet */}
