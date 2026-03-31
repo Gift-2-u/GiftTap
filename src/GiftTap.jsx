@@ -1820,10 +1820,10 @@ const GiftTapGame = () => {
                           ))}
                         </div>
                         <div style={styles.actionRow}>
-                          <button style={styles.actionBtn} onClick={() => { setIsModalOpen(false); setIsReceiveOpen(true); }}>Receive</button>
-                          <button style={styles.actionBtn} onClick={() => { setIsModalOpen(false); setIsWithdrawOpen(true); }}>Send</button>
-                          <button style={styles.actionBtn} onClick={() => { setIsModalOpen(false); setIsSwapOpen(true); }}>Swap</button>
-                          <button style={styles.actionBtn} onClick={() => { setIsModalOpen(false); setIsShardSwapOpen(true); }}>Shard</button>
+                          <button style={styles.actionBtn} onClick={() => setIsReceiveOpen(true)}>Receive</button>
+                          <button style={styles.actionBtn} onClick={() => setIsWithdrawOpen(true)}>Send</button>
+                          <button style={styles.actionBtn} onClick={() => setIsSwapOpen(true)}>Swap</button>
+                          <button style={styles.actionBtn} onClick={() => setIsShardSwapOpen(true)}>Shard</button>
                         </div>
                       </>
                     )}
