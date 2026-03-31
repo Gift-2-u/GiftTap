@@ -450,35 +450,43 @@ const GiftTapGame = () => {
         }
 
         // 🚨 NEW: Ad Capacity & Midnight Reset Logic
+        // --- 1. SEARCH FOR THE AD RESET LOGIC (Around line 50 of your snippet) ---
         if (player.last_ad_date !== today) {
-          // New day: Reset their ad counter and return max limit to base 1000
-          setDailyAdsWatched(0);
-          setMaxDailyLimit(1000);
+            setDailyAdsWatched(0);
+            
+            // 🚨 SENIOR FIX: Don't just set to 1000. Set to 1000 + their active SOL boost.
+            const baseLimit = 1000;
+            const activeBoost = Number(player.limit_boost_amount) || 0;
+            const resetLimit = baseLimit; // max_daily_limit is the "Base", boosts are calculated in dynamicMaxLimit
 
-          // Silently clean up Supabase in the background
-          supabase
-            .from('players')
-            .update({ 
-              daily_ads_watched: 0, 
-              max_daily_limit: 1000,
-              last_ad_date: today
-            })
-            .eq('telegram_id', userId)
-            .then(({ error }) => {
-              if (error) console.error("Midnight ad reset failed:", error.message);
-            });
+            setMaxDailyLimit(resetLimit);
+
+            supabase
+                .from('players')
+                .update({ 
+                    daily_ads_watched: 0, 
+                    max_daily_limit: resetLimit,
+                    last_ad_date: today
+                })
+                .eq('telegram_id', userId)
+                .then(({ error }) => {
+                    if (error) console.error("Midnight ad reset failed:", error.message);
+                });
         } else {
-          // Same day: load their progress and expanded limits
-          setDailyAdsWatched(player.daily_ads_watched || 0);
-          setMaxDailyLimit(player.max_daily_limit || 1000);
+            setDailyAdsWatched(player.daily_ads_watched || 0);
+            setMaxDailyLimit(player.max_daily_limit || 1000);
         }
-          
-        // Energy Recovery Logic
+
+        // --- 2. SEARCH FOR THE ENERGY RECOVERY (Around line 65 of your snippet) ---
         const lastDate = new Date(player.last_updated).getTime();
         const now = new Date().getTime();
         const secondsPassed = Math.floor((now - lastDate) / 1000);
-        const recovered = Math.floor(secondsPassed / 4); 
-        setEnergy(Math.min((player.last_energy || 0) + recovered, 500));
+
+        // Ensure we don't calculate recovery if the player was JUST tapping on another device
+        // (prevents jumping backward)
+        const recovered = Math.max(0, Math.floor(secondsPassed / 4)); 
+        const dbEnergy = Number(player.last_energy) || 0;
+        setEnergy(Math.min(dbEnergy + recovered, 500));
         
         // 🚨 THE DECRYPTION FIX: Load the wallet into the UI from the Cloud
         if (player.encrypted_vault) {
@@ -1240,8 +1248,13 @@ const GiftTapGame = () => {
         sol_balance: realSol,
         usdc_balance: realUsdc,
         shard_balance: balance, 
-        last_energy: energy, 
+        last_energy: energy,
+        daily_taps: dailyTaps,
         lifetime_taps: lifetimeTaps,
+        max_daily_limit: maxDailyLimit,
+        limit_boost_amount: stats.limit_boost_amount,
+        limit_boost_expires: stats.limit_boost_expires,
+        last_updated: new Date().toISOString(),
         username: tgUser.username || tgUser.first_name || 'Player'
       }, { onConflict: 'telegram_id' })
           .select();
