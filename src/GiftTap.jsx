@@ -890,7 +890,7 @@ const GiftTapGame = () => {
       }
 
       // 2. BLOCK THE TAP IF OVER LIMIT
-      if (dailyTaps >= calculatedMax) {
+      if (currentDailyTaps >= calculatedMax) {
         alert("Daily limit reached! Wait for tomorrow or use a boost.");
         return;
       }
