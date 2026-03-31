@@ -878,19 +878,12 @@ const GiftTapGame = () => {
         setStreak(currentStreak);
         saveToDatabase(balance, energy, 0, today, currentStreak, lifetimeTaps, maxUnlockedLevel, seasonShards);
       }
-      // 1. USE A UNIFIED CALCULATION (No local "let" variables)
-      const nowTime = new Date();
-      let calculatedMax = Number(maxDailyLimit) || 1000; 
-
-      if (stats.energy_boost_expires && nowTime < new Date(stats.energy_boost_expires)) {
-        calculatedMax += 1000;
-      }
-      if (stats.limit_boost_expires && nowTime < new Date(stats.limit_boost_expires)) {
-        calculatedMax += (Number(stats.limit_boost_amount) || 0);
-      }
-
-      // 2. BLOCK THE TAP IF OVER LIMIT
-      if (currentDailyTaps >= calculatedMax) {
+      // Calculate max limit inside the tap function
+      let currentMaxLimit = maxDailyLimit;
+      const clickTime = new Date();
+      if (stats.energy_boost_expires && clickTime < new Date(stats.energy_boost_expires)) currentMaxLimit += 1000;
+      if (stats.limit_boost_expires && clickTime < new Date(stats.limit_boost_expires)) currentMaxLimit += (stats.limit_boost_amount || 0);
+      if (currentDailyTaps >= currentMaxLimit) {
         alert("Daily limit reached! Wait for tomorrow or use a boost.");
         return;
       }
