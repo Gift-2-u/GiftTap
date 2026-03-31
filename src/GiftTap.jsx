@@ -1241,26 +1241,23 @@ const GiftTapGame = () => {
         projectFee: 0.0005 // Your fixed Gift launch fee
       });
 
-      /// 3. --- PASTE THE UPSERT CODE HERE ---
-      const { data, error: upsertError } = await supabase.from('players').upsert({
-        telegram_id: String(tgUser.id),
-        wallet_address: playerWallet, 
-        sol_balance: realSol,
-        usdc_balance: realUsdc,
-        shard_balance: balance || 0,
-        last_energy: energy || 0,
-        daily_taps: dailyTaps || 0,
-        lifetime_taps: lifetimeTaps,
-        max_daily_limit: maxDailyLimit || 1000,
-        limit_boost_amount: stats?.limit_boost_amount || 0, 
-        limit_boost_expires: stats?.limit_boost_expires || null,
-        last_updated: new Date().toISOString(),
-        username: tgUser.username || tgUser.first_name || 'Player'
-      }, { onConflict: 'telegram_id' })
-          .select();
+      // --- SURGICAL FIX: Targeted Update ---
+      // We use .update() instead of .upsert() because we only want to change 
+      // the wallet balances. This protects your Energy and 3200 Boost.
+      const { data: updatedData, error: updateError } = await supabase
+        .from('players')
+        .update({
+          sol_balance: realSol,
+          usdc_balance: realUsdc,
+          last_updated: new Date().toISOString(),
+          // 🚨 Notice: We REMOVE energy/balance/boost from here. 
+          // This tells Supabase: "Don't touch the game progress, only the money."
+        })
+        .eq('telegram_id', String(tgUser.id))
+        .select();
 
-      if (upsertError) {
-          console.error("❌ SYNC ERROR:", upsertError.message); 
+      if (updateError) {
+        console.error("❌ Wallet Sync Error:", updateError.message);
       } else {
           console.log("✅ Sync Successful for ID:", tgUser.id, data); 
       }
