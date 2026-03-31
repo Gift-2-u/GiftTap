@@ -1149,18 +1149,32 @@ const GiftTapGame = () => {
         async (payload) => {
           // 1. Update your personal balance (Seamless Sync)
           if (payload.new.telegram_id === String(tgUser.id)) {
-            setBalance(Number(payload.new.shard_balance));
-            setEnergy(Number(payload.new.last_energy));
-            setTapPower(payload.new.tap_power);
-            setMaxDailyLimit(payload.new.max_daily_limit);
-            // 🚨 ADDED: These lines instantly sync your taps to the other device
-            setLifetimeTaps(Number(payload.new.lifetime_taps)); 
-            setSeasonShards(Number(payload.new.season_shards));
-            setStats({
-              inventory: payload.new.inventory || {},
-              frenzy_expires: payload.new.frenzy_expires,
-              efficiency_expires: payload.new.efficiency_expires,
-              energy_boost_expires: payload.new.energy_boost_expires
+            
+            // 🚨 THE SMART GUARD 🚨
+            // We check the incoming taps against the live React state
+            setLifetimeTaps((prevTaps) => {
+              const incomingTaps = Number(payload.new.lifetime_taps);
+
+              // If the database has MORE taps, you played on another device.
+              // We allow the sync to overwrite the screen.
+              if (incomingTaps > prevTaps) {
+                setBalance(Number(payload.new.shard_balance));
+                setEnergy(Number(payload.new.last_energy));
+                setTapPower(payload.new.tap_power);
+                setMaxDailyLimit(payload.new.max_daily_limit);
+                setSeasonShards(Number(payload.new.season_shards));
+                setStats({
+                  inventory: payload.new.inventory || {},
+                  frenzy_expires: payload.new.frenzy_expires,
+                  efficiency_expires: payload.new.efficiency_expires,
+                  energy_boost_expires: payload.new.energy_boost_expires
+                });
+                return incomingTaps; // Update local taps to match DB
+              }
+
+              // If incoming taps are the same (like when the Wallet saves),
+              // we IGNORE the game stats so your recovering energy isn't reset.
+              return prevTaps; 
             });
           }
 
