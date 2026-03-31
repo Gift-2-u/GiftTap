@@ -215,52 +215,69 @@ const GiftTapGame = () => {
   const [isAdModalOpen, setIsAdModalOpen] = useState(false);
   const [dailyAdsWatched, setDailyAdsWatched] = useState(0);
 
-  const handleWatchAd = async () => {
+  const handleWatchAd = async (e) => {
+    if (e) e.stopPropagation(); // Stop click-through to Gift
+    if (isWatchingAd) return;
     if (dailyAdsWatched >= 10) {
-      alert("Daily limit reached!");
+      alert("Daily limit reached! (10/10)");
       return;
     }
 
-    setIsWatchingAd(true); // Lock the UI so they can't spam clicks
+    setIsWatchingAd(true);
+    const adStartTime = Date.now();
 
     try {
-      // 1. Trigger the Ad and WAIT for the result
       const result = await showRewardedAdWaterfall();
+      const elapsed = (Date.now() - adStartTime) / 1000;
 
-      // 2. STRICT CHECK: ONLY reward if success is true
-      // If they switch pages, 'result.success' will be false or the promise will catch an error.
-      if (result && result.success === true) {
-        console.log(`✅ Ad verified via ${result.network}`);
+      // --- 1. STRICT SECURITY CHECK (Time + Result) ---
+      if (result && result.success && elapsed >= 13) {
         
         const newMaxLimit = maxDailyLimit + 100;
         const newAdsCount = dailyAdsWatched + 1;
         const today = new Date().toISOString().split('T')[0];
+        
+        // Calculate midnight for the temporary boost
+        const midnightTonight = new Date();
+        midnightTonight.setHours(23, 59, 59, 999);
 
-        // Update Local State
-        setMaxDailyLimit(newMaxLimit);
-        setDailyAdsWatched(newAdsCount);
-        setIsAdModalOpen(false);
+        // --- 2. THE PROTECTIVE UPDATE ---
+        // We include EVERY boost field so Supabase never resets your 2000 SOL boost.
+        const dbUpdates = {
+          max_daily_limit: newMaxLimit,
+          daily_ads_watched: newAdsCount,
+          last_ad_date: today,
+          // 🚨 PROTECT THE SOL BOOST (Keep them in the update)
+          limit_boost_amount: stats.limit_boost_amount,
+          limit_boost_expires: stats.limit_boost_expires,
+          // Synchronize the Ad Energy Boost fields too
+          ad_energy_boost: (stats.ad_energy_boost || 0) + 100,
+          ad_energy_expires: midnightTonight.toISOString(),
+          last_updated: new Date().toISOString()
+        };
 
-        // 3. Sync to Supabase ONLY after verification
-        await supabase
+        const { error } = await supabase
           .from('players')
-          .update({
-            max_daily_limit: newMaxLimit, 
-            daily_ads_watched: newAdsCount,
-            last_ad_date: today
-          })
+          .update(dbUpdates)
           .eq('telegram_id', String(tgUser.id));
 
-        alert("⚡ Energy Capacity Expanded!");
+        if (error) throw error;
+
+        // --- 3. UPDATE UI ---
+        setMaxDailyLimit(newMaxLimit);
+        setDailyAdsWatched(newAdsCount);
+        if (setStats) setStats({ ...stats, ...dbUpdates });
+        setIsAdModalOpen(false);
+
+        alert("✅ Verified! +100 Energy Capacity added.");
       } else {
-        // This triggers if they closed the ad or switched pages
-        console.warn("❌ Ad skipped or interrupted. No reward.");
-        alert("You must watch the full ad to get the reward!");
+        alert("⚠️ Ad Interrupted: Watch the full video to get the reward!");
       }
     } catch (err) {
       console.error("Ad Error:", err);
+      alert("No ads available. Please try again later.");
     } finally {
-      setIsWatchingAd(false); // Unlock the button
+      setIsWatchingAd(false);
     }
   };
 
@@ -1369,59 +1386,6 @@ const GiftTapGame = () => {
     } catch (err) {
       console.error("Failed to copy text: ", err);
       alert("❌ Clipboard access denied. Please write it down manually.");
-    }
-  };
-
-  // 🚨 Add the 'e' inside the parentheses
-  const handleWatchAdForEnergy = async (e) => {
-    
-    // 🚨 ADD THIS LINE FIRST: Stop the click from passing through to the Gift
-    if (e) e.stopPropagation();
-    // Prevent double-clicks from firing multiple ads
-    if (isWatchingAd) return;
-    setIsWatchingAd(true);
-
-    try {
-      // 1. Trigger the Promise-based waterfall
-      const result = await showRewardedAdWaterfall();
-
-      if (result.success) {
-        // 1. Calculate EXACTLY midnight tonight (Local Time)
-        const midnightTonight = new Date();
-        midnightTonight.setHours(23, 59, 59, 999);
-
-        // 2. Calculate the new stacked limit
-        // We look at their current ad boost and add 100 to it.
-        const currentAdBoost = stats?.ad_energy_boost || 0;
-        const newTotalAdBoost = currentAdBoost + 100;
-
-        const dbUpdates = {
-          ad_energy_boost: newTotalAdBoost,
-          ad_energy_expires: midnightTonight.toISOString()
-        };
-
-        // 3. Securely update Supabase
-        const { error } = await supabase
-          .from('players')
-          .update(dbUpdates)
-          .eq('telegram_id', String(tgUser.id));
-
-        if (error) throw error;
-
-        // 4. Inject the new limits directly into React's live state
-        if (setStats) setStats({ ...stats, ...dbUpdates });
-        
-        console.log(`✅ Max Energy expanded by 100 via ${result.network}! Expires at midnight.`);
-      } else {
-        // 🚨 ADD THIS ALERT: Force the game to tell you why it failed
-        alert(`Waterfall Failed: ${result.error}`);
-        console.log("⚠️ Ad skipped or unavailable.");
-      }
-    } catch (err) {
-      console.error("Ad Watch Error:", err);
-    } finally {
-      // Always unlock the button when done
-      setIsWatchingAd(false);
     }
   };
 
