@@ -408,7 +408,7 @@ const GiftTapGame = () => {
       // CASE A: RETURNING PLAYER (Has Wallet)
       // ==========================================
       if (player && player.wallet_address) {
-        setHasAccess(player.has_beta_access || true);
+        setHasAccess(player.has_beta_access || false);
         setPlayerWallet(player.wallet_address);
         
         setBalances({ 
@@ -1178,26 +1178,36 @@ const GiftTapGame = () => {
             });
           }
 
-          // 2. Update the Top Leader Badge (The fix for the main page)
-          // We check the 'leaderboard_all_time' view to see who the new #1 is
-          const { data } = await supabase
-            .from('leaderboard_all_time')
-            .select('*')
-            .limit(1)
-            .maybeSingle();
-          
-          if (data) {
-            setTopLeader({
-              name: data.username || `ID:..${String(data.telegram_id).slice(-4)}`,
-              score: data.lifetime_taps
-            });
-          }
-        }
-      )
-      .subscribe();
+          const fetchTopLeaderSafe = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('leaderboard_all_time')
+          .select('*')
+          .limit(1)
+          .maybeSingle();
+        
+        if (error) throw error;
 
-    return () => { supabase.removeChannel(channel); };
-  }, [isDataLoaded, tgUser.id]);
+        if (data) {
+          setTopLeader({
+            name: data.username || `ID:..${String(data.telegram_id).slice(-4)}`,
+            score: data.lifetime_taps
+          });
+        }
+      } catch (err) {
+        console.error("Leaderboard poll error:", err.message);
+      }
+    };
+
+    // 1. Fetch instantly when the component mounts
+    fetchTopLeaderSafe();
+
+    // 2. Set a strict 60-second timer to update the badge quietly in the background
+    const leaderInterval = setInterval(fetchTopLeaderSafe, 60000); 
+
+    // Cleanup the timer if the user closes the app
+    return () => clearInterval(leaderInterval);
+  }, [isDataLoaded, tgUser?.id]);
 
   // --- PLACE THIS AROUND LINE 200 (Above fetchBalances) ---
 
