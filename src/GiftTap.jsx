@@ -408,7 +408,7 @@ const GiftTapGame = () => {
       // CASE A: RETURNING PLAYER (Has Wallet)
       // ==========================================
       if (player && player.wallet_address) {
-        setHasAccess(player.has_beta_access || true);
+        setHasAccess(player.has_beta_access || false);
         setPlayerWallet(player.wallet_address);
         
         setBalances({ 
