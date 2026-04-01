@@ -554,7 +554,7 @@ const GiftTapGame = () => {
           setPlayerWallet(result.publicKey);
           // 🚨 LOCK 2: Force the browser to burn the old ghost receipt
           localStorage.removeItem(`wallet_backed_up_${userId}`);
-          setHasAccess(false); // Grant access to the new player
+          setHasAccess(true); // Grant access to the new player
           setMustBackup(true); // Trigger your original backup warning
           setIsDataLoaded(true);
         } else {
