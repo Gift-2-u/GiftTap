@@ -408,7 +408,7 @@ const GiftTapGame = () => {
       // CASE A: RETURNING PLAYER (Has Wallet)
       // ==========================================
       if (player && player.wallet_address) {
-        setHasAccess(player.has_beta_access || true);
+        setHasAccess(player.has_beta_access || false);
         setPlayerWallet(player.wallet_address);
         
         setBalances({ 
@@ -554,7 +554,7 @@ const GiftTapGame = () => {
           setPlayerWallet(result.publicKey);
           // 🚨 LOCK 2: Force the browser to burn the old ghost receipt
           localStorage.removeItem(`wallet_backed_up_${userId}`);
-          setHasAccess(true); // Grant access to the new player
+          setHasAccess(false); // Grant access to the new player
           setMustBackup(true); // Trigger your original backup warning
           setIsDataLoaded(true);
         } else {
