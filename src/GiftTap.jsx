@@ -1725,32 +1725,39 @@ const GiftTapGame = () => {
           <div style={styles.mainContent}>
             {currentPage === 'home' && (
               <>
-                {/* 1. TOP ZONE: DASHBOARD ONLY */}
-                <div style={{ ...styles.header, padding: '20px 0', width: '100%' }}>
-                  {/* Changed background to 'transparent' so the numbers float seamlessly */}
-                  <div style={{ background: 'transparent', width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                {/* 1. TOP: DASHBOARD */}
+                <div style={{ ...styles.header, padding: '20px 0', width: '100%', zIndex: 10 }}>
+                  <div style={{ background: 'transparent', width: '85%', maxWidth: '340px', margin: '0 auto', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
                     
+                    {/* NEW HUD: Level & Progress on one line ABOVE the balance */}
+                    <div style={{ display: 'flex', alignItems: 'center', width: '100%', gap: '10px', marginBottom: '15px' }}>
+                      
+                      <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px' }}>
+                        <span style={{ color: '#ffd700', background: '#333', padding: '4px 8px', borderRadius: '8px', border: '1px solid #555', fontSize: '11px', fontWeight: 'bold', whiteSpace: 'nowrap' }}>
+                          Lvl {currentLevel}
+                        </span>
+                        <span style={{ color: '#888', fontSize: '10px', whiteSpace: 'nowrap', fontWeight: 'bold' }}>
+                          {currentLevel < 50 ? `${Math.floor(lifetimeTaps).toLocaleString()} / ${getNextLevelTarget(currentLevel).toLocaleString()}` : 'MAX'}
+                        </span>
+                      </div>
+                      
+                      {/* Progress Bar takes up the remaining horizontal space */}
+                      {currentLevel < 50 && (
+                        <div style={{ flex: 1, background: 'rgba(0, 0, 0, 0.6)', borderRadius: '10px', height: '6px', overflow: 'hidden', border: '1px solid #333' }}>
+                          <div style={{ height: '100%', background: '#4ade80', width: `${Math.min((lifetimeTaps / getNextLevelTarget(currentLevel)) * 100, 100)}%` }} />
+                        </div>
+                      )}
+
+                    </div>
+
+                    {/* THE MAIN EVENT: Balance */}
                     <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'baseline', justifyContent: 'center', gap: '8px' }}>
-                      <h1 style={{ ...styles.balance, margin: '0', fontSize: '2.6rem', fontVariantNumeric: 'tabular-nums' }}>
+                      <h1 style={{ ...styles.balance, margin: '0', fontSize: '3.2rem', fontVariantNumeric: 'tabular-nums', textShadow: '0 4px 10px rgba(0,0,0,0.5)' }}>
                         {balance.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                       </h1>
-                      <span style={{ color: '#ffd700', fontSize: '18px', fontWeight: 'bold' }}>GFTshards</span>
+                      <span style={{ color: '#ffd700', fontSize: '16px', fontWeight: 'bold' }}>GFTshards</span>
                     </div>
 
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '15px', marginTop: '20px', marginBottom: '12px', width: '100%' }}>
-                      <span style={{ color: '#ffd700', background: '#333', padding: '4px 10px', borderRadius: '12px', border: '1px solid #555' }}>
-                        Lvl {currentLevel}
-                      </span>
-                      <span style={{ color: '#888', fontVariantNumeric: 'tabular-nums' }}>
-                        {currentLevel < 50 ? `${Math.floor(lifetimeTaps).toLocaleString()} / ${getNextLevelTarget(currentLevel).toLocaleString()}` : 'MAX LEVEL'}
-                      </span>
-                    </div>
-
-                    {currentLevel < 50 && (
-                      <div style={{ width: '80%', maxWidth: '250px', background: 'rgba(0, 0, 0, 0.6)', borderRadius: '10px', height: '6px', overflow: 'hidden', border: '1px solid #333' }}>
-                        <div style={{ height: '100%', background: '#4ade80', width: `${Math.min((lifetimeTaps / getNextLevelTarget(currentLevel)) * 100, 100)}%` }} />
-                      </div>
-                    )}
                   </div>
                 </div>
 
@@ -1799,18 +1806,20 @@ const GiftTapGame = () => {
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', width: '100%', padding: '0 20px 110px 20px', boxSizing: 'border-box', zIndex: 10, position: 'relative' }}>
                    
                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', width: '45%', maxWidth: '160px' }}>
-                     <div style={{ display: 'flex', justifyContent: 'flex-start', alignItems: 'center' }}>
-                       <p style={{ ...styles.energy, margin: '0', fontSize: '13px' }}>⚡ {energy} / 500</p>
-                       <p style={{ color: '#888', fontSize: '11px', margin: '0', fontWeight: 'bold' }}>Daily Limit: {dailyTaps}/{dynamicMaxLimit}</p>
+                     <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+                       <p style={{ ...styles.energy, margin: '0', fontSize: '12px', whiteSpace: 'nowrap' }}>⚡ {energy} / 500</p>
                      </div>
                      
-                     <div style={{ width: '100%', height: '10px', background: '#333', borderRadius: '5px', overflow: 'hidden', border: '1px solid #444' }}>
+                     <div style={{ width: '100%', height: '6px', background: 'rgba(0, 0, 0, 0.6)', borderRadius: '4px', overflow: 'hidden', border: '1px solid #444' }}>
                         <div style={{ 
                           height: '100%', 
                           width: `${Math.min((dailyTaps / dynamicMaxLimit) * 100, 100)}%`, 
-                          background: dailyTaps >= dynamicMaxLimit ? '#ff4d4d' : 'linear-gradient(90deg, #fbef43, #ffd700)',
+                          background: dailyTaps >= dynamicMaxLimit ? '#ff4d4d' : 'linear-gradient(90deg,#4ade80)',
                           transition: 'width 0.3s ease'
                         }} />
+                     </div>
+                     <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+                     <p style={{ color: '#888', fontSize: '10px', margin: '0', fontWeight: 'bold' }}>Daily Limit: {dailyTaps}/{dynamicMaxLimit}</p>
                      </div>
                    </div>
                    
