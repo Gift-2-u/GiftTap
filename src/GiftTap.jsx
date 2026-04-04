@@ -13,6 +13,7 @@ import bs58 from "bs58";
 import * as bip39 from 'bip39';
 import { derivePath } from 'ed25519-hd-key';
 import CryptoJS from 'crypto-js';
+import { motion, AnimatePresence } from 'framer-motion';
 
 // --- 1. CLOUD STORAGE HELPERS ---
 const saveToCloud = (key, value) => {
@@ -111,23 +112,141 @@ export const ASCENSION_WALLS = {
 const GiftTapGame = () => {
 
   const styles = {
-    headerContainer: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '15px', width: '100%', boxSizing: 'border-box', background: 'linear-gradient(180deg, rgba(20,20,20,0.9) 0%, rgba(26,26,26,0) 100%)', zIndex: 50 },
-    toggleWrapper: { display: 'flex', background: 'rgba(0, 0, 0, 0.6)', borderRadius: '30px', padding: '4px', border: '1px solid #333', boxShadow: 'inset 0 2px 5px rgba(0,0,0,0.5)' },
-    toggleBtn: { background: 'transparent', color: '#888', border: 'none', padding: '6px 14px', borderRadius: '25px', fontSize: '11px', fontWeight: 'bold', cursor: 'pointer', transition: 'all 0.3s ease', display: 'flex', flexDirection: 'column', alignItems: 'center', lineHeight: '1.3' },
-    activeToggleBtn: { background: 'linear-gradient(135deg, #2a2d34 0%, #1c1e22 100%)', color: '#ffd700', border: '1px solid #555', padding: '5px 13px', borderRadius: '25px', fontSize: '11px', fontWeight: 'bold', cursor: 'pointer', boxShadow: '0 4px 10px rgba(0,0,0,0.4)', display: 'flex', flexDirection: 'column', alignItems: 'center', lineHeight: '1.3' },
+  headerContainer: { 
+      display: 'flex', 
+      justifyContent: 'space-between', 
+      alignItems: 'center', 
+      padding: '12px 20px', // Tighter, native-app padding
+      width: '100%', 
+      boxSizing: 'border-box', 
+      background: 'rgba(19, 21, 23, 0.85)', // Deep native dark
+      backdropFilter: 'blur(12px)', // The "Glass" effect
+      WebkitBackdropFilter: 'blur(12px)', // For Safari support
+      borderBottom: '1px solid rgba(255, 255, 255, 0.05)', // Subtle edge
+      zIndex: 50 
+    },
+    toggleWrapper: { 
+      display: 'flex', 
+      background: 'rgba(255, 255, 255, 0.05)', // Modern translucent glass
+      borderRadius: '20px', 
+      padding: '4px', 
+      border: '1px solid rgba(255, 255, 255, 0.08)', // Barely-there edge
+      alignItems: 'center' // Keeps the hamburger menu perfectly centered
+    },
+    toggleBtn: { 
+      background: 'transparent', 
+      color: '#888', 
+      border: 'none', 
+      padding: '6px 12px', 
+      borderRadius: '16px', 
+      fontSize: '11px', 
+      fontWeight: 'bold', 
+      cursor: 'pointer', 
+      transition: 'all 0.3s ease', 
+      display: 'flex', 
+      flexDirection: 'column', 
+      alignItems: 'center', 
+      lineHeight: '1.3',
+      outline: 'none', // Kills the web border
+      WebkitTapHighlightColor: 'transparent' // Kills the mobile tap flash
+    },
+    activeToggleBtn: { 
+      background: 'rgba(255, 255, 255, 0.12)', // Brightens up to show it's active
+      color: '#ffd700', 
+      border: 'none', // Removed the clunky #555 solid border
+      padding: '6px 12px', 
+      borderRadius: '16px', 
+      fontSize: '11px', 
+      fontWeight: 'bold', 
+      cursor: 'pointer', 
+      boxShadow: '0 4px 10px rgba(0,0,0,0.3)', 
+      display: 'flex', 
+      flexDirection: 'column', 
+      alignItems: 'center', 
+      lineHeight: '1.3',
+      outline: 'none', 
+      WebkitTapHighlightColor: 'transparent'
+    },
     walletWrapper: { display: 'flex', justifyContent: 'flex-end', alignItems: 'center', flexShrink: 0 },
-    walletBtnPremium: { background: '#111', color: '#fff', border: '1px solid rgba(255, 215, 0, 0.4)', padding: '8px 14px', borderRadius: '20px', cursor: 'pointer', fontWeight: 'bold', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '8px', boxShadow: '0 4px 12px rgba(255, 215, 0, 0.05)' },
+    walletBtnPremium: { 
+      background: 'rgba(255, 255, 255, 0.05)', // Matches the toggle wrapper
+      color: '#fff', 
+      border: '1px solid rgba(255, 215, 0, 0.25)', // Softer, more elegant gold border
+      padding: '8px 14px', 
+      borderRadius: '20px', 
+      cursor: 'pointer', 
+      fontWeight: 'bold', 
+      fontSize: '12px', 
+      display: 'flex', 
+      alignItems: 'center', 
+      gap: '8px', 
+      boxShadow: '0 4px 12px rgba(0, 0, 0, 0.2)', // Sleek drop shadow
+      outline: 'none', 
+      WebkitTapHighlightColor: 'transparent'
+    },
     walletDot: { width: '8px', height: '8px', background: '#4ade80', borderRadius: '50%', boxShadow: '0 0 8px rgba(74, 222, 128, 0.6)' },
     leaderBadgePremium: { fontSize: '9px', color: '#aaa', marginTop: '2px', fontWeight: 'normal', maxWidth: '75px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
-    container: { position: 'fixed', top: 0, left: 0, height: '100%', width: '100%', background: '#1a1a1a', color: 'white', display: 'flex', flexDirection: 'column', alignItems: 'center', overflow: 'hidden', touchAction: 'manipulation' },
+    container: {
+      position: 'fixed', 
+      top: 0, 
+      left: 0, 
+      height: '100%', 
+      width: '100%', 
+      background: 'radial-gradient(circle at center, #1c1e22 0%, #000000 100%)', // Depth effect
+      color: 'white', 
+      display: 'flex', 
+      flexDirection: 'column', 
+      overflow: 'hidden', 
+      touchAction: 'none'
+    },
     header: { marginTop: '10px', textAlign: 'center' },
     balance: { fontSize: '2.5rem', color: '#ffd700', margin: 0 },
     energy: { color: '#ffd700', fontWeight: 'bold' },
-    giftZone: { flex: 1, display: 'flex', justifyContent: 'center', alignItems: 'center', width: '100%', position: 'relative' },
-    giftImage: { width: '220px', userSelect: 'none', WebkitUserSelect: 'none', WebkitTouchCallout: 'none', touchAction: 'manipulation' },
+    giftZone: { 
+      flex: 1, // This pushes the gift into the center of the available space
+      display: 'flex', 
+      justifyContent: 'center', 
+      alignItems: 'center', 
+      width: '100%', 
+      position: 'relative',
+      marginTop: '0px' // Removed the negative margin to let flexbox center it
+    },    
+    giftImage: { 
+      width: '280px', // Slightly larger for "Main Attraction" feel
+      userSelect: 'none', 
+      WebkitUserSelect: 'none', 
+      WebkitTouchCallout: 'none', 
+      touchAction: 'manipulation',
+      filter: 'drop-shadow(0 0 20px rgba(255, 215, 0, 0.2))'
+    },    
     floatingText: { position: 'fixed', color: '#ffd700', fontSize: '2rem', fontWeight: 'bold', pointerEvents: 'none', animation: 'floatUp 1s forwards', zIndex: 999 },
-    nav: { height: '80px', position: 'fixed', bottom: 0, zIndex: 100, left: 0, width: '100%', display: 'flex', justifyContent: 'space-around', background: '#333', borderTop: '2px solid #ffd700', paddingBottom: 'env(safe-area-inset-bottom)' },
-    btn: { background: 'none', border: 'none', color: 'white', fontWeight: 'bold' },
+    nav: { 
+      height: '85px', // Slightly taller for mobile thumbs
+      position: 'fixed', 
+      bottom: 0, 
+      zIndex: 100, 
+      left: 0, 
+      width: '100%', 
+      display: 'flex', 
+      justifyContent: 'space-around', 
+      alignItems: 'center', // Centers the buttons vertically
+      background: '#131517', // Matches the glass header
+      borderTop: '1px solid #2a2d34', // Replaced the thick yellow line with a sleek dark border
+      paddingBottom: 'env(safe-area-inset-bottom)' // Crucial for iPhones
+    },
+    btn: { 
+      background: 'none', 
+      border: 'none', 
+      color: '#666', // Dimmed when inactive
+      fontWeight: 'bold',
+      fontSize: '16px',
+      cursor: 'pointer',
+      flex: 1,
+      padding: '10px 0',
+      transition: 'color 0.2s ease',
+      outline: 'none', 
+      WebkitTapHighlightColor: 'transparent'
+    },
     modalOverlay: { position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', background: 'rgba(0,0,0,0.8)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000 },
     modalContent: { background: '#222', padding: '25px', borderRadius: '15px', width: '85%', maxWidth: '400px', border: '2px solid #ffd700', textAlign: 'center' },
     balanceRow: { display: 'flex', justifyContent: 'space-between', padding: '10px 0', borderBottom: '1px solid #333' },
@@ -138,7 +257,30 @@ const GiftTapGame = () => {
     buyBtn: { background: '#ffd700', color: '#000', border: 'none', padding: '8px 12px', borderRadius: '10px', fontWeight: 'bold' },
     progressContainer: { width: '200px', height: '10px', background: '#333', borderRadius: '5px', margin: '10px auto', overflow: 'hidden', border: '1px solid #444' },
     progressBar: { height: '100%', transition: 'width 0.3s ease-in-out', boxShadow: '0 0 10px rgba(255, 215, 0, 0.3)' },
-    mainContent: { flex: 1, width: '100%', display: 'flex', flexDirection: 'column', overflowY: 'auto', alignItems: 'center' },
+    mainContent: { 
+      flex: 1, 
+      width: '100%', 
+      display: 'flex', 
+      flexDirection: 'column', 
+      height: '100%', // MUST BE 100% to fill the screen
+      overflow: 'hidden', 
+      alignItems: 'center',
+      justifyContent: 'space-between' /* <-- THIS SPACES TOP, MIDDLE, AND BOTTOM */ 
+    },
+    activeBtn: { 
+      background: 'none', 
+      border: 'none', 
+      color: '#ffd700', // Gold when active
+      fontWeight: '900',
+      fontSize: '16px',
+      cursor: 'pointer',
+      flex: 1,
+      padding: '10px 0',
+      textShadow: '0 0 12px rgba(255, 215, 0, 0.5)', // The Pro Glow
+      transition: 'color 0.2s ease',
+      outline: 'none', 
+      WebkitTapHighlightColor: 'transparent'
+    },
     shopPage: { width: '100%', padding: '20px', boxSizing: 'border-box' },
     depositBox: { background: '#111', padding: '15px', borderRadius: '12px', marginTop: '15px', border: '1px solid #333' },
     addressRow: { display: 'flex', justifyContent: 'space-between',  alignItems: 'center', marginTop: '8px', background: '#000', padding: '10px', borderRadius: '8px' },
@@ -1516,35 +1658,41 @@ const GiftTapGame = () => {
 
           {/* TOP HEADER */}
           <div style={styles.headerContainer}>
-            {/* Sleek Toggle Pill */}
-            <div style={styles.toggleWrapper}>
-              {/* Menu Trigger Button */}
+            
+            {/* LEFT SIDE: Menu & Toggles Grouped Together */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              
+              {/* Menu Trigger Button (Separated into a clean circle) */}
               <button 
                 onClick={() => setIsMenuOpen(true)}
-                style={{ background: 'none', border: 'none', fontSize: '24px', cursor: 'pointer', padding: '5px', color: '#fff' }}
+                style={{ width: '38px', height: '38px', borderRadius: '50%', background: 'rgba(255, 255, 255, 0.08)', border: '1px solid rgba(255, 255, 255, 0.05)', color: '#fff', fontSize: '18px', display: 'flex', justifyContent: 'center', alignItems: 'center', cursor: 'pointer', outline: 'none', WebkitTapHighlightColor: 'transparent' }}
               >
                 ☰
               </button>
-              <button 
-                style={leaderboardType === 'all_time' ? styles.activeToggleBtn : styles.toggleBtn}
-                onClick={() => { setLeaderboardType('all_time'); fetchFullLeaderboard('all_time'); }}
-              >
-                <span>🏆 All-Time</span>
-                {/* Auto-formats large numbers (e.g., 5000 becomes 5k) so it fits beautifully */}
-                <span style={styles.leaderBadgePremium}>
-                  {topLeader.name}: {topLeader.score > 999 ? (topLeader.score / 1000).toFixed(1) + 'k' : topLeader.score}
-                </span>
-              </button>
-              <button 
-                style={leaderboardType === 'Beta' ? styles.activeToggleBtn : styles.toggleBtn} 
-                onClick={() => { setLeaderboardType('Beta'); fetchFullLeaderboard('Beta'); }}
-              >
-                <span>Beta Season</span>
-                <span style={{...styles.leaderBadgePremium, color: '#4ade80', fontWeight: 'bold'}}>{seasonTimeLeft}</span>
-              </button>
+
+              {/* Sleek Toggle Pill */}
+              <div style={styles.toggleWrapper}>
+                <button 
+                  style={{ ...(leaderboardType === 'all_time' ? styles.activeToggleBtn : styles.toggleBtn), outline: 'none', WebkitTapHighlightColor: 'transparent' }}
+                  onClick={() => { setLeaderboardType('all_time'); fetchFullLeaderboard('all_time'); }}
+                >
+                  <span>🏆 All-Time</span>
+                  {/* Auto-formats large numbers (e.g., 5000 becomes 5k) so it fits beautifully */}
+                  <span style={styles.leaderBadgePremium}>
+                    {topLeader.name}: {topLeader.score > 999 ? (topLeader.score / 1000).toFixed(1) + 'k' : topLeader.score}
+                  </span>
+                </button>
+                <button 
+                  style={{ ...(leaderboardType === 'Beta' ? styles.activeToggleBtn : styles.toggleBtn), outline: 'none', WebkitTapHighlightColor: 'transparent' }} 
+                  onClick={() => { setLeaderboardType('Beta'); fetchFullLeaderboard('Beta'); }}
+                >
+                  <span>Beta Season</span>
+                  <span style={{...styles.leaderBadgePremium, color: '#4ade80', fontWeight: 'bold'}}>{seasonTimeLeft}</span>
+                </button>
+              </div>
             </div>
 
-            {/* Premium Wallet Button */}
+            {/* Premium Wallet Button (RESTORED WRAPPER AND LOGIC) */}
             <div style={styles.walletWrapper}>
               <button 
                 onClick={() => { 
@@ -1565,7 +1713,7 @@ const GiftTapGame = () => {
                   // 2. Open the modal AFTER the state is set
                   setIsModalOpen(true); 
                 }} 
-                style={styles.walletBtnPremium}
+                style={{ ...styles.walletBtnPremium, outline: 'none', WebkitTapHighlightColor: 'transparent' }}
               >
                 <div style={styles.walletDot}></div>
                 {playerWallet?.slice(0, 4)}...{playerWallet?.slice(-4)}
@@ -1577,22 +1725,18 @@ const GiftTapGame = () => {
           <div style={styles.mainContent}>
             {currentPage === 'home' && (
               <>
-                <div style={{ ...styles.header, marginTop: '10px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '15px' }}>
-                  
-                  {/* 1. COMBINED DASHBOARD BOX (Balance + Level Progress) */}
-                  <div style={{ border: '1px solid #ffd700', borderRadius: '20px', padding: '25px', width: '85%', maxWidth: '320px', margin: '0 auto', display: 'flex', flexDirection: 'column', alignItems: 'center', background: '#1c1e22' }}>
+                {/* 1. TOP ZONE: DASHBOARD ONLY */}
+                <div style={{ ...styles.header, padding: '20px 0', width: '100%' }}>
+                  {/* Changed background to 'transparent' so the numbers float seamlessly */}
+                  <div style={{ background: 'transparent', width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
                     
-                    {/* Massive Balance & GFTshards on the same line */}
                     <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'baseline', justifyContent: 'center', gap: '8px' }}>
-                      <h1 style={{ ...styles.balance, margin: '0', fontSize: '2.6rem', fontVariantNumeric: 'tabular-nums', lineHeight: '1' }}>
-                        {balance.toLocaleString(undefined, { maximumFractionDigits: 3 })}
+                      <h1 style={{ ...styles.balance, margin: '0', fontSize: '2.6rem', fontVariantNumeric: 'tabular-nums' }}>
+                        {balance.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                       </h1>
-                      <span style={{ color: '#ffd700', fontSize: '18px', fontWeight: 'bold', letterSpacing: '1px' }}>
-                        GFTshards
-                      </span>
+                      <span style={{ color: '#ffd700', fontSize: '18px', fontWeight: 'bold' }}>GFTshards</span>
                     </div>
 
-                    {/* Level Info Row - Added marginBottom to push the progress bar down */}
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '15px', marginTop: '20px', marginBottom: '12px', width: '100%' }}>
                       <span style={{ color: '#ffd700', background: '#333', padding: '4px 10px', borderRadius: '12px', border: '1px solid #555' }}>
                         Lvl {currentLevel}
@@ -1602,79 +1746,110 @@ const GiftTapGame = () => {
                       </span>
                     </div>
 
-                    {/* Level Progress Bar */}
                     {currentLevel < 50 && (
-                      <div style={{ width: '100%', background: '#000', borderRadius: '10px', height: '6px', overflow: 'hidden' }}>
+                      <div style={{ width: '80%', maxWidth: '250px', background: 'rgba(0, 0, 0, 0.6)', borderRadius: '10px', height: '6px', overflow: 'hidden', border: '1px solid #333' }}>
                         <div style={{ height: '100%', background: '#4ade80', width: `${Math.min((lifetimeTaps / getNextLevelTarget(currentLevel)) * 100, 100)}%` }} />
                       </div>
                     )}
                   </div>
+                </div>
 
-                  {/* 2. COMPRESSED ENERGY & DAILY TAPS */}
-                  {/* Added a small marginTop here to separate it cleanly from the yellow box */}
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', width: '90%', maxWidth: '280px', alignItems: 'center', marginTop: '15px' }}>
-                    <p style={{ ...styles.energy, margin: '0', fontSize: '15px' }}>⚡ {energy} / 500</p>
-                    <div style={{ width: '100%', height: '8px', background: '#333', borderRadius: '5px', overflow: 'hidden', border: '1px solid #444' }}>
-                      <div style={{ height: '100%', width: `${Math.min((dailyTaps / dynamicMaxLimit) * 100, 100)}%`, background: dailyTaps >= dynamicMaxLimit ? '#ff4d4d' : '#fbef43', transition: 'width 0.3s' }} />
-                    </div>
-                    <p style={{ color: '#888', fontSize: '11px', margin: '0', fontWeight: 'bold' }}>Daily Limit: {dailyTaps} / {dynamicMaxLimit}</p>
-                  </div>
+                {/* 2. MIDDLE ZONE: CENTERED GIFT */}
+                <div style={styles.giftZone}>
+                  {/* Pro Touch: A subtle blue Hamster-style halo behind the gift */}
+                  <div style={{ position: 'absolute', width: '250px', height: '250px', background: 'radial-gradient(circle, rgba(50, 100, 255, 0.3) 0%, transparent 70%)', zIndex: 0, borderRadius: '50%', marginTop: '-60px' }} />
+                  
+                  <motion.div
+                    whileTap={{ scale: 0.94 }} 
+                    onPointerDown={handleTap}
+                    style={{ zIndex: 5, position: 'relative', marginTop: '-60px' }}
+                  >
+                    <img 
+                      src="/Gift2u_logo.png" 
+                      alt="Gift"
+                      onDragStart={(e) => e.preventDefault()}
+                      onContextMenu={(e) => e.preventDefault()}
+                      style={{ 
+                        ...styles.giftImage, 
+                        width: '280px', 
+                        height: 'auto', 
+                        // RESTORED: Your exact yellow glow logic!
+                        filter: isPressed ? 'drop-shadow(0 0 25px rgba(255, 215, 0, 0.9)) brightness(1.1)' : 'drop-shadow(0 0 5px rgba(255, 215, 0, 0.2))',
+                        transition: 'filter 0.1s ease-out' // Ensures the glow fades smoothly
+                      }} 
+                    />
+                  </motion.div>
 
-                  {/* AD BUTTON */}
+                  <AnimatePresence>
+                    {taps.map(t => (
+                      <motion.span 
+                        key={t.id} 
+                        initial={{ opacity: 1, y: t.y - 100 }}
+                        animate={{ opacity: 0, y: t.y - 250 }}
+                        exit={{ opacity: 0 }}
+                        style={{ ...styles.floatingText, left: t.x, top: t.y, position: 'fixed' }}
+                      >
+                        +{t.amount}
+                      </motion.span>
+                    ))}
+                  </AnimatePresence>
+                </div>
+
+                {/* 3. BOTTOM ZONE: ENERGY & AD BUTTON */}
+                <div style={{ width: '100%', padding: '0 20px 140px 20px', boxSizing: 'border-box', zIndex: 10, position: 'relative' }}>
+                   
+                   <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', width: '100%', maxWidth: '320px', margin: '0 auto' }}>
+                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                       <p style={{ ...styles.energy, margin: '0', fontSize: '15px' }}>⚡ {energy} / 500</p>
+                       <p style={{ color: '#888', fontSize: '11px', margin: '0', fontWeight: 'bold' }}>Limit: {dailyTaps}/{dynamicMaxLimit}</p>
+                     </div>
+                     
+                     <div style={{ width: '100%', height: '10px', background: '#333', borderRadius: '5px', overflow: 'hidden', border: '1px solid #444' }}>
+                        <div style={{ 
+                          height: '100%', 
+                          width: `${Math.min((dailyTaps / dynamicMaxLimit) * 100, 100)}%`, 
+                          background: dailyTaps >= dynamicMaxLimit ? '#ff4d4d' : 'linear-gradient(90deg, #fbef43, #ffd700)',
+                          transition: 'width 0.3s ease'
+                        }} />
+                     </div>
+                   </div>
+                   
+                   {/* Restored Ad Button - Placed elegantly on the right */}
+                   {/* THE FREE ENERGY BUTTON */}
+                  {/* FREE ENERGY AD BUTTON */}
                   <button 
-                    onClick={(e) => {
-                      e.stopPropagation(); // Stops the click from reaching the Gift Zone
-                      e.preventDefault();  // Prevents any ghost-click behavior
-                      setIsAdModalOpen(true);
-                    }}
+                    onClick={(e) => { e.stopPropagation(); setIsAdModalOpen(true); }}
                     style={{ 
-                      position: 'fixed', 
-                      bottom: '100px', // Sits just above your 80px Nav Bar
-                      right: '20px',
-                      width: '60px',
-                      height: '60px',
+                      position: 'absolute', 
+                      bottom: '110px', 
+                      right: '20px', 
+                      width: '65px', // Slightly larger circle to accommodate two words
+                      height: '65px', 
                       borderRadius: '50%',
-                      background: 'linear-gradient(135deg, #fbef43 0%, #ffbb00 100%)',
-                      border: '3px solid #000',
-                      boxShadow: '0 4px 15px rgba(0,0,0,0.4), 0 0 10px rgba(251, 239, 67, 0.4)',
-                      cursor: 'pointer',
-                      zIndex: 1000,
-                      display: 'flex',
-                      flexDirection: 'column',
+                      background: 'linear-gradient(135deg, #fbef43 0%, #ffbb00 100%)', 
+                      border: '2px solid #000', 
+                      display: 'flex', 
+                      flexDirection: 'column', // Stacks elements vertically
+                      justifyContent: 'center', 
                       alignItems: 'center',
-                      justifyContent: 'center',
-                      animation: 'pulse 2s infinite' // Optional: adds a "look at me" glow
+                      boxShadow: '0 4px 15px rgba(0,0,0,0.6)',
+                      cursor: 'pointer',
+                      zIndex: 50,
+                      outline: 'none',
+                      WebkitTapHighlightColor: 'transparent'
                     }}
                   >
-                    <span style={{ fontSize: '20px' }}>⚡</span>
-                    <span style={{ fontSize: '8px', fontWeight: 'bold', color: '#000', marginTop: '-2px' }}>FREE</span>
+                    <span style={{ fontSize: '10px', fontWeight: '900', color: '#000', lineHeight: '1.1', textTransform: 'uppercase' }}>
+                      Free
+                    </span>
+                    <span style={{ fontSize: '10px', fontWeight: '900', color: '#000', lineHeight: '1.1', textTransform: 'uppercase' }}>
+                      Energy
+                    </span>
+                    <span style={{ fontSize: '18px', lineHeight: '1', marginTop: '2px' }}>
+                      ⚡
+                    </span>
                   </button>
-                  
-                </div> {/* Keeping your closing div from the snippet */}
 
-                {/* 3. RESPONSIVE GIFT ZONE */}
-                {/* Added marginTop: '-30px' to pull the gift higher up the page */}
-                <div style={{ ...styles.giftZone, paddingBottom: '20px', marginTop: '-50px' }}>
-                  <img 
-                    src="/Gift2u_logo.png" 
-                    alt="Gift"
-                    onTouchStart={handleTap} 
-                    onMouseDown={handleTap}  
-                    onDragStart={(e) => e.preventDefault()} 
-                    onContextMenu={(e) => e.preventDefault()} 
-                    style={{ 
-                      ...styles.giftImage,
-                      touchAction: 'none', /* <-- THIS PREVENTS MOBILE ZOOM BUGS */ 
-                      width: 'auto',
-                      maxWidth: '80%',
-                      maxHeight: '38vh', 
-                      objectFit: 'contain',
-                      filter: isPressed ? 'drop-shadow(0 0 15px rgba(255, 215, 0, 0.8)) brightness(1.1)' : 'drop-shadow(0 0 5px rgba(255, 215, 0, 0.2))', 
-                      transform: isPressed ? 'scale(0.95)' : 'scale(1)', 
-                      transition: 'transform 0.05s cubic-bezier(0.34, 1.56, 0.64, 1)' 
-                    }} 
-                  />
-                  {taps.map(t => <span key={t.id} style={{ ...styles.floatingText, left: t.x, top: t.y }}>+{t.amount}</span>)}
                 </div>
               </>
             )}
