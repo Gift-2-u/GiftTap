@@ -116,7 +116,7 @@ const GiftTapGame = () => {
       display: 'flex', 
       justifyContent: 'space-between', 
       alignItems: 'center', 
-      padding: '12px 20px', // Tighter, native-app padding
+      padding: '12px 10px', // Tighter, native-app padding
       width: '100%', 
       boxSizing: 'border-box', 
       background: 'rgba(19, 21, 23, 0.85)', // Deep native dark
@@ -137,9 +137,9 @@ const GiftTapGame = () => {
       background: 'transparent', 
       color: '#888', 
       border: 'none', 
-      padding: '6px 12px', 
+      padding: '4px 8px', 
       borderRadius: '16px', 
-      fontSize: '11px', 
+      fontSize: '10px', 
       fontWeight: 'bold', 
       cursor: 'pointer', 
       transition: 'all 0.3s ease', 
@@ -154,9 +154,9 @@ const GiftTapGame = () => {
       background: 'rgba(255, 255, 255, 0.12)', // Brightens up to show it's active
       color: '#ffd700', 
       border: 'none', // Removed the clunky #555 solid border
-      padding: '6px 12px', 
+      padding: '4px 8px', 
       borderRadius: '16px', 
-      fontSize: '11px', 
+      fontSize: '10px', 
       fontWeight: 'bold', 
       cursor: 'pointer', 
       boxShadow: '0 4px 10px rgba(0,0,0,0.3)', 
@@ -1660,7 +1660,7 @@ const GiftTapGame = () => {
           <div style={styles.headerContainer}>
             
             {/* LEFT SIDE: Menu & Toggles Grouped Together */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
               
               {/* Menu Trigger Button (Separated into a clean circle) */}
               <button 
@@ -1796,12 +1796,12 @@ const GiftTapGame = () => {
                 </div>
 
                 {/* 3. BOTTOM ZONE: ENERGY & AD BUTTON */}
-                <div style={{ width: '100%', padding: '0 20px 140px 20px', boxSizing: 'border-box', zIndex: 10, position: 'relative' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', width: '100%', padding: '0 20px 110px 20px', boxSizing: 'border-box', zIndex: 10, position: 'relative' }}>
                    
-                   <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', width: '100%', maxWidth: '320px', margin: '0 auto' }}>
-                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                       <p style={{ ...styles.energy, margin: '0', fontSize: '15px' }}>⚡ {energy} / 500</p>
-                       <p style={{ color: '#888', fontSize: '11px', margin: '0', fontWeight: 'bold' }}>Limit: {dailyTaps}/{dynamicMaxLimit}</p>
+                   <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', width: '45%', maxWidth: '160px' }}>
+                     <div style={{ display: 'flex', justifyContent: 'flex-start', alignItems: 'center' }}>
+                       <p style={{ ...styles.energy, margin: '0', fontSize: '13px' }}>⚡ {energy} / 500</p>
+                       <p style={{ color: '#888', fontSize: '11px', margin: '0', fontWeight: 'bold' }}>Daily Limit: {dailyTaps}/{dynamicMaxLimit}</p>
                      </div>
                      
                      <div style={{ width: '100%', height: '10px', background: '#333', borderRadius: '5px', overflow: 'hidden', border: '1px solid #444' }}>
