@@ -1722,7 +1722,11 @@ const GiftTapGame = () => {
           </div>
 
           {/* 2. DYNAMIC CONTENT (This is your "Pages") */}
-          <div style={styles.mainContent}>
+          <div style={{ 
+            ...styles.mainContent, 
+            overflowY: currentPage === 'home' ? 'hidden' : 'auto', // Unlocks scrolling for Shop/Tasks
+            paddingBottom: currentPage === 'home' ? '0' : '100px'  // Stops the Nav bar from covering the bottom Shop items
+          }}>
             {currentPage === 'home' && (
               <>
                 {/* 1. TOP: DASHBOARD */}
