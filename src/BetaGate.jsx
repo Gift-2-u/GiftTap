@@ -33,7 +33,7 @@ const BetaGate = ({ telegramId, onAccessGranted }) => {
           {loading ? 'VERIFYING...' : 'UNLOCK'}
         </button>
       </form>
-      <p style={{ marginTop: '20px', fontSize: '12px' }}>Follow @gift2utoken & https://t.me/Gift2u_GiftTap_official for daily code drops.</p>
+      <p style={{ marginTop: '20px', fontSize: '12px' }}>Follow @Gift2udev & https://t.me/Gift2u_GiftTap_official for daily code drops.</p>
     </div>
   );
 };
