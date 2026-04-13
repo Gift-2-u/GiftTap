@@ -1839,7 +1839,7 @@ const GiftTapGame = () => {
                       width: '65px', // Slightly larger circle to accommodate two words
                       height: '65px', 
                       borderRadius: '50%',
-                      background: 'linear-gradient(135deg, #fbef43 0%, #ffbb00 100%)', 
+                      background: 'linear-gradient(135deg, #4E81C1 0%, #3567AD 100%)', 
                       border: '2px solid #000', 
                       display: 'flex', 
                       flexDirection: 'column', // Stacks elements vertically
