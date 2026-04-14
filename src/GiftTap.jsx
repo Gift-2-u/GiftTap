@@ -620,16 +620,74 @@ const GiftTapGame = () => {
         }
 
         // --- 2. SEARCH FOR THE ENERGY RECOVERY (Around line 65 of your snippet) ---
-        const lastDate = new Date(player.last_updated).getTime();
+        // Fallback to 'now' if last_updated is missing to prevent NaN errors
+        const lastDate = player.last_updated ? new Date(player.last_updated).getTime() : new Date().getTime();
         const now = new Date().getTime();
         const secondsPassed = Math.floor((now - lastDate) / 1000);
 
-        // Ensure we don't calculate recovery if the player was JUST tapping on another device
-        // (prevents jumping backward)
+        // A. Energy Recovery Math
         const recovered = Math.max(0, Math.floor(secondsPassed / 4)); 
         const dbEnergy = Number(player.last_energy) || 0;
         setEnergy(Math.min(dbEnergy + recovered, 500));
         
+        // 🚨 NEW: B. Weekend Bot (Offline Farming) Math
+        let offlineShardsEarned = 0;
+        
+        // Check if they have a bot, and if the expiration date is still in the future
+        if (player.bot_expires && new Date(player.bot_expires).getTime() > now) {
+            
+            // 1. Account for the midnight reset if they were offline across two days
+            const todayStr = new Date().toISOString().split('T')[0];
+            const currentDailyTaps = player.last_tap_date !== todayStr ? 0 : (Number(player.daily_taps) || 0);
+            const currentMaxLimit = Number(player.max_daily_limit) || 1000;
+            
+            // 2. Calculate exactly how much room is left in their limit bar
+            const remainingDailyLimit = Math.max(0, currentMaxLimit - currentDailyTaps);
+
+            if (remainingDailyLimit > 0) {
+                // 3. Bot Speed: 1000 Shards / 86,400 seconds (24 hours)
+                const BOT_SHARDS_PER_SECOND = 1000 / 86400; 
+                
+                // 4. Calculate what the bot *wants* to mine, but CAP it at their remaining limit!
+                const potentialShards = Math.floor(secondsPassed * BOT_SHARDS_PER_SECOND);
+                offlineShardsEarned = Math.min(potentialShards, remainingDailyLimit);
+
+                if (offlineShardsEarned > 0) {
+                    // Update React UI instantly
+                    setBalance(prev => prev + offlineShardsEarned);
+                    setDailyTaps(prev => prev + offlineShardsEarned); // Fills their limit bar visually!
+                    
+                    // Save to Supabase (Add shards AND consume the daily limit)
+                    supabase
+                      .from('players')
+                      .update({ 
+                          shard_balance: Number(player.shard_balance) + offlineShardsEarned,
+                          daily_taps: currentDailyTaps + offlineShardsEarned,
+                          last_tap_date: todayStr, // Ensure the date is synced
+                          last_updated: new Date().toISOString() // Reset the clock
+                      })
+                      .eq('telegram_id', userId)
+                      .then(({ error }) => {
+                          if (error) console.error("Bot sync failed:", error);
+                      });
+
+                    // Fire the welcome back popup!
+                    setTimeout(() => {
+                        alert(`🤖 Welcome back! Your Bot farmed ${offlineShardsEarned.toLocaleString()} Shards and safely consumed your daily limit!`);
+                    }, 1000);
+                } else {
+                    // Bot active but limit is 0 (Just reset clock)
+                    supabase.from('players').update({ last_updated: new Date().toISOString() }).eq('telegram_id', userId).then();
+                }
+            } else {
+                // Limit already maxed out (Just reset clock)
+                supabase.from('players').update({ last_updated: new Date().toISOString() }).eq('telegram_id', userId).then();
+            }
+        } else {
+            // No bot active (Just reset clock)
+            supabase.from('players').update({ last_updated: new Date().toISOString() }).eq('telegram_id', userId).then();
+        }
+
         // 🚨 THE DECRYPTION FIX: Load the wallet into the UI from the Cloud
         if (player.encrypted_vault) {
           const unlockedSecret = decryptWallet(player.encrypted_vault, invisibleKey);
