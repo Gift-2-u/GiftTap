@@ -684,16 +684,20 @@ const GiftTapGame = () => {
             }
 
             if (offlineShardsEarned > 0) {
-                // Update React UI instantly
+                // 1. Update React UI instantly (Balance, Limits, and Leaderboard Stats!)
                 setBalance(prev => prev + offlineShardsEarned);
-                setDailyTaps(simDailyTaps); // Fills their limit bar visually to the exact right spot!
+                setDailyTaps(simDailyTaps); 
+                setLifetimeTaps(prev => prev + offlineShardsEarned); // <-- NEW: Updates Level XP visually
+                setSeasonShards(prev => prev + offlineShardsEarned); // <-- NEW: Updates Beta Season visually (if you use this state)
                 
-                // Save to Supabase
+                // 2. Save to Supabase (Add shards to ALL tracking columns)
                 supabase
                   .from('players')
                   .update({ 
                       shard_balance: Number(player.shard_balance) + offlineShardsEarned,
                       daily_taps: simDailyTaps,
+                      lifetime_taps: Number(player.lifetime_taps) + offlineShardsEarned, // <-- NEW: Pushes to All-Time Leaderboard
+                      season_shards: Number(player.season_shards) + offlineShardsEarned, // <-- NEW: Pushes to Beta Leaderboard
                       last_tap_date: todayStr, 
                       last_updated: new Date().toISOString() // Reset the clock
                   })
