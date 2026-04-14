@@ -12,11 +12,11 @@ const Tasks = ({ balance, setBalance, tgUser }) => {
     { id: 'sub_tg', title: 'Join telegram', reward: 250, link: 'https://t.me/Gift2u_GiftTap_official', icon: 'https://upload.wikimedia.org/wikipedia/commons/8/82/Telegram_logo.svg', type: 'social' },
     { id: 'follow_x', title: 'Follow us on X', reward: 250, link: 'https://x.com/Gift2udev', icon: '/logo-white.png', type: 'social' },
     // Streak Tasks (Type: streak)
-    { id: 'streak_7', title: 'Tap 7 Days in a Row', reward: 750, icon: '🔥', type: 'streak', target: 7 },
-    { id: 'streak_14', title: 'Tap 14 Days in a Row', reward: 2000, icon: '🔥', reqLevel: 1, type: 'streak', target: 14 },
-    { id: 'streak_30', title: 'Tap 30 Days in a Row', reward: 5000, icon: '🔥', reqLevel: 1, type: 'streak', target: 30 }, 
+    { id: 'streak_7', title: 'Tap 7 Days in a Row', reward: 500, icon: '🔥', type: 'streak', target: 7 },
+    { id: 'streak_14', title: 'Tap 14 Days in a Row', reward: 1250, icon: '🔥', reqLevel: 1, type: 'streak', target: 14 },
+    { id: 'streak_30', title: 'Tap 30 Days in a Row', reward: 3000, icon: '🔥', reqLevel: 1, type: 'streak', target: 30 }, 
     // Purchase Task (Type: purchase)
-    { id: 'first_purchase', title: 'Make an In-App Purchase', reward: 2500, icon: '🛍️', type: 'purchase' }
+    { id: 'first_purchase', title: 'Make an In-App Purchase', reward: 1500, icon: '🛍️', type: 'purchase' }
   ];
 
   // 1. Load completed tasks from Supabase when the page opens
