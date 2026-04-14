@@ -630,61 +630,88 @@ const GiftTapGame = () => {
         const dbEnergy = Number(player.last_energy) || 0;
         setEnergy(Math.min(dbEnergy + recovered, 500));
         
-        // 🚨 NEW: B. Weekend Bot (Offline Farming) Math
+        // 🚨 NEW: B. Weekend Bot (Offline Farming) Multi-Day Math
         let offlineShardsEarned = 0;
+        const botExpiresMs = player.bot_expires ? new Date(player.bot_expires).getTime() : 0;
         
-        // Check if they have a bot, and if the expiration date is still in the future
-        if (player.bot_expires && new Date(player.bot_expires).getTime() > now) {
+        // Ensure the bot was actually active at some point since they last played
+        if (botExpiresMs > lastDate) {
             
-            // 1. Account for the midnight reset if they were offline across two days
-            const todayStr = new Date().toISOString().split('T')[0];
-            const currentDailyTaps = player.last_tap_date !== todayStr ? 0 : (Number(player.daily_taps) || 0);
             const currentMaxLimit = Number(player.max_daily_limit) || 1000;
+            const BOT_SHARDS_PER_SECOND = currentMaxLimit / 86400; // Takes 24h to mine 100% of limit
             
-            // 2. Calculate exactly how much room is left in their limit bar
-            const remainingDailyLimit = Math.max(0, currentMaxLimit - currentDailyTaps);
-
-            if (remainingDailyLimit > 0) {
-                // 3. Bot Speed: 1000 Shards / 86,400 seconds (24 hours)
-                const BOT_SHARDS_PER_SECOND = 1000 / 86400; 
+            const botEndMs = Math.min(now, botExpiresMs); // Stops calculating if bot expired
+            
+            let simDateMs = lastDate;
+            let simDailyTaps = Number(player.daily_taps) || 0;
+            
+            // 1. Simulate day-by-day to perfectly handle midnight resets
+            while (simDateMs < botEndMs) {
+                // Find midnight of the current simulation day (UTC)
+                const simDateStr = new Date(simDateMs).toISOString().split('T')[0];
+                const nextMidnightMs = new Date(simDateStr + 'T00:00:00Z').getTime() + 86400000;
                 
-                // 4. Calculate what the bot *wants* to mine, but CAP it at their remaining limit!
-                const potentialShards = Math.floor(secondsPassed * BOT_SHARDS_PER_SECOND);
-                offlineShardsEarned = Math.min(potentialShards, remainingDailyLimit);
-
-                if (offlineShardsEarned > 0) {
-                    // Update React UI instantly
-                    setBalance(prev => prev + offlineShardsEarned);
-                    setDailyTaps(prev => prev + offlineShardsEarned); // Fills their limit bar visually!
-                    
-                    // Save to Supabase (Add shards AND consume the daily limit)
-                    supabase
-                      .from('players')
-                      .update({ 
-                          shard_balance: Number(player.shard_balance) + offlineShardsEarned,
-                          daily_taps: currentDailyTaps + offlineShardsEarned,
-                          last_tap_date: todayStr, // Ensure the date is synced
-                          last_updated: new Date().toISOString() // Reset the clock
-                      })
-                      .eq('telegram_id', userId)
-                      .then(({ error }) => {
-                          if (error) console.error("Bot sync failed:", error);
-                      });
-
-                    // Fire the welcome back popup!
-                    setTimeout(() => {
-                        alert(`🤖 Welcome back! Your Bot farmed ${offlineShardsEarned.toLocaleString()} Shards and safely consumed your daily limit!`);
-                    }, 1000);
-                } else {
-                    // Bot active but limit is 0 (Just reset clock)
-                    supabase.from('players').update({ last_updated: new Date().toISOString() }).eq('telegram_id', userId).then();
+                // End this step either at the bot's end time, or at midnight
+                const stepEndMs = Math.min(botEndMs, nextMidnightMs);
+                const secondsInStep = (stepEndMs - simDateMs) / 1000;
+                
+                // Calculate shards for this step
+                const potentialShards = secondsInStep * BOT_SHARDS_PER_SECOND;
+                const remainingLimit = Math.max(0, currentMaxLimit - simDailyTaps);
+                
+                const earnedThisStep = Math.min(potentialShards, remainingLimit);
+                offlineShardsEarned += earnedThisStep;
+                simDailyTaps += earnedThisStep;
+                
+                // Advance the simulation clock
+                simDateMs = stepEndMs;
+                
+                // If the clock hit midnight, reset the daily taps for the next day's loop!
+                if (simDateMs === nextMidnightMs) {
+                    simDailyTaps = 0;
                 }
+            }
+            
+            offlineShardsEarned = Math.floor(offlineShardsEarned);
+            
+            // 2. Format today's date for DB
+            const todayStr = new Date(now).toISOString().split('T')[0];
+            const botEndDateStr = new Date(botEndMs).toISOString().split('T')[0];
+            
+            // If the bot expired yesterday, today's bar should be totally empty when they log in!
+            if (botEndDateStr !== todayStr) {
+                simDailyTaps = 0;
+            }
+
+            if (offlineShardsEarned > 0) {
+                // Update React UI instantly
+                setBalance(prev => prev + offlineShardsEarned);
+                setDailyTaps(simDailyTaps); // Fills their limit bar visually to the exact right spot!
+                
+                // Save to Supabase
+                supabase
+                  .from('players')
+                  .update({ 
+                      shard_balance: Number(player.shard_balance) + offlineShardsEarned,
+                      daily_taps: simDailyTaps,
+                      last_tap_date: todayStr, 
+                      last_updated: new Date().toISOString() // Reset the clock
+                  })
+                  .eq('telegram_id', userId)
+                  .then(({ error }) => {
+                      if (error) console.error("Bot sync failed:", error);
+                  });
+
+                // Fire the welcome back popup!
+                setTimeout(() => {
+                    alert(`🤖 Welcome back! Your Bot farmed ${offlineShardsEarned.toLocaleString()} Shards while you were away!`);
+                }, 1000);
             } else {
-                // Limit already maxed out (Just reset clock)
+                // Bot active but mined 0 (Limit was maxed before they left)
                 supabase.from('players').update({ last_updated: new Date().toISOString() }).eq('telegram_id', userId).then();
             }
         } else {
-            // No bot active (Just reset clock)
+            // No bot active or expired before last login
             supabase.from('players').update({ last_updated: new Date().toISOString() }).eq('telegram_id', userId).then();
         }
 
