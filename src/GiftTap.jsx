@@ -673,6 +673,7 @@ const GiftTapGame = () => {
             }
             
             offlineShardsEarned = Math.floor(offlineShardsEarned);
+            simDailyTaps = Math.floor(simDailyTaps); // 🚨 THE SURGICAL FIX: Locks the daily limit to whole numbers
             
             // 2. Format today's date for DB
             const todayStr = new Date(now).toISOString().split('T')[0];
