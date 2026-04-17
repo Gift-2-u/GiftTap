@@ -15,6 +15,12 @@ import { derivePath } from 'ed25519-hd-key';
 import CryptoJS from 'crypto-js';
 import { motion, AnimatePresence } from 'framer-motion';
 
+const TOKEN_MINTS = {
+  SOL: "So11111111111111111111111111111111111111112",
+  USDC: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+  GFT: "YOUR_GFT_MINT_ADDRESS_HERE" // <-- Replace with real GFT mint
+};
+
 // --- 1. CLOUD STORAGE HELPERS ---
 const saveToCloud = (key, value) => {
   return new Promise((resolve, reject) => {
@@ -683,6 +689,9 @@ const GiftTapGame = () => {
             if (botEndDateStr !== todayStr) {
                 simDailyTaps = 0;
             }
+
+            // 🚨 SEASON SAFETY VALVE: Set to false since Beta is over
+            const isBetaActive = false;
 
             if (offlineShardsEarned > 0) {
                 // 1. Update React UI instantly (Balance, Limits, and Leaderboard Stats!)
@@ -2289,9 +2298,26 @@ const GiftTapGame = () => {
 
                 {/* From Section */}
                 <div style={{ background: '#1c1e22', borderRadius: '16px', padding: '15px', textAlign: 'left', marginBottom: '5px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', color: '#888', fontSize: '12px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', color: '#888', fontSize: '12px' }}>
                     <span>You pay</span>
-                    <span>Balance: {getSwapBalance(swapFromToken)}</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span>Balance: {getSwapBalance(swapFromToken)}</span>
+                      {/* THE NEW MAX BUTTON */}
+                      <button 
+                        onClick={() => {
+                          const currentBal = parseFloat(getSwapBalance(swapFromToken)) || 0;
+                          // Secure logic: Leave 0.005 SOL buffer for gas fees so transaction doesn't fail
+                          const maxAmount = swapFromToken === 'SOL' 
+                            ? Math.max(0, currentBal - 0.005) 
+                            : currentBal;
+                          
+                          setSwapFromAmount(maxAmount > 0 ? maxAmount.toString() : '');
+                        }}
+                        style={{ background: 'rgba(255, 215, 0, 0.15)', color: '#ffd700', border: '1px solid rgba(255, 215, 0, 0.3)', borderRadius: '6px', fontSize: '10px', fontWeight: 'bold', padding: '2px 6px', cursor: 'pointer', outline: 'none', WebkitTapHighlightColor: 'transparent' }}
+                      >
+                        MAX
+                      </button>
+                    </div>
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '10px' }}>
                     <input 
@@ -2303,7 +2329,10 @@ const GiftTapGame = () => {
                     />
                     <select 
                       value={swapFromToken}
-                      onChange={(e) => setSwapFromToken(e.target.value)}
+                      onChange={(e) => {
+                        setSwapFromToken(e.target.value);
+                        setSwapFromAmount(''); // Clear amount on token change for safety
+                      }}
                       style={{ background: '#2a2d35', color: '#fff', border: 'none', padding: '8px 12px', borderRadius: '12px', fontSize: '14px', outline: 'none', cursor: 'pointer', fontWeight: 'bold' }}
                     >
                       <option value="SOL">SOL</option>
@@ -2317,11 +2346,12 @@ const GiftTapGame = () => {
                 <div style={{ height: '30px', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 2, position: 'relative', margin: '-15px 0' }}>
                   <button 
                     onClick={() => {
-                      const temp = swapFromToken;
+                      const tempToken = swapFromToken;
                       setSwapFromToken(swapToToken);
-                      setSwapToToken(temp);
+                      setSwapToToken(tempToken);
+                      setSwapFromAmount(''); // Clear amounts when flipping to avoid errors
                     }}
-                    style={{ background: '#131517', border: '2px solid #333', borderRadius: '50%', padding: '0', color: '#fbef43', cursor: 'pointer', width: '34px', height: '34px', display: 'flex', justifyContent: 'center', alignItems: 'center' }}
+                    style={{ background: '#131517', border: '2px solid #333', borderRadius: '50%', padding: '0', color: '#fbef43', cursor: 'pointer', width: '34px', height: '34px', display: 'flex', justifyContent: 'center', alignItems: 'center', outline: 'none', WebkitTapHighlightColor: 'transparent' }}
                   >
                     ↓↑
                   </button>
@@ -2330,7 +2360,7 @@ const GiftTapGame = () => {
                 {/* To Section */}
                 <div style={{ background: '#1c1e22', borderRadius: '16px', padding: '15px', textAlign: 'left', marginTop: '5px' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', color: '#888', fontSize: '12px' }}>
-                    <span>You receive</span>
+                    <span>You receive (Estimated)</span>
                     <span>Balance: {getSwapBalance(swapToToken)}</span>
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '10px' }}>
@@ -2339,11 +2369,14 @@ const GiftTapGame = () => {
                       placeholder="0.00"
                       value={swapToAmount}
                       readOnly
-                      style={{ background: 'none', border: 'none', color: '#fff', fontSize: '24px', width: '50%', outline: 'none' }}
+                      style={{ background: 'none', border: 'none', color: '#fff', fontSize: '24px', width: '50%', outline: 'none', opacity: 0.7 }}
                     />
                     <select 
                       value={swapToToken}
-                      onChange={(e) => setSwapToToken(e.target.value)}
+                      onChange={(e) => {
+                        setSwapToToken(e.target.value);
+                        setSwapFromAmount(''); // Reset to force a new quote
+                      }}
                       style={{ background: '#2a2d35', color: '#fff', border: 'none', padding: '8px 12px', borderRadius: '12px', fontSize: '14px', outline: 'none', cursor: 'pointer', fontWeight: 'bold' }}
                     >
                       <option value="SOL">SOL</option>
@@ -2353,8 +2386,8 @@ const GiftTapGame = () => {
                   </div>
                 </div>
 
-                <p style={{ fontSize: '12px', color: '#888', marginTop: '20px' }}>
-                  Swapping {swapFromToken} to {swapToToken}
+                <p style={{ fontSize: '12px', color: '#888', marginTop: '20px', textAlign: 'center' }}>
+                  Powered by Jupiter Aggregator
                 </p>
 
                 <button 
@@ -2369,13 +2402,37 @@ const GiftTapGame = () => {
                     fontSize: '16px',
                     marginTop: '20px',
                     cursor: swapFromAmount > 0 ? 'pointer' : 'not-allowed',
-                    opacity: swapFromAmount > 0 ? 1 : 0.5
+                    opacity: swapFromAmount > 0 ? 1 : 0.5,
+                    outline: 'none',
+                    WebkitTapHighlightColor: 'transparent'
                   }}
-                  onClick={() => {
-                    alert(`Swapping ${swapFromAmount} ${swapFromToken} for ${swapToToken}...`);
+                  onClick={async () => {
+                    if (!swapFromAmount || parseFloat(swapFromAmount) <= 0) return;
+                    
+                    try {
+                      // 1. Prepare inputs (Convert to raw lamports/decimals)
+                      const inputMint = TOKEN_MINTS[swapFromToken];
+                      const outputMint = TOKEN_MINTS[swapToToken];
+                      const decimals = swapFromToken === 'SOL' ? 1000000000 : 1000000; // Adjust for your tokens
+                      const amountInSmallestUnits = Math.floor(parseFloat(swapFromAmount) * decimals);
+
+                      alert(`Initializing Secure Swap via Jupiter...\nFetching route for ${amountInSmallestUnits} units of ${swapFromToken} to ${swapToToken}`);
+                      
+                      // 2. Fetch the Quote from Jupiter API (This is what you execute in your backend/wallet logic)
+                      // const quoteResponse = await (await fetch(`https://quote-api.jup.ag/v6/quote?inputMint=${inputMint}&outputMint=${outputMint}&amount=${amountInSmallestUnits}&slippageBps=50`)).json();
+                      
+                      // 3. Request the serialized transaction from Jupiter
+                      // const swapTransaction = await (await fetch('https://quote-api.jup.ag/v6/swap', { ... })).json();
+
+                      // 4. Sign with player's Keypair and send to Solana Network!
+                      
+                    } catch (error) {
+                      console.error("Swap failed", error);
+                      alert("Swap failed to initialize.");
+                    }
                   }}
                 >
-                  Review Swap
+                  Execute Swap
                 </button>
               </div>
             </div>
