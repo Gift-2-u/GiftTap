@@ -1671,7 +1671,7 @@ const GiftTapGame = () => {
       // 4. FETCH QUOTE
       setTxStatus({ show: true, loading: true, message: `Securing best price on Jupiter...`, success: false });
       const quoteResponse = await (
-        await fetch(`https://quote-api.jup.ag/v6/quote?inputMint=${inputMint}&outputMint=${outputMint}&amount=${amountInSmallestUnits}&slippageBps=50&platformFeeBps=100`)
+        await fetch(`https://api.jup.ag/swap/v1/quote?inputMint=${inputMint}&outputMint=${outputMint}&amount=${amountInSmallestUnits}&slippageBps=50&platformFeeBps=100`)
       ).json();
 
       if (quoteResponse.error) throw new Error(quoteResponse.error);
@@ -1681,7 +1681,7 @@ const GiftTapGame = () => {
       const treasuryWallet = "8G7uEcPS6dwA5wW9bGoqi98EzBunF8trjbbFJkgkvBPm"; 
 
       const { swapTransaction } = await (
-        await fetch('https://quote-api.jup.ag/v6/swap', {
+        await fetch('https://api.jup.ag/swap/v1/swap', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
