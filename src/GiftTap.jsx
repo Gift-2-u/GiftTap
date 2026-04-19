@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { Connection, PublicKey, clusterApiUrl, Keypair, Transaction, SystemProgram, ComputeBudgetProgram, sendAndConfirmTransaction, LAMPORTS_PER_SOL } from '@solana/web3.js';
+import { Connection, PublicKey, clusterApiUrl, Keypair, Transaction, SystemProgram, ComputeBudgetProgram, sendAndConfirmTransaction, LAMPORTS_PER_SOL, VersionedTransaction } from '@solana/web3.js';
 import { supabase } from './supabaseClient';
 import { getAssociatedTokenAddressSync } from '@solana/spl-token';
 import BetaGate from './BetaGate';
@@ -1637,6 +1637,95 @@ const GiftTapGame = () => {
     }
   };
 
+  // --- THE BRAIN: Web3 Jupiter Swap Logic ---
+  const executeJupiterSwap = async () => {
+    if (!swapFromAmount || parseFloat(swapFromAmount) <= 0) return;
+    
+    setTxStatus({ show: true, loading: true, message: `Preparing route for ${swapFromToken} to ${swapToToken}...`, success: false });
+    
+    try {
+      // 1. SETUP WALLET
+      const storedSecret = decryptedPhrase;
+      if (!storedSecret) throw new Error("Secret key not found. Please unlock your wallet.");
+
+      let playerKeypair;
+      if (storedSecret.includes(" ")) {
+        const cleanSecret = storedSecret.trim();
+        const seed = bip39.mnemonicToSeedSync(cleanSecret);
+        const seedHex = Array.from(seed).map(b => b.toString(16).padStart(2, '0')).join('');
+        const derivedSeed = derivePath("m/44'/501'/0'/0'", seedHex).key;
+        playerKeypair = Keypair.fromSeed(derivedSeed);
+      } else {
+        playerKeypair = Keypair.fromSecretKey(bs58.decode(storedSecret));
+      }
+
+      // 2. SETUP CONNECTION
+      const connection = new Connection("https://mainnet.helius-rpc.com/?api-key=538f6c8f-c773-46a2-939c-6d48c75b2226", 'confirmed');
+      
+      // 3. PREPARE JUPITER INPUTS
+      const inputMint = TOKEN_MINTS[swapFromToken];
+      const outputMint = TOKEN_MINTS[swapToToken];
+      const decimals = swapFromToken === 'SOL' ? 1000000000 : 1000000;
+      const amountInSmallestUnits = Math.floor(parseFloat(swapFromAmount) * decimals);
+
+      // 4. FETCH QUOTE
+      setTxStatus({ show: true, loading: true, message: `Securing best price on Jupiter...`, success: false });
+      const quoteResponse = await (
+        await fetch(`https://quote-api.jup.ag/v6/quote?inputMint=${inputMint}&outputMint=${outputMint}&amount=${amountInSmallestUnits}&slippageBps=50&platformFeeBps=100`)
+      ).json();
+
+      if (quoteResponse.error) throw new Error(quoteResponse.error);
+
+      // 5. FETCH ASSEMBLED TRANSACTION
+      setTxStatus({ show: true, loading: true, message: `Building secure transaction...`, success: false });
+      const treasuryWallet = "8G7uEcPS6dwA5wW9bGoqi98EzBunF8trjbbFJkgkvBPm"; 
+
+      const { swapTransaction } = await (
+        await fetch('https://quote-api.jup.ag/v6/swap', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            quoteResponse,
+            userPublicKey: playerKeypair.publicKey.toString(),
+            wrapAndUnwrapSol: true,
+            feeAccount: treasuryWallet
+          })
+        })
+      ).json();
+
+      if (!swapTransaction) throw new Error("Failed to build swap transaction.");
+
+      // 6. DESERIALIZE AND SIGN
+      setTxStatus({ show: true, loading: true, message: `Signing transaction...`, success: false });
+      const swapTransactionBuf = Buffer.from(swapTransaction, 'base64');
+      var transaction = VersionedTransaction.deserialize(swapTransactionBuf);
+      transaction.sign([playerKeypair]);
+
+      // 7. SEND TO NETWORK
+      setTxStatus({ show: true, loading: true, message: `Confirming on Solana network...`, success: false });
+      const rawTransaction = transaction.serialize();
+      const txid = await connection.sendRawTransaction(rawTransaction, { skipPreflight: true, maxRetries: 2 });
+
+      // 8. WAIT FOR CONFIRMATION
+      const latestBlockHash = await connection.getLatestBlockhash();
+      await connection.confirmTransaction({
+        blockhash: latestBlockHash.blockhash,
+        lastValidBlockHeight: latestBlockHash.lastValidBlockHeight,
+        signature: txid
+      }, 'confirmed');
+
+      // 9. CLEANUP
+      setTxStatus({ show: true, loading: false, message: `✅ Swap Complete!`, success: true });
+      setSwapFromAmount('');
+      setSwapToAmount('');
+      setTimeout(() => setTxStatus(prev => ({ ...prev, show: false })), 3000);
+
+    } catch (error) {
+      console.error("Swap Error:", error);
+      setTxStatus({ show: true, loading: false, message: `❌ Error: ${error.message}`, success: false });
+    }
+  };
+
   // --- CALCULATE DYNAMIC DAILY LIMIT BAR ---
   const now = new Date();
   let dynamicMaxLimit = maxDailyLimit; // Default is 1000
@@ -2406,31 +2495,7 @@ const GiftTapGame = () => {
                     outline: 'none',
                     WebkitTapHighlightColor: 'transparent'
                   }}
-                  onClick={async () => {
-                    if (!swapFromAmount || parseFloat(swapFromAmount) <= 0) return;
-                    
-                    try {
-                      // 1. Prepare inputs (Convert to raw lamports/decimals)
-                      const inputMint = TOKEN_MINTS[swapFromToken];
-                      const outputMint = TOKEN_MINTS[swapToToken];
-                      const decimals = swapFromToken === 'SOL' ? 1000000000 : 1000000; // Adjust for your tokens
-                      const amountInSmallestUnits = Math.floor(parseFloat(swapFromAmount) * decimals);
-
-                      alert(`Initializing Secure Swap via Jupiter...\nFetching route for ${amountInSmallestUnits} units of ${swapFromToken} to ${swapToToken}`);
-                      
-                      // 2. Fetch the Quote from Jupiter API (This is what you execute in your backend/wallet logic)
-                      // const quoteResponse = await (await fetch(`https://quote-api.jup.ag/v6/quote?inputMint=${inputMint}&outputMint=${outputMint}&amount=${amountInSmallestUnits}&slippageBps=50`)).json();
-                      
-                      // 3. Request the serialized transaction from Jupiter
-                      // const swapTransaction = await (await fetch('https://quote-api.jup.ag/v6/swap', { ... })).json();
-
-                      // 4. Sign with player's Keypair and send to Solana Network!
-                      
-                    } catch (error) {
-                      console.error("Swap failed", error);
-                      alert("Swap failed to initialize.");
-                    }
-                  }}
+                  onClick={executeJupiterSwap}
                 >
                   Execute Swap
                 </button>
