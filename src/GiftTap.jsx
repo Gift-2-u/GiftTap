@@ -1678,7 +1678,16 @@ const GiftTapGame = () => {
 
       // 5. FETCH ASSEMBLED TRANSACTION
       setTxStatus({ show: true, loading: true, message: `Building secure transaction...`, success: false });
-      const treasuryWallet = "8G7uEcPS6dwA5wW9bGoqi98EzBunF8trjbbFJkgkvBPm"; 
+      // 🚨 THE AAA TREASURY DIRECTORY
+      // Replace these placeholders with the actual Token Account addresses you got from Solscan!
+      const TREASURY_TOKEN_ACCOUNTS = {
+        'USDC': 'H5nSSix2Q4xrSPJCn8f4tY2FNDRazeUot1MNcgATYKEq',
+        'GFT': 'Paste_Your_GFT_Token_Account_Here',
+        'SOL': '8G7uEcPS6dwA5wW9bGoqi98EzBunF8trjbbFJkgkvBPm' // Note: Solana fees are paid in Wrapped SOL (WSOL)
+      };
+
+    // Automatically pick the right vault based on what they are buying!
+    const activeFeeAccount = TREASURY_TOKEN_ACCOUNTS[swapToToken]; 
 
       const { swapTransaction } = await (
         await fetch('https://api.jup.ag/swap/v1/swap', {
@@ -1688,7 +1697,10 @@ const GiftTapGame = () => {
             quoteResponse,
             userPublicKey: playerKeypair.publicKey.toString(),
             wrapAndUnwrapSol: true,
-            feeAccount: treasuryWallet
+            feeAccount: activeFeeAccount
+            // 🚨 THE FIX: Automatically calculate the exact tip needed to skip the line!
+            dynamicComputeUnitLimit: true,
+            prioritizationFeeLamports: "auto"
           })
         })
       ).json();
