@@ -1697,7 +1697,7 @@ const GiftTapGame = () => {
             quoteResponse,
             userPublicKey: playerKeypair.publicKey.toString(),
             wrapAndUnwrapSol: true,
-            feeAccount: activeFeeAccount
+            feeAccount: activeFeeAccount,
             // 🚨 THE FIX: Automatically calculate the exact tip needed to skip the line!
             dynamicComputeUnitLimit: true,
             prioritizationFeeLamports: "auto"
