@@ -1731,16 +1731,15 @@ const GiftTapGame = () => {
       setTxStatus({ show: true, loading: false, message: `✅ Swap Complete!`, success: true });
       setSwapFromAmount('');
       setSwapToAmount('');
-      // Refresh the player balances instantly
-      if (typeof syncPlayer === 'function') {
-          syncPlayer(); 
-      }
-
       // 🚨 AUTO-CLOSE ONLY THE POP-UP: 
       setTimeout(() => {
           setTxStatus(prev => ({ ...prev, show: false }));
           // setIsSwapOpen(false); <--- DELETE THIS LINE!
       }, 2000);
+      // Refresh the player balances instantly
+      if (typeof syncPlayer === 'function') {
+          syncPlayer(); 
+      }
 
     } catch (error) {
       console.error("Swap Error:", error);
