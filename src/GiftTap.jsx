@@ -1672,7 +1672,7 @@ const GiftTapGame = () => {
       // 4. FETCH QUOTE
       setTxStatus({ show: true, loading: true, message: `Securing best price on Jupiter...`, success: false });
       const quoteResponse = await (
-        await fetch(`https://lite-api.jup.ag/swap/v1/quote?inputMint=${inputMint}&outputMint=${outputMint}&amount=${amountInSmallestUnits}&slippageBps=50&platformFeeBps=100`)
+        await fetch(`https://lite-api.jup.ag/swap/v1/quote?inputMint=${inputMint}&outputMint=${outputMint}&amount=${amountInSmallestUnits}&slippageBps=200&platformFeeBps=100`)
       ).json();
 
       if (quoteResponse.error) throw new Error(quoteResponse.error);
@@ -1731,14 +1731,18 @@ const GiftTapGame = () => {
       setTxStatus({ show: true, loading: false, message: `✅ Swap Complete!`, success: true });
       setSwapFromAmount('');
       setSwapToAmount('');
-      // 🚨 AUTO-CLOSE ONLY THE POP-UP: 
+      // 🚨 1. Put the timer FIRST so the green text is GUARANTEED to vanish
       setTimeout(() => {
-          setTxStatus(prev => ({ ...prev, show: false }));
-          // setIsSwapOpen(false); <--- DELETE THIS LINE!
-      }, 2000);
-      // Refresh the player balances instantly
-      if (typeof syncPlayer === 'function') {
-          syncPlayer(); 
+          setTxStatus({ show: false, loading: false, message: '', success: false });
+      }, 2000); 
+
+      // 🚨 2. Wrap the player sync in a try/catch so it can't freeze the UI if it fails
+      try {
+          if (typeof syncPlayer === 'function') {
+              syncPlayer(); 
+          }
+      } catch (syncError) {
+          console.error("Player sync failed after swap:", syncError);
       }
 
     } catch (error) {
