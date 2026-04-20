@@ -357,8 +357,6 @@ const GiftTapGame = () => {
   const [swapToToken, setSwapToToken] = useState('GFT');
   const [isShardSwapOpen, setIsShardSwapOpen] = useState(false);
   const [shardSwapAmount, setShardSwapAmount] = useState('');
-  const [swapFromAmount, setSwapFromAmount] = useState(''); // Stores what they type
-  const [swapToAmount, setSwapToAmount] = useState('');     // Stores the Jupiter estimate
   const [isEstimating, setIsEstimating] = useState(false);
   const [userRank, setUserRank] = useState(null);
   const [seasonShards, setSeasonShards] = useState(0);
