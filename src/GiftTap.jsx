@@ -1684,7 +1684,7 @@ const GiftTapGame = () => {
       const TREASURY_TOKEN_ACCOUNTS = {
         'USDC': 'H5nSSix2Q4xrSPJCn8f4tY2FNDRazeUot1MNcgATYKEq',
         'GFT': 'Paste_Your_GFT_Token_Account_Here',
-        'SOL': '8G7uEcPS6dwA5wW9bGoqi98EzBunF8trjbbFJkgkvBPm' // Note: Solana fees are paid in Wrapped SOL (WSOL)
+        'SOL': 'XMpLRx6VE3aqXjc7yi4puziGPQzVSWha6cbazp7Q5wK' // Note: Solana fees are paid in Wrapped SOL (WSOL)
       };
 
     // Automatically pick the right vault based on what they are buying!
@@ -1747,7 +1747,12 @@ const GiftTapGame = () => {
 
     } catch (error) {
       console.error("Swap Error:", error);
-      setTxStatus({ show: true, loading: false, message: `❌ Error: ${error.message}`, success: false });
+      setTxStatus({ show: true, loading: false, message: `❌ Failed: ${error.message}`, success: false });
+
+      // 🚨 THE FIX: Auto-hide the error after 4 seconds so the player can try again
+      setTimeout(() => {
+          setTxStatus(prev => ({ ...prev, show: false }));
+      }, 4000); // 4 seconds gives them time to read the error
     }
   };
 
