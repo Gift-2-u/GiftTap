@@ -2584,41 +2584,41 @@ const GiftTapGame = () => {
                   Execute Swap
                 </button>
               </div>
-              {/* This is your status pop-up / toast notification */}
-              {txStatus.show && (
-                <div 
-                  style={{
-                    padding: '15px',
-                    background: '#1c1e22',
-                    borderRadius: '12px',
-                    textAlign: 'center',
-                    marginTop: '10px',
-                    color: txStatus.loading ? '#ffffff' : (txStatus.success ? '#fbef43' : '#ff4444'),
-                    border: `1px solid ${txStatus.loading ? '#333' : (txStatus.success ? '#fbef43' : '#ff4444')}`
+            </div>
+          )}
+          {/* This is your status pop-up / toast notification */}
+          {txStatus.show && (
+            <div 
+              style={{
+                padding: '15px',
+                background: '#1c1e22',
+                borderRadius: '12px',
+                textAlign: 'center',
+                marginTop: '10px',
+                color: txStatus.loading ? '#ffffff' : (txStatus.success ? '#fbef43' : '#ff4444'),
+                border: `1px solid ${txStatus.loading ? '#333' : (txStatus.success ? '#fbef43' : '#ff4444')}`
+              }}
+            >
+              {/* The main message */}
+              <div style={{ marginBottom: txStatus.txid ? '8px' : '0' }}>
+                  {txStatus.message}
+              </div>
+
+              {/* 🚨 THE SOLSCAN LINK (Only shows if a txid is attached) */}
+              {txStatus.txid && (
+                <a 
+                  href={`https://solscan.io/tx/${txStatus.txid}`} 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  style={{ 
+                      color: '#aaa', 
+                      fontSize: '12px', 
+                      textDecoration: 'underline',
+                      cursor: 'pointer'
                   }}
                 >
-                  {/* The main message */}
-                  <div style={{ marginBottom: txStatus.txid ? '8px' : '0' }}>
-                      {txStatus.message}
-                  </div>
-
-                  {/* 🚨 THE SOLSCAN LINK (Only shows if a txid is attached) */}
-                  {txStatus.txid && (
-                    <a 
-                      href={`https://solscan.io/tx/${txStatus.txid}`} 
-                      target="_blank" 
-                      rel="noopener noreferrer"
-                      style={{ 
-                          color: '#aaa', 
-                          fontSize: '12px', 
-                          textDecoration: 'underline',
-                          cursor: 'pointer'
-                      }}
-                    >
-                      View receipt on Solscan
-                    </a>
-                  )}
-                </div>
+                  View receipt on Solscan
+                </a>
               )}
             </div>
           )}
