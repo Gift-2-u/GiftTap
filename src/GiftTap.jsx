@@ -1719,16 +1719,22 @@ const GiftTapGame = () => {
       const rawTransaction = transaction.serialize();
       const txid = await connection.sendRawTransaction(rawTransaction, { skipPreflight: true, maxRetries: 2 });
 
+      console.log(`🚨 TRACK TX HERE: https://solscan.io/tx/${txid}`);
+
       // 8. WAIT FOR CONFIRMATION
       const latestBlockHash = await connection.getLatestBlockhash();
-      await connection.confirmTransaction({
+      const confirmation = await connection.confirmTransaction({
         blockhash: latestBlockHash.blockhash,
         lastValidBlockHeight: latestBlockHash.lastValidBlockHeight,
         signature: txid
       }, 'confirmed');
+      // If Solana returns an error (like 6025), throw it so the UI shows the red failure message!
+      if (confirmation.value.err) {
+        throw new Error(`Transaction failed on-chain!`);
+      }
 
       // 9. CLEANUP
-      setTxStatus({ show: true, loading: false, message: `✅ Swap Complete!`, success: true });
+      setTxStatus({ show: true, loading: false, message: `✅ Swap Complete!`, success: true, txid: txid });
       setSwapFromAmount('');
       setSwapToAmount('');
       // 🚨 1. Put the timer FIRST so the green text is GUARANTEED to vanish
@@ -2530,6 +2536,42 @@ const GiftTapGame = () => {
                   Execute Swap
                 </button>
               </div>
+              {/* This is your status pop-up / toast notification */}
+              {txStatus.show && (
+                <div 
+                  style={{
+                    padding: '15px',
+                    background: '#1c1e22',
+                    borderRadius: '12px',
+                    textAlign: 'center',
+                    marginTop: '10px',
+                    color: txStatus.loading ? '#ffffff' : (txStatus.success ? '#fbef43' : '#ff4444'),
+                    border: `1px solid ${txStatus.loading ? '#333' : (txStatus.success ? '#fbef43' : '#ff4444')}`
+                  }}
+                >
+                  {/* The main message */}
+                  <div style={{ marginBottom: txStatus.txid ? '8px' : '0' }}>
+                      {txStatus.message}
+                  </div>
+
+                  {/* 🚨 THE SOLSCAN LINK (Only shows if a txid is attached) */}
+                  {txStatus.txid && (
+                    <a 
+                      href={`https://solscan.io/tx/${txStatus.txid}`} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      style={{ 
+                          color: '#aaa', 
+                          fontSize: '12px', 
+                          textDecoration: 'underline',
+                          cursor: 'pointer'
+                      }}
+                    >
+                      View receipt on Solscan
+                    </a>
+                  )}
+                </div>
+              )}
             </div>
           )}
 
