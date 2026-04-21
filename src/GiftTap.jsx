@@ -1638,6 +1638,54 @@ const GiftTapGame = () => {
     }
   };
 
+  // --- THE LIVE ESTIMATOR (Runs in the background when typing) ---
+  useEffect(() => {
+    const fetchEstimate = async () => {
+      // 1. If box is empty, clear everything
+      if (!swapFromAmount || parseFloat(swapFromAmount) <= 0) {
+        setSwapToAmount('');
+        setIsEstimating(false);
+        return;
+      }
+
+      // 2. Turn on the "Estimating..." UI
+      setIsEstimating(true); 
+
+      try {
+        const inputMint = TOKEN_MINTS[swapFromToken];
+        const outputMint = TOKEN_MINTS[swapToToken];
+        const decimals = swapFromToken === 'SOL' ? 1000000000 : 1000000;
+        const amountInSmallestUnits = Math.floor(parseFloat(swapFromAmount) * decimals);
+
+        // 3. Ask Jupiter for the quote (using lite-api and 200 slippage)
+        const res = await fetch(`https://lite-api.jup.ag/swap/v1/quote?inputMint=${inputMint}&outputMint=${outputMint}&amount=${amountInSmallestUnits}&slippageBps=200&platformFeeBps=100`);
+        const quoteResponse = await res.json();
+        
+        // 🚨 DEBUGGER: Prints the math to your F12 console
+        console.log("JUPITER RAW ESTIMATE:", quoteResponse);
+
+        // 4. Update the UI with the real number
+        if (quoteResponse && quoteResponse.outAmount) {
+          const outDecimals = swapToToken === 'SOL' ? 1000000000 : 1000000; 
+          const estimatedAmount = (parseInt(quoteResponse.outAmount) / outDecimals).toFixed(4);
+          setSwapToAmount(estimatedAmount); 
+        } else {
+          setSwapToAmount('');
+        }
+      } catch (error) {
+        console.error("Background estimate failed:", error);
+        setSwapToAmount('');
+      } finally {
+        // 5. Turn off the "Estimating..." UI
+        setIsEstimating(false); 
+      }
+    };
+
+    // 500ms delay so it doesn't spam the API on every single keystroke
+    const delayDebounceFn = setTimeout(() => { fetchEstimate(); }, 500);
+    return () => clearTimeout(delayDebounceFn);
+  }, [swapFromAmount, swapFromToken, swapToToken]);
+
   // --- THE BRAIN: Web3 Jupiter Swap Logic ---
   const executeJupiterSwap = async () => {
     if (!swapFromAmount || parseFloat(swapFromAmount) <= 0) return;
