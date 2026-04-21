@@ -2586,36 +2586,56 @@ const GiftTapGame = () => {
               </div>
             </div>
           )}
-          {/* This is your status pop-up / toast notification */}
+          {/* 🚨 THE UPGRADED FLOATING TOAST (With Kill Switch) */}
           {txStatus.show && (
             <div 
               style={{
+                position: 'fixed', 
+                bottom: '20px', 
+                right: '20px', 
+                zIndex: 9999, 
+                minWidth: '280px',
                 padding: '15px',
                 background: '#1c1e22',
                 borderRadius: '12px',
-                textAlign: 'center',
-                marginTop: '10px',
+                boxShadow: '0px 10px 30px rgba(0,0,0,0.8)',
                 color: txStatus.loading ? '#ffffff' : (txStatus.success ? '#fbef43' : '#ff4444'),
-                border: `1px solid ${txStatus.loading ? '#333' : (txStatus.success ? '#fbef43' : '#ff4444')}`
+                border: `1px solid ${txStatus.loading ? '#333' : (txStatus.success ? '#fbef43' : '#ff4444')}`,
+                transition: 'all 0.3s ease-in-out'
               }}
             >
-              {/* The main message */}
-              <div style={{ marginBottom: txStatus.txid ? '8px' : '0' }}>
+              {/* 🚨 THE KILL SWITCH: Lets the player manually close stuck errors! */}
+              {!txStatus.loading && (
+                <button 
+                  onClick={() => setTxStatus({ show: false, loading: false, message: '', success: false, txid: null })}
+                  style={{ 
+                      position: 'absolute', 
+                      top: '8px', 
+                      right: '12px', 
+                      background: 'none', 
+                      border: 'none', 
+                      color: '#aaa', 
+                      cursor: 'pointer', 
+                      fontSize: '14px', 
+                      padding: '5px' 
+                  }}
+                >
+                  ✕
+                </button>
+              )}
+    
+              {/* Main message */}
+              <div style={{ marginBottom: txStatus.txid ? '8px' : '0', fontWeight: 'bold', fontSize: '14px', paddingRight: '20px' }}>
                   {txStatus.message}
               </div>
-
-              {/* 🚨 THE SOLSCAN LINK (Only shows if a txid is attached) */}
+          
+              {/* THE SOLSCAN LINK */}
               {txStatus.txid && (
                 <a 
                   href={`https://solscan.io/tx/${txStatus.txid}`} 
                   target="_blank" 
                   rel="noopener noreferrer"
-                  style={{ 
-                      color: '#aaa', 
-                      fontSize: '12px', 
-                      textDecoration: 'underline',
-                      cursor: 'pointer'
-                  }}
+                  style={{ color: '#aaa', fontSize: '12px', textDecoration: 'underline' }}
                 >
                   View receipt on Solscan
                 </a>
