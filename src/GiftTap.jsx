@@ -2590,7 +2590,59 @@ const GiftTapGame = () => {
               </div>
             </div>
           )}
+          {/* 💎 THE SOLFLARE-STYLE FLOATING TOAST */}
+          {txStatus.show && (
+            <div 
+              style={{
+                position: 'fixed', 
+                bottom: '24px', 
+                right: '24px', 
+                zIndex: 9999, 
+                minWidth: '320px',
+                padding: '16px 20px',
+                background: '#141518', 
+                borderRadius: '8px',
+                boxShadow: '0 8px 32px rgba(0, 0, 0, 0.4)',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '6px',
+                borderLeft: `4px solid ${txStatus.loading ? '#3b82f6' : (txStatus.success ? '#10b981' : '#ef4444')}`, 
+                color: '#fff',
+                fontFamily: 'system-ui, -apple-system, sans-serif',
+                transition: 'opacity 0.3s ease-in-out'
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                 {/* Visual Indicators */}
+                 {txStatus.loading && <span style={{ color: '#3b82f6', fontSize: '18px' }}>⏳</span>}
+                 {txStatus.success && <span style={{ color: '#10b981', fontSize: '18px' }}>✅</span>}
+                 {!txStatus.loading && !txStatus.success && <span style={{ color: '#ef4444', fontSize: '18px' }}>❌</span>}
+                 
+                 {/* Main text */}
+                 <div style={{ fontWeight: '600', fontSize: '15px' }}>
+                     {txStatus.message}
+                 </div>
+              </div>
           
+              {/* Solscan Link (Only on success) */}
+              {txStatus.txid && txStatus.success && (
+                <a 
+                  href={`https://solscan.io/tx/${txStatus.txid}`} 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  style={{ 
+                      color: '#9ca3af', 
+                      fontSize: '13px', 
+                      textDecoration: 'none',
+                      marginLeft: '28px', 
+                  }}
+                >
+                  View on Solscan ↗
+                </a>
+              )}
+            </div>
+          )}
+
           {/* Shard Swap Pop-up (One-way conversion) */}
           {isShardSwapOpen && (
             <div style={styles.modalOverlay} onClick={() => setIsShardSwapOpen(false)}>
