@@ -1686,11 +1686,12 @@ const GiftTapGame = () => {
     return () => clearTimeout(delayDebounceFn);
   }, [swapFromAmount, swapFromToken, swapToToken]);
 
-  // --- THE BRAIN: Web3 Jupiter Swap Logic ---
+  // --- THE BRAIN: Web3 Jupiter Swap Logic (Solflare Standard) ---
   const executeJupiterSwap = async () => {
     if (!swapFromAmount || parseFloat(swapFromAmount) <= 0) return;
     
-    setTxStatus({ show: true, loading: true, message: `Preparing route for ${swapFromToken} to ${swapToToken}...`, success: false });
+    // 🚨 1. ONE SINGLE START MESSAGE (No more flashing text)
+    setTxStatus({ show: true, loading: true, message: `Confirming transaction...`, success: false, txid: null });
     
     try {
       // 1. SETUP WALLET
@@ -1718,7 +1719,6 @@ const GiftTapGame = () => {
       const amountInSmallestUnits = Math.floor(parseFloat(swapFromAmount) * decimals);
 
       // 4. FETCH QUOTE
-      setTxStatus({ show: true, loading: true, message: `Securing best price on Jupiter...`, success: false });
       const quoteResponse = await (
         await fetch(`https://lite-api.jup.ag/swap/v1/quote?inputMint=${inputMint}&outputMint=${outputMint}&amount=${amountInSmallestUnits}&slippageBps=500&platformFeeBps=100`)
       ).json();
@@ -1726,17 +1726,13 @@ const GiftTapGame = () => {
       if (quoteResponse.error) throw new Error(quoteResponse.error);
 
       // 5. FETCH ASSEMBLED TRANSACTION
-      setTxStatus({ show: true, loading: true, message: `Building secure transaction...`, success: false });
-      // 🚨 THE AAA TREASURY DIRECTORY
-      // Replace these placeholders with the actual Token Account addresses you got from Solscan!
       const TREASURY_TOKEN_ACCOUNTS = {
         'USDC': 'H5nSSix2Q4xrSPJCn8f4tY2FNDRazeUot1MNcgATYKEq',
         'GFT': 'Paste_Your_GFT_Token_Account_Here',
-        'SOL': 'XMpLRx6VE3aqXjc7yi4puziGPQzVSWha6cbazp7Q5wK' // Note: Solana fees are paid in Wrapped SOL (WSOL)
+        'SOL': 'XMpLRx6VE3aqXjc7yi4puziGPQzVSWha6cbazp7Q5wK' 
       };
 
-    // Automatically pick the right vault based on what they are buying!
-    const activeFeeAccount = TREASURY_TOKEN_ACCOUNTS[swapToToken]; 
+      const activeFeeAccount = TREASURY_TOKEN_ACCOUNTS[swapToToken]; 
 
       const { swapTransaction } = await (
         await fetch('https://lite-api.jup.ag/swap/v1/swap', {
@@ -1747,9 +1743,9 @@ const GiftTapGame = () => {
             userPublicKey: playerKeypair.publicKey.toString(),
             wrapAndUnwrapSol: true,
             feeAccount: activeFeeAccount,
-            // 🚨 THE FIX: Automatically calculate the exact tip needed to skip the line!
             dynamicComputeUnitLimit: true,
-            prioritizationFeeLamports: "auto"
+            // 🚨 TIMEOUT FIX: Tells Jupiter to bid 2x higher for gas to skip the line
+            prioritizationFeeLamports: { autoMultiplier: 2 } 
           })
         })
       ).json();
@@ -1757,16 +1753,13 @@ const GiftTapGame = () => {
       if (!swapTransaction) throw new Error("Failed to build swap transaction.");
 
       // 6. DESERIALIZE AND SIGN
-      setTxStatus({ show: true, loading: true, message: `Signing transaction...`, success: false });
       const swapTransactionBuf = Buffer.from(swapTransaction, 'base64');
       var transaction = VersionedTransaction.deserialize(swapTransactionBuf);
       transaction.sign([playerKeypair]);
 
       // 7. SEND TO NETWORK
-      setTxStatus({ show: true, loading: true, message: `Confirming on Solana network...`, success: false });
       const rawTransaction = transaction.serialize();
       const txid = await connection.sendRawTransaction(rawTransaction, { skipPreflight: true, maxRetries: 2 });
-
       console.log(`🚨 TRACK TX HERE: https://solscan.io/tx/${txid}`);
 
       // 8. WAIT FOR CONFIRMATION
@@ -1776,37 +1769,48 @@ const GiftTapGame = () => {
         lastValidBlockHeight: latestBlockHash.lastValidBlockHeight,
         signature: txid
       }, 'confirmed');
-      // If Solana returns an error (like 6025), throw it so the UI shows the red failure message!
+      
       if (confirmation.value.err) {
         throw new Error(`Transaction failed on-chain!`);
       }
 
-      // 9. CLEANUP
-      setTxStatus({ show: true, loading: false, message: `✅ Swap Complete!`, success: true, txid: txid });
+      // 9. CLEANUP & SUCCESS (Solflare Style)
+      // 🚨 2. ONE SINGLE SUCCESS MESSAGE
+      setTxStatus({ show: true, loading: false, message: `Transaction confirmed`, success: true, txid: txid });
       setSwapFromAmount('');
       setSwapToAmount('');
-      // 🚨 1. Put the timer FIRST so the green text is GUARANTEED to vanish
+      
+      // Auto-hide the success toast after 3.5 seconds smoothly
       setTimeout(() => {
-          setTxStatus({ show: false, loading: false, message: '', success: false });
-      }, 2000); 
+          setTxStatus(prev => ({ ...prev, show: false }));
+      }, 3500); 
 
-      // 🚨 2. Wrap the player sync in a try/catch so it can't freeze the UI if it fails
-      try {
-          if (typeof syncPlayer === 'function') {
-              syncPlayer(); 
-          }
-      } catch (syncError) {
-          console.error("Player sync failed after swap:", syncError);
-      }
+      // Sync player balance delay
+      setTimeout(() => {
+        try {
+            if (typeof syncPlayer === 'function') {
+                console.log("Fetching fresh balances from blockchain...");
+                syncPlayer(); 
+            }
+        } catch (syncError) {
+            console.error("Player sync failed after swap:", syncError);
+        }
+      }, 2500); 
 
     } catch (error) {
       console.error("Swap Error:", error);
-      setTxStatus({ show: true, loading: false, message: `❌ Failed: ${error.message}`, success: false });
+      
+      // 🚨 3. ONE CLEAN ERROR MESSAGE
+      let errorMessage = "Transaction failed";
+      if (error.message.includes("6025") || error.message.includes("6024")) errorMessage = "Slippage tolerance exceeded";
+      if (error.message.includes("expired")) errorMessage = "Network timeout, try again";
 
-      // 🚨 THE FIX: Auto-hide the error after 4 seconds so the player can try again
+      setTxStatus({ show: true, loading: false, message: errorMessage, success: false, txid: null });
+
+      // Auto-hide the error gracefully
       setTimeout(() => {
           setTxStatus(prev => ({ ...prev, show: false }));
-      }, 4000); // 4 seconds gives them time to read the error
+      }, 4500); 
     }
   };
 
@@ -2548,7 +2552,7 @@ const GiftTapGame = () => {
                       value={swapToToken}
                       onChange={(e) => {
                         setSwapToToken(e.target.value);
-                        setSwapFromAmount(''); // Reset to force a new quote
+                        setSwapToAmount(''); // 2. Clear the old estimate (the background useEffect will instantly fetch the new one!)
                       }}
                       style={{ background: '#2a2d35', color: '#fff', border: 'none', padding: '8px 12px', borderRadius: '12px', fontSize: '14px', outline: 'none', cursor: 'pointer', fontWeight: 'bold' }}
                     >
@@ -2586,58 +2590,54 @@ const GiftTapGame = () => {
               </div>
             </div>
           )}
-          {/* 🚨 THE UPGRADED FLOATING TOAST (With Kill Switch) */}
+          {/* 💎 THE SOLFLARE-STYLE FLOATING TOAST */}
           {txStatus.show && (
             <div 
               style={{
                 position: 'fixed', 
-                bottom: '20px', 
-                right: '20px', 
+                bottom: '24px', 
+                right: '24px', 
                 zIndex: 9999, 
-                minWidth: '280px',
-                padding: '15px',
-                background: '#1c1e22',
-                borderRadius: '12px',
-                boxShadow: '0px 10px 30px rgba(0,0,0,0.8)',
-                color: txStatus.loading ? '#ffffff' : (txStatus.success ? '#fbef43' : '#ff4444'),
-                border: `1px solid ${txStatus.loading ? '#333' : (txStatus.success ? '#fbef43' : '#ff4444')}`,
-                transition: 'all 0.3s ease-in-out'
+                minWidth: '320px',
+                padding: '16px 20px',
+                background: '#141518', 
+                borderRadius: '8px',
+                boxShadow: '0 8px 32px rgba(0, 0, 0, 0.4)',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '6px',
+                borderLeft: `4px solid ${txStatus.loading ? '#3b82f6' : (txStatus.success ? '#10b981' : '#ef4444')}`, 
+                color: '#fff',
+                fontFamily: 'system-ui, -apple-system, sans-serif',
+                transition: 'opacity 0.3s ease-in-out'
               }}
             >
-              {/* 🚨 THE KILL SWITCH: Lets the player manually close stuck errors! */}
-              {!txStatus.loading && (
-                <button 
-                  onClick={() => setTxStatus({ show: false, loading: false, message: '', success: false, txid: null })}
-                  style={{ 
-                      position: 'absolute', 
-                      top: '8px', 
-                      right: '12px', 
-                      background: 'none', 
-                      border: 'none', 
-                      color: '#aaa', 
-                      cursor: 'pointer', 
-                      fontSize: '14px', 
-                      padding: '5px' 
-                  }}
-                >
-                  ✕
-                </button>
-              )}
-    
-              {/* Main message */}
-              <div style={{ marginBottom: txStatus.txid ? '8px' : '0', fontWeight: 'bold', fontSize: '14px', paddingRight: '20px' }}>
-                  {txStatus.message}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                 {/* Visual Indicators */}
+                 {txStatus.loading && <span style={{ color: '#3b82f6', fontSize: '18px' }}>⏳</span>}
+                 {txStatus.success && <span style={{ color: '#10b981', fontSize: '18px' }}>✅</span>}
+                 {!txStatus.loading && !txStatus.success && <span style={{ color: '#ef4444', fontSize: '18px' }}>❌</span>}
+                 
+                 {/* Main text */}
+                 <div style={{ fontWeight: '600', fontSize: '15px' }}>
+                     {txStatus.message}
+                 </div>
               </div>
           
-              {/* THE SOLSCAN LINK */}
-              {txStatus.txid && (
+              {/* Solscan Link (Only on success) */}
+              {txStatus.txid && txStatus.success && (
                 <a 
                   href={`https://solscan.io/tx/${txStatus.txid}`} 
                   target="_blank" 
                   rel="noopener noreferrer"
-                  style={{ color: '#aaa', fontSize: '12px', textDecoration: 'underline' }}
+                  style={{ 
+                      color: '#9ca3af', 
+                      fontSize: '13px', 
+                      textDecoration: 'none',
+                      marginLeft: '28px', 
+                  }}
                 >
-                  View receipt on Solscan
+                  View on Solscan ↗
                 </a>
               )}
             </div>
