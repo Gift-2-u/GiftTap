@@ -2438,31 +2438,6 @@ const GiftTapGame = () => {
             </div>
           )}
 
-          {txStatus.message && (
-            <div style={{
-              ...styles.toast, 
-              backgroundColor: txStatus.message.includes('✅') ? '#1a472a' : '#4a1111',
-              borderColor: txStatus.message.includes('✅') ? '#4ade80' : '#ff4d4d'
-            }}>
-              <div style={{ textAlign: 'center', color: '#fff' }}>
-                {txStatus.message}
-              </div>
-              
-              {/* Only render the Solscan link if a signature exists */}
-              {txStatus.signature && (
-                <div style={{ marginTop: '8px', textAlign: 'center', fontSize: '12px' }}>
-                  <a 
-                    href={`https://solscan.io/tx/${txStatus.signature}`} 
-                    target="_blank" 
-                    rel="noreferrer" 
-                    style={{ color: '#4ade80', textDecoration: 'underline' }}
-                  >
-                    View on Solscan
-                  </a>
-                </div>
-              )}
-            </div>
-          )}
           {/* Swap Pop-up */}
           {isSwapOpen && (
             <div style={styles.modalOverlay} onClick={() => setIsSwapOpen(false)}>
