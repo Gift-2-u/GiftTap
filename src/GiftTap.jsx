@@ -1785,17 +1785,18 @@ const GiftTapGame = () => {
           setTxStatus(prev => ({ ...prev, show: false }));
       }, 3500); 
 
-      // Sync player balance delay
-      setTimeout(() => {
+      // 🚨 THE UPGRADED SYNC CALL (Async/Await)
+      setTimeout(async () => { // <-- 1. Added 'async' here
         try {
             if (typeof syncPlayer === 'function') {
                 console.log("Fetching fresh balances from blockchain...");
-                syncPlayer(); 
+                await syncPlayer(); // <-- 2. Added 'await' here
+                console.log("Sync complete!");
             }
         } catch (syncError) {
             console.error("Player sync failed after swap:", syncError);
         }
-      }, 2500); 
+      }, 3000); // Wait 3 seconds for the RPC to catch up
 
     } catch (error) {
       console.error("Swap Error:", error);
