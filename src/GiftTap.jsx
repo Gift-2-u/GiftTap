@@ -1729,7 +1729,7 @@ const GiftTapGame = () => {
       const TREASURY_TOKEN_ACCOUNTS = {
         'USDC': 'H5nSSix2Q4xrSPJCn8f4tY2FNDRazeUot1MNcgATYKEq',
         'GFT': 'Paste_Your_GFT_Token_Account_Here',
-        'SOL': 'XMpLRx6VE3aqXjc7yi4puziGPQzVSWha6cbazp7Q5wK' 
+        'SOL': 'GwEPP1njWswga8JoCnQ7AyvJJeqxkx8GzW5o5HFsN1F1' 
       };
 
       const activeFeeAccount = TREASURY_TOKEN_ACCOUNTS[swapToToken]; 
