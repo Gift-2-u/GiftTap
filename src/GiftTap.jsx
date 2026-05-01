@@ -540,6 +540,43 @@ const GiftTapGame = () => {
     setIsLeaderboardOpen(true);
   };
 
+  // 🚨 NEW FUNCTION: Bypasses the database and reads the live blockchain
+  const syncBlockchainBalances = async (walletAddress) => {
+      try {
+          console.log("Fetching live balances directly from Solana...");
+          const connection = new Connection("https://mainnet.helius-rpc.com/?api-key=538f6c8f-c773-46a2-939c-6d48c75b2226", 'confirmed');
+          const pubKey = new PublicKey(walletAddress);
+
+          // 1. Get Live SOL Balance
+          const lamports = await connection.getBalance(pubKey);
+          const liveSol = lamports / 1000000000;
+
+          // 2. Get Live USDC Balance (Using the official USDC Smart Contract)
+          const usdcMint = new PublicKey("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v");
+          const usdcAccounts = await connection.getParsedTokenAccountsByOwner(pubKey, { mint: usdcMint });
+          const liveUsdc = usdcAccounts.value.length > 0 
+              ? usdcAccounts.value[0].account.data.parsed.info.tokenAmount.uiAmount 
+              : 0;
+
+          // 3. Force React to update the UI instantly (This fixes your MAX button and headers!)
+          setBalances(prev => ({
+              ...prev,
+              sol: liveSol,
+              usdc: liveUsdc
+          }));
+
+          // 4. Tell Supabase the new numbers so the database matches the blockchain
+          await supabase
+              .from('players')
+              .update({ sol_balance: liveSol, usdc_balance: liveUsdc })
+              .eq('telegram_id', String(tgUser.id));
+
+          console.log("UI and Database successfully synced with Blockchain!");
+      } catch (err) {
+          console.error("Live balance sync failed:", err);
+      }
+  };
+
   const syncPlayer = useCallback(async () => {
     setIsLoading(true);
     try {
@@ -1796,10 +1833,16 @@ const GiftTapGame = () => {
                 await syncPlayer(); 
                 console.log("Sync complete!");
             }
+
+            // 🚨 SECOND: Sync their actual Web3 money directly from the blockchain!
+            if (playerKeypair) {
+                await syncBlockchainBalances(playerKeypair.publicKey.toString());
+            }
+
         } catch (syncError) {
             console.error("Player sync failed after swap:", syncError);
         }
-      }, 3000); 
+      }, 3500); 
 
     } catch (error) {
       console.error("Swap Error:", error);
