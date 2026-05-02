@@ -1442,6 +1442,8 @@ const GiftTapGame = () => {
                 setTapPower(payload.new.tap_power);
                 setMaxDailyLimit(payload.new.max_daily_limit);
                 setSeasonShards(Number(payload.new.season_shards));
+                // 🚨 THE FIX: Tell the secondary device to update its Daily Limit Bar!
+                setDailyTaps(Number(payload.new.daily_taps));
                 setStats({
                   inventory: payload.new.inventory || {},
                   frenzy_expires: payload.new.frenzy_expires,
