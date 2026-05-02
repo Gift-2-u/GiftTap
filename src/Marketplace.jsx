@@ -24,7 +24,7 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, tgUser, 
 
   // --- ITEM DEFINITIONS ---
   const shardListings = [
-    { id: 'frenzy', name: "90-Second Frenzy", desc: "2x Payout per energy", duration: "90 Seconds", cost: 600, icon: "🔥" },
+    { id: 'frenzy', name: "60-Second Frenzy", desc: "2x Payout per energy", duration: "60 Seconds", cost: 700, icon: "🔥" },
     { id: 'battery', name: "Expanded Battery", desc: "+1,000 Max Energy", duration: "24 Hours", cost: 750, icon: "🔋" },
     { id: 'heavy', name: "Heavy Hands", desc: "2x Efficiency (Drains 2x, Pays 2x)", duration: "24 Hours", cost: 750, icon: "🥊" },
     { id: 'refill', name: "Instant Refill", desc: "Fills energy to max", duration: "Instant", cost: 300, icon: "⚡" }
@@ -188,7 +188,7 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, tgUser, 
     midnightTonight.setHours(23, 59, 59, 999);
 
     // Shard Items
-    if (item.id === 'frenzy') dbUpdates.frenzy_expires = new Date(now + 90 * 1000).toISOString();
+    if (item.id === 'frenzy') dbUpdates.frenzy_expires = new Date(now + 60 * 1000).toISOString();
     
     // Battery and Heavy Hands now expire at exactly 11:59 PM tonight
     if (item.id === 'battery') dbUpdates.energy_boost_expires = midnightTonight.toISOString();
