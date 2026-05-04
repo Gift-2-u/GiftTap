@@ -294,27 +294,58 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, tgUser, 
         {/* --- TAB 1: SHARD SHOP --- */}
         {activeTab === 'upgrades' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-            {shardListings.map(item => (
-              <div key={item.id} style={{ background: '#1c1e22', borderRadius: '15px', padding: '15px', border: '1px solid #333', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div style={{ flex: 1 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '5px' }}>
-                    <span style={{ fontSize: '18px' }}>{item.icon}</span>
-                    <h3 style={{ margin: 0, color: '#ffd700', fontSize: '16px' }}>{item.name}</h3>
+            {shardListings.map(item => {
+              
+              // 🚨 1. EXACT ID MATCHING FOR COOLDOWNS
+              let isActive = false;
+              const now = new Date();
+
+              if (item.id === 'battery' && stats.limit_boost_expires) {
+                isActive = now < new Date(stats.limit_boost_expires);
+              } else if (item.id === 'frenzy' && stats.frenzy_expires) {
+                isActive = now < new Date(stats.frenzy_expires);
+              } else if (item.id === 'heavy' && stats.efficiency_expires) {
+                isActive = now < new Date(stats.efficiency_expires);
+              }
+              // 'refill' is ignored here because it is instant and has no cooldown timer!
+
+              const canAfford = balance >= item.cost;
+              const isDisabled = isActive || !canAfford;
+
+              return (
+                <div key={item.id} style={{ background: '#1c1e22', borderRadius: '15px', padding: '15px', border: '1px solid #333', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '5px' }}>
+                      <span style={{ fontSize: '18px' }}>{item.icon}</span>
+                      <h3 style={{ margin: 0, color: '#ffd700', fontSize: '16px' }}>{item.name}</h3>
+                    </div>
+                    <p style={{ margin: '0 0 4px 0', color: '#ccc', fontSize: '12px' }}>{item.desc}</p>
+                    <span style={{ color: '#528db0', fontSize: '11px', fontWeight: 'bold' }}>⏱️ {item.duration}</span>
                   </div>
-                  <p style={{ margin: '0 0 4px 0', color: '#ccc', fontSize: '12px' }}>{item.desc}</p>
-                  <span style={{ color: '#528db0', fontSize: '11px', fontWeight: 'bold' }}>⏱️ {item.duration}</span>
+                  
+                  <button 
+                    disabled={isDisabled}
+                    style={{ 
+                      background: isActive ? '#555' : (canAfford ? '#ffd700' : '#333'), 
+                      color: isActive ? '#fff' : (canAfford ? '#000' : '#666'), 
+                      border: 'none', 
+                      padding: '10px 15px', 
+                      borderRadius: '10px', 
+                      fontWeight: 'bold', 
+                      cursor: isDisabled ? 'not-allowed' : 'pointer', 
+                      marginLeft: '10px' 
+                    }}
+                    onClick={() => {
+                      if (isDisabled) return; 
+                      setItemToBuy(item); 
+                      setShowConfirmModal(true); 
+                    }}
+                  >
+                    {isActive ? 'Active' : (item.price ? 'Buy' : item.cost)}
+                  </button>
                 </div>
-                <button 
-                  style={{ background: balance >= item.cost ? '#ffd700' : '#333', color: balance >= item.cost ? '#000' : '#666', border: 'none', padding: '10px 15px', borderRadius: '10px', fontWeight: 'bold', cursor: balance >= item.cost ? 'pointer' : 'not-allowed', marginLeft: '10px' }}
-                  onClick={() => {
-                    setItemToBuy(item); // Load the item into state
-                    setShowConfirmModal(true); // Open the pop-up
-                  }}
-                >
-                  {item.price ? 'Buy' : item.cost}
-                </button>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
 
