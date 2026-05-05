@@ -178,10 +178,6 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, tgUser, 
     newInventory[item.id] -= 1;
     if (newInventory[item.id] <= 0) delete newInventory[item.id]; 
 
-    // Calculate exact local midnight for tonight
-    const midnightTonight = new Date();
-    midnightTonight.setHours(23, 59, 59, 999);
-
     // 🚨 NEW: INJECT THE COOLDOWN TRACKER
     if (!newInventory.cooldowns) newInventory.cooldowns = {};
     newInventory.cooldowns[item.id] = midnightTonight.toISOString();
