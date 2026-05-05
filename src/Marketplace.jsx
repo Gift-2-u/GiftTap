@@ -176,7 +176,15 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, tgUser, 
     // 1. Deduct from inventory
     const newInventory = { ...localInventory };
     newInventory[item.id] -= 1;
-    if (newInventory[item.id] === 0) delete newInventory[item.id]; // Clean up empty items
+    if (newInventory[item.id] <= 0) delete newInventory[item.id]; 
+
+    // Calculate exact local midnight for tonight
+    const midnightTonight = new Date();
+    midnightTonight.setHours(23, 59, 59, 999);
+
+    // 🚨 NEW: INJECT THE COOLDOWN TRACKER
+    if (!newInventory.cooldowns) newInventory.cooldowns = {};
+    newInventory.cooldowns[item.id] = midnightTonight.toISOString();
 
     // 2. Set Expiration Timers
     const now = Date.now();
@@ -250,7 +258,7 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, tgUser, 
   };
 
   // --- CALCULATE TOTAL BACKPACK ITEMS ---
-  const backpackItemCount = Object.values(localInventory || {}).reduce((total, qty) => total + Number(qty), 0);
+  const backpackItemCount = Object.values(localInventory || {}) .filter(([key]) => key !== 'cooldowns') .reduce((total, qty) => total + Number(qty), 0);
 
   return (
     <div style={{ flex: 1, width: '100%', display: 'flex', flexDirection: 'column', padding: '15px', paddingBottom: '120px', boxSizing: 'border-box' }}>
@@ -404,30 +412,52 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, tgUser, 
         {/* --- TAB 3: THE BACKPACK --- */}
         {activeTab === 'inventory' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-            {Object.keys(localInventory).length === 0 ? (
+            {backpackItemCount === 0 ? (
               <div style={{ textAlign: 'center', padding: '40px 20px', color: '#888' }}>
                 <div style={{ fontSize: '48px', marginBottom: '15px' }}>🎒</div>
                 <h3 style={{ color: '#fff', margin: '0 0 10px 0' }}>Backpack is Empty</h3>
                 <p style={{ fontSize: '12px' }}>Visit the shop to purchase boosts and gear.</p>
               </div>
             ) : (
-              allItems.filter(item => localInventory[item.id] > 0).map(item => (
-                <div key={item.id} style={{ background: '#1c1e22', borderRadius: '15px', padding: '15px', border: '1px solid #9945FF', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '5px' }}>
-                      <span style={{ fontSize: '18px' }}>{item.icon || item.image}</span>
-                      <h3 style={{ margin: 0, color: '#fff', fontSize: '16px' }}>{item.name}</h3>
+              allItems.filter(item => localInventory[item.id] > 0).map(item => {
+                
+                // 🚨 CHECK IF THIS SPECIFIC ITEM WAS ALREADY USED TODAY
+                let isCoolingDown = false;
+                if (localInventory.cooldowns && localInventory.cooldowns[item.id]) {
+                  isCoolingDown = new Date() < new Date(localInventory.cooldowns[item.id]);
+                }
+
+                return (
+                  <div key={item.id} style={{ background: '#1c1e22', borderRadius: '15px', padding: '15px', border: '1px solid #9945FF', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '5px' }}>
+                        <span style={{ fontSize: '18px' }}>{item.icon || item.image}</span>
+                        <h3 style={{ margin: 0, color: '#fff', fontSize: '16px' }}>{item.name}</h3>
+                      </div>
+                      <span style={{ color: '#888', fontSize: '11px', fontWeight: 'bold' }}>Owned: {localInventory[item.id]}</span>
                     </div>
-                    <span style={{ color: '#888', fontSize: '11px', fontWeight: 'bold' }}>Owned: {localInventory[item.id]}</span>
+                    
+                    <button 
+                      disabled={isCoolingDown}
+                      style={{ 
+                        background: isCoolingDown ? '#555' : '#9945FF', 
+                        color: isCoolingDown ? '#aaa' : '#fff', 
+                        border: 'none', 
+                        padding: '10px 20px', 
+                        borderRadius: '10px', 
+                        fontWeight: 'bold', 
+                        cursor: isCoolingDown ? 'not-allowed' : 'pointer', 
+                        marginLeft: '10px' 
+                      }}
+                      onClick={() => {
+                        if (!isCoolingDown) handleUseItem(item);
+                      }}
+                    >
+                      {isCoolingDown ? 'Used Today' : 'USE'}
+                    </button>
                   </div>
-                  <button 
-                    style={{ background: '#9945FF', color: '#fff', border: 'none', padding: '10px 20px', borderRadius: '10px', fontWeight: 'bold', cursor: 'pointer', marginLeft: '10px' }}
-                    onClick={() => handleUseItem(item)}
-                  >
-                    USE
-                  </button>
-                </div>
-              ))
+                );
+              })
             )}
           </div>
         )}
