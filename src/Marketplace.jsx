@@ -6,8 +6,8 @@ import * as bip39 from "bip39";
 import { derivePath } from "ed25519-hd-key";
 
 const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, tgUser, playerWallet, decryptedPhrase }) => {
-  const [activeTab, setActiveTab] = useState('market'); 
-  const [marketFilter, setMarketFilter] = useState('All'); 
+  const [activeTab, setActiveTab] = useState('market');
+  const [marketFilter, setMarketFilter] = useState('All');
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [itemToBuy, setItemToBuy] = useState(null);
 
@@ -59,7 +59,7 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, tgUser, 
       const { error } = await supabase.from('players')
         .update({ shard_balance: balance - item.cost, inventory: newInventory })
         .eq('telegram_id', String(tgUser.id));
-        
+       
       if (error) throw error;
 
       setBalance(prev => prev - item.cost);
@@ -89,7 +89,7 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, tgUser, 
 
       // 2. Setup Connection & Keypair
       const connection = new Connection("https://mainnet.helius-rpc.com/?api-key=538f6c8f-c773-46a2-939c-6d48c75b2226", 'confirmed');
-      
+     
       let playerKeypair;
       if (storedSecret.includes(" ")) {
         // --- NEW FORMAT: Translate 12-word mnemonic to Keypair ---
@@ -152,7 +152,7 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, tgUser, 
       const { error: updateError } = await supabase.from('players')
         .update({ inventory: newInventory })
         .eq('telegram_id', String(tgUser.id));
-        
+       
       if (updateError) throw updateError;
 
       setLocalInventory(newInventory);
@@ -176,11 +176,7 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, tgUser, 
     // 1. Deduct from inventory
     const newInventory = { ...localInventory };
     newInventory[item.id] -= 1;
-    if (newInventory[item.id] <= 0) delete newInventory[item.id]; 
-
-    // 🚨 NEW: INJECT THE COOLDOWN TRACKER
-    if (!newInventory.cooldowns) newInventory.cooldowns = {};
-    newInventory.cooldowns[item.id] = midnightTonight.toISOString();
+    if (newInventory[item.id] === 0) delete newInventory[item.id]; // Clean up empty items
 
     // 2. Set Expiration Timers
     const now = Date.now();
@@ -193,7 +189,7 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, tgUser, 
 
     // Shard Items
     if (item.id === 'frenzy') dbUpdates.frenzy_expires = new Date(now + 60 * 1000).toISOString();
-    
+   
     // Battery and Heavy Hands now expire at exactly 11:59 PM tonight
     if (item.id === 'battery') dbUpdates.energy_boost_expires = midnightTonight.toISOString();
     if (item.id === 'heavy') dbUpdates.efficiency_expires = midnightTonight.toISOString();
@@ -201,8 +197,7 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, tgUser, 
       dbUpdates.last_energy = 1000;
       if (setEnergy) setEnergy(1000);
     }
-    
-    // Premium SOL Items
+   
     // Premium SOL Items
     if (item.id === 'bot') {
       const botExpire = new Date();
@@ -254,11 +249,11 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, tgUser, 
   };
 
   // --- CALCULATE TOTAL BACKPACK ITEMS ---
-  const backpackItemCount = Object.values(localInventory || {}) .filter(([key]) => key !== 'cooldowns') .reduce((total, qty) => total + Number(qty), 0);
+  const backpackItemCount = Object.values(localInventory || {}).reduce((total, qty) => total + Number(qty), 0);
 
   return (
     <div style={{ flex: 1, width: '100%', display: 'flex', flexDirection: 'column', padding: '15px', paddingBottom: '120px', boxSizing: 'border-box' }}>
-      
+     
       {/* --- CUSTOM POP-UP MODAL --- */}
       {txStatus.show && (
         <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', background: 'rgba(0,0,0,0.85)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 9999 }}>
@@ -294,12 +289,12 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, tgUser, 
       </div>
 
       <div style={{ flex: 1, overflowY: 'auto' }}>
-        
+       
         {/* --- TAB 1: SHARD SHOP --- */}
         {activeTab === 'upgrades' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
             {shardListings.map(item => {
-              
+             
               // 🚨 1. EXACT ID MATCHING FOR COOLDOWNS
               let isActive = false;
               const now = new Date();
@@ -326,23 +321,23 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, tgUser, 
                     <p style={{ margin: '0 0 4px 0', color: '#ccc', fontSize: '12px' }}>{item.desc}</p>
                     <span style={{ color: '#528db0', fontSize: '11px', fontWeight: 'bold' }}>⏱️ {item.duration}</span>
                   </div>
-                  
-                  <button 
+                 
+                  <button
                     disabled={isDisabled}
-                    style={{ 
-                      background: isActive ? '#555' : (canAfford ? '#ffd700' : '#333'), 
-                      color: isActive ? '#fff' : (canAfford ? '#000' : '#666'), 
-                      border: 'none', 
-                      padding: '10px 15px', 
-                      borderRadius: '10px', 
-                      fontWeight: 'bold', 
-                      cursor: isDisabled ? 'not-allowed' : 'pointer', 
-                      marginLeft: '10px' 
+                    style={{
+                      background: isActive ? '#555' : (canAfford ? '#ffd700' : '#333'),
+                      color: isActive ? '#fff' : (canAfford ? '#000' : '#666'),
+                      border: 'none',
+                      padding: '10px 15px',
+                      borderRadius: '10px',
+                      fontWeight: 'bold',
+                      cursor: isDisabled ? 'not-allowed' : 'pointer',
+                      marginLeft: '10px'
                     }}
                     onClick={() => {
-                      if (isDisabled) return; 
-                      setItemToBuy(item); 
-                      setShowConfirmModal(true); 
+                      if (isDisabled) return;
+                      setItemToBuy(item);
+                      setShowConfirmModal(true);
                     }}
                   >
                     {isActive ? 'Active' : (item.price ? 'Buy' : item.cost)}
@@ -358,12 +353,12 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, tgUser, 
           <>
             <div style={{ display: 'flex', gap: '8px', marginBottom: '15px', overflowX: 'auto', paddingBottom: '5px' }}>
               {['All', 'Power', 'Misc'].map(filter => (
-                <button 
+                <button
                   key={filter}
                   onClick={() => setMarketFilter(filter)}
-                  style={{ 
+                  style={{
                     padding: '6px 16px', borderRadius: '20px', border: '1px solid #333', fontSize: '12px', fontWeight: 'bold', whiteSpace: 'nowrap',
-                    background: marketFilter === filter ? '#fff' : '#111', color: marketFilter === filter ? '#000' : '#888' 
+                    background: marketFilter === filter ? '#fff' : '#111', color: marketFilter === filter ? '#000' : '#888'
                   }}>
                   {filter}
                 </button>
@@ -373,11 +368,11 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, tgUser, 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '10px' }}>
               {filteredListings.map((item) => (
                 <div key={item.id} style={{ background: '#111', border: item.rarity === 'Legendary' ? '1px solid #ffd700' : item.rarity === 'Epic' ? '1px solid #9945FF' : '1px solid #333', borderRadius: '12px', padding: '10px', display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center' }}>
-                  
+                 
                   <div style={{ fontSize: '40px', background: '#222', width: '100%', borderRadius: '8px', padding: '15px 0', marginBottom: '10px' }}>
                     {item.image}
                   </div>
-                  
+                 
                   <div style={{ color: '#fff', fontWeight: 'bold', fontSize: '13px', width: '100%', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                     {item.name}
                   </div>
@@ -389,7 +384,7 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, tgUser, 
                     <div style={{ color: '#14F195', fontSize: '13px', fontWeight: 'bold', marginBottom: '6px' }}>
                       {item.price} {item.currency}
                     </div>
-                    <button 
+                    <button
                       onClick={() => {
                         setItemToBuy(item); // Load the item into state
                         setShowConfirmModal(true); // Open the pop-up
@@ -408,52 +403,30 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, tgUser, 
         {/* --- TAB 3: THE BACKPACK --- */}
         {activeTab === 'inventory' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-            {backpackItemCount === 0 ? (
+            {Object.keys(localInventory).length === 0 ? (
               <div style={{ textAlign: 'center', padding: '40px 20px', color: '#888' }}>
                 <div style={{ fontSize: '48px', marginBottom: '15px' }}>🎒</div>
                 <h3 style={{ color: '#fff', margin: '0 0 10px 0' }}>Backpack is Empty</h3>
                 <p style={{ fontSize: '12px' }}>Visit the shop to purchase boosts and gear.</p>
               </div>
             ) : (
-              allItems.filter(item => localInventory[item.id] > 0).map(item => {
-                
-                // 🚨 CHECK IF THIS SPECIFIC ITEM WAS ALREADY USED TODAY
-                let isCoolingDown = false;
-                if (localInventory.cooldowns && localInventory.cooldowns[item.id]) {
-                  isCoolingDown = new Date() < new Date(localInventory.cooldowns[item.id]);
-                }
-
-                return (
-                  <div key={item.id} style={{ background: '#1c1e22', borderRadius: '15px', padding: '15px', border: '1px solid #9945FF', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '5px' }}>
-                        <span style={{ fontSize: '18px' }}>{item.icon || item.image}</span>
-                        <h3 style={{ margin: 0, color: '#fff', fontSize: '16px' }}>{item.name}</h3>
-                      </div>
-                      <span style={{ color: '#888', fontSize: '11px', fontWeight: 'bold' }}>Owned: {localInventory[item.id]}</span>
+              allItems.filter(item => localInventory[item.id] > 0).map(item => (
+                <div key={item.id} style={{ background: '#1c1e22', borderRadius: '15px', padding: '15px', border: '1px solid #9945FF', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '5px' }}>
+                      <span style={{ fontSize: '18px' }}>{item.icon || item.image}</span>
+                      <h3 style={{ margin: 0, color: '#fff', fontSize: '16px' }}>{item.name}</h3>
                     </div>
-                    
-                    <button 
-                      disabled={isCoolingDown}
-                      style={{ 
-                        background: isCoolingDown ? '#555' : '#9945FF', 
-                        color: isCoolingDown ? '#aaa' : '#fff', 
-                        border: 'none', 
-                        padding: '10px 20px', 
-                        borderRadius: '10px', 
-                        fontWeight: 'bold', 
-                        cursor: isCoolingDown ? 'not-allowed' : 'pointer', 
-                        marginLeft: '10px' 
-                      }}
-                      onClick={() => {
-                        if (!isCoolingDown) handleUseItem(item);
-                      }}
-                    >
-                      {isCoolingDown ? 'Used Today' : 'USE'}
-                    </button>
+                    <span style={{ color: '#888', fontSize: '11px', fontWeight: 'bold' }}>Owned: {localInventory[item.id]}</span>
                   </div>
-                );
-              })
+                  <button
+                    style={{ background: '#9945FF', color: '#fff', border: 'none', padding: '10px 20px', borderRadius: '10px', fontWeight: 'bold', cursor: 'pointer', marginLeft: '10px' }}
+                    onClick={() => handleUseItem(item)}
+                  >
+                    USE
+                  </button>
+                </div>
+              ))
             )}
           </div>
         )}
@@ -466,15 +439,15 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, tgUser, 
           <div style={{ background: '#1c1e22', padding: '25px', borderRadius: '15px', border: '2px solid #ffd700', textAlign: 'center', width: '80%', maxWidth: '320px' }}>
             <h3 style={{ color: '#fff', marginTop: 0 }}>Confirm Purchase?</h3>
             <p style={{ color: '#ccc', fontSize: '14px' }}>Do you want to buy <strong>{itemToBuy.name}</strong>?</p>
-            
+           
             <div style={{ display: 'flex', gap: '10px', marginTop: '20px' }}>
-              <button 
-                onClick={() => setShowConfirmModal(false)} 
+              <button
+                onClick={() => setShowConfirmModal(false)}
                 style={{ flex: 1, padding: '12px', background: '#333', color: '#fff', borderRadius: '10px', border: 'none', fontWeight: 'bold' }}
               >
                 Cancel
               </button>
-              <button 
+              <button
                 onClick={() => {
                   setShowConfirmModal(false);
                   if (itemToBuy.price) {
@@ -482,7 +455,7 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, tgUser, 
                   } else {
                     handleShardBuy(itemToBuy); // Triggers Shard purchase
                   }
-                }} 
+                }}
                 style={{ flex: 1, padding: '12px', background: '#4ade80', color: '#000', borderRadius: '10px', border: 'none', fontWeight: 'bold' }}
               >
                 Confirm
