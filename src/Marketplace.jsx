@@ -16,11 +16,20 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, tgUser, 
 
   // Initialize local inventory from stats so the UI updates instantly
   const [localInventory, setLocalInventory] = useState(stats?.inventory || {});
+  // NEW: Track daily usage from the database stats
+  const [dailyUsage, setDailyUsage] = useState(stats?.daily_usage || {});
 
-  // Update local inventory if stats change from the parent
   useEffect(() => {
     if (stats?.inventory) setLocalInventory(stats.inventory);
-  }, [stats?.inventory]);
+    if (stats?.daily_usage) setDailyUsage(stats.daily_usage);
+  }, [stats?.inventory, stats?.daily_usage]);
+
+  // NEW: Helper to get the current date in UTC format (YYYY-MM-DD)
+  // This ensures everyone resets at the exact same global moment.
+  const getTodayUTCString = () => {
+    const now = new Date();
+    return now.toISOString().split('T')[0]; 
+  };
 
   // --- ITEM DEFINITIONS ---
   const shardListings = [
@@ -171,6 +180,14 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, tgUser, 
   const handleUseItem = async (item) => {
     if (!localInventory[item.id] || localInventory[item.id] <= 0) return;
 
+    // NEW: Check if this item has already been used today UTC
+    const todayStr = getTodayUTCString();
+    if (dailyUsage[item.id] === todayStr) {
+      setTxStatus({ show: true, loading: false, message: `❌ You have already used a ${item.name} today. Wait until UTC midnight.`, success: false });
+      setTimeout(() => setTxStatus(prev => ({ ...prev, show: false })), 3000);
+      return;
+    }
+
     setTxStatus({ show: true, loading: true, message: `Activating ${item.name}...`, success: false });
 
     // 1. Deduct from inventory
@@ -178,9 +195,12 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, tgUser, 
     newInventory[item.id] -= 1;
     if (newInventory[item.id] === 0) delete newInventory[item.id]; // Clean up empty items
 
-    // 2. Set Expiration Timers
+    // NEW: Mark item as used today
+    const newDailyUsage = { ...dailyUsage, [item.id]: todayStr };
+
     const now = Date.now();
-    let dbUpdates = { inventory: newInventory };
+    // Include daily_usage in the database update payload
+    let dbUpdates = { inventory: newInventory, daily_usage: newDailyUsage };
 
     // Shard Items
     // Calculate exact local midnight for tonight
@@ -237,6 +257,7 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, tgUser, 
       if (error) throw error;
 
       setLocalInventory(newInventory);
+      setDailyUsage(newDailyUsage);
       if (setStats) setStats({ ...stats, ...dbUpdates });
 
       setTxStatus({ show: true, loading: false, message: `⚡ ${item.name} is now ACTIVE!`, success: true });
@@ -250,6 +271,7 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, tgUser, 
 
   // --- CALCULATE TOTAL BACKPACK ITEMS ---
   const backpackItemCount = Object.values(localInventory || {}).reduce((total, qty) => total + Number(qty), 0);
+  const currentTodayStr = getTodayUTCString();
 
   return (
     <div style={{ flex: 1, width: '100%', display: 'flex', flexDirection: 'column', padding: '15px', paddingBottom: '120px', boxSizing: 'border-box' }}>
@@ -410,23 +432,38 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, tgUser, 
                 <p style={{ fontSize: '12px' }}>Visit the shop to purchase boosts and gear.</p>
               </div>
             ) : (
-              allItems.filter(item => localInventory[item.id] > 0).map(item => (
-                <div key={item.id} style={{ background: '#1c1e22', borderRadius: '15px', padding: '15px', border: '1px solid #9945FF', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '5px' }}>
-                      <span style={{ fontSize: '18px' }}>{item.icon || item.image}</span>
-                      <h3 style={{ margin: 0, color: '#fff', fontSize: '16px' }}>{item.name}</h3>
+              allItems.filter(item => localInventory[item.id] > 0).map(item => {
+                
+                // NEW: Check if button should be disabled due to daily limit
+                const isUsedToday = dailyUsage[item.id] === currentTodayStr;
+
+                return (
+                  <div key={item.id} style={{ background: '#1c1e22', borderRadius: '15px', padding: '15px', border: '1px solid #9945FF', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '5px' }}>
+                        <span style={{ fontSize: '18px' }}>{item.icon || item.image}</span>
+                        <h3 style={{ margin: 0, color: '#fff', fontSize: '16px' }}>{item.name}</h3>
+                      </div>
+                      <span style={{ color: '#888', fontSize: '11px', fontWeight: 'bold' }}>Owned: {localInventory[item.id]}</span>
+                      {isUsedToday && <div style={{ color: '#ff4444', fontSize: '10px', marginTop: '4px' }}>Used Today</div>}
                     </div>
-                    <span style={{ color: '#888', fontSize: '11px', fontWeight: 'bold' }}>Owned: {localInventory[item.id]}</span>
+                    
+                    {/* NEW: Disable button and update text if used today */}
+                    <button
+                      disabled={isUsedToday}
+                      style={{ 
+                        background: isUsedToday ? '#444' : '#9945FF', 
+                        color: isUsedToday ? '#888' : '#fff', 
+                        border: 'none', padding: '10px 20px', borderRadius: '10px', fontWeight: 'bold', 
+                        cursor: isUsedToday ? 'not-allowed' : 'pointer', marginLeft: '10px' 
+                      }}
+                      onClick={() => handleUseItem(item)}
+                    >
+                      {isUsedToday ? 'LIMIT REACHED' : 'USE'}
+                    </button>
                   </div>
-                  <button
-                    style={{ background: '#9945FF', color: '#fff', border: 'none', padding: '10px 20px', borderRadius: '10px', fontWeight: 'bold', cursor: 'pointer', marginLeft: '10px' }}
-                    onClick={() => handleUseItem(item)}
-                  >
-                    USE
-                  </button>
-                </div>
-              ))
+                )
+              })
             )}
           </div>
         )}
