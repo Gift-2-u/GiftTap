@@ -16,7 +16,7 @@ const Tasks = ({ balance, setBalance, tgUser }) => {
     { id: 'streak_14', title: 'Tap 14 Days in a Row', reward: 1250, icon: '🔥', reqLevel: 1, type: 'streak', target: 14 },
     { id: 'streak_30', title: 'Tap 30 Days in a Row', reward: 3000, icon: '🔥', reqLevel: 1, type: 'streak', target: 30 }, 
     // Purchase Task (Type: purchase)
-    { id: 'first_purchase', title: 'Make an In-App Purchase', reward: 1500, icon: '🛍️', type: 'purchase' }
+    { id: 'first_purchase', title: 'Make an In-App Purchase', reward: 5000, icon: '🛍️', type: 'purchase' }
   ];
 
   // 1. Load completed tasks from Supabase when the page opens
