@@ -1925,7 +1925,7 @@ const GiftTapGame = () => {
       }
 
       // 2. The 3-week exact countdown
-      const THREE_WEEKS_MS = 21 * 24 * 60 * 60 * 1000;
+      const THREE_WEEKS_MS = 14 * 24 * 60 * 60 * 1000;
       const endTime = betaStartTime + THREE_WEEKS_MS;
       const now = Date.now();
       const difference = endTime - now;
