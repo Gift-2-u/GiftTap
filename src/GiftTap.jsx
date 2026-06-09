@@ -1590,6 +1590,7 @@ const GiftTapGame = () => {
 
   // 2. Create the execution function
   const handleWithdraw = async () => {
+      console.log("REACT MEMORY CHECK:", { address: withdrawAddress, amount: withdrawAmount });
       if (!withdrawAddress || !withdrawAmount) return;
       
       setTxStatus({ loading: true, message: '🔗 Signing with your local key...' });
