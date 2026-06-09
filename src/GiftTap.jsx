@@ -1137,7 +1137,7 @@ const GiftTapGame = () => {
       } else if (!data || data.length === 0) {
         alert(`Save Failed: No matching telegram_id found for ${tgUser.id}`);
       } else {
-        console.log("✅ SAVE SUCCESS:");
+        console.log("✅ SAVE SUCCESS:", data);
       }
     }, 800); // Slightly faster save
   };
@@ -1572,7 +1572,7 @@ const GiftTapGame = () => {
       if (updateError) {
         console.error("❌ Wallet Sync Error:", updateError.message);
       } else {
-          console.log("✅ Sync Successful for ID:", tgUser.id, data); 
+          console.log("✅ Sync Successful for ID:", tgUser.id, updatedData); 
       }
       
     } catch (err) { 
