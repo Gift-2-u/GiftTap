@@ -1284,13 +1284,10 @@ const GiftTapGame = () => {
       setSeasonShards(prev => Math.round((Number(prev) + shardsEarned) * 1000) / 1000); 
       setEnergy(prev => Math.max(0, prev - totalCost));
       setDailyTaps(prev => prev + totalCost);
-      
-      // 🚨 THE FIX: Catch the newly earned shards into the pending pool
-      pendingShards.current += shardsEarned;
-      pendingCost.current += totalCost;
 
       // Send the trigger to save (No absolute totals passed anymore)
-      saveToDatabase(today, currentStreak, maxUnlockedLevel); 
+      // Make sure this exact line is at the bottom of handleTap:
+      saveToDatabase(nextBalance, nextEnergy, nextDaily, today, currentStreak, nextLifetimeTaps, maxUnlockedLevel, nextSeasonShards); 
       
       // 5. GENERATE FLOATING TEXT
       const nowMs = now.getTime();
