@@ -1105,43 +1105,8 @@ const GiftTapGame = () => {
 
   }, [tgUser?.id]);
 
-  const saveToDatabase = (today, currentStreak, maxUnlockedLevel) => {
-    if (!tgUser?.id || tgUser.id === "test_local_user") return;
-    clearTimeout(window.saveTimeout);
-
-    window.saveTimeout = setTimeout(async () => {
-      // 1. Grab the accumulated taps from the wait period
-      const shardsToSend = pendingShards.current;
-      const costToSend = pendingCost.current;
-
-      // 2. Instantly reset the accumulator so new taps during the network request aren't lost
-      pendingShards.current = 0;
-      pendingCost.current = 0;
-
-      // 3. Skip the network call if no taps happened
-      if (shardsToSend === 0 && costToSend === 0) return;
-
-      // 4. Send ONLY the increments to the secure RPC
-      const { error } = await supabase.rpc('process_game_taps', {
-        p_telegram_id: String(tgUser.id),
-        p_shards_earned: shardsToSend,
-        p_energy_cost: costToSend,
-        p_today_date: today,
-        p_current_streak: currentStreak,
-        p_max_unlocked_level: maxUnlockedLevel,
-        p_max_daily_limit: maxDailyLimit,
-        p_limit_boost_amount: stats.limit_boost_amount || 0,
-        p_limit_boost_expires: stats.limit_boost_expires || null
-      });
-
-      if (error) {
-        console.error("🚨 RPC REJECTION:", error);
-      }
-    }, 800);
-  };
-
   // 6. SAVE PROGRESS
-  const saveToDatabase_old = (b, e, dt, ltd, strk, ltt, mul, s) => {
+  const saveToDatabase = (b, e, dt, ltd, strk, ltt, mul, s) => {
     // 1. Don't save if we don't have a valid user ID
     if (!tgUser?.id || tgUser.id === "test_local_user") return;
 
