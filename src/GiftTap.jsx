@@ -1608,7 +1608,14 @@ const GiftTapGame = () => {
           }
 
           const connection = new Connection("https://mainnet.helius-rpc.com/?api-key=538f6c8f-c773-46a2-939c-6d48c75b2226", 'confirmed');
-          const playerKeypair = Keypair.fromSecretKey(bs58.decode(storedSecret));
+          // Convert the 12 words (storedSecret) into a Solana Keypair
+          const seedBuffer = bip39.mnemonicToSeedSync(storedSecret);
+          const seedHex = Array.from(seedBuffer)
+              .map(b => b.toString(16).padStart(2, '0'))
+              .join('');
+
+          const derivedSeed = derivePath("m/44'/501'/0'/0'", seedHex).key;
+          const playerKeypair = Keypair.fromSeed(derivedSeed);
 
           const balance = await connection.getBalance(playerKeypair.publicKey);
           const requiredAmount = (parseFloat(withdrawAmount) + 0.0005 + 0.000025 + 0.001) * 1e9; 
