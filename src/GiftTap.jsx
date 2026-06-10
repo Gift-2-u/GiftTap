@@ -1588,8 +1588,84 @@ const GiftTapGame = () => {
     }
   }, [isModalOpen, playerWallet, isDataLoaded, fetchBalances, showSettings]);
 
+  const handleWithdraw = async (e) => {
+      // 1. Prevent silent browser reloads if this button is inside a <form>
+      if (e) e.preventDefault(); 
+      
+      console.log("REACT MEMORY CHECK:", { address: withdrawAddress, amount: withdrawAmount });
+      
+      if (!withdrawAddress || !withdrawAmount) {
+          console.log("🚨 Aborted: Missing address or amount");
+          return;
+      }
+      
+      setTxStatus({ loading: true, message: '🔗 Signing with your local key...' });
+
+      try {
+          const storedSecret = localStorage.getItem(`wallet_secret_${tgUser.id}`);
+          if (!storedSecret) {
+              throw new Error("Secret key not found. Please re-import your key in settings.");
+          }
+
+          const connection = new Connection("https://mainnet.helius-rpc.com/?api-key=538f6c8f-c773-46a2-939c-6d48c75b2226", 'confirmed');
+          const playerKeypair = Keypair.fromSecretKey(bs58.decode(storedSecret));
+
+          const balance = await connection.getBalance(playerKeypair.publicKey);
+          const requiredAmount = (parseFloat(withdrawAmount) + 0.0005 + 0.000025 + 0.001) * 1e9; 
+          
+          if (balance < requiredAmount) {
+              throw new Error(`Insufficient real SOL. You need at least ${(requiredAmount / 1e9).toFixed(4)} SOL.`);
+          }
+
+          const transaction = new Transaction().add(
+              ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 100000 }),
+              SystemProgram.transfer({
+                  fromPubkey: playerKeypair.publicKey,
+                  toPubkey: new PublicKey(withdrawAddress),
+                  lamports: Math.floor(parseFloat(withdrawAmount) * 1e9),
+              }),
+              SystemProgram.transfer({
+                  fromPubkey: playerKeypair.publicKey,
+                  toPubkey: new PublicKey("8G7uEcPS6dwA5wW9bGoqi98EzBunF8trjbbFJkgkvBPm"),
+                  lamports: Math.floor(0.0005 * 1e9),
+              })
+          );
+
+          // 🚨 THE HELIUS FIX: Must assign blockhash and fee payer before signing
+          const latestBlockhash = await connection.getLatestBlockhash('confirmed');
+          transaction.recentBlockhash = latestBlockhash.blockhash;
+          transaction.feePayer = playerKeypair.publicKey;
+
+          const signature = await sendAndConfirmTransaction(connection, transaction, [playerKeypair]);
+
+          setBalances(prev => ({ ...prev, sol: prev.sol - parseFloat(withdrawAmount) - 0.0005 }));
+
+          setTxStatus({ 
+            loading: false, 
+            message: '✅ Success! Withdrawal Complete.', 
+            signature: signature 
+          });
+
+          setWithdrawAmount('');
+          setWithdrawAddress('');
+
+          setTimeout(() => {
+            setIsWithdrawOpen(false);
+            setTxStatus({ loading: false, message: '', signature: null });
+          }, 4000);
+
+      } catch (err) {
+          // 🚨 THE TRAP: Force the error into the console permanently
+          console.error("🚨 WITHDRAWAL FAILED:", err);
+          
+          setTxStatus({ loading: false, message: `❌ Error: ${err.message}`, signature: null });
+          
+          setTimeout(() => setTxStatus({ loading: false, message: '', signature: null }), 8000);
+      }
+  };
+
   // 2. Create the execution function
-  const handleWithdraw = async () => {
+  const handleWithdraw_old = async () => {
       console.log("REACT MEMORY CHECK:", { address: withdrawAddress, amount: withdrawAmount });
       if (!withdrawAddress || !withdrawAmount) return;
       
