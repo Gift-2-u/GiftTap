@@ -151,6 +151,11 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, tgUser, 
         })
       );
 
+      // ---> 🚨 ADD THESE 3 LINES FOR HELIUS STRICT MODE <---
+      const latestBlockhash = await connection.getLatestBlockhash('confirmed');
+      transaction.recentBlockhash = latestBlockhash.blockhash;
+      transaction.feePayer = playerKeypair.publicKey;
+
       // 6. Send and Confirm
       const signature = await sendAndConfirmTransaction(connection, transaction, [playerKeypair]);
 

@@ -1589,85 +1589,82 @@ const GiftTapGame = () => {
   }, [isModalOpen, playerWallet, isDataLoaded, fetchBalances, showSettings]);
 
   const handleWithdraw = async (e) => {
-      // 1. Prevent silent browser reloads if this button is inside a <form>
       if (e) e.preventDefault(); 
       
-      console.log("REACT MEMORY CHECK:", { address: withdrawAddress, amount: withdrawAmount });
+      if (!withdrawAddress || !withdrawAmount) return;
       
-      if (!withdrawAddress || !withdrawAmount) {
-          console.log("🚨 Aborted: Missing address or amount");
-          return;
-      }
-      
-      setTxStatus({ loading: true, message: '🔗 Signing with your local key...' });
+      setTxStatus({ loading: true, message: 'Initiating withdrawal...' });
 
       try {
-          const storedSecret = localStorage.getItem(`wallet_secret_${tgUser.id}`);
+          // 1. Get Secret Key directly from your existing React State
+          const storedSecret = decryptedPhrase;
           if (!storedSecret) {
-              throw new Error("Secret key not found. Please re-import your key in settings.");
+              throw new Error("Secret key not found. Please unlock your wallet in settings.");
           }
 
+          // 2. Setup Connection & Keypair (Matching your marketplace logic)
           const connection = new Connection("https://mainnet.helius-rpc.com/?api-key=538f6c8f-c773-46a2-939c-6d48c75b2226", 'confirmed');
-          // Convert the 12 words (storedSecret) into a Solana Keypair
-          const seedBuffer = bip39.mnemonicToSeedSync(storedSecret);
-          const seedHex = Array.from(seedBuffer)
-              .map(b => b.toString(16).padStart(2, '0'))
-              .join('');
-
-          const derivedSeed = derivePath("m/44'/501'/0'/0'", seedHex).key;
-          const playerKeypair = Keypair.fromSeed(derivedSeed);
-
-          const balance = await connection.getBalance(playerKeypair.publicKey);
-          const requiredAmount = (parseFloat(withdrawAmount) + 0.0005 + 0.000025 + 0.001) * 1e9; 
           
-          if (balance < requiredAmount) {
-              throw new Error(`Insufficient real SOL. You need at least ${(requiredAmount / 1e9).toFixed(4)} SOL.`);
+          let playerKeypair;
+          if (storedSecret.includes(" ")) {
+              const cleanSecret = storedSecret.trim();
+              const seed = bip39.mnemonicToSeedSync(cleanSecret);
+              const seedHex = Array.from(seed)
+                  .map(b => b.toString(16).padStart(2, '0'))
+                  .join('');
+              const derivedSeed = derivePath("m/44'/501'/0'/0'", seedHex).key;
+              playerKeypair = Keypair.fromSeed(derivedSeed);
+          } else {
+              playerKeypair = Keypair.fromSecretKey(bs58.decode(storedSecret));
           }
 
+          // 3. Check Balance
+          const balance = await connection.getBalance(playerKeypair.publicKey);
+          const withdrawLamports = Math.floor(parseFloat(withdrawAmount) * 1e9);
+          const projectFeeLamports = Math.floor(0.0005 * 1e9); // Your 0.0005 SOL Fee
+          const totalRequired = withdrawLamports + projectFeeLamports + 100000; // Amount + fee + gas buffer
+          
+          if (balance < totalRequired) {
+              throw new Error(`Insufficient SOL. You need at least ${(totalRequired / 1e9).toFixed(4)} SOL.`);
+          }
+
+          setTxStatus({ loading: true, message: '🔗 Confirming withdrawal on Solana...' });
+
+          // 4. Build the Split Transaction
           const transaction = new Transaction().add(
               ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 100000 }),
+              // Instruction 1: Send the withdrawal amount to the target address
               SystemProgram.transfer({
                   fromPubkey: playerKeypair.publicKey,
                   toPubkey: new PublicKey(withdrawAddress),
-                  lamports: Math.floor(parseFloat(withdrawAmount) * 1e9),
+                  lamports: withdrawLamports,
               }),
+              // Instruction 2: Send the game fee to your Treasury
               SystemProgram.transfer({
                   fromPubkey: playerKeypair.publicKey,
                   toPubkey: new PublicKey("8G7uEcPS6dwA5wW9bGoqi98EzBunF8trjbbFJkgkvBPm"),
-                  lamports: Math.floor(0.0005 * 1e9),
+                  lamports: projectFeeLamports,
               })
           );
 
-          // 🚨 THE HELIUS FIX: Must assign blockhash and fee payer before signing
+          // 5. Helius Requirement: Explicitly set blockhash and fee payer
           const latestBlockhash = await connection.getLatestBlockhash('confirmed');
           transaction.recentBlockhash = latestBlockhash.blockhash;
           transaction.feePayer = playerKeypair.publicKey;
 
+          // 6. Send and Confirm
           const signature = await sendAndConfirmTransaction(connection, transaction, [playerKeypair]);
 
+          // 7. Update UI Local State
           setBalances(prev => ({ ...prev, sol: prev.sol - parseFloat(withdrawAmount) - 0.0005 }));
-
-          setTxStatus({ 
-            loading: false, 
-            message: '✅ Success! Withdrawal Complete.', 
-            signature: signature 
-          });
-
+          setTxStatus({ loading: false, message: '✅ Withdrawal successful!', success: true });
+          
           setWithdrawAmount('');
           setWithdrawAddress('');
 
-          setTimeout(() => {
-            setIsWithdrawOpen(false);
-            setTxStatus({ loading: false, message: '', signature: null });
-          }, 4000);
-
       } catch (err) {
-          // 🚨 THE TRAP: Force the error into the console permanently
-          console.error("🚨 WITHDRAWAL FAILED:", err);
-          
-          setTxStatus({ loading: false, message: `❌ Error: ${err.message}`, signature: null });
-          
-          setTimeout(() => setTxStatus({ loading: false, message: '', signature: null }), 8000);
+          console.error("Withdrawal Error:", err);
+          setTxStatus({ loading: false, message: `❌ Error: ${err.message}`, success: false });
       }
   };
 
