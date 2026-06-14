@@ -1525,7 +1525,7 @@ const GiftTapGame = () => {
         connection.getLatestBlockhash('confirmed')
       ]);
       const realSol = solLamports / 1e9;
-      const baseFee = 20000 / 1e9;
+      const baseFee = 800000 / 1e9;
       const baseFeeWithBuffer = baseFee * 1.25; // Your 25% safety buffer
 
       // 2. Update UI (This part is also working)
