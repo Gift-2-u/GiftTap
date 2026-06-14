@@ -1593,7 +1593,8 @@ const GiftTapGame = () => {
       
       if (!withdrawAddress || !withdrawAmount) return;
       
-      setTxStatus({ loading: true, message: 'Initiating withdrawal...' });
+      // 🚨 FIX 1: Add show: true, success: false to open the modal immediately
+      setTxStatus({ show: true, loading: true, message: 'Initiating withdrawal...', success: false });
 
       try {
           // 1. Get Secret Key directly from your existing React State
@@ -1628,7 +1629,8 @@ const GiftTapGame = () => {
               throw new Error(`Insufficient SOL. You need at least ${(totalRequired / 1e9).toFixed(4)} SOL.`);
           }
 
-          setTxStatus({ loading: true, message: '🔗 Confirming withdrawal on Solana...' });
+          // 🚨 FIX 2: Maintain show: true while updating the message
+          setTxStatus({ show: true, loading: true, message: '🔗 Confirming withdrawal on Solana...', success: false });
 
           // 4. Build the Split Transaction
           const transaction = new Transaction().add(
@@ -1657,14 +1659,19 @@ const GiftTapGame = () => {
 
           // 7. Update UI Local State
           setBalances(prev => ({ ...prev, sol: prev.sol - parseFloat(withdrawAmount) - 0.0005 }));
-          setTxStatus({ loading: false, message: '✅ Withdrawal successful!', success: true });
+          // 🚨 FIX 3: Match marketplace success state payload
+          setTxStatus({ show: true, loading: false, message: '✅ Withdrawal successful!', success: true });
+          
+          // 🚨 FIX 4: Auto-hide the modal after 3 seconds, matching marketplace timing
+          setTimeout(() => setTxStatus(prev => ({ ...prev, show: false })), 3000);
           
           setWithdrawAmount('');
           setWithdrawAddress('');
 
       } catch (err) {
           console.error("Withdrawal Error:", err);
-          setTxStatus({ loading: false, message: `❌ Error: ${err.message}`, success: false });
+          // 🚨 FIX 5: Ensure error state matches marketplace payload structure
+          setTxStatus({ show: true, loading: false, message: `❌ Error: ${err.message}`, success: false });
       }
   };
 
