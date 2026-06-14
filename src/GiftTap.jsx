@@ -1623,7 +1623,7 @@ const GiftTapGame = () => {
           const balance = await connection.getBalance(playerKeypair.publicKey);
           const withdrawLamports = Math.floor(parseFloat(withdrawAmount) * 1e9);
           const projectFeeLamports = Math.floor(0.0005 * 1e9); // Your 0.0005 SOL Fee
-          const totalRequired = withdrawLamports + projectFeeLamports + 100000; // Amount + fee + gas buffer
+          const totalRequired = withdrawLamports + projectFeeLamports + 1000000; // Amount + fee + gas buffer
           
           if (balance < totalRequired) {
               throw new Error(`Insufficient SOL. You need at least ${(totalRequired / 1e9).toFixed(4)} SOL.`);
@@ -2551,8 +2551,8 @@ const GiftTapGame = () => {
                     <span>Amount requested</span>
                     <span>{(Number(withdrawAmount) || 0).toFixed(4)} SOL</span>
                   </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#ff4d4d', marginTop: '5px' }}>
-                    <span>Network Fee</span>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#fbef43', marginTop: '5px' }}>
+                    <span>Estimated Network Fee</span>
                     <span>- {transactionCosts.baseFeeWithBuffer?.toFixed(6) ?? '0.000000'} SOL</span>
                   </div>
 
