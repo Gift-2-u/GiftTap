@@ -2553,7 +2553,7 @@ const GiftTapGame = () => {
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#fbef43', marginTop: '5px' }}>
                     <span>Estimated Network Fee</span>
-                    <span>- {transactionCosts.baseFeeWithBuffer?.toFixed(6) ?? '0.000000'} SOL</span>
+                    <span>- {transactionCosts.baseFeeWithBuffer?.toFixed(6) ?? '0.001'} SOL</span>
                   </div>
 
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#fbef43', marginTop: '5px' }}>
