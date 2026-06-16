@@ -2002,7 +2002,7 @@ const GiftTapGame = () => {
   };
 
   // For testing, set this to null. When ready to start, pass it a timestamp (e.g., Date.now())
-  const [betaStartTime] = useState(new Date('2026-05-27T01:52:00Z').getTime()); 
+  const [betaStartTime] = useState(new Date('2026-06-16T20:52:00Z').getTime()); 
 
   useEffect(() => {
     const calculateTimeLeft = () => {
@@ -2013,7 +2013,7 @@ const GiftTapGame = () => {
       }
 
       // 2. The 3-week exact countdown
-      const THREE_WEEKS_MS = 14 * 24 * 60 * 60 * 1000;
+      const THREE_WEEKS_MS = 0 * 0 * 5 * 60 * 1000;
       const endTime = betaStartTime + THREE_WEEKS_MS;
       const now = Date.now();
       const difference = endTime - now;
