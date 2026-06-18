@@ -159,23 +159,11 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, tgUser, 
       const newInventory = { ...localInventory };
       newInventory[item.id] = (newInventory[item.id] || 0) + 1;
 
-      // Calculate New Balance Totals (Include Task Completion Reward Shards)
-      const TASK_REWARD = 50000; // Change this to the exact reward defined in your tasks list
-      
-      // Pulling from your existing score states or stats object
-      const currentLifetime = stats?.lifetime_taps || 0;
-      const currentSeason = stats?.season_shards || 0;
-      
-      const updatedLifetime = currentLifetime + TASK_REWARD;
-      const updatedSeason = currentSeason + TASK_REWARD;
-
       // Single atomic payload execution to ensure consistency
       const { error: updateError } = await supabase.from('players')
         .update({ 
           inventory: newInventory,
           has_made_purchase: true,       // Complete the purchase task permanently
-          lifetime_taps: updatedLifetime, // Pay out task reward to lifetime stats
-          season_shards: updatedSeason   // Pay out task reward to active season shards
         })
         .eq('telegram_id', String(tgUser.id));
         
