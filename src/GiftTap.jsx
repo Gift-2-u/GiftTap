@@ -2159,11 +2159,16 @@ const GiftTapGame = () => {
                   </span>
                 </button>
                 <button 
-                  style={{ ...(leaderboardType === 'Beta' ? styles.activeToggleBtn : styles.toggleBtn), outline: 'none', WebkitTapHighlightColor: 'transparent' }} 
-                  onClick={() => { setLeaderboardType('Beta'); fetchFullLeaderboard('Beta'); }}
+                  style={{ ...(leaderboardType === 'Season' ? styles.activeToggleBtn : styles.toggleBtn), outline: 'none', WebkitTapHighlightColor: 'transparent' }} 
+                  onClick={() => { setLeaderboardType('Season'); fetchFullLeaderboard('Season'); }}
                 >
-                  <span>Beta Season</span>
-                  <span style={{...styles.leaderBadgePremium, color: '#4ade80', fontWeight: 'bold'}}>{seasonTimeLeft}</span>
+                  {/* 🚨 THE FIX: Use the dynamic name from Supabase */}
+                  <span>{seasonData.name || "Loading..."}</span>
+
+                  {/* Make sure this variable matches whatever you named the ticking clock state from our last step (e.g., seasonDisplayMsg) */}
+                  <span style={{...styles.leaderBadgePremium, color: '#4ade80', fontWeight: 'bold'}}>
+                    {seasonDisplayMsg}
+                  </span>
                 </button>
               </div>
             </div>
