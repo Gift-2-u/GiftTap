@@ -2001,44 +2001,87 @@ const GiftTapGame = () => {
     }
   };
 
-  // For testing, set this to null. When ready to start, pass it a timestamp (e.g., Date.now())
-  const [betaStartTime] = useState(new Date('2026-06-16T21:20:00Z').getTime()); 
+  const [seasonData, setSeasonData] = useState({ 
+    isActive: false, 
+    startTime: null, 
+    endTime: null 
+  });
+  const [seasonDisplayMsg, setSeasonDisplayMsg] = useState("Loading...");
 
+  // 1. FETCH THE TRUTH FROM SUPABASE (Run once on load)
   useEffect(() => {
-    const calculateTimeLeft = () => {
-      // 1. If you haven't distributed 75% of codes yet
-      if (!betaStartTime) {
-        setSeasonTimeLeft("Awaiting Players");
-        return;
+    const fetchSettings = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('game_settings')
+          .select('is_season_active, season_start_time, season_end_time')
+          .eq('id', 1)
+          .single();
+
+        if (error) throw error;
+
+        if (data) {
+          setSeasonData({
+            isActive: data.is_season_active,
+            startTime: data.season_start_time ? new Date(data.season_start_time).getTime() : null,
+            endTime: data.season_end_time ? new Date(data.season_end_time).getTime() : null
+          });
+        }
+      } catch (err) {
+        console.error("Failed to fetch game settings:", err);
       }
-
-      // 2. The 3-week exact countdown
-      const THREE_WEEKS_MS = 0 * 0 * 5 * 60 * 1000;
-      const endTime = betaStartTime + THREE_WEEKS_MS;
-      const now = Date.now();
-      const difference = endTime - now;
-
-      // 3. When the 3 weeks are over
-      if (difference <= 0) {
-        setSeasonTimeLeft("Beta Ended");
-        return;
-      }
-
-      // Calculate the remaining time
-      const days = Math.floor(difference / (1000 * 60 * 60 * 24));
-      const hours = Math.floor((difference % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-      const minutes = Math.floor((difference % (1000 * 60 * 60)) / (1000 * 60));
-
-      setSeasonTimeLeft(`${days}d ${hours}h ${minutes}m`);
     };
 
-    calculateTimeLeft(); // Run immediately on load
-    
-    // Update every 60 seconds (better for performance than every 1 second)
-    const timer = setInterval(calculateTimeLeft, 60000); 
+    fetchSettings();
+  }, []);
+
+  // 2. THE LOCAL UI TICKER (Runs every second)
+  useEffect(() => {
+    const updateDisplay = () => {
+      const now = Date.now();
+
+      // State A: The Master Switch is off
+      if (!seasonData.isActive) {
+        setSeasonDisplayMsg("Awaiting Next Season");
+        return;
+      }
+
+      // State B: Season is scheduled, but hasn't started yet
+      if (seasonData.startTime && now < seasonData.startTime) {
+        const diff = seasonData.startTime - now;
+        setSeasonDisplayMsg(`Starts in: ${formatTime(diff)}`);
+        return;
+      }
+
+      // State C: Season has ended
+      if (seasonData.endTime && now >= seasonData.endTime) {
+        setSeasonDisplayMsg("Season Ended");
+        return;
+      }
+
+      // State D: Season is actively running
+      if (seasonData.endTime && now < seasonData.endTime) {
+        const diff = seasonData.endTime - now;
+        setSeasonDisplayMsg(`${formatTime(diff)}`);
+        return;
+      }
+    };
+
+    // Helper to format milliseconds into 0d 0h 0m
+    const formatTime = (ms) => {
+      const days = Math.floor(ms / (1000 * 60 * 60 * 24));
+      const hours = Math.floor((ms % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+      const minutes = Math.floor((ms % (1000 * 60 * 60)) / (1000 * 60));
+      return `${days}d ${hours}h ${minutes}m`;
+    };
+
+    // Run immediately, then tick every 60 seconds 
+    // (Change to 1000 if you want a live ticking seconds counter)
+    updateDisplay();
+    const timer = setInterval(updateDisplay, 60000); 
 
     return () => clearInterval(timer);
-  }, [betaStartTime]);
+  }, [seasonData]);
 
   if (isLoading) return <div style={styles.container}>Loading Gift...</div>;
 
