@@ -2014,7 +2014,7 @@ const GiftTapGame = () => {
       try {
         const { data, error } = await supabase
           .from('game_settings')
-          .select('is_season_active, season_start_time, season_end_time')
+          .select('season_name, is_season_active, season_start_time, season_end_time')
           .eq('id', 1)
           .single();
 
@@ -2022,6 +2022,7 @@ const GiftTapGame = () => {
 
         if (data) {
           setSeasonData({
+            name: data.season_name,
             isActive: data.is_season_active,
             startTime: data.season_start_time ? new Date(data.season_start_time).getTime() : null,
             endTime: data.season_end_time ? new Date(data.season_end_time).getTime() : null
