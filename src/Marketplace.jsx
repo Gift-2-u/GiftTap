@@ -84,8 +84,131 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, tgUser, 
     }
   };
 
- // 5. SOLANA TRANSACTION LOGIC
   const handlePremiumBuy = async (item) => {
+    // Open the pop-up immediately in a loading state
+    setTxStatus({ show: true, loading: true, message: `Initiating purchase for ${item.name}...`, success: false });
+
+    try {
+      // 1. Get Secret Key (Now pulling securely from React State, not local storage)
+      const storedSecret = decryptedPhrase;
+      if (!storedSecret) {
+        throw new Error("Secret key not found. Please unlock your wallet in settings.");
+      }
+
+      // 2. Setup Connection & Keypair
+      const connection = new Connection("https://mainnet.helius-rpc.com/?api-key=538f6c8f-c773-46a2-939c-6d48c75b2226", 'confirmed');
+      
+      let playerKeypair;
+      if (storedSecret.includes(" ")) {
+        // --- NEW FORMAT: Translate 12-word mnemonic to Keypair ---
+        const cleanSecret = storedSecret.trim();
+        const seed = bip39.mnemonicToSeedSync(cleanSecret);
+        const seedHex = Array.from(seed)
+          .map(b => b.toString(16).padStart(2, '0'))
+          .join('');
+        const derivedSeed = derivePath("m/44'/501'/0'/0'", seedHex).key;
+        playerKeypair = Keypair.fromSeed(derivedSeed);
+      } else {
+        // --- LEGACY FORMAT: Base58 string ---
+        playerKeypair = Keypair.fromSecretKey(bs58.decode(storedSecret));
+      }
+      console.log("✅ Expected Wallet (Database):", playerWallet);
+      console.log("❌ Derived Wallet (Transaction):", playerKeypair.publicKey.toString());
+
+      // 3. Set Destination Wallets & Costs
+      const masterWallet = new PublicKey("D4GufPTvp6tnzkaYGfombFLs48UjDANsxjMFJnSYz4Gh"); 
+      const treasuryWallet = new PublicKey("8G7uEcPS6dwA5wW9bGoqi98EzBunF8trjbbFJkgkvBPm"); 
+
+      const itemPriceLamports = Math.floor(item.price * 1e9);
+      const projectFeeLamports = Math.floor(0.0005 * 1e9); 
+      const totalRequired = itemPriceLamports + projectFeeLamports + 1000000; 
+
+      // 4. Check Balance
+      const currentBalance = await connection.getBalance(playerKeypair.publicKey);
+      if (currentBalance < totalRequired) {
+        throw new Error(`Insufficient SOL. You need at least ${(totalRequired / 1e9).toFixed(4)} SOL to cover the item and network fees.`);
+      }
+
+      setTxStatus({ show: true, loading: true, message: `🔗 Confirming payment of ${item.price} SOL on Solana...`, success: false });
+
+      // 5. Build Split Transaction
+      const transaction = new Transaction().add(
+        ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 100000 }),
+        SystemProgram.transfer({
+          fromPubkey: playerKeypair.publicKey,
+          toPubkey: masterWallet,
+          lamports: itemPriceLamports,
+        }),
+        SystemProgram.transfer({
+          fromPubkey: playerKeypair.publicKey,
+          toPubkey: treasuryWallet,
+          lamports: projectFeeLamports,
+        })
+      );
+
+      const latestBlockhash = await connection.getLatestBlockhash('confirmed');
+      transaction.recentBlockhash = latestBlockhash.blockhash;
+      transaction.feePayer = playerKeypair.publicKey;
+
+      // 6. Send and Confirm
+      const signature = await sendAndConfirmTransaction(connection, transaction, [playerKeypair]);
+
+      // --- 🚨 UNIFIED LEDGER UPDATE: INVENTORY + TASK COMPLETION + REWARD PAYS ---
+      
+      // Update Inventory Object Locally
+      const newInventory = { ...localInventory };
+      newInventory[item.id] = (newInventory[item.id] || 0) + 1;
+
+      // Calculate New Balance Totals (Include Task Completion Reward Shards)
+      const TASK_REWARD = 50000; // Change this to the exact reward defined in your tasks list
+      
+      // Pulling from your existing score states or stats object
+      const currentLifetime = stats?.lifetime_taps || 0;
+      const currentSeason = stats?.season_shards || 0;
+      
+      const updatedLifetime = currentLifetime + TASK_REWARD;
+      const updatedSeason = currentSeason + TASK_REWARD;
+
+      // Single atomic payload execution to ensure consistency
+      const { error: updateError } = await supabase.from('players')
+        .update({ 
+          inventory: newInventory,
+          has_made_purchase: true,       // Complete the purchase task permanently
+          lifetime_taps: updatedLifetime, // Pay out task reward to lifetime stats
+          season_shards: updatedSeason   // Pay out task reward to active season shards
+        })
+        .eq('telegram_id', String(tgUser.id));
+        
+      if (updateError) throw updateError;
+
+      // Update Local State Components for Immediate UI Updates
+      setLocalInventory(newInventory);
+      
+      if (setStats) {
+        setStats({ 
+          ...stats, 
+          inventory: newInventory,
+          has_made_purchase: true,
+          lifetime_taps: updatedLifetime,
+          season_shards: updatedSeason
+        });
+      }
+
+      // Also call individual setters if your app uses them alongside stats state:
+      // if (setLifetimeTotal) setLifetimeTotal(updatedLifetime);
+      // if (setSeasonTotal) setSeasonTotal(updatedSeason);
+
+      setTxStatus({ show: true, loading: false, message: `✅ Success! ${item.name} purchased and task reward claimed.`, success: true });
+      setTimeout(() => setTxStatus(prev => ({ ...prev, show: false })), 3000);
+
+    } catch (err) {
+      console.error("Purchase Error:", err);
+      setTxStatus({ show: true, loading: false, message: `❌ Error: ${err.message}`, success: false });
+    }
+  };
+
+ // 5. SOLANA TRANSACTION LOGIC
+  const handlePremiumBuy_old = async (item) => {
     // Open the pop-up immediately in a loading state
     setTxStatus({ show: true, loading: true, message: `Initiating purchase for ${item.name}...`, success: false });
 
@@ -124,7 +247,7 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, tgUser, 
 
       const itemPriceLamports = Math.floor(item.price * 1e9);
       const projectFeeLamports = Math.floor(0.0005 * 1e9); // The 0.0005 SOL Treasury Fee
-      const totalRequired = itemPriceLamports + projectFeeLamports + 100000; // Total + buffer for network fee
+      const totalRequired = itemPriceLamports + projectFeeLamports + 1000000; // Total + buffer for network fee
 
       // 4. Check Balance
       const currentBalance = await connection.getBalance(playerKeypair.publicKey);
