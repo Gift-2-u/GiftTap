@@ -112,7 +112,7 @@ export const ASCENSION_WALLS = {
   9: { targetLevel: 10, shardCost: 25000, solCost: 0.05, newCap: 19 },
   19: { targetLevel: 20, shardCost: 50000, solCost: 0.10, newCap: 29 },
   29: { targetLevel: 30, shardCost: 100000, solCost: 0.20, newCap: 49 },
-  49: { targetLevel: 50, shardCost: 400000, solCost: 0.75, newCap: 50 }
+  49: { targetLevel: 50, shardCost: 250000, solCost: 0.50, newCap: 50 }
 };
 
 const GiftTapGame = () => {
@@ -623,7 +623,7 @@ const GiftTapGame = () => {
         
         setLifetimeTaps(Number(player.lifetime_taps) || 0);
         setSeasonShards(Number(player.season_shards) || 0); 
-        setMaxUnlockedLevel(player.max_unlocked_level || 4); 
+        setMaxUnlockedLevel(player.max_unlocked_level || 4, 9, 19, 29, 49); 
         setCurrentLevel(calculateLevel(Number(player.lifetime_taps) || 0));
 
         // Daily Reset Logic
@@ -1374,7 +1374,7 @@ const GiftTapGame = () => {
         // Convert the SOL cost from your ascension wall data to lamports
         const itemPriceLamports = Math.floor(wallData.solCost * 1e9);
         const projectFeeLamports = Math.floor(0.0005 * 1e9); // The 0.0005 SOL Treasury Fee
-        const totalRequired = itemPriceLamports + projectFeeLamports + 100000; // Total + buffer for network fee
+        const totalRequired = itemPriceLamports + projectFeeLamports + 1000000; // Total + buffer for network fee
 
         // --- 4. Check Balance ---
         const currentBalance = await connection.getBalance(playerKeypair.publicKey);
@@ -1384,7 +1384,7 @@ const GiftTapGame = () => {
 
         // --- 5. Build Split Transaction ---
         const transaction = new Transaction().add(
-          ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 100000 }),
+          ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 1000000 }),
           // Instruction 1: Send the ascension cost to your Master Wallet
           SystemProgram.transfer({
             fromPubkey: playerKeypair.publicKey,

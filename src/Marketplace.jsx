@@ -177,8 +177,6 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, tgUser, 
           ...stats, 
           inventory: newInventory,
           has_made_purchase: true,
-          lifetime_taps: updatedLifetime,
-          season_shards: updatedSeason
         });
       }
 
@@ -186,7 +184,7 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, tgUser, 
       // if (setLifetimeTotal) setLifetimeTotal(updatedLifetime);
       // if (setSeasonTotal) setSeasonTotal(updatedSeason);
 
-      setTxStatus({ show: true, loading: false, message: `✅ Success! ${item.name} purchased and task reward claimed.`, success: true });
+      setTxStatus({ show: true, loading: false, message: `✅ Success! ${item.name} purchased. Check your Tasks to claim your reward!`, success: true });
       setTimeout(() => setTxStatus(prev => ({ ...prev, show: false })), 3000);
 
     } catch (err) {
