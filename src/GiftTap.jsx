@@ -89,6 +89,15 @@ export const calculateLevel = (taps) => {
   return 50; 
 };
 
+export const getPaywallCap = (maxUnlockedLevel) => {
+  if (maxUnlockedLevel <= 4) return 50000;
+  if (maxUnlockedLevel <= 9) return 125000;
+  if (maxUnlockedLevel <= 19) return 375000;
+  if (maxUnlockedLevel <= 29) return 875000;
+  if (maxUnlockedLevel <= 49) return 2875000;
+  return Infinity; 
+};
+
 export const getNextLevelTarget = (currentLevel) => {
   if (currentLevel < 5) return (currentLevel + 1) * 10000;
   if (currentLevel < 10) return 50000 + ((currentLevel + 1 - 5) * 15000);
@@ -623,7 +632,7 @@ const GiftTapGame = () => {
         
         setLifetimeTaps(Number(player.lifetime_taps) || 0);
         setSeasonShards(Number(player.season_shards) || 0); 
-        setMaxUnlockedLevel(player.max_unlocked_level || 4, 9, 19, 29, 49); 
+        setMaxUnlockedLevel(player.max_unlocked_level || 4); 
         setCurrentLevel(calculateLevel(Number(player.lifetime_taps) || 0));
 
         // Daily Reset Logic
@@ -734,38 +743,67 @@ const GiftTapGame = () => {
             const isBetaActive = false;
 
             if (offlineShardsEarned > 0) {
-                // 1. Update React UI instantly (Balance, Limits, and Leaderboard Stats!)
-                setBalance(prev => prev + offlineShardsEarned);
-                setDailyTaps(simDailyTaps); 
-                setLifetimeTaps(prev => prev + offlineShardsEarned); // <-- NEW: Updates Level XP visually
-                setSeasonShards(prev => prev + offlineShardsEarned); // <-- NEW: Updates Beta Season visually (if you use this state)
                 
-                // 2. Save to Supabase (Add shards to ALL tracking columns)
-                supabase
-                  .from('players')
-                  .update({ 
-                      shard_balance: Number(player.shard_balance) + offlineShardsEarned,
-                      daily_taps: simDailyTaps,
-                      lifetime_taps: Number(player.lifetime_taps) + offlineShardsEarned, // <-- NEW: Pushes to All-Time Leaderboard
-                      season_shards: Number(player.season_shards) + offlineShardsEarned, // <-- NEW: Pushes to Beta Leaderboard
-                      last_tap_date: todayStr, 
-                      last_updated: new Date().toISOString() // Reset the clock
-                  })
-                  .eq('telegram_id', userId)
-                  .then(({ error }) => {
-                      if (error) console.error("Bot sync failed:", error);
-                  });
+                // 🚨 ASCENSION WALL CHECK: Calculate projected lifetime using your safe state variable
+                let projectedLifetime = safeLifetimeTaps + offlineShardsEarned;
+                
+                // If this massive bot payout pushes their calculated level strictly higher than what is unlocked...
+                if (calculateLevel(projectedLifetime) > maxUnlockedLevel) {
+                    
+                    // We must trim the bot's earnings so it stops EXACTLY at the paywall line.
+                    // You will need a way to define what the max capacity for their maxUnlockedLevel is.
+                    // For example, if maxUnlockedLevel is 4, paywallCap should equal 50000.
+                    const paywallCap = getPaywallCap(maxUnlockedLevel); 
 
-                // Fire the welcome back popup!
-                setTimeout(() => {
-                    alert(`🤖 Welcome back! Your Bot farmed ${offlineShardsEarned.toLocaleString()} Shards while you were away!`);
-                }, 1000);
+                    // Trim the earnings to exactly fit the remaining space
+                    offlineShardsEarned = paywallCap - safeLifetimeTaps;
+                    projectedLifetime = paywallCap;
+                    
+                    console.log("Bot hit the ascension wall and safely stopped mining.");
+                }
+
+                if (offlineShardsEarned > 0) {
+                    // 1. Update React UI instantly (Balance, Limits, and Leaderboard Stats!)
+                    setBalance(prev => prev + offlineShardsEarned);
+                    setDailyTaps(simDailyTaps); 
+                    setLifetimeTaps(prev => prev + offlineShardsEarned); // <-- NEW: Updates Level XP visually
+                    setSeasonShards(prev => prev + offlineShardsEarned); // <-- NEW: Updates Beta Season visually (if you use this state)
+                    
+                    // 2. Save to Supabase (Add shards to ALL tracking columns)
+                    supabase
+                      .from('players')
+                      .update({ 
+                          shard_balance: Number(player.shard_balance) + offlineShardsEarned,
+                          daily_taps: simDailyTaps,
+                          lifetime_taps: Number(player.lifetime_taps) + offlineShardsEarned, // <-- NEW: Pushes to All-Time Leaderboard
+                          season_shards: Number(player.season_shards) + offlineShardsEarned, // <-- NEW: Pushes to Beta Leaderboard
+                          last_tap_date: todayStr, 
+                          last_updated: new Date().toISOString() // Reset the clock
+                      })
+                      .eq('telegram_id', userId)
+                      .then(({ error }) => {
+                          if (error) console.error("Bot sync failed:", error);
+                      });
+
+                    // Fire the welcome back popup!
+                    setTimeout(() => {
+                        alert(`🤖 Welcome back! Your Bot farmed ${offlineShardsEarned.toLocaleString()} Shards while you were away!`);
+                        // If the bot drove them directly into the wall, show the Ascension Modal immediately
+                        if (calculateLevel(projectedLifetime) >= maxUnlockedLevel) {
+                             setShowAscensionModal(true);
+                        }
+                    }, 1000);
+                } else {
+                    // Bot active but mined 0 (Limit was maxed before they left)
+                    supabase.from('players').update({ last_updated: new Date().toISOString() }).eq('telegram_id', userId).then();
+                    setShowAscensionModal(true);
+                }
             } else {
-                // Bot active but mined 0 (Limit was maxed before they left)
-                supabase.from('players').update({ last_updated: new Date().toISOString() }).eq('telegram_id', userId).then();
+              // Bot active but mined 0 (Limit was maxed before they left)
+              supabase.from('players').update({ last_updated: new Date().toISOString() }).eq('telegram_id', userId).then();
             }
         } else {
-            // No bot active or expired before last login
+            // No bot active or expired before last login (THE HEARTBEAT SYNC)
             supabase.from('players').update({ last_updated: new Date().toISOString() }).eq('telegram_id', userId).then();
         }
 
