@@ -744,19 +744,25 @@ const GiftTapGame = () => {
 
             if (offlineShardsEarned > 0) {
                 
-                // 🚨 ASCENSION WALL CHECK: Calculate projected lifetime using your safe state variable
-                let projectedLifetime = safeLifetimeTaps + offlineShardsEarned;
+                // 1. Safely pull actual variables straight from your Supabase 'player' object
+                const currentLifetimeTaps = Number(player.lifetime_taps) || 0;
+                const playerMaxLevel = player.max_unlocked_level || 4;
+                let projectedLifetime = currentLifetimeTaps + offlineShardsEarned;
                 
-                // If this massive bot payout pushes their calculated level strictly higher than what is unlocked...
-                if (calculateLevel(projectedLifetime) > maxUnlockedLevel) {
+                // 2. ASCENSION WALL CHECK
+                if (calculateLevel(projectedLifetime) > playerMaxLevel) {
                     
-                    // We must trim the bot's earnings so it stops EXACTLY at the paywall line.
-                    // You will need a way to define what the max capacity for their maxUnlockedLevel is.
-                    // For example, if maxUnlockedLevel is 4, paywallCap should equal 50000.
-                    const paywallCap = getPaywallCap(maxUnlockedLevel); 
+                    // 3. INLINE CAP MATH (No external functions needed to prevent crashes)
+                    let paywallCap = 50000;
+                    if (playerMaxLevel <= 4) paywallCap = 50000;
+                    else if (playerMaxLevel <= 9) paywallCap = 125000;
+                    else if (playerMaxLevel <= 19) paywallCap = 375000;
+                    else if (playerMaxLevel <= 29) paywallCap = 875000;
+                    else if (playerMaxLevel <= 49) paywallCap = 2875000;
+                    else paywallCap = 999999999999;
 
-                    // Trim the earnings to exactly fit the remaining space
-                    offlineShardsEarned = paywallCap - safeLifetimeTaps;
+                    // Trim the earnings to perfectly hit the wall without passing it
+                    offlineShardsEarned = Math.max(0, paywallCap - currentLifetimeTaps);
                     projectedLifetime = paywallCap;
                     
                     console.log("Bot hit the ascension wall and safely stopped mining.");
@@ -775,7 +781,7 @@ const GiftTapGame = () => {
                       .update({ 
                           shard_balance: Number(player.shard_balance) + offlineShardsEarned,
                           daily_taps: simDailyTaps,
-                          lifetime_taps: Number(player.lifetime_taps) + offlineShardsEarned, // <-- NEW: Pushes to All-Time Leaderboard
+                          lifetime_taps: projectedLifetime,
                           season_shards: Number(player.season_shards) + offlineShardsEarned, // <-- NEW: Pushes to Beta Leaderboard
                           last_tap_date: todayStr, 
                           last_updated: new Date().toISOString() // Reset the clock
