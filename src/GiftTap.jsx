@@ -1151,7 +1151,7 @@ const GiftTapGame = () => {
     clearTimeout(window.saveTimeout);
 
     window.saveTimeout = setTimeout(async () => {
-      const { error } = await supabase.from('players').update({
+      const { data, error } = await supabase.from('players').update({
         telegram_id: String(tgUser.id),
         username: tgUser.username || tgUser.first_name,
         shard_balance: b,
@@ -1167,11 +1167,18 @@ const GiftTapGame = () => {
         limit_boost_expires: stats.limit_boost_expires,
         last_updated: new Date().toISOString()
       })
-      .eq('telegram_id', String(tgUser.id)); // Match their specific row
+      .eq('telegram_id', String(tgUser.id)) // Match their specific row
+      .select(); // Added .select() so Supabase actually returns the 'data' for your check
 
+      // 🚨 OPTION A: THE FRONTEND CATCH
       if (error) {
-        console.error("🚨 SUPABASE REJECTION:", error);
-        alert(`Save Failed: ${error.message} \nCode: ${error.code}`); 
+        if (error.message && error.message.includes('PAYWALL_LOCKED')) {
+          // The Server Bouncer blocked it. Instantly open the paywall!
+          setShowAscensionModal(true); 
+        } else {
+          console.error("🚨 SUPABASE REJECTION:", error);
+          alert(`Save Failed: ${error.message} \nCode: ${error.code}`); 
+        }
       } else if (!data || data.length === 0) {
         alert(`Save Failed: No matching telegram_id found for ${tgUser.id}`);
       } else {
