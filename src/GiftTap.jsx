@@ -937,27 +937,42 @@ const GiftTapGame = () => {
           localStorage.removeItem(`wallet_pwd_${userId}`);
         }
 
-        // --- 4. THE MASTER UPSERT (Saves Everything at Once) ---
-        // Upsert means: If they don't exist, Insert them. If they do, Update them.
-        const { error: upsertError } = await supabase
-          .from('players')
-          .upsert({
-            telegram_id: userId,
-            username: userName,
-            has_beta_access: true, // Permanently unlocks the gate
-            encrypted_vault: encryptedVault,
-            shard_balance: startingShards, // Wallet gets 0 or 500
-            season_shards: 0,              // Leaderboard stays at 0
-            lifetime_taps: 0,              // All-Time stays at 0
-            level: 1,
-            referred_by: referrerId ? String(referrerId) : null,
-            created_at: new Date().toISOString()
-          }, { onConflict: 'telegram_id' }); // Safe overwrite
+        // --- 4. THE SAFE SAVE (Check, then Insert or Update) ---
+      
+      // First, see if the player row already exists
+      const { data: existingPlayer } = await supabase
+        .from('players')
+        .select('telegram_id')
+        .eq('telegram_id', userId)
+        .maybeSingle();
 
-        if (upsertError) {
-          console.error("Failed to save player profile:", upsertError.message);
-          throw upsertError;
-        }
+      const playerData = {
+        telegram_id: userId,
+        username: userName,
+        has_beta_access: true, // Permanently unlocks the gate
+        encrypted_vault: encryptedVault,
+        shard_balance: startingShards, 
+        season_shards: 0,              
+        lifetime_taps: 0,              
+        referred_by: referrerId ? String(referrerId) : null,
+      };
+
+      if (!existingPlayer) {
+        // If brand new, INSERT them
+        const { error: insertError } = await supabase
+          .from('players')
+          .insert([{ ...playerData, created_at: new Date().toISOString() }]);
+          
+        if (insertError) throw insertError;
+      } else {
+        // If they already exist, just UPDATE their row
+        const { error: updateError } = await supabase
+          .from('players')
+          .update(playerData)
+          .eq('telegram_id', userId);
+          
+        if (updateError) throw updateError;
+      }
 
         // --- 5. THE SECURE REFERRER PAYOUT ---
         if (referrerId && referrerId !== userId) {
