@@ -896,82 +896,19 @@ const GiftTapGame = () => {
     }
   }, [tgUser, fetchTopLeader]);
 
-  const initializeNewPlayer = async (inputCode) => {
+  const initializeNewPlayer = async () => {
     setIsLoading(true);
     try {
-      // 1. Verify Code
-      const { data: codeData, error: codeError } = await supabase
-        .from('invite_codes')
-        .select('*')
-        .eq('code', inputCode)
-        .maybeSingle();
-
-      if (codeError || !codeData || codeData.is_used) {
-        alert("❌ Invalid or already used code!");
-        setIsLoading(false);
-        return; 
-      }
-
       const userId = String(tgUser.id);
       const userName = tgUser.username || tgUser.first_name || 'Player';
 
-      // 2. LOCK CODE IMMEDIATELY
-      await supabase
-        .from('invite_codes')
-        .update({ is_used: true, used_by: userId })
-        .eq('code', inputCode);
-
-      // --- YOUR EXISTING REFERRAL LOGIC ---
-      // 1. Check if they clicked an invite link (e.g., ?startapp=123456789)
+      // --- 1. REFERRAL & ECONOMY LOGIC ---
       const referrerId = window.Telegram?.WebApp?.initDataUnsafe?.start_param || null; 
-
-      // --- NEW: THE BALANCED ECONOMY PAYOUTS ---
       const REFERRER_BONUS = 2000;
       const JOINER_BONUS = 500;
-
-      // 2. Calculate the new player's starting balance
       const startingShards = referrerId ? JOINER_BONUS : 0;
 
-      // ... (Your Invisible Key wallet generation code stays exactly here) ...
-
-      // 3. Create the player with their starting balance and referrer tagged
-      const { data: newPlayer, error: insertError } = await supabase
-        .from('players')
-        .insert([{
-          telegram_id: String(tgUser.id),
-          username: tgUser.username || 'Player',
-          shard_balance: startingShards, // Now accurately drops in 0 or 500
-          referred_by: referrerId ? String(referrerId) : null,
-          // encrypted_vault: encryptedVault (make sure this is here from the wallet build!)
-        }])
-        .select()
-        .single();
-
-      // 4. The Referrer Payout (Executes securely in the background)
-      if (referrerId && !insertError) {
-        try {
-          const { data: referrerData } = await supabase
-            .from('players')
-            .select('shard_balance')
-            .eq('telegram_id', String(referrerId))
-            .single();
-
-          if (referrerData) {
-            const newBalance = (referrerData.shard_balance || 0) + REFERRER_BONUS;
-
-            await supabase
-              .from('players')
-              .update({ shard_balance: newBalance })
-              .eq('telegram_id', String(referrerId));
-              
-            console.log(`Secured payment: ${REFERRER_BONUS} Shards to referrer ID: ${referrerId}`);
-          }
-        } catch (rewardError) {
-          console.error("Critical error paying referrer:", rewardError);
-        }
-      }
-
-      // 3. EXACT SAME FETCH AS SYNCPLAYER (This guarantees the Secret Phrase)
+      // --- 2. GENERATE SECURE WALLET (EDGE FUNCTION) ---
       const response = await fetch('https://ncwlbwzxfpcnxkyrmdck.supabase.co/functions/v1/create-user-wallet', {
         method: 'POST',
         headers: {
@@ -982,27 +919,17 @@ const GiftTapGame = () => {
       });
 
       const newWallet = await response.json();
-
-      // ADD THIS ONE LINE:
       console.log("🚨 RAW EDGE RESPONSE:", newWallet);
 
       if (newWallet && newWallet.publicKey) {
-        // 4. Save Secret Silently (No Popup yet, just storing it for the Wallet Modal)
-        // 4. Invisible Key Generation (Silent & Secure)
-        // 4. Deterministic Vault (Frictionless + Supabase)
+        let encryptedVault = null;
+
+        // --- 3. INVISIBLE KEY ENCRYPTION ---
         if (newWallet.mnemonic) {
           const rawSecret = newWallet.mnemonic;
-          
-          // The key is mathematically tied to their Telegram ID and your game. Never saved to a database.
           const invisibleKey = `${userId}_GIFT_memecoin_secure_salt_2026`; 
-          const encryptedVault = encryptWallet(rawSecret, invisibleKey);
+          encryptedVault = encryptWallet(rawSecret, invisibleKey);
 
-          // Save ONLY the locked vault directly to Supabase
-          await supabase
-            .from('players')
-            .update({ encrypted_vault: encryptedVault })
-            .eq('telegram_id', userId);
-          
           setDecryptedPhrase(rawSecret); // Unlocks active RAM session
           setGeneratedSecret(rawSecret); // Keeps UI working
           
@@ -1010,24 +937,30 @@ const GiftTapGame = () => {
           localStorage.removeItem(`wallet_pwd_${userId}`);
         }
 
-        // --- NEW: PERMANENTLY UNLOCK BETA ACCESS IN SUPABASE ---
-        const { error: accessError } = await supabase
+        // --- 4. THE MASTER UPSERT (Saves Everything at Once) ---
+        // Upsert means: If they don't exist, Insert them. If they do, Update them.
+        const { error: upsertError } = await supabase
           .from('players')
-          .update({ 
-            has_beta_access: true, 
-            referred_by: referrerId ? String(referrerId) : null,
-            shard_balance: startingShards, // Wallet gets 500
+          .upsert({
+            telegram_id: userId,
+            username: userName,
+            has_beta_access: true, // Permanently unlocks the gate
+            encrypted_vault: encryptedVault,
+            shard_balance: startingShards, // Wallet gets 0 or 500
             season_shards: 0,              // Leaderboard stays at 0
-            lifetime_taps: 0               // All-Time stays at 0
-          })
-          .eq('telegram_id', userId);
+            lifetime_taps: 0,              // All-Time stays at 0
+            level: 1,
+            referred_by: referrerId ? String(referrerId) : null,
+            created_at: new Date().toISOString()
+          }, { onConflict: 'telegram_id' }); // Safe overwrite
 
-        if (accessError) {
-          console.error("Failed to save beta access:", accessError.message);
+        if (upsertError) {
+          console.error("Failed to save player profile:", upsertError.message);
+          throw upsertError;
         }
 
-        // --- THE SECURE REFERRER PAYOUT ---
-        if (referrerId && !insertError && referrerId !== userId) {
+        // --- 5. THE SECURE REFERRER PAYOUT ---
+        if (referrerId && referrerId !== userId) {
           try {
             const { data: referrerData } = await supabase
               .from('players')
@@ -1054,7 +987,7 @@ const GiftTapGame = () => {
           }
         }
         
-        // 5. Update game state to enter the game
+        // --- 6. UNLOCK THE GAME UI ---
         setPlayerWallet(newWallet.publicKey);
         setBalance(startingShards);
         setEnergy(500);
@@ -1063,7 +996,7 @@ const GiftTapGame = () => {
       }
     } catch (err) {
       console.error("Init Error:", err);
-      alert("Error during initialization.");
+      alert("Error during initialization. Please reload.");
     } finally {
       setIsLoading(false);
     }
