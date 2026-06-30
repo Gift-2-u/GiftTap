@@ -1099,6 +1099,11 @@ const GiftTapGame = () => {
 
   // 6. SAVE PROGRESS
   const saveToDatabase = (b, e, dt, ltd, strk, ltt, mul, s) => {
+    // 🚨 COLD START LOCK: Prevent saving default states if Supabase is still loading
+    if (!isDataLoaded) {
+       console.log("Save blocked: Still fetching player history.");
+       return;
+    }
     // 1. Don't save if we don't have a valid user ID
     if (!tgUser?.id || tgUser.id === "test_local_user") return;
 
@@ -1142,6 +1147,8 @@ const GiftTapGame = () => {
   };
 
   const handleTap = (e) => {
+      // 🚨 DOUBLE LOCK: Stop execution if React hasn't finished fetching Supabase data
+      if (!isDataLoaded) return;
       // 🚨 THE DEFINITIVE GHOST CLICK ASSASSIN
       if (e.type === 'touchstart') {
         touchLock.current = true;
@@ -2251,9 +2258,11 @@ const GiftTapGame = () => {
                   <div style={{ position: 'absolute', width: '250px', height: '250px', background: 'radial-gradient(circle, rgba(50, 100, 255, 0.3) 0%, transparent 70%)', zIndex: 0, borderRadius: '50%', marginTop: '-60px' }} />
                   
                   <motion.div
-                    whileTap={{ scale: 0.94 }} 
-                    onPointerDown={handleTap}
-                    style={{ zIndex: 5, position: 'relative', marginTop: '-60px' }}
+                    whileTap={isDataLoaded ? { scale: 0.94 } : {}} 
+                    onPointerDown={isDataLoaded ? handleTap : undefined}
+                    style={{ zIndex: 5, position: 'relative', marginTop: '-60px', // 3. Optional: Dim the button and physically disable clicks while loading
+                      opacity: isDataLoaded ? 1 : 0.6,
+                      pointerEvents: isDataLoaded ? 'auto' : 'none' }}
                   >
                     <img 
                       src="/Gift2u_logo.png" 
@@ -2265,7 +2274,7 @@ const GiftTapGame = () => {
                         width: '280px', 
                         height: 'auto', 
                         // RESTORED: Your exact yellow glow logic!
-                        filter: isPressed ? 'drop-shadow(0 0 25px rgba(255, 215, 0, 0.9)) brightness(1.1)' : 'drop-shadow(0 0 5px rgba(255, 215, 0, 0.2))',
+                        filter: (isDataLoaded && isPressed) ? 'drop-shadow(0 0 25px rgba(255, 215, 0, 0.9)) brightness(1.1)' : 'drop-shadow(0 0 5px rgba(255, 215, 0, 0.2))',
                         transition: 'filter 0.1s ease-out' // Ensures the glow fades smoothly
                       }} 
                     />
