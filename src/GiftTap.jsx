@@ -590,6 +590,7 @@ const GiftTapGame = () => {
 
   const syncPlayer = useCallback(async () => {
     setIsLoading(true);
+    setIsDataLoaded(false);
     try {
       const userId = String(tgUser.id);
       const invisibleKey = `${userId}_GIFT_memecoin_secure_salt_2026`;
