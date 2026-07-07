@@ -682,7 +682,8 @@ const GiftTapGame = () => {
 
         // A. Energy Recovery Math
         const recovered = Math.max(0, Math.floor(secondsPassed / 4)); 
-        const dbEnergy = Number(player.last_energy) || 0;
+        // If dbEnergy is 0, we fallback to 500 to keep the game playable as it was before
+        const dbEnergy = (Number(player.last_energy) > 0) ? Number(player.last_energy) : 500;
         setEnergy(Math.min(dbEnergy + recovered, 500));
         
         // 🚨 NEW: B. Weekend Bot (Offline Farming) Multi-Day Math
