@@ -1099,13 +1099,7 @@ const GiftTapGame = () => {
 
   // 6. SAVE PROGRESS
   const saveToDatabase = (b, e, dt, ltd, strk, ltt, mul, s) => {
-    // 🚨 COLD START LOCK: 
-    // If it's NOT loaded, we only block if the user has NO balance (brand new).
-    // If they have data, we let the save through.
-    if (!isDataLoaded && balance === 0) {
-       console.log("Save blocked: Still fetching player history.");
-       return;
-    }
+    
     // 1. Don't save if we don't have a valid user ID
     if (!tgUser?.id || tgUser.id === "test_local_user") return;
 
