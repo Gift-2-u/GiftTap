@@ -605,6 +605,7 @@ const GiftTapGame = () => {
       // CASE A: RETURNING PLAYER (Has Wallet)
       // ==========================================
       if (player && player.wallet_address) {
+        console.log("Existing player found, protecting data...");
         setHasAccess(player.has_beta_access || false);
         setPlayerWallet(player.wallet_address);
         
@@ -634,6 +635,8 @@ const GiftTapGame = () => {
         setSeasonShards(Number(player.season_shards) || 0); 
         setMaxUnlockedLevel(player.max_unlocked_level || 4); 
         setCurrentLevel(calculateLevel(Number(player.lifetime_taps) || 0));
+        // 🚨 ADD THIS LINE TO LOAD ENERGY FROM DB
+        setEnergy(Number(player.last_energy) || 0);
 
         // Daily Reset Logic
         const today = new Date().toISOString().split('T')[0];
@@ -823,11 +826,12 @@ const GiftTapGame = () => {
         }
 
         setIsDataLoaded(true);
+        return;
       } 
       // ==========================================
       // CASE B: NEW PLAYER (No Wallet Found)
       // ==========================================
-      else {
+      else if (!player) {
         console.log("No wallet found, generating...");
         
         const response = await fetch('https://ncwlbwzxfpcnxkyrmdck.supabase.co/functions/v1/create-user-wallet', {
