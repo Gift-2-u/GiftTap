@@ -1099,8 +1099,10 @@ const GiftTapGame = () => {
 
   // 6. SAVE PROGRESS
   const saveToDatabase = (b, e, dt, ltd, strk, ltt, mul, s) => {
-    // 🚨 COLD START LOCK: Prevent saving default states if Supabase is still loading
-    if (!isDataLoaded) {
+    // 🚨 COLD START LOCK: 
+    // If it's NOT loaded, we only block if the user has NO balance (brand new).
+    // If they have data, we let the save through.
+    if (!isDataLoaded && balance === 0) {
        console.log("Save blocked: Still fetching player history.");
        return;
     }
