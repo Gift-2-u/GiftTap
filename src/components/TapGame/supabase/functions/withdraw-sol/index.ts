@@ -7,7 +7,14 @@ const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
   'Access-Control-Allow-Methods': 'POST, OPTIONS', // Add this line
+  'Access-Control-Max-Age': '86400', // Tells the browser to remember this for 24 hours
 }
+
+// Load your Treasury/Project Master Key 
+const secretKey = Uint8Array.from(JSON.parse(Deno.env.get("PROJECT_WALLET_SECRET")!))
+const fromWallet = Keypair.fromSecretKey(secretKey)
+// Setup Connection using your Private RPC
+const connection = new Connection(Deno.env.get("VITE_SOLANA_RPC_URL")!, "processed")
 
 serve(async (req) => {
   // Handle CORS preflight requests
@@ -29,21 +36,14 @@ serve(async (req) => {
 
     // USE THE TELEGRAM_ID: Check user balance
     const { data: user, error: userError } = await supabase
-      .from('users') // Replace with your actual table name
-      .select('balance')
+      .from('players') // Replace with your actual table name
+      .select('sol_balance')
       .eq('telegram_id', telegram_id)
       .single()
 
-    if (userError || !user || user.balance < amount) {
+    if (userError || !user || user.sol_balance < amount) {
       throw new Error("Insufficient sol in game account.");
     }
-    
-    // Setup Connection using your Private RPC
-    const connection = new Connection(Deno.env.get("VITE_SOLANA_RPC_URL")!, "confirmed")
-    
-    // Load your Treasury/Project Master Key 
-    const secretKey = Uint8Array.from(JSON.parse(Deno.env.get("PROJECT_WALLET_SECRET")!))
-    const fromWallet = Keypair.fromSecretKey(secretKey)
 
     // 2. MATH: Calculate exactly what the player gets
     // Project Fee = 0.0005. Network Buffer = ~0.00002. Total deduction = 0.00052.
@@ -76,18 +76,21 @@ serve(async (req) => {
       })
     )
 
-    // 4. Get the latest blockhash (Crucial for modern Solana transactions)
-    const latestBlockhash = await connection.getLatestBlockhash('confirmed');
-    transaction.recentBlockhash = latestBlockhash.blockhash;
+    // FAST BLOCKHASH FETCH
+    const { blockhash } = await connection.getLatestBlockhash('confirmed');
+    transaction.recentBlockhash = blockhash;
     transaction.feePayer = fromWallet.publicKey;
 
     // 5. Sign and Send
-    const signature = await connection.sendTransaction(transaction, [fromWallet])
+    const signature = await connection.sendTransaction(transaction, [fromWallet], {
+      skipPreflight: true,
+      preflightCommitment: 'confirmed',
+    })
 
     // 2. Deduct the SOL from the database after the transaction succeeds
     await supabase
       .from('players')
-      .update({ balance: user.balance - amount })
+      .update({ balance: user.sol_balance - amount })
       .eq('telegram_id', telegram_id)
     
     return new Response(JSON.stringify({ success: true, signature }), { headers: { ...corsHeaders, "Content-Type": "application/json" } })

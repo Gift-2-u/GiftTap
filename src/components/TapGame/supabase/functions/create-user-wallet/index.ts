@@ -6,6 +6,9 @@ import bs58 from "https://esm.sh/bs58@5.0.0"
 
 // Standard library for Base64 is usually safe, but let's use the older stable version
 import { encode as encodeBase64 } from "https://deno.land/std@0.145.0/encoding/base64.ts"
+import * as bip39 from "npm:bip39";
+import { derivePath } from "npm:ed25519-hd-key";
+import { Keypair } from "npm:@solana/web3.js";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -17,72 +20,53 @@ serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
   try {
+    const { telegram_id, username } = await req.json();
+
+    // 1. Generate the 12-word phrase
+    const mnemonic = bip39.generateMnemonic();
+
+    // 2. Convert the phrase into a Solana Keypair (Bulletproof Deno Fix)
+    const seedBuffer = bip39.mnemonicToSeedSync(mnemonic);
     
-    const { telegram_id, username } = await req.json()
+    // Force pure math hex conversion (Bypasses Deno Buffer bugs)
+    const seedHex = Array.from(seedBuffer)
+      .map(b => b.toString(16).padStart(2, '0'))
+      .join('');
 
-    // Validate inputs
-    if (!telegram_id) {
-      throw new Error("Missing telegram_id")
-    }
+    const derivationPath = "m/44'/501'/0'/0'"; 
+    const derivedSeed = derivePath(derivationPath, seedHex).key;
+    const keypair = Keypair.fromSeed(derivedSeed);
+    
+    const publicKey = keypair.publicKey.toBase58();
 
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-    )
+    // 3. Initialize Supabase
+    const supabaseClient = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    );
 
-    // 1. Generate Wallet using TweetNaCl (MUCH faster than the full Solana web3 library)
-    const keypair = tweetnacl.sign.keyPair()
-    // Manual Base58 conversion for Solana addresses is CPU heavy, so we send the Raw bytes 
-    // and let the frontend or DB handle the format if needed. 
-    // For now, we use a simple Base64 for the test.
-    const publicKey = bs58.encode(keypair.publicKey)
-    const secretKeyRaw = keypair.secretKey 
-
-    // 2. Encryption (Using the faster WebCrypto API)
-    const hexKey = Deno.env.get("MASTER_ENCRYPTION_KEY") || ""
-    // Optimized hex-to-uint8 conversion
-    const keyData = new Uint8Array(hexKey.length / 2);
-    for (let i = 0; i < hexKey.length; i += 2) {
-      keyData[i / 2] = parseInt(hexKey.substring(i, i + 2), 16);
-    }
-
-    const encryptionKey = await crypto.subtle.importKey(
-      "raw", keyData, { name: "AES-GCM" }, false, ["encrypt"]
-    )
-
-    const iv = crypto.getRandomValues(new Uint8Array(12))
-    const encryptedBuffer = await crypto.subtle.encrypt(
-      { name: "AES-GCM", iv },
-      encryptionKey,
-      secretKeyRaw
-    )
-
-    // 3. Save to DB
-    const { error: dbError } = await supabase
+    // 4. Save ONLY the public key to the database
+    const { error: updateError } = await supabaseClient
       .from('players')
-      .upsert({ 
-        telegram_id: String(telegram_id), // FIXED: Use the ID, not the username!
-        username: username,
-        wallet_address: publicKey, 
-        encrypted_key: encodeBase64(new Uint8Array(encryptedBuffer)),
-        encryption_iv: encodeBase64(iv),
-        shard_balance: 0,
-        last_energy: 500,
-        has_beta_access: true, // <--- ADD THIS LINE (Safety Net)
-        last_updated: new Date().toISOString() // <--- ADD THIS LINE (Good practice)
-      }, { onConflict: 'telegram_id' })
+      .update({ wallet_address: publicKey })
+      .eq('telegram_id', String(telegram_id));
 
-    if (dbError) throw dbError
+    if (updateError) throw updateError;
 
-    return new Response(JSON.stringify({ publicKey }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      status: 200,
-    })
+    // 5. Return BOTH to the frontend (The frontend will catch the mnemonic and save it to local storage)
+    return new Response(
+      JSON.stringify({ 
+        success: true, 
+        publicKey: publicKey, 
+        mnemonic: mnemonic // <--- Sending the 12 words back!
+      }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
+    );
 
   } catch (error) {
-    return new Response(JSON.stringify({ error: error.message }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      status: 500, // Changed to 500 to catch internal CPU panics better
-    })
+    return new Response(
+      JSON.stringify({ error: error.message }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
+    );
   }
-})
+});

@@ -12,7 +12,8 @@ import * as splToken from "@solana/spl-token";
 import { clusterApiUrl, PublicKey, SystemProgram } from '@solana/web3.js';
 import { Program, AnchorProvider, BN } from '@coral-xyz/anchor';
 import { Toaster, toast } from 'react-hot-toast';
-
+import DailyGiftBox from './DailyGiftBox';
+import TapGame from './components/TapGame/src/GiftTap';
 import idl from "../target/idl/gift_staking.json";
 import '@solana/wallet-adapter-react-ui/styles.css';
 
@@ -44,6 +45,7 @@ export default function App() {
               <Routes>
                 <Route path="/" element={<HomePage />} />
                 <Route path="/stake" element={<StakingPage />} />
+                <Route path="/play" element={<TapGame />} />
               </Routes>
             </div>
           </Router>
@@ -59,6 +61,7 @@ const Navigation = () => (
     <div className="flex items-center gap-6">
       <Link to="/" className="hover:text-purple-400 font-bold">Home</Link>
       <Link to="/stake" className="hover:text-purple-400 font-bold">Staking</Link>
+      <Link to="/play" className="hover:text-purple-400 font-bold">Play Game</Link>
       <WalletMultiButton />
     </div>
   </nav>
@@ -462,13 +465,22 @@ const StakingPage = () => {
   );
 };
 
-const HomePage = () => (
-  <main className="w-full flex-grow flex flex-col items-center py-20 px-6 text-center">
-    <h2 className="text-6xl font-black mb-6 bg-gradient-to-r from-purple-400 to-pink-500 bg-clip-text text-transparent italic">
-      THE GIFT THAT KEEPS GIVING
-    </h2>
-    <Link to="/stake" className="bg-purple-600 hover:bg-purple-700 px-10 py-4 rounded-full font-black text-lg inline-block">
-      GO TO STAKING VAULT
-    </Link>
-  </main>
-)
+const HomePage = () => {
+  const { connection } = useConnection();
+  const wallet = useWallet();
+
+  return (
+    <main className="w-full flex-grow flex flex-col items-center py-20 px-6 text-center">
+      <h2 className="text-6xl font-black mb-6 bg-gradient-to-r from-purple-400 to-pink-500 bg-clip-text text-transparent italic">
+        THE GIFT THAT KEEPS GIVING
+      </h2>
+      
+      {/* If this tag is missing, the box will never show up */}
+      <DailyGiftBox wallet={wallet} connection={connection} />
+      
+      <Link to="/stake" className="bg-purple-600 hover:bg-purple-700 px-10 py-4 rounded-full font-black text-lg inline-block mt-10">
+        GO TO STAKING VAULT
+      </Link>
+    </main>
+  );
+};

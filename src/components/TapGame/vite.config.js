@@ -16,6 +16,10 @@ export default defineConfig(({ mode }) => {
         globals: { Buffer: true, global: true, process: true },
       }),
     ],
+    // ADD THIS SECTION: It stops Vite from hunting for missing TS files in framer-motion
+    optimizeDeps: {
+      include: ['framer-motion'],
+    },
     define: {
       // This forces the build to replace the variable with the actual URL string
       'import.meta.env.VITE_SOLANA_RPC_URL': JSON.stringify(RPC_URL),
