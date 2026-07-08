@@ -1,9 +1,12 @@
+<<<<<<< HEAD
 @theme {
   /* This is optional, but good to have for v4 */
 }
 
 @import "tailwindcss";
 
+=======
+>>>>>>> cc230080b45158b62b4e722df27609d41b747029
 :root {
   font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
   line-height: 1.5;
@@ -71,4 +74,12 @@ button:focus-visible {
   button {
     background-color: #f9f9f9;
   }
+<<<<<<< HEAD
+=======
+
+  @keyframes floatUp {
+  0% { opacity: 1; transform: translateY(0); }
+  100% { opacity: 0; transform: translateY(-100px); }
+  }
+>>>>>>> cc230080b45158b62b4e722df27609d41b747029
 }

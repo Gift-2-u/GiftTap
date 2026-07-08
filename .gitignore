@@ -22,8 +22,14 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+<<<<<<< HEAD
 .vercel
 node_modules/
 dist/
 .vercel/
 .env
+=======
+.env
+.vercel
+.env*.local
+>>>>>>> cc230080b45158b62b4e722df27609d41b747029
