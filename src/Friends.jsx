@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from './supabaseClient';
+import { getInviteLink } from './playerIdentity';
 
-const Friends = ({ tgUser }) => {
+const Friends = ({ player, tgUser }) => {
+  const user = player || tgUser;
   const [friendsList, setFriendsList] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   
@@ -9,17 +11,17 @@ const Friends = ({ tgUser }) => {
   const REFERRAL_REWARD = 2000;
   const JOINER_REWARD = 500;
 
-  // Generate the unique link using their Telegram ID and your exact Mini App short name
-  const inviteLink = `https://t.me/Gift2uTapBot/GiftTap?startapp=${tgUser?.id}`;
+  // Web invite link: /play?ref=<playerId>
+  const inviteLink = getInviteLink(user?.id);
 
   const fetchFriends = useCallback(async () => {
+    if (!user?.id) return;
     setIsLoading(true);
     try {
-      // Find all players who have this user's ID in their "referred_by" column
       const { data, error } = await supabase
         .from('players')
         .select('username, shard_balance')
-        .eq('referred_by', String(tgUser.id))
+        .eq('referred_by', String(user.id)) // referred_by stores player key (was TG id)
         .order('shard_balance', { ascending: false });
 
       if (error) throw error;
@@ -29,39 +31,39 @@ const Friends = ({ tgUser }) => {
     } finally {
       setIsLoading(false);
     }
-  }, [tgUser.id]);
+  }, [user?.id]);
 
   useEffect(() => {
-    if (tgUser?.id && tgUser.id !== "test_local_user") {
+    if (user?.id) {
       fetchFriends();
     } else {
-      setIsLoading(false); // Stop loading if it's just the local test environment
+      setIsLoading(false);
     }
-  }, [fetchFriends, tgUser.id]);
+  }, [fetchFriends, user?.id]);
 
-  const handleInvite = () => {
-    const text = `🎁I'm grinding levels in Gift Tap! Tap, level up, and earn real $GFT on Telegram. Jump in with my link, and get 500 free GFTshards.`;
-    const url = `https://t.me/share/url?url=${encodeURIComponent(inviteLink)}&text=${encodeURIComponent(text)}`;
-    
-    // Opens the Telegram native share menu
-    if (window.Telegram?.WebApp?.openTelegramLink) {
-      window.Telegram.WebApp.openTelegramLink(url);
-    } else {
-      // Fallback for browser testing
-      window.open(url, '_blank');
+  const handleInvite = async () => {
+    const text = `🎁 I'm grinding levels in Gift Tap! Tap, level up, and earn real $GFT. Join with my link and get 500 free GFTshards.\n\n${inviteLink}`;
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: 'Gift Tap', text, url: inviteLink });
+        return;
+      }
+    } catch {
+      /* user cancelled share */
     }
+    await navigator.clipboard.writeText(text);
+    alert('Invite text copied! Paste it anywhere to share.');
   };
 
-  // --- NEW X (TWITTER) SHARE FUNCTION ---
   const handleInviteX = () => {
-    const tweetText = `🎁I'm grinding levels in Gift Tap! Tap, level up, and earn real $GFT on Telegram. Jump in with my link, and get 500 free GFTshards.: 🎁\n\n${inviteLink}`;
+    const tweetText = `🎁 I'm grinding levels in Gift Tap! Tap, level up, and earn real $GFT. Join with my link and get 500 free GFTshards:\n\n${inviteLink}`;
     const twitterUrl = `https://x.com/intent/tweet?text=${encodeURIComponent(tweetText)}`;
-    window.open(twitterUrl, '_blank');
+    window.open(twitterUrl, '_blank', 'noopener,noreferrer');
   };
 
   const handleCopy = () => {
     navigator.clipboard.writeText(inviteLink);
-    alert("Invite link copied to clipboard!");
+    alert('Invite link copied to clipboard!');
   };
 
   return (
@@ -86,7 +88,7 @@ const Friends = ({ tgUser }) => {
           <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor">
             <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.64 6.8c-.15 1.58-.8 5.42-1.13 7.19-.14.75-.42 1-.68 1.03-.58.05-1.02-.38-1.58-.75-.88-.58-1.38-.94-2.23-1.5-.99-.65-.35-1.01.22-1.59.15-.15 2.71-2.48 2.76-2.69.01-.03.01-.14-.07-.19-.08-.05-.19-.02-.27 0-.11.03-1.84 1.18-5.18 3.44-.49.34-.93.5-1.32.49-.43-.01-1.25-.24-1.86-.44-.75-.24-1.34-.37-1.29-.79.03-.22.33-.44.92-.68 3.58-1.56 5.96-2.58 7.15-3.08 3.39-1.42 4.1-1.66 4.56-1.67.1 0 .32.02.44.13.1.09.13.22.14.35 0 .07-.01.21-.02.31z"/>
           </svg>
-          Send Telegram Invite
+          Share Invite
         </button>
 
         {/* --- NEW X SHARE BUTTON --- */}

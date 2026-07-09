@@ -36,7 +36,7 @@ const WhitepaperModal = ({ isWhitepaperOpen, setIsWhitepaperOpen }) => {
     {
       id: 6,
       title: "6. GFT Token & Wallet",
-      content: "Gift Tap does not rely on a randomized airdrop. Instead, the GFTshards you extract and accumulate in-game will be directly swappable for official on-chain $GFT tokens following the official token launch.\n\nYour Web3 Wallet:\nUpon joining, a secure Solana wallet was automatically generated for your account. This in-app wallet is built to manage your GFTshards, $GFT, SOL, and USDC seamlessly.\n\nSecurity Reminder: You have full, non-custodial ownership of this wallet. While you were prompted to save your 12-word Secret Phrase during onboarding, you can view and back it up at any time via the main Menu. Never share your Secret Phrase with anyone."
+      content: "Gift Tap does not rely on a randomized airdrop. Instead, the GFTshards you extract and accumulate in-game will be directly swappable for official on-chain $GFT tokens following the official token launch.\n\nYour Web3 Wallet:\nUpon joining on the web app, a secure Solana wallet is generated for you. Purchases and fees are paid from this in-app wallet (with a platform fee to the Gift Tap treasury). You fully own the keys — Gift Tap does not keep your seed.\n\nSecurity Reminder: Save your 12-word Secret Phrase during onboarding and in the Menu. It is the only way to restore your account on a new device. Never share it with anyone.\n\nComing from Telegram? Use Restore on the invite screen with your 12-word phrase to load your existing progress."
     },
     {
       id: 7,

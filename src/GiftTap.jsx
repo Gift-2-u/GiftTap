@@ -10,10 +10,20 @@ import Menu from './Menu';
 import WhitepaperModal from './WhitepaperModal';
 import { showRewardedAdWaterfall } from './adService';
 import bs58 from "bs58";
-import * as bip39 from 'bip39';
-import { derivePath } from 'ed25519-hd-key';
 import CryptoJS from 'crypto-js';
+import { keypairFromMnemonic } from './solanaWallet';
 import { motion, AnimatePresence } from 'framer-motion';
+import {
+  getPlayerProfile,
+  setPlayerId,
+  setUsername,
+  captureReferralFromUrl,
+  consumeReferralId,
+  getInviteLink,
+  vaultSaltFor,
+  DB_PLAYER_ID,
+} from './playerIdentity';
+// DB_PLAYER_ID === 'telegram_id' (legacy Supabase column — still the player primary key)
 
 const TOKEN_MINTS = {
   SOL: "So11111111111111111111111111111111111111112",
@@ -23,45 +33,22 @@ const TOKEN_MINTS = {
 
 // --- 1. CLOUD STORAGE HELPERS ---
 const saveToCloud = (key, value) => {
-  return new Promise((resolve, reject) => {
-    const tg = window.Telegram?.WebApp;
-    // Strictly verify version 6.9+ before attempting CloudStorage
-    if (tg?.CloudStorage && tg.isVersionAtLeast && tg.isVersionAtLeast('6.9')) {
-      tg.CloudStorage.setItem(key, value, (err, success) => {
-        if (err) reject(err); else resolve(success);
-      });
-    } else {
-      // Safe fallback for older devices
-      localStorage.setItem(key, value); 
-      resolve(true);
-    }
+  return new Promise((resolve) => {
+    localStorage.setItem(key, value);
+    resolve(true);
   });
 };
 
 const getFromCloud = (key) => {
-  return new Promise((resolve, reject) => {
-    const tg = window.Telegram?.WebApp;
-    if (tg?.CloudStorage && tg.isVersionAtLeast && tg.isVersionAtLeast('6.9')) {
-      tg.CloudStorage.getItem(key, (err, value) => {
-        if (err) reject(err); else resolve(value || "");
-      });
-    } else {
-      resolve(localStorage.getItem(key) || "");
-    }
+  return new Promise((resolve) => {
+    resolve(localStorage.getItem(key) || "");
   });
 };
 
 const removeFromCloud = (key) => {
-  return new Promise((resolve, reject) => {
-    const tg = window.Telegram?.WebApp;
-    if (tg?.CloudStorage && tg.isVersionAtLeast && tg.isVersionAtLeast('6.9')) {
-      tg.CloudStorage.removeItem(key, (err, success) => {
-        if (err) reject(err); else resolve(success);
-      });
-    } else {
-      localStorage.removeItem(key); 
-      resolve(true);
-    }
+  return new Promise((resolve) => {
+    localStorage.removeItem(key);
+    resolve(true);
   });
 };
 
@@ -303,6 +290,14 @@ const GiftTapGame = () => {
     toast: { position: 'fixed', bottom: '100px', left: '50%', transform: 'translateX(-50%)', background: '#333', color: '#ffd700', padding: '12px 24px', borderRadius: '25px', border: '1px solid #ffd700', zIndex: 2000, boxShadow: '0 4px 15px rgba(0,0,0,0.5)', fontSize: '14px', fontWeight: 'bold', transition: 'all 0.3s ease' }
   };
 
+  // Web player identity FIRST (local UUID). Never Telegram WebApp.
+  // DB still stores this under column telegram_id (see DB_PLAYER_ID).
+  const [player, setPlayer] = useState(() => {
+    captureReferralFromUrl();
+    return getPlayerProfile();
+  });
+  const playerId = String(player.id);
+
   // 1. GAME STATE
   const [balance, setBalance] = useState(0);
   const [stats, setStats] = useState({ frenzy_expires: null, efficiency_expires: null, energy_boost_expires: null, inventory: {} });
@@ -419,7 +414,7 @@ const GiftTapGame = () => {
         const { error } = await supabase
           .from('players')
           .update(dbUpdates)
-          .eq('telegram_id', String(tgUser.id));
+          .eq(DB_PLAYER_ID, playerId);
 
         if (error) throw error;
 
@@ -510,10 +505,6 @@ const GiftTapGame = () => {
     optimisticTaps.current = lifetimeTaps; 
   }, [lifetimeTaps]);
 
-  const tgUser = useMemo(() => {
-    return window.Telegram?.WebApp?.initDataUnsafe?.user || { id: "test_local_user", first_name: "Local" };
-  }, []);
-
   const connection = useMemo(() => {
     const rpcUrl = import.meta.env.VITE_SOLANA_RPC_URL;
     return new Connection(rpcUrl || clusterApiUrl('mainnet-beta'), 'confirmed');
@@ -527,7 +518,7 @@ const GiftTapGame = () => {
       const { data } = await supabase.from('leaderboard_all_time').select('*').order('lifetime_taps', { ascending: false }).limit(1).maybeSingle();
       if (data) {
         setTopLeader({
-          name: data.username || (data.telegram_id ? `ID:..${String(data.telegram_id).slice(-4)}` : 'Anon'),
+          name: data.username || (data[DB_PLAYER_ID] ? `ID:..${String(data[DB_PLAYER_ID]).slice(-4)}` : 'Anon'),
           score: data.lifetime_taps
         });
       }
@@ -580,7 +571,7 @@ const GiftTapGame = () => {
           await supabase
               .from('players')
               .update({ sol_balance: liveSol, usdc_balance: liveUsdc })
-              .eq('telegram_id', String(tgUser.id));
+              .eq(DB_PLAYER_ID, playerId);
 
           console.log("UI and Database successfully synced with Blockchain!");
       } catch (err) {
@@ -591,72 +582,72 @@ const GiftTapGame = () => {
   const syncPlayer = useCallback(async () => {
     setIsLoading(true);
     try {
-      const userId = String(tgUser.id);
-      const invisibleKey = `${userId}_GIFT_memecoin_secure_salt_2026`;
+      const userId = playerId;
+      const invisibleKey = vaultSaltFor(userId);
       
       // 1. Fetch player data
-      const { data: player } = await supabase
+      const { data: playerRow } = await supabase
         .from('players')
         .select('*')
-        .eq('telegram_id', userId)
+        .eq(DB_PLAYER_ID, userId)
         .maybeSingle();
 
       // ==========================================
       // CASE A: RETURNING PLAYER (Has Wallet)
       // ==========================================
-      if (player && player.wallet_address) {
+      if (playerRow && playerRow.wallet_address) {
         console.log("Existing player found, protecting data...");
-        setHasAccess(player.has_beta_access || false);
-        setPlayerWallet(player.wallet_address);
+        setHasAccess(playerRow.has_beta_access || false);
+        setPlayerWallet(playerRow.wallet_address);
         
         setBalances({ 
-          sol: player.sol_balance || 0, 
-          GFT: player.gft_token_balance || 0, 
-          GFTshards: Number(player.shard_balance) || 0, 
-          usdc: player.usdc_balance || 0 
+          sol: playerRow.sol_balance || 0, 
+          GFT: playerRow.gft_token_balance || 0, 
+          GFTshards: Number(playerRow.shard_balance) || 0, 
+          usdc: playerRow.usdc_balance || 0 
         });
-        setBalance(Number(player.shard_balance));
-        setTapPower(player.tap_power || 1);
-        setMaxDailyLimit(player.max_daily_limit || 1000);
+        setBalance(Number(playerRow.shard_balance));
+        setTapPower(playerRow.tap_power || 1);
+        setMaxDailyLimit(playerRow.max_daily_limit || 1000);
         
         // Load Backpack and Timers
         setStats({
-          inventory: player.inventory || {},
-          frenzy_expires: player.frenzy_expires || null,
-          efficiency_expires: player.efficiency_expires || null,
-          energy_boost_expires: player.energy_boost_expires || null,
-          premium_multiplier: player.premium_multiplier || 1,
-          premium_multiplier_expires: player.premium_multiplier_expires || null,
-          limit_boost_amount: player.limit_boost_amount || 0,
-          limit_boost_expires: player.limit_boost_expires || null
+          inventory: playerRow.inventory || {},
+          frenzy_expires: playerRow.frenzy_expires || null,
+          efficiency_expires: playerRow.efficiency_expires || null,
+          energy_boost_expires: playerRow.energy_boost_expires || null,
+          premium_multiplier: playerRow.premium_multiplier || 1,
+          premium_multiplier_expires: playerRow.premium_multiplier_expires || null,
+          limit_boost_amount: playerRow.limit_boost_amount || 0,
+          limit_boost_expires: playerRow.limit_boost_expires || null
         });
         
-        setLifetimeTaps(Number(player.lifetime_taps) || 0);
-        setSeasonShards(Number(player.season_shards) || 0); 
-        setMaxUnlockedLevel(player.max_unlocked_level || 4); 
-        setCurrentLevel(calculateLevel(Number(player.lifetime_taps) || 0));
+        setLifetimeTaps(Number(playerRow.lifetime_taps) || 0);
+        setSeasonShards(Number(playerRow.season_shards) || 0); 
+        setMaxUnlockedLevel(playerRow.max_unlocked_level || 4); 
+        setCurrentLevel(calculateLevel(Number(playerRow.lifetime_taps) || 0));
         // 🚨 ADD THIS LINE TO LOAD ENERGY FROM DB
-        setEnergy(Number(player.last_energy) || 0);
+        setEnergy(Number(playerRow.last_energy) || 0);
 
         // Daily Reset Logic
         const today = new Date().toISOString().split('T')[0];
-        setLastTapDate(player.last_tap_date || today);
-        setStreak(player.current_streak || 0);
+        setLastTapDate(playerRow.last_tap_date || today);
+        setStreak(playerRow.current_streak || 0);
 
-        if (player.last_tap_date !== today) {
+        if (playerRow.last_tap_date !== today) {
           setDailyTaps(0);
         } else {
-          setDailyTaps(player.daily_taps || 0);
+          setDailyTaps(playerRow.daily_taps || 0);
         }
 
         // 🚨 NEW: Ad Capacity & Midnight Reset Logic
         // --- 1. SEARCH FOR THE AD RESET LOGIC (Around line 50 of your snippet) ---
-        if (player.last_ad_date !== today) {
+        if (playerRow.last_ad_date !== today) {
             setDailyAdsWatched(0);
             
             // 🚨 SENIOR FIX: Don't just set to 1000. Set to 1000 + their active SOL boost.
             const baseLimit = 1000;
-            const activeBoost = Number(player.limit_boost_amount) || 0;
+            const activeBoost = Number(playerRow.limit_boost_amount) || 0;
             const resetLimit = baseLimit; // max_daily_limit is the "Base", boosts are calculated in dynamicMaxLimit
 
             setMaxDailyLimit(resetLimit);
@@ -668,41 +659,41 @@ const GiftTapGame = () => {
                     max_daily_limit: resetLimit,
                     last_ad_date: today
                 })
-                .eq('telegram_id', userId)
+                .eq(DB_PLAYER_ID, userId)
                 .then(({ error }) => {
                     if (error) console.error("Midnight ad reset failed:", error.message);
                 });
         } else {
-            setDailyAdsWatched(player.daily_ads_watched || 0);
-            setMaxDailyLimit(player.max_daily_limit || 1000);
+            setDailyAdsWatched(playerRow.daily_ads_watched || 0);
+            setMaxDailyLimit(playerRow.max_daily_limit || 1000);
         }
 
         // --- 2. SEARCH FOR THE ENERGY RECOVERY (Around line 65 of your snippet) ---
         // Fallback to 'now' if last_updated is missing to prevent NaN errors
-        const lastDate = player.last_updated ? new Date(player.last_updated).getTime() : new Date().getTime();
+        const lastDate = playerRow.last_updated ? new Date(playerRow.last_updated).getTime() : new Date().getTime();
         const now = new Date().getTime();
         const secondsPassed = Math.floor((now - lastDate) / 1000);
 
         // A. Energy Recovery Math
         const recovered = Math.max(0, Math.floor(secondsPassed / 4)); 
         // If dbEnergy is 0, we fallback to 500 to keep the game playable as it was before
-        const dbEnergy = (Number(player.last_energy) > 0) ? Number(player.last_energy) : 500;
+        const dbEnergy = (Number(playerRow.last_energy) > 0) ? Number(playerRow.last_energy) : 500;
         setEnergy(Math.min(dbEnergy + recovered, 500));
         
         // 🚨 NEW: B. Weekend Bot (Offline Farming) Multi-Day Math
         let offlineShardsEarned = 0;
-        const botExpiresMs = player.bot_expires ? new Date(player.bot_expires).getTime() : 0;
+        const botExpiresMs = playerRow.bot_expires ? new Date(playerRow.bot_expires).getTime() : 0;
         
         // Ensure the bot was actually active at some point since they last played
         if (botExpiresMs > lastDate) {
             
-            const currentMaxLimit = Number(player.max_daily_limit) || 1000;
+            const currentMaxLimit = Number(playerRow.max_daily_limit) || 1000;
             const BOT_SHARDS_PER_SECOND = currentMaxLimit / 86400; // Takes 24h to mine 100% of limit
             
             const botEndMs = Math.min(now, botExpiresMs); // Stops calculating if bot expired
             
             let simDateMs = lastDate;
-            let simDailyTaps = Number(player.daily_taps) || 0;
+            let simDailyTaps = Number(playerRow.daily_taps) || 0;
             
             // 1. Simulate day-by-day to perfectly handle midnight resets
             while (simDateMs < botEndMs) {
@@ -749,8 +740,8 @@ const GiftTapGame = () => {
             if (offlineShardsEarned > 0) {
                 
                 // 1. Safely pull actual variables straight from your Supabase 'player' object
-                const currentLifetimeTaps = Number(player.lifetime_taps) || 0;
-                const playerMaxLevel = player.max_unlocked_level || 4;
+                const currentLifetimeTaps = Number(playerRow.lifetime_taps) || 0;
+                const playerMaxLevel = playerRow.max_unlocked_level || 4;
                 let projectedLifetime = currentLifetimeTaps + offlineShardsEarned;
                 
                 // 2. ASCENSION WALL CHECK
@@ -783,14 +774,14 @@ const GiftTapGame = () => {
                     supabase
                       .from('players')
                       .update({ 
-                          shard_balance: Number(player.shard_balance) + offlineShardsEarned,
+                          shard_balance: Number(playerRow.shard_balance) + offlineShardsEarned,
                           daily_taps: simDailyTaps,
                           lifetime_taps: projectedLifetime,
-                          season_shards: Number(player.season_shards) + offlineShardsEarned, // <-- NEW: Pushes to Beta Leaderboard
+                          season_shards: Number(playerRow.season_shards) + offlineShardsEarned, // <-- NEW: Pushes to Beta Leaderboard
                           last_tap_date: todayStr, 
                           last_updated: new Date().toISOString() // Reset the clock
                       })
-                      .eq('telegram_id', userId)
+                      .eq(DB_PLAYER_ID, userId)
                       .then(({ error }) => {
                           if (error) console.error("Bot sync failed:", error);
                       });
@@ -805,21 +796,21 @@ const GiftTapGame = () => {
                     }, 1000);
                 } else {
                     // Bot active but mined 0 (Limit was maxed before they left)
-                    supabase.from('players').update({ last_updated: new Date().toISOString() }).eq('telegram_id', userId).then();
+                    supabase.from('players').update({ last_updated: new Date().toISOString() }).eq(DB_PLAYER_ID, userId).then();
                     setShowAscensionModal(true);
                 }
             } else {
               // Bot active but mined 0 (Limit was maxed before they left)
-              supabase.from('players').update({ last_updated: new Date().toISOString() }).eq('telegram_id', userId).then();
+              supabase.from('players').update({ last_updated: new Date().toISOString() }).eq(DB_PLAYER_ID, userId).then();
             }
         } else {
             // No bot active or expired before last login (THE HEARTBEAT SYNC)
-            supabase.from('players').update({ last_updated: new Date().toISOString() }).eq('telegram_id', userId).then();
+            supabase.from('players').update({ last_updated: new Date().toISOString() }).eq(DB_PLAYER_ID, userId).then();
         }
 
         // 🚨 THE DECRYPTION FIX: Load the wallet into the UI from the Cloud
-        if (player.encrypted_vault) {
-          const unlockedSecret = decryptWallet(player.encrypted_vault, invisibleKey);
+        if (playerRow.encrypted_vault) {
+          const unlockedSecret = decryptWallet(playerRow.encrypted_vault, invisibleKey);
           if (unlockedSecret) {
             setDecryptedPhrase(unlockedSecret); // Session unlocked silently!
           }
@@ -831,7 +822,7 @@ const GiftTapGame = () => {
       // ==========================================
       // CASE B: NEW PLAYER (No Wallet Found)
       // ==========================================
-      else if (!player) {
+      else if (!playerRow) {
         console.log("No wallet found, generating...");
         
         const response = await fetch('https://ncwlbwzxfpcnxkyrmdck.supabase.co/functions/v1/create-user-wallet', {
@@ -841,8 +832,8 @@ const GiftTapGame = () => {
             'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
           },
           body: JSON.stringify({ 
-            telegram_id: userId,
-            username: tgUser.username || tgUser.first_name || 'Player'
+            telegram_id: userId, // edge fn arg — value is web playerId, not TG
+            username: player.username || player.first_name || 'Player'
           })
         });
 
@@ -865,17 +856,17 @@ const GiftTapGame = () => {
           const { error: insertError } = await supabase
             .from('players')
             .upsert({
-              telegram_id: userId,
+              [DB_PLAYER_ID]: userId,
               wallet_address: result.publicKey,
               encrypted_vault: encryptedVault,
-              username: tgUser.username || tgUser.first_name || 'Player',
+              username: player.username || player.first_name || 'Player',
               has_beta_access: false,
               shard_balance: 0,
               season_shards: 0,
               lifetime_taps: 0,
               sol_balance: 0,
               usdc_balance: 0
-            }, { onConflict: 'telegram_id' });
+            }, { onConflict: DB_PLAYER_ID });
 
           if (insertError) {
             console.error("❌ Failed to create new player row:", insertError.message);
@@ -899,16 +890,16 @@ const GiftTapGame = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [tgUser, fetchTopLeader]);
+  }, [playerId, player.username, player.first_name, fetchTopLeader]);
 
   const initializeNewPlayer = async () => {
     setIsLoading(true);
     try {
-      const userId = String(tgUser.id);
-      const userName = tgUser.username || tgUser.first_name || 'Player';
+      const userId = playerId;
+      const userName = player.username || player.first_name || 'Player';
 
       // --- 1. REFERRAL & ECONOMY LOGIC ---
-      const referrerId = window.Telegram?.WebApp?.initDataUnsafe?.start_param || null; 
+      const referrerId = consumeReferralId(); 
       const REFERRER_BONUS = 2000;
       const JOINER_BONUS = 500;
       const startingShards = referrerId ? JOINER_BONUS : 0;
@@ -920,7 +911,7 @@ const GiftTapGame = () => {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
         },
-        body: JSON.stringify({ telegram_id: userId, username: userName })
+        body: JSON.stringify({ telegram_id: userId, username: userName })  // edge fn arg name (player key value)
       });
 
       const newWallet = await response.json();
@@ -932,7 +923,7 @@ const GiftTapGame = () => {
         // --- 3. INVISIBLE KEY ENCRYPTION ---
         if (newWallet.mnemonic) {
           const rawSecret = newWallet.mnemonic;
-          const invisibleKey = `${userId}_GIFT_memecoin_secure_salt_2026`; 
+          const invisibleKey = vaultSaltFor(userId); 
           encryptedVault = encryptWallet(rawSecret, invisibleKey);
 
           setDecryptedPhrase(rawSecret); // Unlocks active RAM session
@@ -947,12 +938,12 @@ const GiftTapGame = () => {
       // First, see if the player row already exists
       const { data: existingPlayer } = await supabase
         .from('players')
-        .select('telegram_id')
-        .eq('telegram_id', userId)
+        .select(DB_PLAYER_ID)
+        .eq(DB_PLAYER_ID, userId)
         .maybeSingle();
 
       const playerData = {
-        telegram_id: userId,
+        [DB_PLAYER_ID]: userId,
         username: userName,
         has_beta_access: true, // Permanently unlocks the gate
         encrypted_vault: encryptedVault,
@@ -974,7 +965,7 @@ const GiftTapGame = () => {
         const { error: updateError } = await supabase
           .from('players')
           .update(playerData)
-          .eq('telegram_id', userId);
+          .eq(DB_PLAYER_ID, userId);
           
         if (updateError) throw updateError;
       }
@@ -985,7 +976,7 @@ const GiftTapGame = () => {
             const { data: referrerData } = await supabase
               .from('players')
               .select('shard_balance')
-              .eq('telegram_id', String(referrerId))
+              .eq(DB_PLAYER_ID, String(referrerId))
               .maybeSingle();
 
             if (referrerData) {
@@ -998,7 +989,7 @@ const GiftTapGame = () => {
                   // 🚨 NOTICE: We do NOT update season_shards or lifetime_taps here.
                   // This keeps the leaderboards "Pure Effort Only".
                 })
-                .eq('telegram_id', String(referrerId));
+                .eq(DB_PLAYER_ID, String(referrerId));
                 
               console.log(`✅ Paid ${REFERRER_BONUS} Shards to referrer: ${referrerId}`);
             }
@@ -1021,6 +1012,65 @@ const GiftTapGame = () => {
       setIsLoading(false);
     }
   };
+
+
+  /** Restore a Telegram / other-device account via 12-word phrase → wallet_address lookup. */
+  const restoreAccountFromMnemonic = async (mnemonic) => {
+    const cleaned = (mnemonic || "").trim().toLowerCase().replace(/\s+/g, " ");
+    if (!cleaned || cleaned.split(" ").length < 12) {
+      alert("Enter your full 12-word secret phrase.");
+      return false;
+    }
+    setIsLoading(true);
+    try {
+      let keypair;
+      try {
+        keypair = keypairFromMnemonic(cleaned);
+      } catch {
+        alert("Invalid secret phrase. Check the words and try again.");
+        return false;
+      }
+      const publicKey = keypair.publicKey.toBase58();
+
+      const { data: row, error } = await supabase
+        .from("players")
+        .select("*")
+        .eq("wallet_address", publicKey)
+        .maybeSingle();
+
+      if (error) throw error;
+      if (!row) {
+        alert("No Gift Tap account found for this phrase. You can create a new account instead.");
+        return false;
+      }
+
+      // Bind this browser to the existing player key (legacy telegram_id column)
+      setPlayerId(String(row[DB_PLAYER_ID]));
+      if (row.username) setUsername(row.username);
+      setPlayer(getPlayerProfile());
+
+      const invisibleKey = vaultSaltFor(String(row[DB_PLAYER_ID]));
+      const encryptedVault = encryptWallet(cleaned, invisibleKey);
+      await supabase
+        .from("players")
+        .update({ encrypted_vault: encryptedVault })
+        .eq(DB_PLAYER_ID, String(row[DB_PLAYER_ID]));
+
+      setDecryptedPhrase(cleaned);
+      setPlayerWallet(publicKey);
+      setHasAccess(!!row.has_beta_access);
+      alert("Account restored! Loading your progress...");
+      // syncPlayer will re-run via playerId change
+      return true;
+    } catch (err) {
+      console.error("Restore failed:", err);
+      alert(`Restore failed: ${err.message || err}`);
+      return false;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
 
   // 5. EFFECTS
   useEffect(() => { syncPlayer(); }, [syncPlayer]);
@@ -1067,7 +1117,7 @@ const GiftTapGame = () => {
   useEffect(() => {
     async function verifyPlayerStreak(userId) {
       // Safety check: Don't run if it's the local test user or undefined
-      if (!userId || userId === "test_local_user") return;
+      if (!userId) return;
 
       try {
         const response = await fetch('https://ncwlbwzxfpcnxkyrmdck.supabase.co/functions/v1/player-stats', {
@@ -1096,24 +1146,24 @@ const GiftTapGame = () => {
       }
     }
 
-    // IMPORTANT: We are now actually CALLING the function using your tgUser variable!
+    // IMPORTANT: We are now actually CALLING the function using your player variable!
     // This stops the Vercel "unused function" crash.
-    verifyPlayerStreak(tgUser?.id); 
+    verifyPlayerStreak(playerId); 
 
-  }, [tgUser?.id]);
+  }, [playerId]);
 
   // 6. SAVE PROGRESS
   const saveToDatabase = (b, e, dt, ltd, strk, ltt, mul, s) => {
     
     // 1. Don't save if we don't have a valid user ID
-    if (!tgUser?.id || tgUser.id === "test_local_user") return;
+    if (!playerId) return;
 
     clearTimeout(window.saveTimeout);
 
     window.saveTimeout = setTimeout(async () => {
       const { data, error } = await supabase.from('players').update({
-        telegram_id: String(tgUser.id),
-        username: tgUser.username || tgUser.first_name,
+        [DB_PLAYER_ID]: playerId,
+        username: player.username || player.first_name || 'Player',
         shard_balance: b,
         season_shards: s,
         last_energy: e,
@@ -1127,7 +1177,7 @@ const GiftTapGame = () => {
         limit_boost_expires: stats.limit_boost_expires,
         last_updated: new Date().toISOString()
       })
-      .eq('telegram_id', String(tgUser.id)) // Match their specific row
+      .eq(DB_PLAYER_ID, playerId) // Match their specific row
       .select(); // Added .select() so Supabase actually returns the 'data' for your check
 
       // 🚨 OPTION A: THE FRONTEND CATCH
@@ -1140,7 +1190,7 @@ const GiftTapGame = () => {
           alert(`Save Failed: ${error.message} \nCode: ${error.code}`); 
         }
       } else if (!data || data.length === 0) {
-        alert(`Save Failed: No matching telegram_id found for ${tgUser.id}`);
+        alert(`Save Failed: No matching player found for ${playerId}`);
       } else {
         console.log("✅ SAVE SUCCESS:");
       }
@@ -1344,11 +1394,11 @@ const GiftTapGame = () => {
           const { data, error } = await supabase
             .from('players')
             .select('encrypted_vault')
-            .eq('telegram_id', tgUser.id)
+            .eq(DB_PLAYER_ID, playerId)
             .single();
 
           if (data && data.encrypted_vault) {
-            const invisibleKey = `${tgUser.id}_GIFT_memecoin_secure_salt_2026`;
+            const invisibleKey = vaultSaltFor(playerId);
             storedSecret = decryptWallet(data.encrypted_vault, invisibleKey);
           }
         }
@@ -1365,12 +1415,8 @@ const GiftTapGame = () => {
         
         let playerKeypair;
         if (storedSecret.includes(" ")) {
-          // --- NEW FORMAT: Translate 12-word mnemonic to Keypair ---
-          const seed = bip39.mnemonicToSeedSync(storedSecret);
-          const derivedSeed = derivePath("m/44'/501'/0'/0'", seed.toString('hex')).key;
-          playerKeypair = Keypair.fromSeed(derivedSeed);
+          playerKeypair = keypairFromMnemonic(storedSecret.trim());
         } else {
-          // --- LEGACY FORMAT: Base58 string ---
           playerKeypair = Keypair.fromSecretKey(bs58.decode(storedSecret));
         }
 
@@ -1430,15 +1476,15 @@ const GiftTapGame = () => {
   };
   // --- SEAMLESS SYNC (Instant Phone-to-Laptop) ---
   useEffect(() => {
-    if (!isDataLoaded || !tgUser?.id || tgUser.id === "test_local_user") return;
+    if (!isDataLoaded || !playerId) return;
 
     const channel = supabase
-      .channel(`main-page-sync-${tgUser.id}`)
+      .channel(`main-page-sync-${playerId}`)
       .on('postgres_changes',
         { event: 'UPDATE', schema: 'public', table: 'players' },
         async (payload) => {
           // 1. Update your personal balance (Seamless Sync)
-          if (payload.new.telegram_id === String(tgUser.id)) {
+          if (payload.new[DB_PLAYER_ID] === playerId) {
             
             // 🚨 THE SMART GUARD 🚨
             // We check the incoming taps against the live React state
@@ -1482,7 +1528,7 @@ const GiftTapGame = () => {
 
               if (data) {
                 setTopLeader({
-                  name: data.username || `ID:..${String(data.telegram_id).slice(-4)}`,
+                  name: data.username || `ID:..${String(data[DB_PLAYER_ID]).slice(-4)}`,
                   score: data.lifetime_taps
                 });
               }
@@ -1503,7 +1549,7 @@ const GiftTapGame = () => {
       .subscribe();
 
     return () => { supabase.removeChannel(channel); };
-  }, [isDataLoaded, tgUser.id]);
+  }, [isDataLoaded, playerId]);
 
   // --- PLACE THIS AROUND LINE 200 (Above fetchBalances) ---
 
@@ -1573,19 +1619,19 @@ const GiftTapGame = () => {
           // 🚨 Notice: We REMOVE energy/balance/boost from here. 
           // This tells Supabase: "Don't touch the game progress, only the money."
         })
-        .eq('telegram_id', String(tgUser.id))
+        .eq(DB_PLAYER_ID, playerId)
         .select();
 
       if (updateError) {
         console.error("❌ Wallet Sync Error:", updateError.message);
       } else {
-          console.log("✅ Sync Successful for ID:", tgUser.id, updatedData); 
+          console.log("✅ Sync Successful for ID:", playerId, updatedData); 
       }
       
     } catch (err) { 
       console.error("Balance/Fee fetch failed", err); 
     }
-  }, [playerWallet, connection, balance, tgUser.id]); // Added 'balance' to dependencies
+  }, [playerWallet, connection, balance, playerId]);
 
   // --- BLOCKCHAIN-TO-DATABASE SYNC ---
   useEffect(() => {
@@ -1615,13 +1661,7 @@ const GiftTapGame = () => {
           
           let playerKeypair;
           if (storedSecret.includes(" ")) {
-              const cleanSecret = storedSecret.trim();
-              const seed = bip39.mnemonicToSeedSync(cleanSecret);
-              const seedHex = Array.from(seed)
-                  .map(b => b.toString(16).padStart(2, '0'))
-                  .join('');
-              const derivedSeed = derivePath("m/44'/501'/0'/0'", seedHex).key;
-              playerKeypair = Keypair.fromSeed(derivedSeed);
+              playerKeypair = keypairFromMnemonic(storedSecret.trim());
           } else {
               playerKeypair = Keypair.fromSecretKey(bs58.decode(storedSecret));
           }
@@ -1691,7 +1731,7 @@ const GiftTapGame = () => {
 
       try {
           // 1. Get the player's secret key from their local storage
-          const storedSecret = localStorage.getItem(`wallet_secret_${tgUser.id}`);
+          const storedSecret = localStorage.getItem(`wallet_secret_${playerId}`);
           if (!storedSecret) {
               throw new Error("Secret key not found. Please re-import your key in settings.");
           }
@@ -1841,11 +1881,7 @@ const GiftTapGame = () => {
 
       let playerKeypair;
       if (storedSecret.includes(" ")) {
-        const cleanSecret = storedSecret.trim();
-        const seed = bip39.mnemonicToSeedSync(cleanSecret);
-        const seedHex = Array.from(seed).map(b => b.toString(16).padStart(2, '0')).join('');
-        const derivedSeed = derivePath("m/44'/501'/0'/0'", seedHex).key;
-        playerKeypair = Keypair.fromSeed(derivedSeed);
+        playerKeypair = keypairFromMnemonic(storedSecret.trim());
       } else {
         playerKeypair = Keypair.fromSecretKey(bs58.decode(storedSecret));
       }
@@ -2099,8 +2135,9 @@ const GiftTapGame = () => {
       {!hasAccess ? (
         /* 1. Show ONLY the BetaGate if they aren't authorized */
         <BetaGate 
-          telegramId={tgUser?.id} 
-          onAccessGranted={(code) => initializeNewPlayer(code)} 
+          playerId={playerId} 
+          onAccessGranted={(code) => initializeNewPlayer(code)}
+          onRestoreAccount={restoreAccountFromMnemonic}
         />
       ) : (
         /* 2. Show the ACTUAL GAME if they have access */
@@ -2189,7 +2226,7 @@ const GiftTapGame = () => {
                   console.log("DEBUG - Generated Secret:", generatedSecret);
 
                   // 1. Synchronous check prevents UI flickering
-                  const isBackedUp = localStorage.getItem(`wallet_backed_up_${tgUser.id}`);
+                  const isBackedUp = localStorage.getItem(`wallet_backed_up_${playerId}`);
                   
                   if (isBackedUp !== "true") {
                     setMustBackup(true); 
@@ -2364,7 +2401,7 @@ const GiftTapGame = () => {
                 setEnergy={setEnergy} 
                 stats={stats}
                 setStats={setStats}
-                tgUser={tgUser}
+                player={player}
                 playerWallet={playerWallet}
                 decryptedPhrase={decryptedPhrase}
               />
@@ -2374,13 +2411,13 @@ const GiftTapGame = () => {
               <Tasks 
                 balance={balance} 
                 setBalance={setBalance} 
-                tgUser={tgUser} 
+                player={player} 
               />
             )}
 
             {/* Friends / Referral Tab */}
             {currentPage === 'friends' && (
-              <Friends tgUser={tgUser} />
+              <Friends player={player} />
             )}
 
             {/* 3. Navigation Bar (Always at bottom) */}
@@ -2422,7 +2459,7 @@ const GiftTapGame = () => {
                   <div style={{ textAlign: 'left' }}>
                     <h3 style={{ color: '#ff4d4d', marginTop: 0 }}>⚠️ Backup Required</h3>
                     <p style={{ fontSize: '12px', color: '#ccc', marginBottom: '15px' }}>
-                      Your wallet is securely tied to your Telegram, but you must save these 12 words now. You will need them if you ever want to use external apps like Phantom.
+                      This wallet is yours alone. Save these 12 words now — they are the only way to restore your account on a new device or browser. Never share them.
                     </p>
                     
                     <div style={{ background: '#000', padding: '15px', borderRadius: '10px', border: '1px solid #ffd700', marginBottom: '15px' }}>
@@ -2448,7 +2485,7 @@ const GiftTapGame = () => {
                     <button 
                       onClick={() => {
                         setMustBackup(false);
-                        localStorage.setItem(`wallet_backed_up_${tgUser.id}`, "true"); // Flags that they saw it
+                        localStorage.setItem(`wallet_backed_up_${playerId}`, "true"); // Flags that they saw it
                       }}
                       style={{ width: '100%', background: '#fbef43', color: '#000', padding: '12px', borderRadius: '8px', fontWeight: 'bold', border: 'none', cursor: 'pointer' }}
                     >
@@ -2470,7 +2507,7 @@ const GiftTapGame = () => {
 
                     {showSettings ? (
                       <div style={{ textAlign: 'left' }}>
-                        <p style={{ color: '#aaa', fontSize: '12px', marginBottom: '15px' }}>Your wallet is securely locked to your Telegram account.</p>
+                        <p style={{ color: '#aaa', fontSize: '12px', marginBottom: '15px' }}>Your wallet is stored only on this device until you back up the 12-word phrase. Gift Tap never keeps your seed.</p>
                         
                         {!isRevealed ? (
                           <div style={{ background: '#111', padding: '15px', borderRadius: '10px', border: '1px solid #333', textAlign: 'center' }}>
@@ -2933,7 +2970,7 @@ const GiftTapGame = () => {
                 <div style={{background: '#000', padding: '15px', borderRadius: '10px', border: '1px solid #333', marginBottom: '20px'}}>
                   <p style={{fontSize: '10px', color: '#888', textTransform: 'uppercase', marginBottom: '5px'}}>Secret Key (Base58)</p>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px', marginTop: '10px' }}>
-                    {(localStorage.getItem(`wallet_secret_${tgUser.id}`) || "").split(" ").map((word, i) => (
+                    {(localStorage.getItem(`wallet_secret_${playerId}`) || "").split(" ").map((word, i) => (
                       word ? (
                         <div key={i} style={{ background: '#222', padding: '6px', borderRadius: '6px', fontSize: '12px', color: '#4ade80', textAlign: 'center', border: '1px solid #333' }}>
                           <span style={{ color: '#888', marginRight: '4px', fontSize: '10px' }}>{i + 1}.</span>{word}

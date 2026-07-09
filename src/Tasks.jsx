@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react';
 import { supabase } from './supabaseClient';
+import { DB_PLAYER_ID } from './playerIdentity';
 
-const Tasks = ({ balance, setBalance, tgUser }) => {
+const Tasks = ({ balance, setBalance, player, tgUser }) => {
+  const user = player || tgUser;
   const [completedTasks, setCompletedTasks] = useState([]);
   const [readyToClaim, setReadyToClaim] = useState([]); // Tracks tasks that are waiting to be claimed
   const [loadingTasks, setLoadingTasks] = useState(true);
@@ -22,12 +24,12 @@ const Tasks = ({ balance, setBalance, tgUser }) => {
   // 1. Load completed tasks from Supabase when the page opens
   useEffect(() => {
     const fetchTasks = async () => {
-      if (!tgUser?.id) return;
+      if (!user?.id) return;
       
       const { data, error } = await supabase
         .from('players')
         .select('completed_tasks, current_streak, has_made_purchase')
-        .eq('telegram_id', String(tgUser.id))
+        .eq(DB_PLAYER_ID, String(user.id))
         .single();
 
       if (!error && data) {
@@ -40,17 +42,13 @@ const Tasks = ({ balance, setBalance, tgUser }) => {
       setLoadingTasks(false);
     };
     fetchTasks();
-  }, [tgUser]);
+  }, [user?.id]);
 
   // 2. Handle the "Go" button (Opens link, changes button to Claim)
   const handleGo = (task) => {
 
     if (task.type === 'social') {
-      if (window.Telegram?.WebApp?.openLink) {
-        window.Telegram.WebApp.openLink(task.link);
-      } else {
-        window.open(task.link, '_blank');
-      }
+      window.open(task.link, '_blank', 'noopener,noreferrer');
       setReadyToClaim(prev => [...prev, task.id]);
     }
   };
@@ -70,7 +68,7 @@ const Tasks = ({ balance, setBalance, tgUser }) => {
         shard_balance: newBalance,
         completed_tasks: newCompleted
       })
-      .eq('telegram_id', String(tgUser.id));
+      .eq(DB_PLAYER_ID, String(user.id));
       
     alert(`🎉 You earned ${task.reward.toLocaleString()} Shards!`);
   };

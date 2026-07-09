@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from './supabaseClient';
+import { DB_PLAYER_ID } from './playerIdentity';
 import { Connection, PublicKey, Keypair, Transaction, SystemProgram, ComputeBudgetProgram, sendAndConfirmTransaction } from '@solana/web3.js';
 import bs58 from 'bs58';
-import * as bip39 from "bip39";
-import { derivePath } from "ed25519-hd-key";
+import { keypairFromMnemonic } from './solanaWallet';
 
-const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, tgUser, playerWallet, decryptedPhrase }) => {
+const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, tgUser, playerWallet, decryptedPhrase }) => {
+  const user = player || tgUser;
   const [activeTab, setActiveTab] = useState('market');
   const [marketFilter, setMarketFilter] = useState('All');
   const [showConfirmModal, setShowConfirmModal] = useState(false);
@@ -67,7 +68,7 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, tgUser, 
     try {
       const { error } = await supabase.from('players')
         .update({ shard_balance: balance - item.cost, inventory: newInventory })
-        .eq('telegram_id', String(tgUser.id));
+        .eq(DB_PLAYER_ID, String(user.id));
        
       if (error) throw error;
 
@@ -100,16 +101,8 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, tgUser, 
       
       let playerKeypair;
       if (storedSecret.includes(" ")) {
-        // --- NEW FORMAT: Translate 12-word mnemonic to Keypair ---
-        const cleanSecret = storedSecret.trim();
-        const seed = bip39.mnemonicToSeedSync(cleanSecret);
-        const seedHex = Array.from(seed)
-          .map(b => b.toString(16).padStart(2, '0'))
-          .join('');
-        const derivedSeed = derivePath("m/44'/501'/0'/0'", seedHex).key;
-        playerKeypair = Keypair.fromSeed(derivedSeed);
+        playerKeypair = keypairFromMnemonic(storedSecret.trim());
       } else {
-        // --- LEGACY FORMAT: Base58 string ---
         playerKeypair = Keypair.fromSecretKey(bs58.decode(storedSecret));
       }
       console.log("✅ Expected Wallet (Database):", playerWallet);
@@ -165,7 +158,7 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, tgUser, 
           inventory: newInventory,
           has_made_purchase: true,       // Complete the purchase task permanently
         })
-        .eq('telegram_id', String(tgUser.id));
+        .eq(DB_PLAYER_ID, String(user.id));
         
       if (updateError) throw updateError;
 
@@ -210,18 +203,8 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, tgUser, 
      
       let playerKeypair;
       if (storedSecret.includes(" ")) {
-        // --- NEW FORMAT: Translate 12-word mnemonic to Keypair ---
-        // 1. Clean the phrase of any invisible spaces
-        const cleanSecret = storedSecret.trim();
-        const seed = bip39.mnemonicToSeedSync(cleanSecret);
-        // 3. Force pure hex conversion (Bypasses Vite/Browser Buffer bugs)
-        const seedHex = Array.from(seed)
-          .map(b => b.toString(16).padStart(2, '0'))
-          .join('');
-        const derivedSeed = derivePath("m/44'/501'/0'/0'", seedHex).key;
-        playerKeypair = Keypair.fromSeed(derivedSeed);
+        playerKeypair = keypairFromMnemonic(storedSecret.trim());
       } else {
-        // --- LEGACY FORMAT: Base58 string ---
         playerKeypair = Keypair.fromSecretKey(bs58.decode(storedSecret));
       }
       console.log("✅ Expected Wallet (Database):", playerWallet);
@@ -274,7 +257,7 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, tgUser, 
 
       const { error: updateError } = await supabase.from('players')
         .update({ inventory: newInventory })
-        .eq('telegram_id', String(tgUser.id));
+        .eq(DB_PLAYER_ID, String(user.id));
        
       if (updateError) throw updateError;
 
@@ -367,7 +350,7 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, tgUser, 
     }
 
     try {
-      const { error } = await supabase.from('players').update(dbUpdates).eq('telegram_id', String(tgUser.id));
+      const { error } = await supabase.from('players').update(dbUpdates).eq(DB_PLAYER_ID, String(user.id));
       if (error) throw error;
 
       setLocalInventory(newInventory);

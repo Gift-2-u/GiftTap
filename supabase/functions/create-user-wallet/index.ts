@@ -20,7 +20,9 @@ serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
   try {
-    const { telegram_id, username } = await req.json();
+    // player_id / telegram_id optional — frontend owns the players row upsert for web accounts
+    const body = await req.json().catch(() => ({}));
+    const playerKey = body.player_id || body.telegram_id || null;
 
     // 1. Generate the 12-word phrase
     const mnemonic = bip39.generateMnemonic();
@@ -39,26 +41,28 @@ serve(async (req) => {
     
     const publicKey = keypair.publicKey.toBase58();
 
-    // 3. Initialize Supabase
-    const supabaseClient = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-    );
+    // 3. Optional: if a player row already exists, attach the public key only (never the seed)
+    if (playerKey) {
+      const supabaseClient = createClient(
+        Deno.env.get('SUPABASE_URL') ?? '',
+        Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+      );
 
-    // 4. Save ONLY the public key to the database
-    const { error: updateError } = await supabaseClient
-      .from('players')
-      .update({ wallet_address: publicKey })
-      .eq('telegram_id', String(telegram_id));
+      const { error: updateError } = await supabaseClient
+        .from('players')
+        .update({ wallet_address: publicKey })
+        .eq('telegram_id', String(playerKey));
 
-    if (updateError) throw updateError;
+      // Ignore "no rows" — new web signups insert the row on the client after this returns
+      if (updateError) console.warn('create-user-wallet update skipped:', updateError.message);
+    }
 
-    // 5. Return BOTH to the frontend (The frontend will catch the mnemonic and save it to local storage)
+    // 4. Return BOTH to the frontend (client encrypts/stores vault; we never keep the seed)
     return new Response(
       JSON.stringify({ 
         success: true, 
         publicKey: publicKey, 
-        mnemonic: mnemonic // <--- Sending the 12 words back!
+        mnemonic: mnemonic
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
     );
