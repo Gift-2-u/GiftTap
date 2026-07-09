@@ -40,9 +40,6 @@
 .read-the-docs {
   color: #888;
 }
-<<<<<<< HEAD
-=======
-
 /* Add this to your global CSS or a <style> tag in your index.html */
 input::-webkit-outer-spin-button,
 input::-webkit-inner-spin-button {
@@ -52,4 +49,3 @@ input::-webkit-inner-spin-button {
 input[type=number] {
   -moz-appearance: textfield;
 }
->>>>>>> cc230080b45158b62b4e722df27609d41b747029
