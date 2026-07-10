@@ -26,8 +26,14 @@ const Menu = ({
   setDisplayCurrency, 
   t, 
   onOpenWhitepaper, 
-  onOpenSecret 
+  onOpenSecret,
+  username,
+  playerId,
+  onLogout,
+  onOpenClaimAccount,
+  needsPassword,
 }) => {
+  const playerIdHint = playerId ? String(playerId).slice(-8) : '';
   
   // If the menu is closed, render absolutely nothing
   if (!isMenuOpen) return null;
@@ -73,6 +79,52 @@ const Menu = ({
           </select>
         </div>
 
+        {/* Account identity — always show when props provided (including 12-word restore) */}
+        <div style={{ background: '#111', padding: '15px', borderRadius: '12px', marginBottom: '10px', border: '1px solid #222' }}>
+          <div style={{ color: '#888', fontSize: '11px', marginBottom: '4px' }}>Logged in as</div>
+          <div style={{ color: '#ffd700', fontWeight: 'bold', fontSize: '16px' }}>
+            {(username && String(username).trim()) || 'Player'}
+          </div>
+          {playerIdHint ? (
+            <div style={{ color: '#555', fontSize: '10px', marginTop: '6px', wordBreak: 'break-all' }}>
+              ID …{playerIdHint}
+            </div>
+          ) : null}
+          {needsPassword && (
+            <div style={{ color: '#fbbf24', fontSize: '11px', marginTop: '8px', lineHeight: 1.35 }}>
+              No password yet — set one to log in on other devices without 12 words.
+            </div>
+          )}
+        </div>
+
+        {/* Username + password (Telegram / restore accounts) */}
+        {onOpenClaimAccount && (
+          <button
+            type="button"
+            onClick={() => {
+              setIsMenuOpen(false);
+              onOpenClaimAccount();
+            }}
+            style={{
+              width: '100%',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              background: needsPassword ? 'rgba(255,215,0,0.08)' : '#111',
+              padding: '15px',
+              borderRadius: '12px',
+              marginBottom: '10px',
+              border: needsPassword ? '1px solid #ffd700' : '1px solid #222',
+              cursor: 'pointer',
+            }}
+          >
+            <span style={{ color: needsPassword ? '#ffd700' : '#fff', fontWeight: 'bold' }}>
+              {needsPassword ? '⚡ Set username & password' : '✏️ Change username / password'}
+            </span>
+            <span style={{ color: '#888' }}>{'❯'}</span>
+          </button>
+        )}
+
         {/* 3. Security Words */}
         <button 
           onClick={() => {
@@ -82,6 +134,19 @@ const Menu = ({
           style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#111', padding: '15px', borderRadius: '12px', marginBottom: '10px', border: '1px solid #222', cursor: 'pointer' }}
         >
           <span style={{ color: '#ef4444', fontWeight: 'bold' }}>🔐 {t('secret')}</span>
+          <span style={{ color: '#888' }}>{'❯'}</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => {
+            setIsMenuOpen(false);
+            if (typeof onLogout === 'function') onLogout();
+            else alert('Log out is not available. Refresh the page.');
+          }}
+          style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#111', padding: '15px', borderRadius: '12px', marginBottom: '10px', border: '1px solid #442222', cursor: 'pointer' }}
+        >
+          <span style={{ color: '#f87171', fontWeight: 'bold' }}>🚪 Log out</span>
           <span style={{ color: '#888' }}>{'❯'}</span>
         </button>
 

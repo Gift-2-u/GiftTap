@@ -1,17 +1,15 @@
 /**
- * Web player identity (replaces Telegram WebApp user).
+ * Web player identity.
  *
- * IMPORTANT — Supabase still has a column named `telegram_id` from the Mini App era.
- * We did NOT rename it (would break existing rows + RPCs). It now stores:
- *   - web UUID for new browser accounts, OR
- *   - legacy numeric Telegram id after "Restore with 12 words"
- * Use DB_PLAYER_ID / withPlayerId() in app code so it is clear this is the player key.
+ * Cross-device: username + password (edge auth) → same player_id in localStorage.
+ * Same device: gift2u_player_id stays in localStorage until logout / clear data.
+ * Recovery: 12-word restore still works.
+ *
+ * DB column `telegram_id` is the player key (legacy name).
  */
 
-/** Legacy Supabase column name for the player primary key (do not rename without a DB migration). */
 export const DB_PLAYER_ID = 'telegram_id';
 
-/** Apply .eq on players by player key. Example: withPlayerId(supabase.from('players').select('*'), id).maybeSingle() */
 export function withPlayerId(query, id) {
   return query.eq(DB_PLAYER_ID, String(id));
 }
@@ -19,11 +17,18 @@ export function withPlayerId(query, id) {
 const PLAYER_ID_KEY = 'gift2u_player_id';
 const USERNAME_KEY = 'gift2u_username';
 const REF_SESSION_KEY = 'gift2u_ref';
+const SESSION_FLAG = 'gift2u_logged_in';
 
+/** Return stored id or null — does NOT create a new account. */
+export function getPlayerId() {
+  return localStorage.getItem(PLAYER_ID_KEY) || null;
+}
+
+/** @deprecated use getPlayerId + explicit signup; kept for callers that expect create */
 export function getOrCreatePlayerId() {
-  let id = localStorage.getItem(PLAYER_ID_KEY);
+  let id = getPlayerId();
   if (!id) {
-    id = (typeof crypto !== 'undefined' && crypto.randomUUID)
+    id = crypto.randomUUID
       ? crypto.randomUUID()
       : `web_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
     localStorage.setItem(PLAYER_ID_KEY, id);
@@ -34,37 +39,52 @@ export function getOrCreatePlayerId() {
 export function setPlayerId(id) {
   if (!id) return;
   localStorage.setItem(PLAYER_ID_KEY, String(id));
+  localStorage.setItem(SESSION_FLAG, '1');
+}
+
+export function clearSession() {
+  localStorage.removeItem(PLAYER_ID_KEY);
+  localStorage.removeItem(USERNAME_KEY);
+  localStorage.removeItem(SESSION_FLAG);
+}
+
+export function isLoggedIn() {
+  return !!(getPlayerId() && localStorage.getItem(SESSION_FLAG));
 }
 
 export function getUsername() {
-  return localStorage.getItem(USERNAME_KEY) || 'Player';
+  return localStorage.getItem(USERNAME_KEY) || '';
 }
 
 export function setUsername(name) {
-  const clean = (name || 'Player').trim().slice(0, 32) || 'Player';
-  localStorage.setItem(USERNAME_KEY, clean);
-  return clean;
+  const clean = (name || '').trim().slice(0, 32);
+  if (clean) localStorage.setItem(USERNAME_KEY, clean);
+  return clean || 'Player';
 }
 
-/** Stable profile object used everywhere tgUser used to be. */
 export function getPlayerProfile() {
-  const id = getOrCreatePlayerId();
-  const username = getUsername();
+  const id = getPlayerId();
+  const username = getUsername() || 'Player';
   return {
-    id,
+    id: id || '',
     username,
     first_name: username,
   };
 }
 
-/** Capture ?ref= on first load; consume once when creating a new account. */
+/** Apply login/signup result to this browser. */
+export function applyAuthSession({ playerId, username }) {
+  setPlayerId(playerId);
+  if (username) setUsername(username);
+  return getPlayerProfile();
+}
+
 export function captureReferralFromUrl() {
   try {
     const params = new URLSearchParams(window.location.search);
     const ref = params.get('ref') || params.get('startapp') || null;
     if (ref) {
       sessionStorage.setItem(REF_SESSION_KEY, String(ref));
-      // Clean ref from URL without reload
       params.delete('ref');
       params.delete('startapp');
       const next = `${window.location.pathname}${params.toString() ? `?${params}` : ''}${window.location.hash}`;
@@ -83,8 +103,7 @@ export function consumeReferralId() {
 
 export function getInviteLink(playerId) {
   const origin = typeof window !== 'undefined' ? window.location.origin : '';
-  // Root URL is the game (http://localhost:5173/?ref=...)
-  return `${origin}/?ref=${encodeURIComponent(playerId || getOrCreatePlayerId())}`;
+  return `${origin}/?ref=${encodeURIComponent(playerId || getPlayerId() || '')}`;
 }
 
 export function vaultSaltFor(playerId) {

@@ -1,31 +1,51 @@
 // ==========================================
-// AD NETWORK PROMISES
+// AD NETWORKS (web app — Monetag first)
 // ==========================================
+
+/** Minimum watch time the game accepts for a reward (seconds). */
+export const AD_MIN_WATCH_SECONDS = 13;
+
+/**
+ * Monetag Direct Link (web).
+ * Paste your zone / smartlink from the Monetag dashboard.
+ * Example formats: https://otieu.com/4/XXXX  or  https://omg10.com/4/XXXX
+ */
+const MONETAG_DIRECT_LINK = 'https://omg10.com/4/11263036';
+
+const isPlaceholder = (url) =>
+  !url ||
+  url.includes('YOUR_MONETAG') ||
+  url.includes('XXXX') ||
+  url.trim() === '';
 
 const playMonetag = () => {
   return new Promise((resolve, reject) => {
-    // 1. You must create a "Direct Link" in your Monetag dashboard and paste it here.
-    const directLinkUrl = "https://omg10.com/4/11263036";
-
-    if (!directLinkUrl || directLinkUrl === "https://omg10.com/4/11263036") {
-      console.warn("⚠️ Monetag Direct Link missing. Falling back to Adsterra.");
-      return reject("Monetag not configured");
+    if (isPlaceholder(MONETAG_DIRECT_LINK)) {
+      console.warn('⚠️ Monetag Direct Link not set in adService.js');
+      reject(new Error('Monetag not configured'));
+      return;
     }
 
     try {
-      // Open reward link in a new tab (web app)
-      window.open(directLinkUrl, '_blank', 'noopener,noreferrer');
+      // User gesture required — must open from the click handler chain
+      const win = window.open(MONETAG_DIRECT_LINK, '_blank');
 
-      // 3. The Security Timer
-      // Since direct links don't have a callback, we force a 5-second delay 
-      // before giving the reward to prevent users from spamming the button.
+      if (!win || win.closed || typeof win.closed === 'undefined') {
+        // Popup blocked (common on mobile browsers)
+        // Fallback: same-tab navigate is too disruptive; show instruction + still require wait
+        console.warn('⚠️ Popup blocked — opening via top-level location is not used; reject so UI can retry');
+        reject(new Error('Popup blocked. Allow popups for this site and try again.'));
+        return;
+      }
+
+      // Wait long enough to satisfy GiftTap's elapsed >= 13s check
+      const waitMs = (AD_MIN_WATCH_SECONDS + 2) * 1000;
       setTimeout(() => {
-        console.log("✅ Monetag Direct Link viewed. Distributing fallback reward...");
-        resolve(true);
-      }, 5000);
-
+        console.log('✅ Monetag direct link window opened; granting reward after timer.');
+        resolve({ network: 'Monetag' });
+      }, waitMs);
     } catch (e) {
-      console.warn("❌ Failed to launch Monetag link:", e);
+      console.warn('❌ Monetag failed:', e);
       reject(e);
     }
   });
@@ -33,43 +53,34 @@ const playMonetag = () => {
 
 const playAdsterra = () => {
   return new Promise((resolve, reject) => {
-    // Same as Monetag - insert Adsterra logic/Direct Link here
-    reject("Adsterra not configured yet");
+    reject(new Error('Adsterra not configured yet'));
   });
 };
 
 // ==========================================
-// THE WATERFALL EXECUTION
+// WATERFALL: Monetag → Adsterra
 // ==========================================
 
 export const showRewardedAdWaterfall = async () => {
-  console.log("🌊 Starting Ad Waterfall...");
+  console.log('🌊 Starting Ad Waterfall (Monetag first)...');
 
   try {
-    console.log("1️⃣ Requesting Adsgram...");
-    await playAdsgram();
-    return { success: true, network: 'Adsgram' };
-
+    console.log('1️⃣ Monetag...');
+    await playMonetag();
+    return { success: true, network: 'Monetag' };
   } catch (err1) {
-    console.log("⚠️ Adsgram skipped or no fill:", err1);
+    console.log('⚠️ Monetag failed:', err1?.message || err1);
 
     try {
-      console.log("2️⃣ Falling back to Monetag...");
-      await playMonetag();
-      return { success: true, network: 'Monetag' };
-
+      console.log('2️⃣ Adsterra...');
+      await playAdsterra();
+      return { success: true, network: 'Adsterra' };
     } catch (err2) {
-      console.log("⚠️ Monetag skipped or no fill:", err2);
-
-      try {
-        console.log("3️⃣ Falling back to Adsterra...");
-        await playAdsterra();
-        return { success: true, network: 'Adsterra' };
-
-      } catch (err3) {
-        console.log("❌ All ad networks failed or were skipped.");
-        return { success: false, error: "No ads currently available." };
-      }
+      console.log('⚠️ Adsterra failed:', err2?.message || err2);
+      return {
+        success: false,
+        error: err1?.message || 'No ads currently available.',
+      };
     }
   }
 };

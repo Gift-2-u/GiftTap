@@ -3,6 +3,8 @@ import { Connection, PublicKey, clusterApiUrl, Keypair, Transaction, SystemProgr
 import { supabase } from './supabaseClient';
 import { getAssociatedTokenAddressSync } from '@solana/spl-token';
 import BetaGate from './BetaGate';
+import AuthScreen from './AuthScreen';
+import ClaimAccountModal from './ClaimAccountModal';
 import Marketplace from './Marketplace';
 import Tasks from './Tasks';
 import Friends from './Friends';
@@ -15,8 +17,11 @@ import { keypairFromMnemonic } from './solanaWallet';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   getPlayerProfile,
+  getPlayerId,
   setPlayerId,
   setUsername,
+  applyAuthSession,
+  clearSession,
   captureReferralFromUrl,
   consumeReferralId,
   getInviteLink,
@@ -290,13 +295,16 @@ const GiftTapGame = () => {
     toast: { position: 'fixed', bottom: '100px', left: '50%', transform: 'translateX(-50%)', background: '#333', color: '#ffd700', padding: '12px 24px', borderRadius: '25px', border: '1px solid #ffd700', zIndex: 2000, boxShadow: '0 4px 15px rgba(0,0,0,0.5)', fontSize: '14px', fontWeight: 'bold', transition: 'all 0.3s ease' }
   };
 
-  // Web player identity FIRST (local UUID). Never Telegram WebApp.
-  // DB still stores this under column telegram_id (see DB_PLAYER_ID).
+  // Web identity: session in localStorage after login/signup (cross-device via username+password).
   const [player, setPlayer] = useState(() => {
     captureReferralFromUrl();
     return getPlayerProfile();
   });
-  const playerId = String(player.id);
+  const playerId = player.id ? String(player.id) : '';
+  // null = still deciding; true = has session; false = show AuthScreen
+  const [isAuthed, setIsAuthed] = useState(() => !!getPlayerId());
+  const [needsPassword, setNeedsPassword] = useState(false);
+  const [showClaimAccount, setShowClaimAccount] = useState(false);
 
   // 1. GAME STATE
   const [balance, setBalance] = useState(0);
@@ -385,27 +393,23 @@ const GiftTapGame = () => {
       const result = await showRewardedAdWaterfall();
       const elapsed = (Date.now() - adStartTime) / 1000;
 
-      // --- 1. STRICT SECURITY CHECK (Time + Result) ---
-      if (result && result.success && elapsed >= 13) {
-        
+      // Reward if ad waterfall reported success (timer is enforced inside adService)
+      if (result && result.success) {
+        console.log(`Ad OK via ${result.network} after ${elapsed.toFixed(1)}s`);
+
         const newMaxLimit = maxDailyLimit + 100;
         const newAdsCount = dailyAdsWatched + 1;
         const today = new Date().toISOString().split('T')[0];
         
-        // Calculate midnight for the temporary boost
         const midnightTonight = new Date();
         midnightTonight.setHours(23, 59, 59, 999);
 
-        // --- 2. THE PROTECTIVE UPDATE ---
-        // We include EVERY boost field so Supabase never resets your 2000 SOL boost.
         const dbUpdates = {
           max_daily_limit: newMaxLimit,
           daily_ads_watched: newAdsCount,
           last_ad_date: today,
-          // 🚨 PROTECT THE SOL BOOST (Keep them in the update)
           limit_boost_amount: stats.limit_boost_amount,
           limit_boost_expires: stats.limit_boost_expires,
-          // Synchronize the Ad Energy Boost fields too
           ad_energy_boost: (stats.ad_energy_boost || 0) + 100,
           ad_energy_expires: midnightTonight.toISOString(),
           last_updated: new Date().toISOString()
@@ -418,7 +422,6 @@ const GiftTapGame = () => {
 
         if (error) throw error;
 
-        // --- 3. UPDATE UI ---
         setMaxDailyLimit(newMaxLimit);
         setDailyAdsWatched(newAdsCount);
         if (setStats) setStats({ ...stats, ...dbUpdates });
@@ -426,11 +429,11 @@ const GiftTapGame = () => {
 
         alert("✅ Verified! +100 Energy Capacity added.");
       } else {
-        alert("⚠️ Ad Interrupted: Watch the full video to get the reward!");
+        alert(result?.error || "⚠️ Ad failed or was blocked. Allow popups and try again.");
       }
     } catch (err) {
       console.error("Ad Error:", err);
-      alert("No ads available. Please try again later.");
+      alert(err?.message || "No ads available. Please try again later.");
     } finally {
       setIsWatchingAd(false);
     }
@@ -580,6 +583,11 @@ const GiftTapGame = () => {
   };
 
   const syncPlayer = useCallback(async () => {
+    if (!playerId) {
+      setIsLoading(false);
+      setIsDataLoaded(false);
+      return;
+    }
     setIsLoading(true);
     try {
       const userId = playerId;
@@ -597,8 +605,16 @@ const GiftTapGame = () => {
       // ==========================================
       if (playerRow && playerRow.wallet_address) {
         console.log("Existing player found, protecting data...");
+        const displayName =
+          (playerRow.username && String(playerRow.username).trim()) ||
+          `Player_${String(userId).replace(/-/g, '').slice(0, 8)}`;
+        setUsername(displayName);
+        setPlayer(getPlayerProfile());
         setHasAccess(playerRow.has_beta_access || false);
         setPlayerWallet(playerRow.wallet_address);
+        // TG / restored accounts without password → prompt to set credentials
+        const missingPw = !playerRow.password_hash;
+        setNeedsPassword(missingPw);
         
         setBalances({ 
           sol: playerRow.sol_balance || 0, 
@@ -820,68 +836,51 @@ const GiftTapGame = () => {
         return;
       } 
       // ==========================================
-      // CASE B: NEW PLAYER (No Wallet Found)
+      // CASE B: Account exists (signup) but no wallet yet → create once
       // ==========================================
-      else if (!playerRow) {
-        console.log("No wallet found, generating...");
-        
+      else if (playerRow && !playerRow.wallet_address) {
+        console.log("Account without wallet — generating in-app wallet...");
         const response = await fetch('https://ncwlbwzxfpcnxkyrmdck.supabase.co/functions/v1/create-user-wallet', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
           },
-          body: JSON.stringify({ 
-            telegram_id: userId, // edge fn arg — value is web playerId, not TG
-            username: player.username || player.first_name || 'Player'
+          body: JSON.stringify({
+            telegram_id: userId,
+            username: playerRow.username || player.username || 'Player'
           })
         });
-
         const result = await response.json();
-
         if (result && result.publicKey) {
           let encryptedVault = null;
           const rawSecret = result.mnemonic || result.secretKey;
-
           if (rawSecret) {
             encryptedVault = encryptWallet(rawSecret, invisibleKey);
-            setDecryptedPhrase(rawSecret); // Set active memory
-            
-            // Nuke the temporary local storage so we never rely on it again
-            localStorage.removeItem(`wallet_secret_${userId}`);
-            localStorage.removeItem(`wallet_pwd_${userId}`);
+            setDecryptedPhrase(rawSecret);
           }
-
-          // FORCE CREATE THE PLAYER ROW IN SUPABASE (With Encrypted Vault)
-          const { error: insertError } = await supabase
-            .from('players')
-            .upsert({
-              [DB_PLAYER_ID]: userId,
-              wallet_address: result.publicKey,
-              encrypted_vault: encryptedVault,
-              username: player.username || player.first_name || 'Player',
-              has_beta_access: false,
-              shard_balance: 0,
-              season_shards: 0,
-              lifetime_taps: 0,
-              sol_balance: 0,
-              usdc_balance: 0
-            }, { onConflict: DB_PLAYER_ID });
-
-          if (insertError) {
-            console.error("❌ Failed to create new player row:", insertError.message);
-          }
+          await supabase.from('players').update({
+            wallet_address: result.publicKey,
+            encrypted_vault: encryptedVault,
+            username: playerRow.username || player.username,
+          }).eq(DB_PLAYER_ID, userId);
 
           setPlayerWallet(result.publicKey);
-          // 🚨 LOCK 2: Force the browser to burn the old ghost receipt
           localStorage.removeItem(`wallet_backed_up_${userId}`);
-          setHasAccess(false); // Grant access to the new player
-          setMustBackup(true); // Trigger your original backup warning
+          setHasAccess(!!playerRow.has_beta_access);
+          setMustBackup(true);
           setIsDataLoaded(true);
         } else {
-          console.error("Wallet generation failed.");
-          setHasAccess(true);
+          console.error("Wallet generation failed.", result);
+          setHasAccess(false);
         }
+      }
+      // No row for this session id → force re-auth (don't auto-create ghost accounts)
+      else if (!playerRow) {
+        console.warn("No player row for session — clearing and showing login.");
+        clearSession();
+        setIsAuthed(false);
+        setPlayer({ id: '', username: '', first_name: '' });
       }
 
       await fetchTopLeader();
@@ -892,129 +891,123 @@ const GiftTapGame = () => {
     }
   }, [playerId, player.username, player.first_name, fetchTopLeader]);
 
+  /** Called after beta code redeem — grant access; create wallet only if missing. */
   const initializeNewPlayer = async () => {
     setIsLoading(true);
     try {
       const userId = playerId;
       const userName = player.username || player.first_name || 'Player';
 
-      // --- 1. REFERRAL & ECONOMY LOGIC ---
       const referrerId = consumeReferralId(); 
       const REFERRER_BONUS = 2000;
       const JOINER_BONUS = 500;
       const startingShards = referrerId ? JOINER_BONUS : 0;
 
-      // --- 2. GENERATE SECURE WALLET (EDGE FUNCTION) ---
-      const response = await fetch('https://ncwlbwzxfpcnxkyrmdck.supabase.co/functions/v1/create-user-wallet', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
-        },
-        body: JSON.stringify({ telegram_id: userId, username: userName })  // edge fn arg name (player key value)
-      });
-
-      const newWallet = await response.json();
-      console.log("🚨 RAW EDGE RESPONSE:", newWallet);
-
-      if (newWallet && newWallet.publicKey) {
-        let encryptedVault = null;
-
-        // --- 3. INVISIBLE KEY ENCRYPTION ---
-        if (newWallet.mnemonic) {
-          const rawSecret = newWallet.mnemonic;
-          const invisibleKey = vaultSaltFor(userId); 
-          encryptedVault = encryptWallet(rawSecret, invisibleKey);
-
-          setDecryptedPhrase(rawSecret); // Unlocks active RAM session
-          setGeneratedSecret(rawSecret); // Keeps UI working
-          
-          localStorage.removeItem(`wallet_secret_${userId}`);
-          localStorage.removeItem(`wallet_pwd_${userId}`);
-        }
-
-        // --- 4. THE SAFE SAVE (Check, then Insert or Update) ---
-      
-      // First, see if the player row already exists
+      // Prefer existing account row (from username signup)
       const { data: existingPlayer } = await supabase
         .from('players')
-        .select(DB_PLAYER_ID)
+        .select('*')
         .eq(DB_PLAYER_ID, userId)
         .maybeSingle();
 
+      let encryptedVault = existingPlayer?.encrypted_vault || null;
+      let publicKey = existingPlayer?.wallet_address || null;
+
+      // Only generate a wallet if this account does not already have one
+      if (!publicKey) {
+        const response = await fetch('https://ncwlbwzxfpcnxkyrmdck.supabase.co/functions/v1/create-user-wallet', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
+          },
+          body: JSON.stringify({ telegram_id: userId, username: userName })
+        });
+        const newWallet = await response.json();
+        if (!newWallet?.publicKey) throw new Error(newWallet?.error || 'Wallet generation failed');
+
+        publicKey = newWallet.publicKey;
+        if (newWallet.mnemonic) {
+          const invisibleKey = vaultSaltFor(userId);
+          encryptedVault = encryptWallet(newWallet.mnemonic, invisibleKey);
+          setDecryptedPhrase(newWallet.mnemonic);
+          setGeneratedSecret(newWallet.mnemonic);
+          setMustBackup(true);
+        }
+      }
+
       const playerData = {
-        [DB_PLAYER_ID]: userId,
-        username: userName,
-        has_beta_access: true, // Permanently unlocks the gate
-        encrypted_vault: encryptedVault,
-        shard_balance: startingShards, 
-        season_shards: 0,              
-        lifetime_taps: 0,              
-        referred_by: referrerId ? String(referrerId) : null,
+        has_beta_access: true,
+        username: existingPlayer?.username || userName,
+        ...(publicKey ? { wallet_address: publicKey } : {}),
+        ...(encryptedVault ? { encrypted_vault: encryptedVault } : {}),
       };
 
       if (!existingPlayer) {
-        // If brand new, INSERT them
         const { error: insertError } = await supabase
           .from('players')
-          .insert([{ ...playerData, created_at: new Date().toISOString() }]);
-          
+          .insert([{
+            [DB_PLAYER_ID]: userId,
+            ...playerData,
+            shard_balance: startingShards,
+            season_shards: 0,
+            lifetime_taps: 0,
+            referred_by: referrerId ? String(referrerId) : null,
+          }]);
         if (insertError) throw insertError;
       } else {
-        // If they already exist, just UPDATE their row
+        const updates = { ...playerData };
+        // Only apply joiner bonus once if they still have 0 shards and a referrer
+        if (referrerId && !existingPlayer.referred_by && Number(existingPlayer.shard_balance || 0) === 0) {
+          updates.shard_balance = startingShards;
+          updates.referred_by = String(referrerId);
+        }
         const { error: updateError } = await supabase
           .from('players')
-          .update(playerData)
+          .update(updates)
           .eq(DB_PLAYER_ID, userId);
-          
         if (updateError) throw updateError;
       }
 
-        // --- 5. THE SECURE REFERRER PAYOUT ---
-        if (referrerId && referrerId !== userId) {
-          try {
-            const { data: referrerData } = await supabase
+      if (publicKey) setPlayerWallet(publicKey);
+
+      // Referrer payout (once)
+      if (referrerId && referrerId !== userId) {
+        try {
+          const { data: referrerData } = await supabase
+            .from('players')
+            .select('shard_balance')
+            .eq(DB_PLAYER_ID, String(referrerId))
+            .maybeSingle();
+
+          if (referrerData) {
+            const newBalance = (Number(referrerData.shard_balance) || 0) + REFERRER_BONUS;
+            await supabase
               .from('players')
-              .select('shard_balance')
-              .eq(DB_PLAYER_ID, String(referrerId))
-              .maybeSingle();
-
-            if (referrerData) {
-              const newBalance = (Number(referrerData.shard_balance) || 0) + REFERRER_BONUS;
-
-              await supabase
-                .from('players')
-                .update({ 
-                  shard_balance: newBalance 
-                  // 🚨 NOTICE: We do NOT update season_shards or lifetime_taps here.
-                  // This keeps the leaderboards "Pure Effort Only".
-                })
-                .eq(DB_PLAYER_ID, String(referrerId));
-                
-              console.log(`✅ Paid ${REFERRER_BONUS} Shards to referrer: ${referrerId}`);
-            }
-          } catch (rewardError) {
-            console.error("Critical error paying referrer:", rewardError);
+              .update({ shard_balance: newBalance })
+              .eq(DB_PLAYER_ID, String(referrerId));
           }
+        } catch (rewardError) {
+          console.error("Critical error paying referrer:", rewardError);
         }
-        
-        // --- 6. UNLOCK THE GAME UI ---
-        setPlayerWallet(newWallet.publicKey);
-        setBalance(startingShards);
-        setEnergy(500);
-        setHasAccess(true);
-        setIsDataLoaded(true);
       }
+
+      if (startingShards && !existingPlayer?.shard_balance) {
+        setBalance(startingShards);
+      }
+      setEnergy((e) => e || 500);
+      setHasAccess(true);
+      setIsDataLoaded(true);
     } catch (err) {
       console.error("Init Error:", err);
-      alert("Error during initialization. Please reload.");
+      alert(err?.message || "Error during initialization. Please reload.");
     } finally {
       setIsLoading(false);
     }
   };
 
 
-  /** Restore a Telegram / other-device account via 12-word phrase → wallet_address lookup. */
+  /** Restore via 12-word phrase → bind this device to that account. */
   const restoreAccountFromMnemonic = async (mnemonic) => {
     const cleaned = (mnemonic || "").trim().toLowerCase().replace(/\s+/g, " ");
     if (!cleaned || cleaned.split(" ").length < 12) {
@@ -1040,14 +1033,30 @@ const GiftTapGame = () => {
 
       if (error) throw error;
       if (!row) {
-        alert("No Gift Tap account found for this phrase. You can create a new account instead.");
+        alert("No Gift Tap account found for this phrase. Sign up for a new account instead.");
         return false;
       }
 
-      // Bind this browser to the existing player key (legacy telegram_id column)
-      setPlayerId(String(row[DB_PLAYER_ID]));
-      if (row.username) setUsername(row.username);
-      setPlayer(getPlayerProfile());
+      // Telegram / old accounts may have empty username after migration — keep a visible label
+      const restoredName =
+        (row.username && String(row.username).trim()) ||
+        (row.telegram_id ? `TG_${String(row.telegram_id).slice(-6)}` : '') ||
+        `Player_${String(row[DB_PLAYER_ID]).replace(/-/g, '').slice(0, 8)}`;
+
+      const profile = applyAuthSession({
+        playerId: String(row[DB_PLAYER_ID]),
+        username: restoredName,
+      });
+      setPlayer(profile);
+      setIsAuthed(true);
+
+      // Persist display name if DB was empty / generic
+      if (!row.username || String(row.username).trim() === '' || String(row.username).toLowerCase() === 'player') {
+        await supabase
+          .from('players')
+          .update({ username: restoredName })
+          .eq(DB_PLAYER_ID, String(row[DB_PLAYER_ID]));
+      }
 
       const invisibleKey = vaultSaltFor(String(row[DB_PLAYER_ID]));
       const encryptedVault = encryptWallet(cleaned, invisibleKey);
@@ -1059,8 +1068,17 @@ const GiftTapGame = () => {
       setDecryptedPhrase(cleaned);
       setPlayerWallet(publicKey);
       setHasAccess(!!row.has_beta_access);
-      alert("Account restored! Loading your progress...");
-      // syncPlayer will re-run via playerId change
+
+      const missingPw = !row.password_hash;
+      setNeedsPassword(missingPw);
+      if (missingPw) {
+        setShowClaimAccount(true);
+        alert(
+          "Account restored! Next: keep or change your username and create a password so you can log in on any device without the 12 words.",
+        );
+      } else {
+        alert("Account restored! Loading your progress...");
+      }
       return true;
     } catch (err) {
       console.error("Restore failed:", err);
@@ -1069,6 +1087,41 @@ const GiftTapGame = () => {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  /** After Sign up / Log in from AuthScreen */
+  const handleAuthenticated = async ({ playerId: pid, username: uname, isNew, mnemonic, walletAddress, has_beta_access }) => {
+    const profile = applyAuthSession({ playerId: pid, username: uname });
+    setPlayer(profile);
+    setIsAuthed(true);
+    setIsLoading(true);
+    if (walletAddress) setPlayerWallet(walletAddress);
+    // New accounts: wallet already created at signup — force backup once
+    if (isNew && mnemonic) {
+      setDecryptedPhrase(mnemonic);
+      setGeneratedSecret(mnemonic);
+      setMustBackup(true);
+    }
+    // Beta gate: only enter game if this account already has access (login of approved testers)
+    // New signups stay on BetaGate until they redeem a code (syncPlayer also sets hasAccess from DB)
+    if (typeof has_beta_access === 'boolean') {
+      setHasAccess(has_beta_access);
+    } else if (isNew) {
+      setHasAccess(false);
+    }
+  };
+
+  const handleLogout = () => {
+    if (!confirm('Log out on this device? You can log back in with username + password on any device (after you set a password).')) return;
+    clearSession();
+    setPlayer({ id: '', username: '', first_name: '' });
+    setIsAuthed(false);
+    setHasAccess(false);
+    setNeedsPassword(false);
+    setShowClaimAccount(false);
+    setPlayerWallet(null);
+    setDecryptedPhrase('');
+    setIsDataLoaded(false);
   };
 
 
@@ -2127,17 +2180,28 @@ const GiftTapGame = () => {
     return () => clearInterval(timer);
   }, [seasonData]);
 
+  // 0) Login / Sign up (cross-device)
+  if (!isAuthed || !playerId) {
+    return (
+      <AuthScreen
+        onAuthenticated={handleAuthenticated}
+        onRestoreAccount={restoreAccountFromMnemonic}
+      />
+    );
+  }
+
   if (isLoading) return <div style={styles.container}>Loading Gift...</div>;
 
   return (
     <div style={{ backgroundColor: '#000', minHeight: '100vh', width: '100%' }}>
       
       {!hasAccess ? (
-        /* 1. Show ONLY the BetaGate if they aren't authorized */
+        /* Beta only AFTER login/signup — code is tied to this playerId */
         <BetaGate 
-          playerId={playerId} 
+          playerId={playerId}
+          username={player.username || getPlayerProfile().username || 'Player'}
           onAccessGranted={(code) => initializeNewPlayer(code)}
-          onRestoreAccount={restoreAccountFromMnemonic}
+          onSwitchAccount={handleLogout}
         />
       ) : (
         /* 2. Show the ACTUAL GAME if they have access */
@@ -3012,9 +3076,31 @@ const GiftTapGame = () => {
             displayCurrency={displayCurrency}
             setDisplayCurrency={setDisplayCurrency}
             t={t}
-            ALL_CURRENCIES={ALL_CURRENCIES} // <--- Add this new line
+            ALL_CURRENCIES={ALL_CURRENCIES}
             onOpenWhitepaper={() => setIsWhitepaperOpen(true)}
             onOpenSecret={() => { setMustBackup(true); setIsModalOpen(true); }}
+            username={player.username || getPlayerProfile().username || 'Player'}
+            playerId={playerId}
+            onLogout={handleLogout}
+            needsPassword={needsPassword}
+            onOpenClaimAccount={() => setShowClaimAccount(true)}
+          />
+
+          <ClaimAccountModal
+            isOpen={showClaimAccount}
+            onClose={() => {
+              // Allow dismiss only if password already set; after restore we still allow close but keep menu CTA
+              setShowClaimAccount(false);
+            }}
+            playerId={playerId}
+            currentUsername={player.username || getPlayerProfile().username || ''}
+            required={false}
+            onSuccess={(newName) => {
+              setUsername(newName);
+              setPlayer(getPlayerProfile());
+              setNeedsPassword(false);
+              setShowClaimAccount(false);
+            }}
           />
 
           {/* --- REFACTORED WHITEPAPER COMPONENT --- */}
