@@ -10,7 +10,7 @@ export const AD_MIN_WATCH_SECONDS = 13;
  * Paste your zone / smartlink from the Monetag dashboard.
  * Example formats: https://otieu.com/4/XXXX  or  https://omg10.com/4/XXXX
  */
-const MONETAG_DIRECT_LINK = 'https://omg10.com/4/11270717';
+const MONETAG_DIRECT_LINK = 'https://omg10.com/4/11263036';
 
 const isPlaceholder = (url) =>
   !url ||
