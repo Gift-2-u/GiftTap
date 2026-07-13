@@ -2243,8 +2243,17 @@ const GiftTapGame = () => {
           {/* TOP HEADER */}
           <div style={styles.headerContainer}>
             
-            {/* LEFT SIDE: Menu & Toggles Grouped Together */}
+            {/* LEFT SIDE: Home + Menu & Toggles */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+
+              {/* Return to gift2u.fun homepage (site header is hidden on /play) */}
+              <a
+                href="/"
+                title="Gift2u Home"
+                style={{ width: '38px', height: '38px', borderRadius: '50%', background: 'rgba(255, 255, 255, 0.08)', border: '1px solid rgba(255, 255, 255, 0.05)', color: '#fff', fontSize: '18px', display: 'flex', justifyContent: 'center', alignItems: 'center', cursor: 'pointer', outline: 'none', WebkitTapHighlightColor: 'transparent', textDecoration: 'none' }}
+              >
+                🏠
+              </a>
               
               {/* Menu Trigger Button (Separated into a clean circle) */}
               <button 

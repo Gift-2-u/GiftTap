@@ -4,7 +4,7 @@ if (typeof window !== 'undefined') {
   window.Buffer = Buffer;
   window.global = window;
 }
-import React, { useMemo, useState, useEffect, useCallback } from 'react';
+import React, { useMemo, useState, useEffect, useCallback, Suspense, lazy } from 'react';
 import { BrowserRouter as Router, Routes, Route, Link, useLocation } from 'react-router-dom';
 import { ConnectionProvider, WalletProvider, useAnchorWallet, useConnection, useWallet } from '@solana/wallet-adapter-react';
 import { WalletModalProvider, WalletMultiButton } from '@solana/wallet-adapter-react-ui';
@@ -13,7 +13,8 @@ import { clusterApiUrl, PublicKey, SystemProgram } from '@solana/web3.js';
 import { Program, AnchorProvider, BN } from '@coral-xyz/anchor';
 import { Toaster, toast } from 'react-hot-toast';
 import DailyGiftBox from './DailyGiftBox';
-import TapGame from './GiftTap';
+// Lazy-load game so homepage/site keep working even if the game bundle has issues
+const TapGame = lazy(() => import('./GiftTap'));
 import idl from "../target/idl/gift_staking.json";
 import '@solana/wallet-adapter-react-ui/styles.css';
 
@@ -43,10 +44,17 @@ export default function App() {
             <div className="min-h-screen w-full bg-slate-900 text-white font-sans flex flex-col">
               <Navigation />
               <Routes>
-                {/* Marketing site is the home page; game lives at /play */}
+                {/* Site home = marketing page; game only at /play */}
                 <Route path="/" element={<HomePage />} />
                 <Route path="/home" element={<HomePage />} />
-                <Route path="/play" element={<TapGame />} />
+                <Route
+                  path="/play"
+                  element={
+                    <Suspense fallback={<div className="min-h-screen bg-black text-white flex items-center justify-center">Loading game…</div>}>
+                      <TapGame />
+                    </Suspense>
+                  }
+                />
                 <Route path="/stake" element={<StakingPage />} />
               </Routes>
             </div>
