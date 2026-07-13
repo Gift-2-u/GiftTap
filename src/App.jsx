@@ -43,10 +43,10 @@ export default function App() {
             <div className="min-h-screen w-full bg-slate-900 text-white font-sans flex flex-col">
               <Navigation />
               <Routes>
-                {/* Game is the home page — use http://localhost:5173/ */}
-                <Route path="/" element={<TapGame />} />
-                <Route path="/play" element={<TapGame />} />
+                {/* Marketing site is the home page; game lives at /play */}
+                <Route path="/" element={<HomePage />} />
                 <Route path="/home" element={<HomePage />} />
+                <Route path="/play" element={<TapGame />} />
                 <Route path="/stake" element={<StakingPage />} />
               </Routes>
             </div>
@@ -59,17 +59,17 @@ export default function App() {
 
 const Navigation = () => {
   const location = useLocation();
-  // Full-screen game: hide site chrome on game routes
-  if (location.pathname === '/' || location.pathname.startsWith('/play')) {
+  // Full-screen game: hide site chrome only on /play
+  if (location.pathname.startsWith('/play')) {
     return null;
   }
   return (
   <nav className="flex justify-between items-center p-6 border-b border-white/10 bg-slate-800/50 backdrop-blur-md sticky top-0 z-50">
     <Link to="/" className="text-3xl font-black text-purple-500 italic">GIFT2U</Link>
     <div className="flex items-center gap-6">
-      <Link to="/home" className="hover:text-purple-400 font-bold">Site</Link>
+      <Link to="/" className="hover:text-purple-400 font-bold">Home</Link>
       <Link to="/stake" className="hover:text-purple-400 font-bold">Staking</Link>
-      <Link to="/" className="hover:text-purple-400 font-bold">Play Game</Link>
+      <Link to="/play" className="hover:text-purple-400 font-bold text-yellow-400">Play Game</Link>
       <WalletMultiButton />
     </div>
   </nav>

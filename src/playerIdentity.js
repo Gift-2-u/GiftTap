@@ -103,7 +103,7 @@ export function consumeReferralId() {
 
 export function getInviteLink(playerId) {
   const origin = typeof window !== 'undefined' ? window.location.origin : '';
-  return `${origin}/?ref=${encodeURIComponent(playerId || getPlayerId() || '')}`;
+  return `${origin}/play?ref=${encodeURIComponent(playerId || getPlayerId() || '')}`;
 }
 
 export function vaultSaltFor(playerId) {

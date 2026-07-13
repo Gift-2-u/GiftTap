@@ -47,6 +47,15 @@ const Menu = ({
           <button onClick={() => setIsMenuOpen(false)} style={{ background: 'none', border: 'none', color: '#888', fontSize: '24px', cursor: 'pointer' }}>×</button>
         </div>
 
+        {/* Back to gift2u.fun marketing site */}
+        <a
+          href="/"
+          style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#111', padding: '15px', borderRadius: '12px', marginBottom: '10px', border: '1px solid #222', cursor: 'pointer', textDecoration: 'none', boxSizing: 'border-box' }}
+        >
+          <span style={{ color: '#a78bfa', fontWeight: 'bold' }}>🏠 Gift2u Home</span>
+          <span style={{ color: '#888' }}>{'❯'}</span>
+        </a>
+
         {/* 1. Global Language Dropdown */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#111', padding: '15px', borderRadius: '12px', marginBottom: '10px', border: '1px solid #222' }}>
           <span style={{ color: '#fff', fontWeight: 'bold' }}>🌐 {t('language')}</span>
