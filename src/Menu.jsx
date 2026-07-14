@@ -42,10 +42,71 @@ const Menu = ({
     <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.85)', zIndex: 10000, display: 'flex', justifyContent: 'center', alignItems: 'flex-end' }}>
       <div style={{ background: '#1c1e22', width: '100%', borderTopLeftRadius: '20px', borderTopRightRadius: '20px', padding: '25px', paddingBottom: '40px', boxSizing: 'border-box', borderTop: '1px solid #333' }}>
         
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+        {/* Title row */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
           <h2 style={{ color: '#fff', margin: 0, fontSize: '22px' }}>{t('menu')}</h2>
-          <button onClick={() => setIsMenuOpen(false)} style={{ background: 'none', border: 'none', color: '#888', fontSize: '24px', cursor: 'pointer' }}>×</button>
+          <button type="button" onClick={() => setIsMenuOpen(false)} style={{ background: 'none', border: 'none', color: '#888', fontSize: '24px', cursor: 'pointer' }}>×</button>
         </div>
+
+        {/* Logged in as + Log out on one line (under Menu title) */}
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: '10px',
+            background: '#111',
+            padding: '12px 14px',
+            borderRadius: '12px',
+            marginBottom: '10px',
+            border: '1px solid #222',
+          }}
+        >
+          <div style={{ minWidth: 0, flex: 1 }}>
+            <div style={{ color: '#888', fontSize: '10px', marginBottom: '2px' }}>Logged in as</div>
+            <div
+              style={{
+                color: '#ffd700',
+                fontWeight: 'bold',
+                fontSize: '15px',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {(username && String(username).trim()) || 'Player'}
+            </div>
+            {playerIdHint ? (
+              <div style={{ color: '#555', fontSize: '9px', marginTop: '2px' }}>ID …{playerIdHint}</div>
+            ) : null}
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              setIsMenuOpen(false);
+              if (typeof onLogout === 'function') onLogout();
+              else alert('Log out is not available. Refresh the page.');
+            }}
+            style={{
+              flexShrink: 0,
+              background: 'transparent',
+              border: '1px solid #663333',
+              color: '#f87171',
+              fontWeight: 'bold',
+              fontSize: '12px',
+              padding: '8px 12px',
+              borderRadius: '10px',
+              cursor: 'pointer',
+            }}
+          >
+            Log out
+          </button>
+        </div>
+        {needsPassword && (
+          <div style={{ color: '#fbbf24', fontSize: '11px', marginBottom: '10px', lineHeight: 1.35 }}>
+            No password yet — set one to log in on other devices without 12 words.
+          </div>
+        )}
 
         {/* Back to gift2u.fun marketing site */}
         <a
@@ -88,24 +149,6 @@ const Menu = ({
           </select>
         </div>
 
-        {/* Account identity — always show when props provided (including 12-word restore) */}
-        <div style={{ background: '#111', padding: '15px', borderRadius: '12px', marginBottom: '10px', border: '1px solid #222' }}>
-          <div style={{ color: '#888', fontSize: '11px', marginBottom: '4px' }}>Logged in as</div>
-          <div style={{ color: '#ffd700', fontWeight: 'bold', fontSize: '16px' }}>
-            {(username && String(username).trim()) || 'Player'}
-          </div>
-          {playerIdHint ? (
-            <div style={{ color: '#555', fontSize: '10px', marginTop: '6px', wordBreak: 'break-all' }}>
-              ID …{playerIdHint}
-            </div>
-          ) : null}
-          {needsPassword && (
-            <div style={{ color: '#fbbf24', fontSize: '11px', marginTop: '8px', lineHeight: 1.35 }}>
-              No password yet — set one to log in on other devices without 12 words.
-            </div>
-          )}
-        </div>
-
         {/* Username + password (Telegram / restore accounts) */}
         {onOpenClaimAccount && (
           <button
@@ -143,19 +186,6 @@ const Menu = ({
           style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#111', padding: '15px', borderRadius: '12px', marginBottom: '10px', border: '1px solid #222', cursor: 'pointer' }}
         >
           <span style={{ color: '#ef4444', fontWeight: 'bold' }}>🔐 {t('secret')}</span>
-          <span style={{ color: '#888' }}>{'❯'}</span>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => {
-            setIsMenuOpen(false);
-            if (typeof onLogout === 'function') onLogout();
-            else alert('Log out is not available. Refresh the page.');
-          }}
-          style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#111', padding: '15px', borderRadius: '12px', marginBottom: '10px', border: '1px solid #442222', cursor: 'pointer' }}
-        >
-          <span style={{ color: '#f87171', fontWeight: 'bold' }}>🚪 Log out</span>
           <span style={{ color: '#888' }}>{'❯'}</span>
         </button>
 

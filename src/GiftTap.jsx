@@ -14,6 +14,7 @@ import { showRewardedAdWaterfall } from './adService';
 import bs58 from "bs58";
 import CryptoJS from 'crypto-js';
 import { keypairFromMnemonic } from './solanaWallet';
+import { tryPayReferrerForLevel1, tryPayReferrerForWall5, REFERRAL } from './referralRewards';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   getPlayerProfile,
@@ -389,11 +390,20 @@ const GiftTapGame = () => {
     setIsWatchingAd(true);
     const adStartTime = Date.now();
 
+    // Smartlink ads open a new tab. "Leave site?" warnings come from the AD page, not Gift Tap.
+    // Keep the ad tab open ~15s or you will not get the reward.
+    alert(
+      'An ad tab will open.\n\n' +
+        '• Keep that tab open for about 15 seconds\n' +
+        '• If you see "Leave site?" — that is the ad network, not Gift Tap\n' +
+        '• Closing the ad early = no energy reward\n\n' +
+        'Then come back here.',
+    );
+
     try {
       const result = await showRewardedAdWaterfall();
       const elapsed = (Date.now() - adStartTime) / 1000;
 
-      // Reward if ad waterfall reported success (timer is enforced inside adService)
       if (result && result.success) {
         console.log(`Ad OK via ${result.network} after ${elapsed.toFixed(1)}s`);
 
@@ -427,9 +437,9 @@ const GiftTapGame = () => {
         if (setStats) setStats({ ...stats, ...dbUpdates });
         setIsAdModalOpen(false);
 
-        alert("✅ Verified! +100 Energy Capacity added.");
+        alert("✅ +100 Energy Capacity added. Thanks for watching!");
       } else {
-        alert(result?.error || "⚠️ Ad failed or was blocked. Allow popups and try again.");
+        alert(result?.error || "⚠️ Ad failed or was closed too early. No reward given.");
       }
     } catch (err) {
       console.error("Ad Error:", err);
@@ -899,8 +909,8 @@ const GiftTapGame = () => {
       const userName = player.username || player.first_name || 'Player';
 
       const referrerId = consumeReferralId(); 
-      const REFERRER_BONUS = 2000;
-      const JOINER_BONUS = 500;
+      // Referrer is NOT paid on join — only at L1 (+1000) and wall 4→5 (+3000)
+      const JOINER_BONUS = REFERRAL.JOINER_ON_JOIN; // 500 to new player only
       const startingShards = referrerId ? JOINER_BONUS : 0;
 
       // Prefer existing account row (from username signup)
@@ -971,26 +981,7 @@ const GiftTapGame = () => {
 
       if (publicKey) setPlayerWallet(publicKey);
 
-      // Referrer payout (once)
-      if (referrerId && referrerId !== userId) {
-        try {
-          const { data: referrerData } = await supabase
-            .from('players')
-            .select('shard_balance')
-            .eq(DB_PLAYER_ID, String(referrerId))
-            .maybeSingle();
-
-          if (referrerData) {
-            const newBalance = (Number(referrerData.shard_balance) || 0) + REFERRER_BONUS;
-            await supabase
-              .from('players')
-              .update({ shard_balance: newBalance })
-              .eq(DB_PLAYER_ID, String(referrerId));
-          }
-        } catch (rewardError) {
-          console.error("Critical error paying referrer:", rewardError);
-        }
-      }
+      // No referrer join bonus (milestones: L1 / wall5 only)
 
       if (startingShards && !existingPlayer?.shard_balance) {
         setBalance(startingShards);
@@ -1246,6 +1237,10 @@ const GiftTapGame = () => {
         alert(`Save Failed: No matching player found for ${playerId}`);
       } else {
         console.log("✅ SAVE SUCCESS:");
+        // Referral: +1000 to referrer when this player first hits Level 1
+        tryPayReferrerForLevel1(playerId, ltt).catch((e) =>
+          console.warn('referral L1 check', e?.message || e),
+        );
       }
     }, 800); // Slightly faster save
   };
@@ -1415,7 +1410,8 @@ const GiftTapGame = () => {
   };
 
   const handleAscensionPayment = async (method) => {
-    const wallData = ASCENSION_WALLS[maxUnlockedLevel];
+    const wallKey = maxUnlockedLevel; // e.g. 4 for wall 4→5
+    const wallData = ASCENSION_WALLS[wallKey];
     if (!wallData) return;
 
     if (method === 'shards') {
@@ -1435,6 +1431,12 @@ const GiftTapGame = () => {
       setShowAscensionModal(false);
       
       await saveToDatabase(newBalance, maxDailyLimit, dailyTaps, lastTapDate, streak, lifetimeTaps, newCap);
+      // Referral: +3000 when invitee clears first wall (4→5)
+      if (wallKey === 4) {
+        tryPayReferrerForWall5(playerId).catch((e) =>
+          console.warn('referral wall5', e?.message || e),
+        );
+      }
       alert(`Ascended to Level ${newLevel}! Tap Power Increased.`);
       
     } else if (method === 'sol') {
@@ -1519,6 +1521,11 @@ const GiftTapGame = () => {
         
         // Pass the current 'balance' because we didn't burn any shards
         await saveToDatabase(balance, maxDailyLimit, dailyTaps, lastTapDate, streak, lifetimeTaps, newCap);
+        if (wallKey === 4) {
+          tryPayReferrerForWall5(playerId).catch((e) =>
+            console.warn('referral wall5', e?.message || e),
+          );
+        }
         alert(`Payment successful! Ascended to Level ${newLevel}! Tap Power Increased.`);
 
       } catch (err) {
@@ -3086,20 +3093,26 @@ const GiftTapGame = () => {
             setDisplayCurrency={setDisplayCurrency}
             t={t}
             ALL_CURRENCIES={ALL_CURRENCIES}
-            onOpenWhitepaper={() => setIsWhitepaperOpen(true)}
+            onOpenWhitepaper={() => {
+              setIsMenuOpen(false);
+              setIsWhitepaperOpen(true);
+            }}
             onOpenSecret={() => { setMustBackup(true); setIsModalOpen(true); }}
             username={player.username || getPlayerProfile().username || 'Player'}
             playerId={playerId}
             onLogout={handleLogout}
             needsPassword={needsPassword}
-            onOpenClaimAccount={() => setShowClaimAccount(true)}
+            onOpenClaimAccount={() => {
+              setIsMenuOpen(false);
+              setShowClaimAccount(true);
+            }}
           />
 
           <ClaimAccountModal
             isOpen={showClaimAccount}
             onClose={() => {
-              // Allow dismiss only if password already set; after restore we still allow close but keep menu CTA
               setShowClaimAccount(false);
+              setIsMenuOpen(true); // X / Cancel → back to menu
             }}
             playerId={playerId}
             currentUsername={player.username || getPlayerProfile().username || ''}
@@ -3109,13 +3122,18 @@ const GiftTapGame = () => {
               setPlayer(getPlayerProfile());
               setNeedsPassword(false);
               setShowClaimAccount(false);
+              setIsMenuOpen(true); // after save → back to menu
             }}
           />
 
           {/* --- REFACTORED WHITEPAPER COMPONENT --- */}
           <WhitepaperModal 
             isWhitepaperOpen={isWhitepaperOpen} 
-            setIsWhitepaperOpen={setIsWhitepaperOpen} 
+            setIsWhitepaperOpen={setIsWhitepaperOpen}
+            onClose={() => {
+              setIsWhitepaperOpen(false);
+              setIsMenuOpen(true); // ✕ → back to menu
+            }}
           />
 
           {/* THE AD MODAL - Refactored to match your native game architecture */}

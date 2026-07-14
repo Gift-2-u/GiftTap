@@ -13,10 +13,11 @@ import { clusterApiUrl, PublicKey, SystemProgram } from '@solana/web3.js';
 import { Program, AnchorProvider, BN } from '@coral-xyz/anchor';
 import { Toaster, toast } from 'react-hot-toast';
 import DailyGiftBox from './DailyGiftBox';
-// Lazy-load game so homepage/site keep working even if the game bundle has issues
-const TapGame = lazy(() => import('./GiftTap'));
 import idl from "../target/idl/gift_staking.json";
 import '@solana/wallet-adapter-react-ui/styles.css';
+
+// Lazy-load game so homepage can load without pulling the full game first
+const TapGame = lazy(() => import('./GiftTap'));
 
 // --- CONSTANTS ---
 const PROGRAM_ID = new PublicKey("CX5aqenEeWvfwvhF8Xek8Dd6sVPn8uHRhXafbKQvUAxy");

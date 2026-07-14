@@ -92,9 +92,39 @@ const ClaimAccountModal = ({
           boxSizing: 'border-box',
         }}
       >
-        <h2 style={{ color: '#ffd700', marginTop: 0, fontSize: '20px' }}>
-          {required ? 'Set up login' : 'Username & password'}
-        </h2>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', gap: '12px' }}>
+          <h2 style={{ color: '#ffd700', margin: 0, fontSize: '20px', lineHeight: 1.2, flex: 1 }}>
+            {required ? 'Set up login' : 'Username & password'}
+          </h2>
+          {!required && (
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={loading}
+              aria-label="Close and return to menu"
+              style={{
+                background: '#333',
+                border: 'none',
+                color: '#fff',
+                width: '32px',
+                height: '32px',
+                minWidth: '32px',
+                borderRadius: '50%',
+                fontSize: '18px',
+                lineHeight: 1,
+                padding: 0,
+                margin: 0,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0,
+              }}
+            >
+              ×
+            </button>
+          )}
+        </div>
         <p style={{ color: '#aaa', fontSize: '13px', lineHeight: 1.45 }}>
           Coming from Telegram? Keep your name or change it, then create a password so you can open
           Gift Tap on phone or desktop <strong style={{ color: '#fff' }}>without</strong> your 12 words every time.

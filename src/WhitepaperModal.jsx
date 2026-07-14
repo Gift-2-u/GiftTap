@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 
-const WhitepaperModal = ({ isWhitepaperOpen, setIsWhitepaperOpen }) => {
+const WhitepaperModal = ({ isWhitepaperOpen, setIsWhitepaperOpen, onClose }) => {
   // This state tracks which section is currently expanded
   const [activeSection, setActiveSection] = useState(null);
 
@@ -40,7 +40,12 @@ const WhitepaperModal = ({ isWhitepaperOpen, setIsWhitepaperOpen }) => {
     },
     {
       id: 7,
-      title: "7. Code of Conduct",
+      title: "7. Referrals (Invite Friends)",
+      content: "Grow the Gift Tap community with invite links from the Friends tab.\n\nJoiner bonus:\n• New players who join with your link receive +500 GFTshards when they start.\n\nReferrer bonuses (you earn these — not paid on mere join):\n• +1,000 GFTshards when your friend reaches Level 1 (10,000 lifetime taps).\n• +3,000 GFTshards when your friend clears the first Ascension Wall (Level 4 → Level 5), by paying the wall fee in Shards or SOL.\n\nEach milestone is paid once per invited friend. Farming fake accounts is banned under the Code of Conduct."
+    },
+    {
+      id: 8,
+      title: "8. Code of Conduct",
       content: "The use of auto-clickers, scripts, or fake referral accounts (Sybil attacks) is strictly prohibited. Flagged accounts will have their encrypted vaults permanently locked, forfeiting all GFTshard-to-GFT swap eligibility. Play fair and earn together."
     }
   ];
@@ -59,7 +64,11 @@ const WhitepaperModal = ({ isWhitepaperOpen, setIsWhitepaperOpen }) => {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '20px', borderBottom: '1px solid #333', background: '#111', flexShrink: 0 }}>
           <h2 style={{ color: '#fff', margin: 0, fontSize: '20px' }}>📖 The Playbook</h2>
           <button 
-            onClick={() => setIsWhitepaperOpen(false)} 
+            onClick={() => {
+              // Close playbook and return to menu (parent may reopen menu via onClose)
+              if (typeof onClose === 'function') onClose();
+              else setIsWhitepaperOpen(false);
+            }} 
             style={{ background: '#333', border: 'none', color: '#fff', width: '30px', height: '30px', borderRadius: '50%', fontSize: '16px', cursor: 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center' }}
           >
             ✕

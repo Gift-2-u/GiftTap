@@ -1,10 +1,13 @@
 // ==========================================
 // AD NETWORKS — Gift Tap rewarded energy
 // Waterfall: Adsterra Smartlink → Monetag (optional)
+//
+// Smartlinks cannot prove "ad completed". We only reward if the ad tab
+// stays open for AD_MIN_WATCH_SECONDS. Closing early = no reward.
 // ==========================================
 
-/** Minimum watch time before granting reward (seconds). */
-export const AD_MIN_WATCH_SECONDS = 13;
+/** Ad tab must stay open at least this long (seconds). */
+export const AD_MIN_WATCH_SECONDS = 15;
 
 /** Adsterra Smartlink (primary) */
 const ADSTERRA_SMARTLINK =
@@ -20,7 +23,9 @@ const isPlaceholder = (url) =>
   url.trim() === '';
 
 /**
- * Open a smartlink / direct link after user click, then wait before reward.
+ * Open smartlink after user click.
+ * Reward only if the ad tab stays open for the full minimum time.
+ * Early close → fail (no energy reward).
  */
 const playDirectLink = (url, networkName) => {
   return new Promise((resolve, reject) => {
@@ -29,25 +34,86 @@ const playDirectLink = (url, networkName) => {
       return;
     }
 
+    let win;
     try {
-      const win = window.open(url, '_blank');
+      win = window.open(url, '_blank');
+    } catch (e) {
+      reject(e);
+      return;
+    }
 
-      if (!win || win.closed || typeof win.closed === 'undefined') {
-        reject(
-          new Error('Popup blocked. Allow popups for this site and try again.'),
-        );
-        return;
+    if (!win || typeof win.closed === 'undefined') {
+      reject(
+        new Error(
+          'Popup blocked. Allow popups for this site, then try again.',
+        ),
+      );
+      return;
+    }
+
+    const minMs = AD_MIN_WATCH_SECONDS * 1000;
+    const started = Date.now();
+    let settled = false;
+
+    const finish = (ok, message) => {
+      if (settled) return;
+      settled = true;
+      clearInterval(poll);
+      clearTimeout(maxTimer);
+      if (ok) {
+        console.log(`✅ ${networkName}: ad tab open long enough — reward OK`);
+        try {
+          if (win && !win.closed) win.close();
+        } catch {
+          /* cross-origin may block close */
+        }
+        resolve({ network: networkName });
+      } else {
+        console.warn(`⚠️ ${networkName}: ${message}`);
+        reject(new Error(message));
+      }
+    };
+
+    // Poll: if player closes ad tab early → no reward
+    const poll = setInterval(() => {
+      const elapsed = Date.now() - started;
+      let closed = false;
+      try {
+        closed = win.closed;
+      } catch {
+        closed = false;
       }
 
-      const waitMs = (AD_MIN_WATCH_SECONDS + 2) * 1000;
-      setTimeout(() => {
-        console.log(`✅ ${networkName} opened; granting reward after timer.`);
-        resolve({ network: networkName });
-      }, waitMs);
-    } catch (e) {
-      console.warn(`❌ ${networkName} failed:`, e);
-      reject(e);
-    }
+      if (closed) {
+        if (elapsed < minMs) {
+          finish(
+            false,
+            'Ad closed too early. Keep the ad tab open until the timer finishes (~15s), then return here.',
+          );
+        } else {
+          // Closed after enough time — OK
+          finish(true);
+        }
+      }
+    }, 300);
+
+    // After minimum time, if tab still open, grant reward
+    const maxTimer = setTimeout(() => {
+      const elapsed = Date.now() - started;
+      let closed = false;
+      try {
+        closed = win.closed;
+      } catch {
+        closed = false;
+      }
+
+      if (elapsed >= minMs) {
+        // Still open or closed after min — both OK if not already failed early
+        finish(true);
+      } else if (closed) {
+        finish(false, 'Ad closed too early.');
+      }
+    }, minMs + 200);
   });
 };
 
