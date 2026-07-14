@@ -10,6 +10,7 @@ import Tasks from './Tasks';
 import Friends from './Friends';
 import Menu from './Menu';
 import WhitepaperModal from './WhitepaperModal';
+import LegalModal from './LegalModal';
 import { showRewardedAdWaterfall } from './adService';
 import bs58 from "bs58";
 import CryptoJS from 'crypto-js';
@@ -366,6 +367,7 @@ const GiftTapGame = () => {
   const [solFiatRates, setSolFiatRates] = useState({}); // Now an empty object that fills dynamically
   const [appLanguage, setAppLanguage] = useState('EN');
   const [isWhitepaperOpen, setIsWhitepaperOpen] = useState(false);
+  const [legalKind, setLegalKind] = useState(null); // 'terms' | 'privacy' | null
   const [swapFromToken, setSwapFromToken] = useState('SOL');
   const [swapToToken, setSwapToToken] = useState('GFT');
   const [isShardSwapOpen, setIsShardSwapOpen] = useState(false);
@@ -3105,6 +3107,23 @@ const GiftTapGame = () => {
             onOpenClaimAccount={() => {
               setIsMenuOpen(false);
               setShowClaimAccount(true);
+            }}
+            onOpenTerms={() => {
+              setIsMenuOpen(false);
+              setLegalKind('terms');
+            }}
+            onOpenPrivacy={() => {
+              setIsMenuOpen(false);
+              setLegalKind('privacy');
+            }}
+          />
+
+          <LegalModal
+            kind={legalKind}
+            isOpen={!!legalKind}
+            onClose={() => {
+              setLegalKind(null);
+              setIsMenuOpen(true);
             }}
           />
 

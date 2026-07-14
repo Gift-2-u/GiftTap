@@ -32,6 +32,8 @@ const Menu = ({
   onLogout,
   onOpenClaimAccount,
   needsPassword,
+  onOpenTerms,
+  onOpenPrivacy,
 }) => {
   const playerIdHint = playerId ? String(playerId).slice(-8) : '';
   
@@ -204,14 +206,26 @@ const Menu = ({
         {/* --- LEGAL FOOTER --- */}
         <div style={{ display: 'flex', justifyContent: 'center', gap: '20px', marginTop: '30px', borderTop: '1px solid #333', paddingTop: '15px' }}>
           <button 
-            onClick={() => {/* TODO: Open Terms */}}
+            type="button"
+            onClick={() => {
+              if (typeof onOpenTerms === 'function') {
+                setIsMenuOpen(false);
+                onOpenTerms();
+              }
+            }}
             style={{ background: 'none', border: 'none', color: '#666', fontSize: '12px', cursor: 'pointer', textDecoration: 'underline' }}
           >
             {t('terms') || "Terms of Use"}
           </button>
           
           <button 
-            onClick={() => {/* TODO: Open Privacy */}}
+            type="button"
+            onClick={() => {
+              if (typeof onOpenPrivacy === 'function') {
+                setIsMenuOpen(false);
+                onOpenPrivacy();
+              }
+            }}
             style={{ background: 'none', border: 'none', color: '#666', fontSize: '12px', cursor: 'pointer', textDecoration: 'underline' }}
           >
             {t('privacy') || "Privacy Policy"}
