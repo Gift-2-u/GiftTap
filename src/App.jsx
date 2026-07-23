@@ -73,15 +73,27 @@ const Navigation = () => {
     return null;
   }
   return (
-  <nav className="flex justify-between items-center p-6 border-b border-white/10 bg-slate-800/50 backdrop-blur-md sticky top-0 z-50">
-    <Link to="/" className="text-3xl font-black text-purple-500 italic">GIFT2U</Link>
-    <div className="flex items-center gap-6">
-      <Link to="/" className="hover:text-purple-400 font-bold">Home</Link>
-      <Link to="/stake" className="hover:text-purple-400 font-bold">Staking</Link>
-      <Link to="/play" className="hover:text-purple-400 font-bold text-yellow-400">Play Game</Link>
-      <WalletMultiButton />
-    </div>
-  </nav>
+    <nav className="sticky top-0 z-50 w-full max-w-full border-b border-white/10 bg-slate-800/50 backdrop-blur-md overflow-x-hidden">
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 px-3 py-3 sm:px-6 sm:py-4">
+        <Link
+          to="/"
+          className="text-xl sm:text-3xl font-black text-purple-500 italic shrink-0"
+        >
+          GIFT2U
+        </Link>
+        <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-2 sm:gap-6 text-sm sm:text-base min-w-0">
+          <Link to="/" className="hover:text-purple-400 font-bold whitespace-nowrap">Home</Link>
+          <Link to="/stake" className="hover:text-purple-400 font-bold whitespace-nowrap">Staking</Link>
+          <Link to="/play" className="hover:text-purple-400 font-bold text-yellow-400 whitespace-nowrap">
+            <span className="sm:hidden">Play</span>
+            <span className="hidden sm:inline">Play Game</span>
+          </Link>
+          <div className="site-wallet-btn shrink-0">
+            <WalletMultiButton />
+          </div>
+        </div>
+      </div>
+    </nav>
   );
 };
 
@@ -488,8 +500,8 @@ const HomePage = () => {
   const wallet = useWallet();
 
   return (
-    <main className="w-full flex-grow flex flex-col items-center py-20 px-6 text-center">
-      <h2 className="text-6xl font-black mb-6 bg-gradient-to-r from-purple-400 to-pink-500 bg-clip-text text-transparent italic">
+    <main className="w-full flex-grow flex flex-col items-center py-12 sm:py-20 px-4 sm:px-6 text-center overflow-x-hidden">
+      <h2 className="text-3xl sm:text-5xl md:text-6xl font-black mb-6 bg-gradient-to-r from-purple-400 to-pink-500 bg-clip-text text-transparent italic leading-tight max-w-full">
         THE GIFT THAT KEEPS GIVING
       </h2>
       

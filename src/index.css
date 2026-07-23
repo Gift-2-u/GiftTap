@@ -30,10 +30,40 @@ a:hover {
 
 body {
   margin: 0;
-  display: flex;
-  place-items: center;
-  min-width: 320px;
+  min-width: 0;
+  width: 100%;
+  max-width: 100%;
   min-height: 100vh;
+  overflow-x: hidden;
+}
+
+#root {
+  width: 100%;
+  max-width: 100%;
+  min-height: 100vh;
+  min-width: 0;
+}
+
+/* Compact wallet button in site header on small screens */
+.site-wallet-btn .wallet-adapter-button {
+  height: 36px !important;
+  line-height: 36px !important;
+  font-size: 12px !important;
+  padding: 0 10px !important;
+  max-width: min(160px, 42vw);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (min-width: 640px) {
+  .site-wallet-btn .wallet-adapter-button {
+    height: auto !important;
+    line-height: normal !important;
+    font-size: inherit !important;
+    padding: 0 16px !important;
+    max-width: none;
+  }
 }
 
 h1 {
