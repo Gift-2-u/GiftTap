@@ -11,7 +11,7 @@ import Friends from './Friends';
 import Menu from './Menu';
 import WhitepaperModal from './WhitepaperModal';
 import LegalModal from './LegalModal';
-import { showRewardedAdWaterfall } from './adService';
+import { showRewardedAdWaterfall, AD_MIN_WATCH_SECONDS } from './adService';
 import bs58 from "bs58";
 import CryptoJS from 'crypto-js';
 import { keypairFromMnemonic } from './solanaWallet';
@@ -377,6 +377,8 @@ const GiftTapGame = () => {
   const [seasonShards, setSeasonShards] = useState(0);
   const [isWatchingAd, setIsWatchingAd] = useState(false);
   const [isAdModalOpen, setIsAdModalOpen] = useState(false);
+  /** Our own countdown while ad tab is open (null = not counting). */
+  const [adSecondsLeft, setAdSecondsLeft] = useState(null);
   const [dailyAdsWatched, setDailyAdsWatched] = useState(0);
   const pendingShards = useRef(0);
   const pendingCost = useRef(0);
@@ -390,20 +392,13 @@ const GiftTapGame = () => {
     }
 
     setIsWatchingAd(true);
+    setAdSecondsLeft(AD_MIN_WATCH_SECONDS);
     const adStartTime = Date.now();
 
-    // Smartlink ads open a new tab. "Leave site?" warnings come from the AD page, not Gift Tap.
-    // Keep the ad tab open ~15s or you will not get the reward.
-    alert(
-      'An ad tab will open.\n\n' +
-        '• Keep that tab open for about 15 seconds\n' +
-        '• If you see "Leave site?" — that is the ad network, not Gift Tap\n' +
-        '• Closing the ad early = no energy reward\n\n' +
-        'Then come back here.',
-    );
-
     try {
-      const result = await showRewardedAdWaterfall();
+      const result = await showRewardedAdWaterfall({
+        onTick: (secondsLeft) => setAdSecondsLeft(secondsLeft),
+      });
       const elapsed = (Date.now() - adStartTime) / 1000;
 
       if (result && result.success) {
@@ -448,6 +443,7 @@ const GiftTapGame = () => {
       alert(err?.message || "No ads available. Please try again later.");
     } finally {
       setIsWatchingAd(false);
+      setAdSecondsLeft(null);
     }
   };
 
@@ -3157,54 +3153,93 @@ const GiftTapGame = () => {
 
           {/* THE AD MODAL - Refactored to match your native game architecture */}
           {isAdModalOpen && (
-            <div style={styles.modalOverlay} onClick={() => setIsAdModalOpen(false)}>
+            <div
+              style={styles.modalOverlay}
+              onClick={() => {
+                if (!isWatchingAd) setIsAdModalOpen(false);
+              }}
+            >
               <div style={{ ...styles.modalContent, background: '#131517', border: '1px solid #333', textAlign: 'center', width: '90%', maxWidth: '360px' }} onClick={e => e.stopPropagation()}>
                 
                 <h2 style={{ color: '#ffd700', marginTop: 0, marginBottom: '15px', fontSize: '24px' }}>⚡ Expand Capacity</h2>
                 
-                <p style={{ color: '#ccc', fontSize: '14px', marginBottom: '20px', lineHeight: '1.5' }}>
-                  Want to tap more? Watch a short ad to permanently expand your Daily Energy Limit by +100 for today!
-                  <br /><br />
-                  <span style={{ fontSize: '12px', color: '#888' }}>
-                    (Max 10 ads per day. You have watched {dailyAdsWatched}/10)
-                  </span>
-                </p>
+                {isWatchingAd && adSecondsLeft !== null ? (
+                  <>
+                    <p style={{ color: '#ccc', fontSize: '14px', marginBottom: '12px', lineHeight: '1.5' }}>
+                      Ad tab open — keep it open until this timer hits <strong style={{ color: '#ffd700' }}>0</strong>.
+                      <br />
+                      <span style={{ fontSize: '12px', color: '#888' }}>
+                        Closing early = no reward. &quot;Leave site?&quot; is from the ad network.
+                      </span>
+                    </p>
+                    <div
+                      style={{
+                        fontSize: '56px',
+                        fontWeight: '900',
+                        color: adSecondsLeft === 0 ? '#4ade80' : '#ffd700',
+                        margin: '16px 0',
+                        fontVariantNumeric: 'tabular-nums',
+                        textShadow: '0 0 20px rgba(255, 215, 0, 0.35)',
+                      }}
+                    >
+                      {adSecondsLeft}
+                    </div>
+                    <p style={{ color: '#888', fontSize: '12px', marginBottom: '8px' }}>
+                      {adSecondsLeft > 0 ? 'Come back when the timer ends…' : 'Finishing…'}
+                    </p>
+                  </>
+                ) : (
+                  <p style={{ color: '#ccc', fontSize: '14px', marginBottom: '20px', lineHeight: '1.5' }}>
+                    Want to tap more? Open a short ad and wait for our timer ({AD_MIN_WATCH_SECONDS}s) to expand your Daily Energy Limit by +100 for today!
+                    <br /><br />
+                    <span style={{ fontSize: '12px', color: '#888' }}>
+                      (Max 10 ads per day. You have watched {dailyAdsWatched}/10)
+                    </span>
+                  </p>
+                )}
                 
                 <button 
                   onClick={handleWatchAd}
-                  disabled={dailyAdsWatched >= 10}
+                  disabled={dailyAdsWatched >= 10 || isWatchingAd}
                   style={{ 
                     width: '100%', 
-                    background: dailyAdsWatched >= 10 ? '#333' : '#fbef43', 
-                    color: dailyAdsWatched >= 10 ? '#888' : '#000', 
+                    background: (dailyAdsWatched >= 10 || isWatchingAd) ? '#333' : '#fbef43', 
+                    color: (dailyAdsWatched >= 10 || isWatchingAd) ? '#888' : '#000', 
                     border: 'none', 
                     padding: '16px', 
                     borderRadius: '30px', 
                     fontWeight: 'bold', 
                     fontSize: '16px',
                     marginBottom: '10px',
-                    cursor: dailyAdsWatched >= 10 ? 'not-allowed' : 'pointer',
-                    opacity: dailyAdsWatched >= 10 ? 0.5 : 1
+                    cursor: (dailyAdsWatched >= 10 || isWatchingAd) ? 'not-allowed' : 'pointer',
+                    opacity: (dailyAdsWatched >= 10 || isWatchingAd) ? 0.5 : 1
                   }}
                 >
-                  {dailyAdsWatched >= 10 ? "Daily Limit Reached" : "▶ Watch Ad"}
+                  {dailyAdsWatched >= 10
+                    ? 'Daily Limit Reached'
+                    : isWatchingAd
+                      ? `⏱ ${adSecondsLeft ?? AD_MIN_WATCH_SECONDS}s…`
+                      : '▶ Watch Ad'}
                 </button>
                 
                 <button 
-                  onClick={() => setIsAdModalOpen(false)}
+                  onClick={() => {
+                    if (!isWatchingAd) setIsAdModalOpen(false);
+                  }}
+                  disabled={isWatchingAd}
                   style={{ 
                     width: '100%', 
                     background: 'transparent', 
                     border: '1px solid #555', 
-                    color: '#888', 
+                    color: isWatchingAd ? '#444' : '#888', 
                     padding: '14px', 
                     borderRadius: '30px', 
                     fontWeight: 'bold', 
                     fontSize: '14px',
-                    cursor: 'pointer'
+                    cursor: isWatchingAd ? 'not-allowed' : 'pointer'
                   }}
                 >
-                  Close
+                  {isWatchingAd ? 'Wait for timer…' : 'Close'}
                 </button>
 
               </div>

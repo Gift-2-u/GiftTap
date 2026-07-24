@@ -2,11 +2,13 @@
 // AD NETWORKS — Gift Tap rewarded energy
 // Waterfall: Adsterra Smartlink → Monetag (optional)
 //
-// Smartlinks cannot prove "ad completed". We only reward if the ad tab
-// stays open for AD_MIN_WATCH_SECONDS. Closing early = no reward.
+// Smartlinks have no completion callback. We use WALL-CLOCK time
+// (Date.now), not "how many times setInterval ran in background".
+// Reward when AD_MIN_WATCH_SECONDS have passed since open.
+// Early-close fail only if we saw the tab open, then it closed early.
 // ==========================================
 
-/** Ad tab must stay open at least this long (seconds). */
+/** Seconds the ad experience must run before reward. */
 export const AD_MIN_WATCH_SECONDS = 15;
 
 /** Adsterra Smartlink (primary) */
@@ -23,18 +25,20 @@ const isPlaceholder = (url) =>
   url.trim() === '';
 
 /**
- * Open smartlink after user click.
- * Reward only if the ad tab stays open for the full minimum time.
- * Early close → fail (no energy reward).
+ * @param {string} url
+ * @param {string} networkName
+ * @param {{ onTick?: (secondsLeft: number) => void }} [options]
  */
-const playDirectLink = (url, networkName) => {
+const playDirectLink = (url, networkName, options = {}) => {
+  const { onTick } = options;
+
   return new Promise((resolve, reject) => {
     if (isPlaceholder(url)) {
       reject(new Error(`${networkName} not configured`));
       return;
     }
 
-    let win;
+    let win = null;
     try {
       win = window.open(url, '_blank');
     } catch (e) {
@@ -42,7 +46,8 @@ const playDirectLink = (url, networkName) => {
       return;
     }
 
-    if (!win || typeof win.closed === 'undefined') {
+    // Mobile often returns null if popup blocked
+    if (!win) {
       reject(
         new Error(
           'Popup blocked. Allow popups for this site, then try again.',
@@ -54,18 +59,41 @@ const playDirectLink = (url, networkName) => {
     const minMs = AD_MIN_WATCH_SECONDS * 1000;
     const started = Date.now();
     let settled = false;
+    /** True only after we observe closed === false at least once (real window). */
+    let sawWindowOpen = false;
+    let lastReported = AD_MIN_WATCH_SECONDS + 1;
+
+    const reportTick = () => {
+      if (!onTick) return;
+      const elapsed = Date.now() - started;
+      const left = Math.max(0, Math.ceil((minMs - elapsed) / 1000));
+      if (left !== lastReported) {
+        lastReported = left;
+        try {
+          onTick(left);
+        } catch {
+          /* ignore UI errors */
+        }
+      }
+    };
 
     const finish = (ok, message) => {
       if (settled) return;
       settled = true;
       clearInterval(poll);
-      clearTimeout(maxTimer);
+      if (onTick) {
+        try {
+          onTick(ok ? 0 : lastReported);
+        } catch {
+          /* ignore */
+        }
+      }
       if (ok) {
-        console.log(`✅ ${networkName}: ad tab open long enough — reward OK`);
+        console.log(`✅ ${networkName}: ${AD_MIN_WATCH_SECONDS}s elapsed — reward OK`);
         try {
           if (win && !win.closed) win.close();
         } catch {
-          /* cross-origin may block close */
+          /* ignore */
         }
         resolve({ network: networkName });
       } else {
@@ -74,69 +102,87 @@ const playDirectLink = (url, networkName) => {
       }
     };
 
-    // Poll: if player closes ad tab early → no reward
+    reportTick();
+
+    // Single poll: wall-clock success + careful early-close detection
     const poll = setInterval(() => {
       const elapsed = Date.now() - started;
-      let closed = false;
-      try {
-        closed = win.closed;
-      } catch {
-        closed = false;
-      }
+      reportTick();
 
-      if (closed) {
-        if (elapsed < minMs) {
-          finish(
-            false,
-            'Ad closed too early. Keep the ad tab open until the timer finishes (~15s), then return here.',
-          );
-        } else {
-          // Closed after enough time — OK
-          finish(true);
-        }
-      }
-    }, 300);
-
-    // After minimum time, if tab still open, grant reward
-    const maxTimer = setTimeout(() => {
-      const elapsed = Date.now() - started;
-      let closed = false;
-      try {
-        closed = win.closed;
-      } catch {
-        closed = false;
-      }
-
+      // SUCCESS: enough real time has passed (works even if tab was backgrounded)
       if (elapsed >= minMs) {
-        // Still open or closed after min — both OK if not already failed early
         finish(true);
-      } else if (closed) {
-        finish(false, 'Ad closed too early.');
+        return;
       }
-    }, minMs + 200);
+
+      let closed = false;
+      try {
+        closed = !!win.closed;
+      } catch {
+        // Cross-origin access edge cases — ignore
+        closed = false;
+      }
+
+      // Many mobile browsers report closed=true immediately on a broken popup.
+      // Only treat as "open" when we see closed === false.
+      if (!closed) {
+        sawWindowOpen = true;
+      }
+
+      // EARLY CLOSE: only if we know a real window was open, then user closed it too soon
+      if (sawWindowOpen && closed && elapsed < minMs) {
+        finish(
+          false,
+          'Ad closed too early. Keep the ad open until the timer hits 0, then you get the reward.',
+        );
+      }
+    }, 200);
+
+    // Safety: never hang forever (e.g. 2 minutes)
+    setTimeout(() => {
+      if (settled) return;
+      const elapsed = Date.now() - started;
+      if (elapsed >= minMs) finish(true);
+      else
+        finish(
+          false,
+          'Ad timed out. Please try again and keep the ad open until the timer ends.',
+        );
+    }, Math.max(minMs + 5000, 120000));
   });
 };
 
-const playAdsterra = () => playDirectLink(ADSTERRA_SMARTLINK, 'Adsterra');
-const playMonetag = () => playDirectLink(MONETAG_DIRECT_LINK, 'Monetag');
+const playAdsterra = (opts) =>
+  playDirectLink(ADSTERRA_SMARTLINK, 'Adsterra', opts);
+const playMonetag = (opts) =>
+  playDirectLink(MONETAG_DIRECT_LINK, 'Monetag', opts);
 
-// ==========================================
-// WATERFALL: Adsterra first
-// ==========================================
-
-export const showRewardedAdWaterfall = async () => {
+/**
+ * @param {{ onTick?: (secondsLeft: number) => void }} [options]
+ */
+export const showRewardedAdWaterfall = async (options = {}) => {
   console.log('🌊 Starting Ad Waterfall (Adsterra first)...');
 
   try {
     console.log('1️⃣ Adsterra Smartlink...');
-    await playAdsterra();
+    await playAdsterra(options);
     return { success: true, network: 'Adsterra' };
   } catch (err1) {
     console.log('⚠️ Adsterra failed:', err1?.message || err1);
 
+    // Don't start Monetag if user closed early on purpose — only if first open failed hard
+    const msg = String(err1?.message || '');
+    const skipFallback =
+      msg.includes('too early') || msg.includes('Popup blocked');
+
+    if (skipFallback) {
+      return { success: false, error: msg };
+    }
+
     try {
       console.log('2️⃣ Monetag fallback...');
-      await playMonetag();
+      if (options.onTick) options.onTick(AD_MIN_WATCH_SECONDS);
+      await playMonetag(options);
       return { success: true, network: 'Monetag' };
     } catch (err2) {
       console.log('⚠️ Monetag failed:', err2?.message || err2);
