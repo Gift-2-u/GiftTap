@@ -32,11 +32,27 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
     return now.toISOString().split('T')[0]; 
   };
 
+  /**
+   * End of a UTC calendar day (23:59:59.999 UTC).
+   * @param {number} daysFromToday 0 = today UTC, 1 = tomorrow UTC, etc.
+   * Used so Expanded Battery / Heavy Hands / bot / contracts all align
+   * with "wait until UTC midnight" daily usage — not the player's local TZ.
+   */
+  const getEndOfUtcDay = (daysFromToday = 0) => {
+    const now = new Date();
+    return new Date(Date.UTC(
+      now.getUTCFullYear(),
+      now.getUTCMonth(),
+      now.getUTCDate() + daysFromToday,
+      23, 59, 59, 999,
+    ));
+  };
+
   // --- ITEM DEFINITIONS ---
   const shardListings = [
     { id: 'frenzy', name: "60-Second Frenzy", desc: "2x Payout per energy", duration: "60 Seconds", cost: 700, icon: "🔥" },
-    { id: 'battery', name: "Expanded Battery", desc: "+1,000 Max Energy", duration: "24 Hours", cost: 750, icon: "🔋" },
-    { id: 'heavy', name: "Heavy Hands", desc: "2x Efficiency (Drains 2x, Pays 2x)", duration: "24 Hours", cost: 750, icon: "🥊" },
+    { id: 'battery', name: "Expanded Battery", desc: "+1,000 Max Energy", duration: "Until UTC midnight", cost: 750, icon: "🔋" },
+    { id: 'heavy', name: "Heavy Hands", desc: "2x Efficiency (Drains 2x, Pays 2x)", duration: "Until UTC midnight", cost: 750, icon: "🥊" },
     { id: 'refill', name: "Instant Refill", desc: "Fills energy to max", duration: "Instant", cost: 300, icon: "⚡" }
   ];
 
@@ -299,17 +315,19 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
     // Include daily_usage in the database update payload
     let dbUpdates = { inventory: newInventory, daily_usage: newDailyUsage };
 
-    // Shard Items
-    // Calculate exact local midnight for tonight
-    const midnightTonight = new Date();
-    midnightTonight.setHours(23, 59, 59, 999);
+    // End of *UTC* day (not local browser timezone)
+    const midnightUtcTonight = getEndOfUtcDay(0);
+    // Bot: 3 UTC calendar days (today + 2 more)
+    const botExpireUtc = getEndOfUtcDay(2);
+    // 7-day items: end of UTC day on the 7th calendar day (today + 6)
+    const sevenDayExpireUtc = getEndOfUtcDay(6);
 
     // Shard Items
     if (item.id === 'frenzy') dbUpdates.frenzy_expires = new Date(now + 60 * 1000).toISOString();
    
-    // Battery and Heavy Hands now expire at exactly 11:59 PM tonight
-    if (item.id === 'battery') dbUpdates.energy_boost_expires = midnightTonight.toISOString();
-    if (item.id === 'heavy') dbUpdates.efficiency_expires = midnightTonight.toISOString();
+    // Battery and Heavy Hands expire at end of current UTC day
+    if (item.id === 'battery') dbUpdates.energy_boost_expires = midnightUtcTonight.toISOString();
+    if (item.id === 'heavy') dbUpdates.efficiency_expires = midnightUtcTonight.toISOString();
     if (item.id === 'refill') {
       dbUpdates.last_energy = 1000;
       if (setEnergy) setEnergy(1000);
@@ -317,24 +335,16 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
    
     // Premium SOL Items
     if (item.id === 'bot') {
-      const botExpire = new Date();
-      botExpire.setHours(23, 59, 59, 999);
-      botExpire.setDate(botExpire.getDate() + 2); // Today (1) + 2 days = 3 calendar days
-      dbUpdates.bot_expires = botExpire.toISOString();
+      dbUpdates.bot_expires = botExpireUtc.toISOString();
     }
-
-    // 7-Day items snap to exactly 11:59 PM on the 7th day
-    const sevenDayExpire = new Date();
-    sevenDayExpire.setHours(23, 59, 59, 999);
-    sevenDayExpire.setDate(sevenDayExpire.getDate() + 6); // Today (1) + 6 days = 7 calendar days
 
     if (item.id === 'grinder') {
       dbUpdates.limit_boost_amount = 2000;
-      dbUpdates.limit_boost_expires = sevenDayExpire.toISOString();
+      dbUpdates.limit_boost_expires = sevenDayExpireUtc.toISOString();
     }
     if (item.id === 'whale') {
       dbUpdates.limit_boost_amount = 5000;
-      dbUpdates.limit_boost_expires = sevenDayExpire.toISOString();
+      dbUpdates.limit_boost_expires = sevenDayExpireUtc.toISOString();
     }
     if (item.id === 'crate') {
       dbUpdates.shard_balance = balance + 50000;
@@ -342,11 +352,11 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
     }
     if (item.id === 'x2_boost') {
       dbUpdates.premium_multiplier = 2;
-      dbUpdates.premium_multiplier_expires = sevenDayExpire.toISOString();
+      dbUpdates.premium_multiplier_expires = sevenDayExpireUtc.toISOString();
     }
     if (item.id === 'x3_boost') {
       dbUpdates.premium_multiplier = 3;
-      dbUpdates.premium_multiplier_expires = sevenDayExpire.toISOString();
+      dbUpdates.premium_multiplier_expires = sevenDayExpireUtc.toISOString();
     }
 
     try {
@@ -418,8 +428,9 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
               let isActive = false;
               const now = new Date();
 
-              if (item.id === 'battery' && stats.limit_boost_expires) {
-                isActive = now < new Date(stats.limit_boost_expires);
+              // Expanded Battery uses energy_boost_expires (not limit_boost / SOL contracts)
+              if (item.id === 'battery' && stats.energy_boost_expires) {
+                isActive = now < new Date(stats.energy_boost_expires);
               } else if (item.id === 'frenzy' && stats.frenzy_expires) {
                 isActive = now < new Date(stats.frenzy_expires);
               } else if (item.id === 'heavy' && stats.efficiency_expires) {

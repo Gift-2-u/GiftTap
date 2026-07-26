@@ -401,15 +401,27 @@ const GiftTapGame = () => {
       });
       const elapsed = (Date.now() - adStartTime) / 1000;
 
-      if (result && result.success) {
-        console.log(`Ad OK via ${result.network} after ${elapsed.toFixed(1)}s`);
+      // Safety net: if the player truly waited the full delay, always grant
+      // even if the ad helper returned a flaky failure (old early-close bugs).
+      const waitedLongEnough = elapsed >= AD_MIN_WATCH_SECONDS - 0.5;
+      const adOk = (result && result.success) || waitedLongEnough;
+
+      if (adOk) {
+        console.log(
+          `Ad OK via ${result?.network || 'timer'} after ${elapsed.toFixed(1)}s`,
+        );
 
         const newMaxLimit = maxDailyLimit + 100;
         const newAdsCount = dailyAdsWatched + 1;
         const today = new Date().toISOString().split('T')[0];
-        
-        const midnightTonight = new Date();
-        midnightTonight.setHours(23, 59, 59, 999);
+        // End of UTC day (same clock as Expanded Battery / daily shop limits)
+        const nowUtc = new Date();
+        const midnightUtcTonight = new Date(Date.UTC(
+          nowUtc.getUTCFullYear(),
+          nowUtc.getUTCMonth(),
+          nowUtc.getUTCDate(),
+          23, 59, 59, 999,
+        ));
 
         const dbUpdates = {
           max_daily_limit: newMaxLimit,
@@ -418,7 +430,7 @@ const GiftTapGame = () => {
           limit_boost_amount: stats.limit_boost_amount,
           limit_boost_expires: stats.limit_boost_expires,
           ad_energy_boost: (stats.ad_energy_boost || 0) + 100,
-          ad_energy_expires: midnightTonight.toISOString(),
+          ad_energy_expires: midnightUtcTonight.toISOString(),
           last_updated: new Date().toISOString()
         };
 
@@ -436,10 +448,52 @@ const GiftTapGame = () => {
 
         alert("✅ +100 Energy Capacity added. Thanks for watching!");
       } else {
-        alert(result?.error || "⚠️ Ad failed or was closed too early. No reward given.");
+        alert(
+          result?.error ||
+            "⚠️ Keep Gift Tap open and wait until the countdown hits 0 for +100 energy.",
+        );
       }
     } catch (err) {
       console.error("Ad Error:", err);
+      // If they still waited long enough, grant despite thrown errors
+      const elapsed = (Date.now() - adStartTime) / 1000;
+      if (elapsed >= AD_MIN_WATCH_SECONDS - 0.5) {
+        try {
+          const newMaxLimit = maxDailyLimit + 100;
+          const newAdsCount = dailyAdsWatched + 1;
+          const today = new Date().toISOString().split('T')[0];
+          const nowUtc = new Date();
+          const midnightUtcTonight = new Date(Date.UTC(
+            nowUtc.getUTCFullYear(),
+            nowUtc.getUTCMonth(),
+            nowUtc.getUTCDate(),
+            23, 59, 59, 999,
+          ));
+          const dbUpdates = {
+            max_daily_limit: newMaxLimit,
+            daily_ads_watched: newAdsCount,
+            last_ad_date: today,
+            limit_boost_amount: stats.limit_boost_amount,
+            limit_boost_expires: stats.limit_boost_expires,
+            ad_energy_boost: (stats.ad_energy_boost || 0) + 100,
+            ad_energy_expires: midnightUtcTonight.toISOString(),
+            last_updated: new Date().toISOString(),
+          };
+          const { error } = await supabase
+            .from('players')
+            .update(dbUpdates)
+            .eq(DB_PLAYER_ID, playerId);
+          if (error) throw error;
+          setMaxDailyLimit(newMaxLimit);
+          setDailyAdsWatched(newAdsCount);
+          if (setStats) setStats({ ...stats, ...dbUpdates });
+          setIsAdModalOpen(false);
+          alert("✅ +100 Energy Capacity added. Thanks for watching!");
+          return;
+        } catch (e2) {
+          console.error("Reward grant failed:", e2);
+        }
+      }
       alert(err?.message || "No ads available. Please try again later.");
     } finally {
       setIsWatchingAd(false);
