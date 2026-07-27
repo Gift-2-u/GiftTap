@@ -18,8 +18,9 @@ export default defineConfig(({ mode }) => {
     plugins: [
       react(),
       tailwindcss(),
+      // Works with standard Vite (rolldown-vite breaks shim export conditions)
       nodePolyfills({
-        include: ['buffer', 'crypto', 'stream', 'util', 'process'],
+        include: ['buffer', 'crypto', 'stream', 'util', 'process', 'vm'],
         globals: {
           Buffer: true,
           global: true,
@@ -29,23 +30,52 @@ export default defineConfig(({ mode }) => {
       }),
     ],
     optimizeDeps: {
-      // Real app only — do not scan nested TapGame copy
       entries: ['index.html', 'src/main.jsx'],
       include: [
         'framer-motion',
         'buffer',
+        'process',
         'bip39',
         'ed25519-hd-key',
+        '@solana/web3.js',
+        '@solana/wallet-adapter-base',
+        '@solana/wallet-adapter-react',
+        '@solana/wallet-adapter-react-ui',
+        '@solana/wallet-adapter-phantom',
+        '@solana/wallet-adapter-solflare',
+        '@solana/wallet-adapter-coinbase',
+        '@solana/wallet-adapter-ledger',
+        '@solana/wallet-adapter-trust',
+        '@solana/wallet-adapter-torus',
+        '@solana/wallet-adapter-nightly',
+        '@solana/wallet-adapter-mathwallet',
+        '@solana/wallet-adapter-tokenpocket',
+        '@solana/wallet-adapter-bitkeep',
+        '@solana/wallet-adapter-clover',
+        '@solana/wallet-adapter-coin98',
+        '@solana/wallet-adapter-safepal',
       ],
+      esbuildOptions: {
+        define: {
+          global: 'globalThis',
+        },
+      },
     },
     resolve: {
-      // Never pull packages from src/components/TapGame/node_modules
       alias: {
         'ed25519-hd-key': path.resolve(rootNM, 'ed25519-hd-key'),
         bip39: path.resolve(rootNM, 'bip39'),
         buffer: path.resolve(rootNM, 'buffer'),
       },
-      dedupe: ['react', 'react-dom', 'buffer', 'bip39', 'ed25519-hd-key', '@solana/web3.js'],
+      dedupe: [
+        'react',
+        'react-dom',
+        'buffer',
+        'process',
+        'bip39',
+        'ed25519-hd-key',
+        '@solana/web3.js',
+      ],
     },
     server: {
       watch: {
@@ -55,6 +85,12 @@ export default defineConfig(({ mode }) => {
     define: {
       global: 'globalThis',
       'import.meta.env.VITE_SOLANA_RPC_URL': JSON.stringify(RPC_URL),
+    },
+    build: {
+      commonjsOptions: {
+        transformMixedEsModules: true,
+      },
+      chunkSizeWarningLimit: 2500,
     },
   };
 });

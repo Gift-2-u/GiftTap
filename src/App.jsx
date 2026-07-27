@@ -8,7 +8,21 @@ import React, { useMemo, useState, useEffect, useCallback, Suspense, lazy } from
 import { BrowserRouter as Router, Routes, Route, Link, useLocation } from 'react-router-dom';
 import { ConnectionProvider, WalletProvider, useAnchorWallet, useConnection, useWallet } from '@solana/wallet-adapter-react';
 import { WalletModalProvider, WalletMultiButton } from '@solana/wallet-adapter-react-ui';
-import { PhantomWalletAdapter, SolflareWalletAdapter } from '@solana/wallet-adapter-wallets';
+// Import individual adapters (not the full wallets barrel) to keep the bundle smaller.
+// Backpack, Glow, and other Wallet-Standard wallets still appear automatically.
+import { PhantomWalletAdapter } from '@solana/wallet-adapter-phantom';
+import { SolflareWalletAdapter } from '@solana/wallet-adapter-solflare';
+import { CoinbaseWalletAdapter } from '@solana/wallet-adapter-coinbase';
+import { LedgerWalletAdapter } from '@solana/wallet-adapter-ledger';
+import { TrustWalletAdapter } from '@solana/wallet-adapter-trust';
+import { TorusWalletAdapter } from '@solana/wallet-adapter-torus';
+import { NightlyWalletAdapter } from '@solana/wallet-adapter-nightly';
+import { MathWalletAdapter } from '@solana/wallet-adapter-mathwallet';
+import { TokenPocketWalletAdapter } from '@solana/wallet-adapter-tokenpocket';
+import { BitgetWalletAdapter } from '@solana/wallet-adapter-bitkeep';
+import { CloverWalletAdapter } from '@solana/wallet-adapter-clover';
+import { Coin98WalletAdapter } from '@solana/wallet-adapter-coin98';
+import { SafePalWalletAdapter } from '@solana/wallet-adapter-safepal';
 import * as splToken from "@solana/spl-token";
 import { clusterApiUrl, PublicKey, SystemProgram } from '@solana/web3.js';
 import { Program, AnchorProvider, BN } from '@coral-xyz/anchor';
@@ -34,10 +48,24 @@ export default function App() {
   // Site staking IDL is still wired for devnet; Standard wallets still connect on any cluster.
   const endpoint = useMemo(() => clusterApiUrl('devnet'), []);
 
-  // Explicit adapters + Wallet Standard (auto-discovered extensions).
-  // Empty [] alone often shows an empty modal if Standard discovery fails.
+  // Popular wallets listed explicitly. Wallet Standard (Backpack, etc.) is
+  // still auto-merged by WalletProvider on top of this list.
   const wallets = useMemo(
-    () => [new PhantomWalletAdapter(), new SolflareWalletAdapter()],
+    () => [
+      new PhantomWalletAdapter(),
+      new SolflareWalletAdapter(),
+      new CoinbaseWalletAdapter(),
+      new LedgerWalletAdapter(),
+      new TrustWalletAdapter(),
+      new TorusWalletAdapter(),
+      new NightlyWalletAdapter(),
+      new MathWalletAdapter(),
+      new TokenPocketWalletAdapter(),
+      new BitgetWalletAdapter(),
+      new CloverWalletAdapter(),
+      new Coin98WalletAdapter(),
+      new SafePalWalletAdapter(),
+    ],
     [],
   );
 
