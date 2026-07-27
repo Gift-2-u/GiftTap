@@ -34,6 +34,7 @@ const Menu = ({
   needsPassword,
   onOpenTerms,
   onOpenPrivacy,
+  onOpenLeaderboard,
 }) => {
   const playerIdHint = playerId ? String(playerId).slice(-8) : '';
   
@@ -115,9 +116,48 @@ const Menu = ({
           href="/"
           style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#111', padding: '15px', borderRadius: '12px', marginBottom: '10px', border: '1px solid #222', cursor: 'pointer', textDecoration: 'none', boxSizing: 'border-box' }}
         >
-          <span style={{ color: '#a78bfa', fontWeight: 'bold' }}>🏠 Gift2u Home</span>
+          <span style={{ display: 'flex', alignItems: 'center', gap: '10px', color: '#a78bfa', fontWeight: 'bold' }}>
+            <img
+              src="/Gift2u_logo.png"
+              alt=""
+              style={{
+                width: '28px',
+                height: '28px',
+                objectFit: 'contain',
+                borderRadius: '50%',
+                flexShrink: 0,
+              }}
+            />
+            Gift2u Home
+          </span>
           <span style={{ color: '#888' }}>{'❯'}</span>
         </a>
+
+        {/* Leaderboard / Ranks (same page as bottom nav) */}
+        {typeof onOpenLeaderboard === 'function' && (
+          <button
+            type="button"
+            onClick={() => {
+              setIsMenuOpen(false);
+              onOpenLeaderboard();
+            }}
+            style={{
+              width: '100%',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              background: '#111',
+              padding: '15px',
+              borderRadius: '12px',
+              marginBottom: '10px',
+              border: '1px solid #222',
+              cursor: 'pointer',
+            }}
+          >
+            <span style={{ color: '#ffd700', fontWeight: 'bold' }}>🏆 Ranks / Leaderboard</span>
+            <span style={{ color: '#888' }}>{'❯'}</span>
+          </button>
+        )}
 
         {/* 1. Global Language Dropdown */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#111', padding: '15px', borderRadius: '12px', marginBottom: '10px', border: '1px solid #222' }}>

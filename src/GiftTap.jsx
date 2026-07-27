@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Connection, PublicKey, clusterApiUrl, Keypair, Transaction, SystemProgram, ComputeBudgetProgram, sendAndConfirmTransaction, LAMPORTS_PER_SOL, VersionedTransaction } from '@solana/web3.js';
 import { supabase } from './supabaseClient';
 import { getAssociatedTokenAddressSync } from '@solana/spl-token';
-import BetaGate from './BetaGate';
+
 import AuthScreen from './AuthScreen';
 import ClaimAccountModal from './ClaimAccountModal';
 import Marketplace from './Marketplace';
@@ -320,8 +320,9 @@ const GiftTapGame = () => {
   const [leaderboard, setLeaderboard] = useState([]); // Fixed: Added missing state
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [balances, setBalances] = useState({ sol: 0, GFT: 0, GFTshards: 0, usdc: 0 });
-  const [leaderboardType, setLeaderboardType] = useState('all_time');
-  const [isLeaderboardOpen, setIsLeaderboardOpen] = useState(false);
+  // Leaderboard page tab: always open on Season when navigating to Ranks
+  const [leaderboardType, setLeaderboardType] = useState('Season');
+  const [leaderboardLoading, setLeaderboardLoading] = useState(false);
   const [hasAccess, setHasAccess] = useState(false);
   const [dailyTaps, setDailyTaps] = useState(0);
   const [streak, setStreak] = useState(0);
@@ -331,7 +332,7 @@ const GiftTapGame = () => {
   const [maxDailyLimit, setMaxDailyLimit] = useState(1000);
   const [seasonTimeLeft, setSeasonTimeLeft] = useState('');
   const [tapPower, setTapPower] = useState(1);
-  const [currentPage, setCurrentPage] = useState('home'); // 'home', 'shop', 'tasks', 'friends'
+  const [currentPage, setCurrentPage] = useState('home'); // 'home', 'shop', 'tasks', 'friends', 'leaderboard'
   const [activeTab, setActiveTab] = useState('home'); // Use this for page switching
   const [isReceiveOpen, setIsReceiveOpen] = useState(false);
   const [isWithdrawOpen, setIsWithdrawOpen] = useState(false);
@@ -590,21 +591,34 @@ const GiftTapGame = () => {
     } catch (err) { console.error("Badge fetch error:", err); }
   }, []);
 
-  // 3. FETCH FULL LEADERBOARD (Modal)
+  // Full leaderboard list for the Ranks page (not a modal)
   const fetchFullLeaderboard = async (typeOverride) => {
     const targetType = typeOverride || leaderboardType;
     const tableName = targetType === 'all_time' ? 'leaderboard_all_time' : 'leaderboard_season';
     const sortColumn = targetType === 'all_time' ? 'lifetime_taps' : 'score';
-    
-    // Add this to ensure the list is ranked from #1 to #100
-    const { data } = await supabase
-      .from(tableName)
-      .select('*')
-      .order(sortColumn, { ascending: false }) // Sorts by total effort
-      .limit(100);
-      
-    setLeaderboard(data || []);
-    setIsLeaderboardOpen(true);
+
+    setLeaderboardLoading(true);
+    try {
+      const { data } = await supabase
+        .from(tableName)
+        .select('*')
+        .order(sortColumn, { ascending: false })
+        .limit(100);
+
+      setLeaderboard(data || []);
+    } catch (err) {
+      console.error('Leaderboard fetch error:', err);
+      setLeaderboard([]);
+    } finally {
+      setLeaderboardLoading(false);
+    }
+  };
+
+  /** Open Ranks page always landing on Season tab */
+  const openLeaderboardPage = () => {
+    setLeaderboardType('Season');
+    setCurrentPage('leaderboard');
+    fetchFullLeaderboard('Season');
   };
 
   // 🚨 NEW FUNCTION: Bypasses the database and reads the live blockchain
@@ -672,7 +686,16 @@ const GiftTapGame = () => {
           `Player_${String(userId).replace(/-/g, '').slice(0, 8)}`;
         setUsername(displayName);
         setPlayer(getPlayerProfile());
-        setHasAccess(playerRow.has_beta_access || false);
+        // Public launch: no beta codes — everyone with an account can play
+        setHasAccess(true);
+        if (!playerRow.has_beta_access) {
+          supabase
+            .from('players')
+            .update({ has_beta_access: true })
+            .eq(DB_PLAYER_ID, userId)
+            .then(() => {})
+            .catch(() => {});
+        }
         setPlayerWallet(playerRow.wallet_address);
         // TG / restored accounts without password → prompt to set credentials
         const missingPw = !playerRow.password_hash;
@@ -929,12 +952,19 @@ const GiftTapGame = () => {
 
           setPlayerWallet(result.publicKey);
           localStorage.removeItem(`wallet_backed_up_${userId}`);
-          setHasAccess(!!playerRow.has_beta_access);
+          setHasAccess(true);
+          if (!playerRow.has_beta_access) {
+            await supabase
+              .from('players')
+              .update({ has_beta_access: true })
+              .eq(DB_PLAYER_ID, userId);
+          }
           setMustBackup(true);
           setIsDataLoaded(true);
         } else {
           console.error("Wallet generation failed.", result);
-          setHasAccess(false);
+          // Keep session; they can retry wallet setup
+          setHasAccess(true);
         }
       }
       // No row for this session id → force re-auth (don't auto-create ghost accounts)
@@ -1110,7 +1140,13 @@ const GiftTapGame = () => {
 
       setDecryptedPhrase(cleaned);
       setPlayerWallet(publicKey);
-      setHasAccess(!!row.has_beta_access);
+      setHasAccess(true);
+      if (!row.has_beta_access) {
+        await supabase
+          .from('players')
+          .update({ has_beta_access: true })
+          .eq(DB_PLAYER_ID, String(row[DB_PLAYER_ID]));
+      }
 
       const missingPw = !row.password_hash;
       setNeedsPassword(missingPw);
@@ -1133,7 +1169,7 @@ const GiftTapGame = () => {
   };
 
   /** After Sign up / Log in from AuthScreen */
-  const handleAuthenticated = async ({ playerId: pid, username: uname, isNew, mnemonic, walletAddress, has_beta_access }) => {
+  const handleAuthenticated = async ({ playerId: pid, username: uname, isNew, mnemonic, walletAddress }) => {
     const profile = applyAuthSession({ playerId: pid, username: uname });
     setPlayer(profile);
     setIsAuthed(true);
@@ -1145,13 +1181,8 @@ const GiftTapGame = () => {
       setGeneratedSecret(mnemonic);
       setMustBackup(true);
     }
-    // Beta gate: only enter game if this account already has access (login of approved testers)
-    // New signups stay on BetaGate until they redeem a code (syncPlayer also sets hasAccess from DB)
-    if (typeof has_beta_access === 'boolean') {
-      setHasAccess(has_beta_access);
-    } else if (isNew) {
-      setHasAccess(false);
-    }
+    // Public launch — no invite / beta code required
+    setHasAccess(true);
   };
 
   const handleLogout = () => {
@@ -2253,17 +2284,7 @@ const GiftTapGame = () => {
 
   return (
     <div style={{ backgroundColor: '#000', minHeight: '100vh', width: '100%' }}>
-      
-      {!hasAccess ? (
-        /* Beta only AFTER login/signup — code is tied to this playerId */
-        <BetaGate 
-          playerId={playerId}
-          username={player.username || getPlayerProfile().username || 'Player'}
-          onAccessGranted={(code) => initializeNewPlayer(code)}
-          onSwitchAccount={handleLogout}
-        />
-      ) : (
-        /* 2. Show the ACTUAL GAME if they have access */
+      {/* Public launch: no BetaGate / invite codes */}
         <div style={{ ...styles.container, flexDirection: 'column', height: '100%', width: '100%', overflow: 'hidden' }}>
           
           {/* ASCENSION WALL MODAL */}
@@ -2309,9 +2330,35 @@ const GiftTapGame = () => {
               <a
                 href="/"
                 title="Gift2u Home"
-                style={{ width: '38px', height: '38px', borderRadius: '50%', background: 'rgba(255, 255, 255, 0.08)', border: '1px solid rgba(255, 255, 255, 0.05)', color: '#fff', fontSize: '18px', display: 'flex', justifyContent: 'center', alignItems: 'center', cursor: 'pointer', outline: 'none', WebkitTapHighlightColor: 'transparent', textDecoration: 'none' }}
+                style={{
+                  width: '40px',
+                  height: '40px',
+                  borderRadius: '50%',
+                  background: 'rgba(255, 255, 255, 0.06)',
+                  border: '1px solid rgba(255, 255, 255, 0.08)',
+                  display: 'flex',
+                  justifyContent: 'center',
+                  alignItems: 'center',
+                  cursor: 'pointer',
+                  outline: 'none',
+                  WebkitTapHighlightColor: 'transparent',
+                  textDecoration: 'none',
+                  overflow: 'hidden',
+                  flexShrink: 0,
+                  padding: '4px',
+                  boxSizing: 'border-box',
+                }}
               >
-                🏠
+                <img
+                  src="/Gift2u_logo.png"
+                  alt="Gift2u"
+                  style={{
+                    width: '100%',
+                    height: '100%',
+                    objectFit: 'contain',
+                    display: 'block',
+                  }}
+                />
               </a>
               
               {/* Menu Trigger Button (Separated into a clean circle) */}
@@ -2321,32 +2368,6 @@ const GiftTapGame = () => {
               >
                 ☰
               </button>
-
-              {/* Sleek Toggle Pill */}
-              <div style={styles.toggleWrapper}>
-                <button 
-                  style={{ ...(leaderboardType === 'all_time' ? styles.activeToggleBtn : styles.toggleBtn), outline: 'none', WebkitTapHighlightColor: 'transparent' }}
-                  onClick={() => { setLeaderboardType('all_time'); fetchFullLeaderboard('all_time'); }}
-                >
-                  <span>🏆 All-Time</span>
-                  {/* Auto-formats large numbers (e.g., 5000 becomes 5k) so it fits beautifully */}
-                  <span style={styles.leaderBadgePremium}>
-                    {topLeader.name}: {topLeader.score > 999 ? (topLeader.score / 1000).toFixed(1) + 'k' : topLeader.score}
-                  </span>
-                </button>
-                <button 
-                  style={{ ...(leaderboardType === 'Season' ? styles.activeToggleBtn : styles.toggleBtn), outline: 'none', WebkitTapHighlightColor: 'transparent' }} 
-                  onClick={() => { setLeaderboardType('Season'); fetchFullLeaderboard('Season'); }}
-                >
-                  {/* 🚨 THE FIX: Use the dynamic name from Supabase */}
-                  <span>{seasonData.name || "Loading..."}</span>
-
-                  {/* Make sure this variable matches whatever you named the ticking clock state from our last step (e.g., seasonDisplayMsg) */}
-                  <span style={{...styles.leaderBadgePremium, color: '#4ade80', fontWeight: 'bold'}}>
-                    {seasonDisplayMsg}
-                  </span>
-                </button>
-              </div>
             </div>
 
             {/* Premium Wallet Button (RESTORED WRAPPER AND LOGIC) */}
@@ -2552,32 +2573,135 @@ const GiftTapGame = () => {
               <Friends player={player} />
             )}
 
+            {/* Leaderboard / Ranks page (like Shop / Tasks) */}
+            {currentPage === 'leaderboard' && (
+              <div style={{ width: '100%', maxWidth: '480px', margin: '0 auto', padding: '12px 16px 24px', boxSizing: 'border-box' }}>
+                <h2 style={{ color: '#ffd700', textAlign: 'center', margin: '8px 0 6px', fontSize: '22px' }}>
+                  🏆 Leaderboard
+                </h2>
+                <p style={{ color: '#888', textAlign: 'center', fontSize: '11px', margin: '0 0 14px', lineHeight: 1.4 }}>
+                  Season: Monthly score · All-time: lifetime taps · Top ranks may share prizes
+                </p>
+
+                {/* Season | All-time — always land on Season when opening Ranks from nav */}
+                <div style={{ display: 'flex', gap: '10px', marginBottom: '14px' }}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setLeaderboardType('Season');
+                      fetchFullLeaderboard('Season');
+                    }}
+                    style={{
+                      flex: 1,
+                      padding: '12px 8px',
+                      borderRadius: '12px',
+                      border: leaderboardType === 'Season' ? '2px solid #ffd700' : '1px solid #333',
+                      background: leaderboardType === 'Season' ? 'rgba(255, 215, 0, 0.15)' : '#1c1e22',
+                      color: leaderboardType === 'Season' ? '#ffd700' : '#888',
+                      fontWeight: 'bold',
+                      fontSize: '14px',
+                      cursor: 'pointer',
+                      outline: 'none',
+                      WebkitTapHighlightColor: 'transparent',
+                    }}
+                  >
+                    Season
+                    {seasonData.name ? (
+                      <div style={{ fontSize: '10px', fontWeight: 'normal', color: '#4ade80', marginTop: '4px' }}>
+                        {seasonData.name}
+                      </div>
+                    ) : null}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setLeaderboardType('all_time');
+                      fetchFullLeaderboard('all_time');
+                    }}
+                    style={{
+                      flex: 1,
+                      padding: '12px 8px',
+                      borderRadius: '12px',
+                      border: leaderboardType === 'all_time' ? '2px solid #ffd700' : '1px solid #333',
+                      background: leaderboardType === 'all_time' ? 'rgba(255, 215, 0, 0.15)' : '#1c1e22',
+                      color: leaderboardType === 'all_time' ? '#ffd700' : '#888',
+                      fontWeight: 'bold',
+                      fontSize: '14px',
+                      cursor: 'pointer',
+                      outline: 'none',
+                      WebkitTapHighlightColor: 'transparent',
+                    }}
+                  >
+                    All-time
+                    {topLeader?.name ? (
+                      <div style={{ fontSize: '10px', fontWeight: 'normal', color: '#528db0', marginTop: '4px' }}>
+                        #1 {topLeader.name}
+                      </div>
+                    ) : null}
+                  </button>
+                </div>
+
+                {leaderboardType === 'Season' && seasonDisplayMsg ? (
+                  <div style={{ textAlign: 'center', color: '#4ade80', fontSize: '12px', fontWeight: 'bold', marginBottom: '12px' }}>
+                    {seasonDisplayMsg}
+                  </div>
+                ) : null}
+
+                <div style={{ background: '#1c1e22', borderRadius: '16px', border: '1px solid #333', overflow: 'hidden' }}>
+                  {leaderboardLoading ? (
+                    <p style={{ color: '#888', textAlign: 'center', padding: '28px' }}>Loading ranks…</p>
+                  ) : leaderboard.length === 0 ? (
+                    <p style={{ color: '#888', textAlign: 'center', padding: '28px' }}>No players yet. Be the first!</p>
+                  ) : (
+                    leaderboard.map((row, index) => {
+                      const name = row.username || (row[DB_PLAYER_ID] ? `ID:..${String(row[DB_PLAYER_ID]).slice(-4)}` : 'Anon');
+                      const score = leaderboardType === 'all_time'
+                        ? (row.lifetime_taps ?? row.score ?? 0)
+                        : (row.score ?? row.season_shards ?? row.lifetime_taps ?? 0);
+                      const isYou = playerId && String(row[DB_PLAYER_ID] || row.id || '') === String(playerId);
+                      return (
+                        <div
+                          key={row.id || row[DB_PLAYER_ID] || index}
+                          style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            padding: '12px 14px',
+                            borderBottom: '1px solid #2a2d34',
+                            background: isYou ? 'rgba(255, 215, 0, 0.08)' : 'transparent',
+                          }}
+                        >
+                          <span style={{ color: isYou ? '#ffd700' : '#fff', fontSize: '13px', fontWeight: isYou ? 'bold' : 'normal' }}>
+                            <span style={{ color: '#666', marginRight: '8px', minWidth: '28px', display: 'inline-block' }}>
+                              {index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `#${index + 1}`}
+                            </span>
+                            {name}{isYou ? ' (you)' : ''}
+                          </span>
+                          <span style={{ color: '#528db0', fontSize: '13px', fontWeight: 'bold' }}>
+                            {Number(score).toLocaleString()}
+                          </span>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+            )}
+
             {/* 3. Navigation Bar (Always at bottom) */}
             <div style={styles.nav}>
               <button style={currentPage === 'home' ? styles.activeBtn : styles.btn} onClick={() => setCurrentPage('home')}>Home</button>
               <button style={currentPage === 'tasks' ? styles.activeBtn : styles.btn} onClick={() => setCurrentPage('tasks')}>Tasks</button>
+              <button
+                style={currentPage === 'leaderboard' ? styles.activeBtn : styles.btn}
+                onClick={openLeaderboardPage}
+              >
+                Ranks
+              </button>
               <button style={currentPage === 'friends' ? styles.activeBtn : styles.btn} onClick={() => setCurrentPage('friends')}>Friends</button>
               <button style={currentPage === 'shop' ? styles.activeBtn : styles.btn} onClick={() => setCurrentPage('shop')}>Shop</button>
             </div>
           </div>
-
-          {/* Leaderboard Modal */}
-          {isLeaderboardOpen && (
-            <div style={styles.modalOverlay} onClick={() => setIsLeaderboardOpen(false)}>
-              <div style={styles.modalContent} onClick={e => e.stopPropagation()}>
-                <h3>🏆 Top Players</h3>
-                <div style={{ maxHeight: '300px', overflowY: 'auto' }}>
-                  {leaderboard.map((player, index) => (
-                    <div key={index} style={styles.balanceRow}>
-                      <span>{index + 1}. {player.username || 'Anon'}</span>
-                      <span style={{color: '#528db0'}}>{(player.score || player.lifetime_taps || 0).toLocaleString()}</span>
-                    </div>
-                  ))}
-                </div>
-                <button onClick={() => setIsLeaderboardOpen(false)} style={styles.closeBtn}>Close</button>
-              </div>
-            </div>
-          )}
 
           {/* Wallet Modal */}
           {isModalOpen && (
@@ -3166,6 +3290,10 @@ const GiftTapGame = () => {
               setIsMenuOpen(false);
               setLegalKind('privacy');
             }}
+            onOpenLeaderboard={() => {
+              setIsMenuOpen(false);
+              openLeaderboardPage();
+            }}
           />
 
           <LegalModal
@@ -3301,8 +3429,6 @@ const GiftTapGame = () => {
           )}
 
         </div>
-        
-      )}
       
     </div>
   );

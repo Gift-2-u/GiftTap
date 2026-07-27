@@ -75,7 +75,7 @@ const AuthScreen = ({ onAuthenticated, onRestoreAccount }) => {
         isNew: true,
         mnemonic: data.mnemonic,
         walletAddress: data.wallet_address,
-        has_beta_access: false,
+        has_beta_access: true,
       });
     } catch (err) {
       console.error('Sign up error:', err);

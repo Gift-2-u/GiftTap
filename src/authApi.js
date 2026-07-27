@@ -177,7 +177,7 @@ export async function registerAccount(username, password) {
     password_hash,
     wallet_address: wallet.publicKey,
     encrypted_vault,
-    has_beta_access: false, // must redeem invite code (BetaGate)
+    has_beta_access: true, // public launch — open to everyone
     shard_balance: 0,
     season_shards: 0,
     lifetime_taps: 0,
