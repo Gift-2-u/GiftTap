@@ -7,7 +7,7 @@ if (typeof window !== 'undefined') {
 import React, { useMemo, useState, useEffect, useCallback, Suspense, lazy } from 'react';
 import { BrowserRouter as Router, Routes, Route, Link, useLocation } from 'react-router-dom';
 import { ConnectionProvider, WalletProvider, useAnchorWallet, useConnection, useWallet } from '@solana/wallet-adapter-react';
-import { WalletModalProvider, WalletMultiButton } from '@solana/wallet-adapter-react-ui';
+import { WalletModalProvider } from '@solana/wallet-adapter-react-ui';
 // Import individual adapters (not the full wallets barrel) to keep the bundle smaller.
 // Backpack, Glow, and other Wallet-Standard wallets still appear automatically.
 import { PhantomWalletAdapter } from '@solana/wallet-adapter-phantom';
@@ -28,6 +28,7 @@ import { clusterApiUrl, PublicKey, SystemProgram } from '@solana/web3.js';
 import { Program, AnchorProvider, BN } from '@coral-xyz/anchor';
 import { Toaster, toast } from 'react-hot-toast';
 import DailyGiftBox from './DailyGiftBox';
+import WalletHub from './WalletHub';
 import idl from "../target/idl/gift_staking.json";
 import '@solana/wallet-adapter-react-ui/styles.css';
 
@@ -43,15 +44,37 @@ const [vaultAuthority] = PublicKey.findProgramAddressSync(
   PROGRAM_ID // Your '8pWy3...' address
 );
 
+/** True for phone browsers (extensions don't exist like on desktop). */
+function isPhoneBrowser() {
+  if (typeof navigator === 'undefined') return false;
+  return /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || '');
+}
+
 // --- MAIN WRAPPER ---
 export default function App() {
   // Site staking IDL is still wired for devnet; Standard wallets still connect on any cluster.
   const endpoint = useMemo(() => clusterApiUrl('devnet'), []);
 
-  // Popular wallets listed explicitly. Wallet Standard (Backpack, etc.) is
-  // still auto-merged by WalletProvider on top of this list.
-  const wallets = useMemo(
-    () => [
+  /**
+   * Desktop: full list + Wallet Standard (Backpack, Glow, etc. when extensions installed).
+   * Phone: only wallets that work on mobile (deep-link / in-app browser).
+   *   - Phantom & Solflare open their apps via universal links
+   *   - WalletProvider auto-adds "Mobile Wallet Adapter" on Android for installed Solana apps
+   *   - Chrome extensions (Backpack/Glow desktop) will NOT appear on phones — that is normal
+   */
+  const wallets = useMemo(() => {
+    const phone = isPhoneBrowser();
+
+    if (phone) {
+      return [
+        new PhantomWalletAdapter(),
+        new SolflareWalletAdapter(),
+        new CoinbaseWalletAdapter(),
+        new TrustWalletAdapter(),
+      ];
+    }
+
+    return [
       new PhantomWalletAdapter(),
       new SolflareWalletAdapter(),
       new CoinbaseWalletAdapter(),
@@ -65,9 +88,8 @@ export default function App() {
       new CloverWalletAdapter(),
       new Coin98WalletAdapter(),
       new SafePalWalletAdapter(),
-    ],
-    [],
-  );
+    ];
+  }, []);
 
   return (
     <ConnectionProvider endpoint={endpoint}>
@@ -101,32 +123,87 @@ export default function App() {
 
 const Navigation = () => {
   const location = useLocation();
+  const { publicKey, connected } = useWallet();
+  const [walletHubOpen, setWalletHubOpen] = useState(false);
+
   // Full-screen game: hide site chrome only on /play
   if (location.pathname.startsWith('/play')) {
     return null;
   }
+
+  const short =
+    connected && publicKey
+      ? `${publicKey.toBase58().slice(0, 4)}…${publicKey.toBase58().slice(-4)}`
+      : null;
+
   return (
-    <nav className="sticky top-0 z-50 w-full max-w-full border-b border-white/10 bg-slate-800/50 backdrop-blur-md overflow-x-hidden">
-      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 px-3 py-3 sm:px-6 sm:py-4">
-        <Link
-          to="/"
-          className="text-xl sm:text-3xl font-black text-purple-500 italic shrink-0"
-        >
-          GIFT2U
-        </Link>
-        <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-2 sm:gap-6 text-sm sm:text-base min-w-0">
-          <Link to="/" className="hover:text-purple-400 font-bold whitespace-nowrap">Home</Link>
-          <Link to="/stake" className="hover:text-purple-400 font-bold whitespace-nowrap">Staking</Link>
-          <Link to="/play" className="hover:text-purple-400 font-bold text-yellow-400 whitespace-nowrap">
-            <span className="sm:hidden">Play</span>
-            <span className="hidden sm:inline">Play Game</span>
+    <>
+      <nav className="sticky top-0 z-50 w-full max-w-full border-b border-white/10 bg-slate-800/50 backdrop-blur-md overflow-x-hidden">
+        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 px-3 py-3 sm:px-6 sm:py-4">
+          <Link
+            to="/"
+            className="text-xl sm:text-3xl font-black text-purple-500 italic shrink-0"
+          >
+            GIFT2U
           </Link>
-          <div className="site-wallet-btn shrink-0">
-            <WalletMultiButton />
+          <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-2 sm:gap-6 text-sm sm:text-base min-w-0">
+            <Link to="/" className="hover:text-purple-400 font-bold whitespace-nowrap">Home</Link>
+            <Link to="/stake" className="hover:text-purple-400 font-bold whitespace-nowrap">Staking</Link>
+            <Link to="/play" className="hover:text-purple-400 font-bold text-yellow-400 whitespace-nowrap">
+              <span className="sm:hidden">Play</span>
+              <span className="hidden sm:inline">Play Game</span>
+            </Link>
+            <button
+              type="button"
+              onClick={() => setWalletHubOpen(true)}
+              className="shrink-0 rounded-full bg-purple-600 hover:bg-purple-500 px-3 py-2 text-xs sm:text-sm font-bold text-white border border-white/10"
+            >
+              {short ? `Wallet ${short}` : 'Wallet'}
+            </button>
           </div>
         </div>
-      </div>
-    </nav>
+      </nav>
+
+      <WalletHub
+        isOpen={walletHubOpen}
+        onClose={() => setWalletHubOpen(false)}
+        defaultTab="game"
+        overlayStyle={{ zIndex: 100000 }}
+        gameContent={
+          <div style={{ textAlign: 'left' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+              <h3 style={{ margin: 0, color: '#ffd700' }}>Game Wallet</h3>
+              <button
+                type="button"
+                onClick={() => setWalletHubOpen(false)}
+                style={{ background: 'none', border: 'none', color: '#888', fontSize: '18px', cursor: 'pointer' }}
+              >
+                ✕
+              </button>
+            </div>
+            <p style={{ color: '#ccc', fontSize: '13px', lineHeight: 1.45, marginBottom: '16px' }}>
+              Your <strong>Game wallet</strong> is created inside Gift Tap (play account).
+              Locksmith NFTs and in-game balances live there.
+            </p>
+            <ul style={{ color: '#888', fontSize: '12px', lineHeight: 1.5, paddingLeft: '18px', marginBottom: '18px' }}>
+              <li>Shop &amp; Locksmith marketplace → Game wallet</li>
+              <li>Shard swap unlock → Game wallet NFT</li>
+              <li>Vault / staking on this site → Solana tab (Phantom, etc.)</li>
+            </ul>
+            <Link
+              to="/play"
+              onClick={() => setWalletHubOpen(false)}
+              className="block w-full text-center rounded-xl bg-yellow-400 hover:bg-yellow-300 text-black font-black py-3"
+            >
+              Open Gift Tap →
+            </Link>
+            <p style={{ color: '#555', fontSize: '11px', marginTop: '12px', marginBottom: 0, textAlign: 'center' }}>
+              Log in / sign up in the game to manage your game wallet.
+            </p>
+          </div>
+        }
+      />
+    </>
   );
 };
 

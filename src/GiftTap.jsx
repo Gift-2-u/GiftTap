@@ -12,6 +12,7 @@ import Menu from './Menu';
 import WhitepaperModal from './WhitepaperModal';
 import LegalModal from './LegalModal';
 import { showRewardedAdWaterfall, AD_MIN_WATCH_SECONDS } from './adService';
+import WalletHub from './WalletHub';
 import bs58 from "bs58";
 import CryptoJS from 'crypto-js';
 import { keypairFromMnemonic } from './solanaWallet';
@@ -2703,134 +2704,132 @@ const GiftTapGame = () => {
             </div>
           </div>
 
-          {/* Wallet Modal */}
-          {isModalOpen && (
-            <div style={styles.modalOverlay} onClick={() => { 
-              if (!mustBackup) { setIsModalOpen(false); setShowSettings(false); setIsRevealed(false); }
-            }}>
-              <div style={styles.modalContent} onClick={e => e.stopPropagation()}>
-                
-                {/* --- ONE-TIME MANDATORY BACKUP NOTICE --- */}
-                {mustBackup ? (
-                  <div style={{ textAlign: 'left' }}>
-                    <h3 style={{ color: '#ff4d4d', marginTop: 0 }}>⚠️ Backup Required</h3>
-                    <p style={{ fontSize: '12px', color: '#ccc', marginBottom: '15px' }}>
-                      This wallet is yours alone. Save these 12 words now — they are the only way to restore your account on a new device or browser. Never share them.
-                    </p>
-                    
-                    <div style={{ background: '#000', padding: '15px', borderRadius: '10px', border: '1px solid #ffd700', marginBottom: '15px' }}>
-                      <label style={{ color: '#ffd700', fontSize: '11px', fontWeight: 'bold' }}>YOUR 12 SECRET WORDS:</label>
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px', marginTop: '10px' }}>
-                        {(decryptedPhrase || generatedSecret || "").split(" ").map((word, i) => (
-                          word ? (
-                            <div key={i} style={{ background: '#222', padding: '6px', borderRadius: '6px', fontSize: '12px', color: '#4ade80', textAlign: 'center', border: '1px solid #333' }}>
-                              <span style={{ color: '#888', marginRight: '4px', fontSize: '10px' }}>{i + 1}.</span>{word}
-                            </div>
-                          ) : null
-                        ))}
-                      </div>
-                      
-                      <button 
-                        onClick={handleCopyPhrase}
-                        style={{ width: '100%', padding: '10px', marginTop: '15px', background: '#222', color: '#4ade80', border: '1px solid #4ade80', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', fontSize: '14px' }}
-                      >
-                        📋 COPY 12-WORD PHRASE
-                      </button>
+          {/* Wallet hub: Game (default) | Solana — same pattern as site */}
+          <WalletHub
+            isOpen={isModalOpen}
+            hideTabs={mustBackup}
+            defaultTab="game"
+            onClose={() => {
+              if (!mustBackup) {
+                setIsModalOpen(false);
+                setShowSettings(false);
+                setIsRevealed(false);
+              }
+            }}
+            overlayStyle={styles.modalOverlay}
+            panelStyle={styles.modalContent}
+            gameContent={
+              mustBackup ? (
+                <div style={{ textAlign: 'left' }}>
+                  <h3 style={{ color: '#ff4d4d', marginTop: 0 }}>⚠️ Backup Required</h3>
+                  <p style={{ fontSize: '12px', color: '#ccc', marginBottom: '15px' }}>
+                    This wallet is yours alone. Save these 12 words now — they are the only way to restore your account on a new device or browser. Never share them.
+                  </p>
+                  <div style={{ background: '#000', padding: '15px', borderRadius: '10px', border: '1px solid #ffd700', marginBottom: '15px' }}>
+                    <label style={{ color: '#ffd700', fontSize: '11px', fontWeight: 'bold' }}>YOUR 12 SECRET WORDS:</label>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px', marginTop: '10px' }}>
+                      {(decryptedPhrase || generatedSecret || "").split(" ").map((word, i) => (
+                        word ? (
+                          <div key={i} style={{ background: '#222', padding: '6px', borderRadius: '6px', fontSize: '12px', color: '#4ade80', textAlign: 'center', border: '1px solid #333' }}>
+                            <span style={{ color: '#888', marginRight: '4px', fontSize: '10px' }}>{i + 1}.</span>{word}
+                          </div>
+                        ) : null
+                      ))}
                     </div>
-
-                    <button 
-                      onClick={() => {
-                        setMustBackup(false);
-                        localStorage.setItem(`wallet_backed_up_${playerId}`, "true"); // Flags that they saw it
-                      }}
-                      style={{ width: '100%', background: '#fbef43', color: '#000', padding: '12px', borderRadius: '8px', fontWeight: 'bold', border: 'none', cursor: 'pointer' }}
+                    <button
+                      onClick={handleCopyPhrase}
+                      style={{ width: '100%', padding: '10px', marginTop: '15px', background: '#222', color: '#4ade80', border: '1px solid #4ade80', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', fontSize: '14px' }}
                     >
-                      I HAVE SAVED MY PHRASE
+                      📋 COPY 12-WORD PHRASE
                     </button>
                   </div>
-                ) : (
-                  // --- NORMAL WALLET DASHBOARD (After Backup) ---
-                  <>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
-                      <h3 style={{ margin: 0, color: '#ffd700' }}>{showSettings ? 'Wallet Settings' : 'Wallet Dashboard'}</h3>
-                      <div>
-                        {!showSettings && (
-                          <button onClick={() => setShowSettings(true)} style={{ background: 'none', border: 'none', color: '#888', fontSize: '18px', marginRight: '15px', cursor: 'pointer' }}>⚙️</button>
-                        )}
-                        <button onClick={() => { setIsModalOpen(false); setShowSettings(false); setIsRevealed(false); }} style={{ background: 'none', border: 'none', color: '#888', fontSize: '18px', cursor: 'pointer' }}>✕</button>
-                      </div>
+                  <button
+                    onClick={() => {
+                      setMustBackup(false);
+                      localStorage.setItem(`wallet_backed_up_${playerId}`, "true");
+                    }}
+                    style={{ width: '100%', background: '#fbef43', color: '#000', padding: '12px', borderRadius: '8px', fontWeight: 'bold', border: 'none', cursor: 'pointer' }}
+                  >
+                    I HAVE SAVED MY PHRASE
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
+                    <h3 style={{ margin: 0, color: '#ffd700' }}>{showSettings ? 'Wallet Settings' : 'Game Wallet'}</h3>
+                    <div>
+                      {!showSettings && (
+                        <button onClick={() => setShowSettings(true)} style={{ background: 'none', border: 'none', color: '#888', fontSize: '18px', marginRight: '15px', cursor: 'pointer' }}>⚙️</button>
+                      )}
+                      <button onClick={() => { setIsModalOpen(false); setShowSettings(false); setIsRevealed(false); }} style={{ background: 'none', border: 'none', color: '#888', fontSize: '18px', cursor: 'pointer' }}>✕</button>
                     </div>
+                  </div>
 
-                    {showSettings ? (
-                      <div style={{ textAlign: 'left' }}>
-                        <p style={{ color: '#aaa', fontSize: '12px', marginBottom: '15px' }}>Your wallet is stored only on this device until you back up the 12-word phrase. Gift Tap never keeps your seed.</p>
-                        
-                        {!isRevealed ? (
-                          <div style={{ background: '#111', padding: '15px', borderRadius: '10px', border: '1px solid #333', textAlign: 'center' }}>
-                            <button 
-                              onClick={() => setIsRevealed(true)}
-                              style={{ width: '100%', background: '#ffd700', color: '#000', padding: '12px', borderRadius: '8px', fontWeight: 'bold', border: 'none', cursor: 'pointer' }}
-                            >
-                              👁️ REVEAL SECRET PHRASE
-                            </button>
-                          </div>  
-                        ) : (
-                          /* --- THE UNLOCKED 12-WORD GRID --- */
-                          <div style={{ background: '#000', padding: '15px', borderRadius: '10px', border: '1px solid #ffd700', marginTop: '15px' }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                              <label style={{ color: '#ffd700', fontSize: '11px', fontWeight: 'bold' }}>YOUR 12 SECRET WORDS:</label>
-                              <button 
-                                onClick={() => setIsRevealed(false)} 
-                                style={{ background: 'none', border: 'none', color: '#888', fontSize: '12px', cursor: 'pointer' }}
-                              >
-                                Lock 🔒
-                              </button>
-                            </div>
-                            
-                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px', marginTop: '10px' }}>
-                              {(decryptedPhrase || generatedSecret || "").split(" ").map((word, i) => (
-                                word ? (
-                                  <div key={i} style={{ background: '#222', padding: '6px', borderRadius: '6px', fontSize: '12px', color: '#4ade80', textAlign: 'center', border: '1px solid #333' }}>
-                                    <span style={{ color: '#888', marginRight: '4px', fontSize: '10px' }}>{i + 1}.</span>{word}
-                                  </div>
-                                ) : null
-                              ))}
-                            </div>
-
-                            <button 
-                              onClick={handleCopyPhrase}
-                              style={{ width: '100%', padding: '10px', marginTop: '15px', background: '#222', color: '#4ade80', border: '1px solid #4ade80', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', fontSize: '14px' }}
-                            >
-                              📋 COPY 12-WORD PHRASE
-                            </button>
+                  {showSettings ? (
+                    <div style={{ textAlign: 'left' }}>
+                      <p style={{ color: '#aaa', fontSize: '12px', marginBottom: '15px' }}>Your game wallet seed stays on this device until you back up the 12-word phrase. Gift Tap never keeps your seed on our servers for recovery.</p>
+                      {!isRevealed ? (
+                        <div style={{ background: '#111', padding: '15px', borderRadius: '10px', border: '1px solid #333', textAlign: 'center' }}>
+                          <button
+                            onClick={() => setIsRevealed(true)}
+                            style={{ width: '100%', background: '#ffd700', color: '#000', padding: '12px', borderRadius: '8px', fontWeight: 'bold', border: 'none', cursor: 'pointer' }}
+                          >
+                            👁️ REVEAL SECRET PHRASE
+                          </button>
+                        </div>
+                      ) : (
+                        <div style={{ background: '#000', padding: '15px', borderRadius: '10px', border: '1px solid #ffd700', marginTop: '15px' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <label style={{ color: '#ffd700', fontSize: '11px', fontWeight: 'bold' }}>YOUR 12 SECRET WORDS:</label>
+                            <button onClick={() => setIsRevealed(false)} style={{ background: 'none', border: 'none', color: '#888', fontSize: '12px', cursor: 'pointer' }}>Lock 🔒</button>
                           </div>
-                        )}
-                        <button onClick={() => { setShowSettings(false); setIsRevealed(false); }} style={{ width: '100%', marginTop: '20px', background: 'none', color: '#888', border: 'none', cursor: 'pointer' }}>← Back to Balances</button>
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px', marginTop: '10px' }}>
+                            {(decryptedPhrase || generatedSecret || "").split(" ").map((word, i) => (
+                              word ? (
+                                <div key={i} style={{ background: '#222', padding: '6px', borderRadius: '6px', fontSize: '12px', color: '#4ade80', textAlign: 'center', border: '1px solid #333' }}>
+                                  <span style={{ color: '#888', marginRight: '4px', fontSize: '10px' }}>{i + 1}.</span>{word}
+                                </div>
+                              ) : null
+                            ))}
+                          </div>
+                          <button
+                            onClick={handleCopyPhrase}
+                            style={{ width: '100%', padding: '10px', marginTop: '15px', background: '#222', color: '#4ade80', border: '1px solid #4ade80', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', fontSize: '14px' }}
+                          >
+                            📋 COPY 12-WORD PHRASE
+                          </button>
+                        </div>
+                      )}
+                      <button onClick={() => { setShowSettings(false); setIsRevealed(false); }} style={{ width: '100%', marginTop: '20px', background: 'none', color: '#888', border: 'none', cursor: 'pointer' }}>← Back to Balances</button>
+                    </div>
+                  ) : (
+                    <>
+                      {playerWallet ? (
+                        <p style={{ fontSize: '11px', color: '#666', marginBottom: '8px', wordBreak: 'break-all' }}>
+                          {playerWallet.slice(0, 6)}…{playerWallet.slice(-6)}
+                        </p>
+                      ) : null}
+                      <p style={{ fontSize: '12px', color: '#888', marginBottom: '15px' }}>Game wallet balance (Locksmith NFTs stay here).</p>
+                      <div style={{ marginTop: '10px' }}>
+                        {Object.entries(balances).map(([key, value]) => (
+                          <div key={key} style={styles.balanceRow}>
+                            <span style={{ textTransform: 'uppercase', color: '#888', fontSize: '12px' }}>{key}:</span>
+                            <span style={{ fontWeight: 'bold' }}>{key === 'GFTshards' ? value.toLocaleString() : value.toFixed(4)}</span>
+                          </div>
+                        ))}
                       </div>
-                    ) : (
-                      <>
-                        <p style={{ fontSize: '12px', color: '#888', marginBottom: '15px' }}>Wallet Balance.</p>
-                        <div style={{ marginTop: '10px' }}>
-                          {Object.entries(balances).map(([key, value]) => (
-                            <div key={key} style={styles.balanceRow}>
-                              <span style={{ textTransform: 'uppercase', color: '#888', fontSize: '12px' }}>{key}:</span>
-                              <span style={{ fontWeight: 'bold' }}>{key === 'GFTshards' ? value.toLocaleString() : value.toFixed(4)}</span>
-                            </div>
-                          ))}
-                        </div>
-                        <div style={styles.actionRow}>
-                          <button style={styles.actionBtn} onClick={() => setIsReceiveOpen(true)}>Receive</button>
-                          <button style={styles.actionBtn} onClick={() => setIsWithdrawOpen(true)}>Send</button>
-                          <button style={styles.actionBtn} onClick={() => setIsSwapOpen(true)}>Swap</button>
-                          <button style={styles.actionBtn} onClick={() => setIsShardSwapOpen(true)}>Shard</button>
-                        </div>
-                      </>
-                    )}
-                  </>
-                )}
-              </div>
-            </div>
-          )}
+                      <div style={styles.actionRow}>
+                        <button style={styles.actionBtn} onClick={() => setIsReceiveOpen(true)}>Receive</button>
+                        <button style={styles.actionBtn} onClick={() => setIsWithdrawOpen(true)}>Send</button>
+                        <button style={styles.actionBtn} onClick={() => setIsSwapOpen(true)}>Swap</button>
+                        <button style={styles.actionBtn} onClick={() => setIsShardSwapOpen(true)}>Shard</button>
+                      </div>
+                    </>
+                  )}
+                </>
+              )
+            }
+          />
 
           {/* Receive Pop-up */}
           {isReceiveOpen && (
