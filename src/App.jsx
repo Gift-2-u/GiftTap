@@ -8,6 +8,7 @@ import React, { useMemo, useState, useEffect, useCallback, Suspense, lazy } from
 import { BrowserRouter as Router, Routes, Route, Link, useLocation } from 'react-router-dom';
 import { ConnectionProvider, WalletProvider, useAnchorWallet, useConnection, useWallet } from '@solana/wallet-adapter-react';
 import { WalletModalProvider, WalletMultiButton } from '@solana/wallet-adapter-react-ui';
+import { PhantomWalletAdapter, SolflareWalletAdapter } from '@solana/wallet-adapter-wallets';
 import * as splToken from "@solana/spl-token";
 import { clusterApiUrl, PublicKey, SystemProgram } from '@solana/web3.js';
 import { Program, AnchorProvider, BN } from '@coral-xyz/anchor';
@@ -30,11 +31,15 @@ const [vaultAuthority] = PublicKey.findProgramAddressSync(
 
 // --- MAIN WRAPPER ---
 export default function App() {
+  // Site staking IDL is still wired for devnet; Standard wallets still connect on any cluster.
   const endpoint = useMemo(() => clusterApiUrl('devnet'), []);
 
-  // FIX: Passing an empty array [] tells Solana to automatically detect
-  // Phantom, Solflare, etc. This avoids the "not defined" errors.
-  const wallets = useMemo(() => [], []);
+  // Explicit adapters + Wallet Standard (auto-discovered extensions).
+  // Empty [] alone often shows an empty modal if Standard discovery fails.
+  const wallets = useMemo(
+    () => [new PhantomWalletAdapter(), new SolflareWalletAdapter()],
+    [],
+  );
 
   return (
     <ConnectionProvider endpoint={endpoint}>
@@ -416,7 +421,7 @@ const StakingPage = () => {
       <div className="flex flex-col items-center mb-10">
           <p className="text-gray-500 text-xs font-black uppercase tracking-[0.3em] mb-2">Total Value Locked</p>
           <h2 className="text-5xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-green-400">
-              ${(tvl || 0).toLocaleString()} <span className="text-lg text-gray-600 font-medium">GIFT</span>
+              ${(tvl || 0).toLocaleString()} <span className="text-lg text-gray-600 font-medium">GFT</span>
           </h2>
       </div>
 
@@ -437,7 +442,7 @@ const StakingPage = () => {
               <span className="text-3xl font-bold text-white leading-none">
                 {(parseFloat(balance) || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
               </span>
-              <span className="text-blue-900 text-[10px] font-black uppercase tracking-widest mt-1">GIFT TOKENS</span>
+              <span className="text-blue-900 text-[10px] font-black uppercase tracking-widest mt-1">GFT TOKENS</span>
             </div>
           </div>
 
@@ -451,7 +456,7 @@ const StakingPage = () => {
               <span className="text-4xl font-mono font-bold text-green-400 leading-none tracking-tight">
                 {stakedDisplay > 0 ? stakedDisplay.toFixed(7) : "0.0000000"}
               </span>
-              <span className="text-green-900 text-[10px] font-black uppercase tracking-widest mt-1">GIFT TOKENS</span>
+              <span className="text-green-900 text-[10px] font-black uppercase tracking-widest mt-1">GFT TOKENS</span>
             </div>
             <div className="mt-4 flex items-center gap-2 bg-green-500/10 px-3 py-1 rounded-full border border-green-500/20">
               <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-ping"></div>

@@ -56,6 +56,12 @@ body {
   white-space: nowrap;
 }
 
+/* Wallet modal must sit above sticky site header (z-50) */
+.wallet-adapter-modal-wrapper,
+.wallet-adapter-modal {
+  z-index: 100000 !important;
+}
+
 @media (min-width: 640px) {
   .site-wallet-btn .wallet-adapter-button {
     height: auto !important;
