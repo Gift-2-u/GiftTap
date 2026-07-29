@@ -12,6 +12,10 @@ if (typeof window !== 'undefined') {
   if (!window.process.versions) {
     window.process.versions = { node: '18.0.0' };
   }
+  // Clear sticky Select Wallet state from earlier experiments
+  try {
+    localStorage.removeItem('gift2u_solana_wallet');
+  } catch (_) {}
 }
 globalThis.Buffer = Buffer;
 globalThis.process = process;
@@ -19,8 +23,28 @@ globalThis.process = process;
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Analytics } from '@vercel/analytics/react';
+import {
+  createDefaultAuthorizationCache,
+  createDefaultChainSelector,
+  createDefaultWalletNotFoundHandler,
+  registerMwa,
+} from '@solana-mobile/wallet-standard-mobile';
 import './index.css';
 import App from './App.jsx';
+
+// Mobile Wallet Adapter (Android): Select Wallet → Mobile Wallet Adapter → Backpack/Phantom/etc.
+// Must run once before the React tree mounts.
+registerMwa({
+  appIdentity: {
+    name: 'Gift2U',
+    uri: 'https://gift2u.fun',
+    icon: '/Gift2u_logo.png',
+  },
+  authorizationCache: createDefaultAuthorizationCache(),
+  chains: ['solana:mainnet', 'solana:devnet'],
+  chainSelector: createDefaultChainSelector(),
+  onWalletNotFound: createDefaultWalletNotFoundHandler(),
+});
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>
