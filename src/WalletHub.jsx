@@ -1,9 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useWallet, useConnection } from '@solana/wallet-adapter-react';
-import { WalletMultiButton, useWalletModal } from '@solana/wallet-adapter-react-ui';
-import { WalletReadyState } from '@solana/wallet-adapter-base';
-import { toast } from 'react-hot-toast';
-import { isLocalOrPrivateHost } from './backpackWalletAdapter';
+import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
 import { Connection, PublicKey, LAMPORTS_PER_SOL } from '@solana/web3.js';
 import { getAssociatedTokenAddressSync } from '@solana/spl-token';
 import { MINT_ADDRESS } from './config';
@@ -47,18 +44,8 @@ const tabBtn = (active) => ({
  */
 
 export function SolanaWalletPanel({ note }) {
-  const {
-    publicKey,
-    connected,
-    connecting,
-    disconnect,
-    wallet,
-    wallets,
-    select,
-    connect,
-  } = useWallet();
+  const { publicKey, connected, disconnect, wallet } = useWallet();
   const { connection } = useConnection();
-  const { setVisible } = useWalletModal();
   const address = publicKey?.toBase58() || '';
 
   const [balances, setBalances] = useState({
@@ -77,20 +64,6 @@ export function SolanaWalletPanel({ note }) {
       return 'USD';
     }
   });
-
-  const isPhone =
-    typeof navigator !== 'undefined' &&
-    /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || '');
-  const isAndroid =
-    typeof navigator !== 'undefined' && /Android/i.test(navigator.userAgent || '');
-  const localHost =
-    typeof window !== 'undefined' && isLocalOrPrivateHost(window.location.hostname);
-
-  const mwaWallet = wallets.find(
-    (w) =>
-      w.adapter.name === 'Mobile Wallet Adapter' ||
-      /mobile wallet adapter/i.test(String(w.adapter.name)),
-  );
 
   // User wallets hold game tokens on mainnet; site staking Connection may be devnet.
   const loadBalances = useCallback(async () => {
@@ -148,68 +121,6 @@ export function SolanaWalletPanel({ note }) {
     return () => clearInterval(t);
   }, [connected, publicKey, loadBalances]);
 
-  const clearWallet = async () => {
-    try {
-      await disconnect();
-    } catch {
-      /* ignore */
-    }
-    select(null);
-    try {
-      localStorage.removeItem('gift2u_solana_wallet');
-      localStorage.removeItem('walletName');
-    } catch {
-      /* ignore */
-    }
-  };
-
-  const connectNamed = async (name) => {
-    try {
-      const entry = wallets.find((w) => w.adapter.name === name);
-      if (!entry) {
-        toast.error(`${name} is not available in this browser`);
-        return;
-      }
-      if (
-        localHost &&
-        entry.readyState === WalletReadyState.Loadable &&
-        name !== 'Mobile Wallet Adapter'
-      ) {
-        toast.error(
-          'Localhost cannot open wallet apps reliably. Deploy or use ngrok HTTPS, open the site inside Backpack browser, or use Mobile Wallet Adapter on Android.',
-          { duration: 7000 },
-        );
-      }
-      select(name);
-      let lastErr;
-      for (let i = 0; i < 8; i++) {
-        await new Promise((r) => setTimeout(r, 60));
-        try {
-          await connect();
-          lastErr = null;
-          break;
-        } catch (e) {
-          lastErr = e;
-          if (!/not selected|WalletNotSelected/i.test(String(e?.message || e))) {
-            throw e;
-          }
-        }
-      }
-      if (lastErr) throw lastErr;
-    } catch (e) {
-      console.error(e);
-      toast.error(e?.message || `Could not connect ${name}`);
-      try {
-        select(null);
-        localStorage.removeItem('gift2u_solana_wallet');
-      } catch {
-        /* ignore */
-      }
-    }
-  };
-
-  const openModal = () => setVisible(true);
-
   return (
     <div style={{ textAlign: 'left' }}>
       <p style={{ color: '#888', fontSize: '12px', marginTop: 0, marginBottom: '14px', lineHeight: 1.4 }}>
@@ -217,155 +128,21 @@ export function SolanaWalletPanel({ note }) {
           'Your external Solana wallet (Phantom, Solflare, Backpack…). Use for vault, staking, and outside the game.'}
       </p>
 
-      {isPhone && (
-        <div
-          style={{
-            background: localHost ? 'rgba(248,113,113,0.12)' : 'rgba(255, 215, 0, 0.08)',
-            border: localHost
-              ? '1px solid rgba(248,113,113,0.5)'
-              : '1px solid rgba(255, 215, 0, 0.35)',
-            borderRadius: '10px',
-            padding: '10px 12px',
-            marginBottom: '14px',
-            fontSize: '11px',
-            color: '#ccc',
-            lineHeight: 1.45,
-          }}
-        >
-          {localHost ? (
-            <>
-              <strong style={{ color: '#f87171' }}>Localhost / LAN testing:</strong> Phone
-              browsers cannot “detect” installed apps, and Backpack deep-links to{' '}
-              <code style={{ color: '#fff' }}>localhost</code> or{' '}
-              <code style={{ color: '#fff' }}>192.168…</code> usually open a download page.
-              Use a public HTTPS URL, or open this URL from Backpack’s in-app browser
-              {isAndroid ? ', or tap Mobile Wallet Adapter below' : ''}.
-            </>
-          ) : (
-            <>
-              <strong style={{ color: '#ffd700' }}>Phone:</strong> Nothing will say
-              “Detected” in Safari/Chrome — that only works for desktop extensions. On
-              Android prefer <strong style={{ color: '#fff' }}>Mobile Wallet Adapter</strong>
-              . Or open this site from inside Backpack / Phantom / Solflare.
-            </>
-          )}
-        </div>
-      )}
+      <div
+        className="wallet-hub-select-wrap"
+        style={{
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          width: '100%',
+          marginBottom: '16px',
+        }}
+      >
+        <WalletMultiButton className="wallet-hub-select-btn" />
+      </div>
 
-      {!connected ? (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '12px' }}>
-          {isAndroid && mwaWallet && (
-            <button
-              type="button"
-              disabled={connecting}
-              onClick={() => connectNamed(mwaWallet.adapter.name)}
-              style={{
-                width: '100%',
-                padding: '14px',
-                borderRadius: '12px',
-                border: 'none',
-                background: '#fbef43',
-                color: '#000',
-                fontWeight: 'bold',
-                fontSize: '14px',
-                cursor: connecting ? 'wait' : 'pointer',
-              }}
-            >
-              {connecting ? 'Connecting…' : 'Connect phone wallet (recommended)'}
-            </button>
-          )}
-
-          {isPhone && (
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-              {['Backpack', 'Phantom', 'Solflare', 'Trust'].map((name) => {
-                const available = wallets.some((w) => w.adapter.name === name);
-                if (!available) return null;
-                return (
-                  <button
-                    key={name}
-                    type="button"
-                    disabled={connecting}
-                    onClick={() => connectNamed(name)}
-                    style={{
-                      padding: '12px 8px',
-                      borderRadius: '10px',
-                      border: '1px solid #333',
-                      background: '#1c1e22',
-                      color: '#fff',
-                      fontWeight: 'bold',
-                      fontSize: '12px',
-                      cursor: connecting ? 'wait' : 'pointer',
-                    }}
-                  >
-                    {name}
-                  </button>
-                );
-              })}
-            </div>
-          )}
-
-          <div
-            className="wallet-hub-select-wrap"
-            style={{
-              display: 'flex',
-              justifyContent: 'center',
-              alignItems: 'center',
-              width: '100%',
-            }}
-          >
-            <WalletMultiButton className="wallet-hub-select-btn" />
-          </div>
-
-          {(wallet || connecting) && (
-            <button
-              type="button"
-              onClick={clearWallet}
-              style={{
-                background: 'none',
-                border: 'none',
-                color: '#f87171',
-                fontSize: '12px',
-                cursor: 'pointer',
-                textDecoration: 'underline',
-                padding: '4px',
-              }}
-            >
-              Clear stuck wallet / try another
-            </button>
-          )}
-
-          {!isPhone && (
-            <button
-              type="button"
-              onClick={openModal}
-              style={{
-                background: 'none',
-                border: 'none',
-                color: '#888',
-                fontSize: '11px',
-                cursor: 'pointer',
-              }}
-            >
-              More wallet options
-            </button>
-          )}
-        </div>
-      ) : (
+      {connected && address ? (
         <>
-          <div
-            className="wallet-hub-select-wrap"
-            style={{
-              display: 'flex',
-              justifyContent: 'center',
-              alignItems: 'center',
-              width: '100%',
-              marginBottom: '12px',
-            }}
-          >
-            <WalletMultiButton className="wallet-hub-select-btn" />
-          </div>
-
-          {/* Same token detail UI as game wallet */}
           <TokenBalanceList
             balances={balances}
             currency={displayCurrency}
@@ -441,7 +218,7 @@ export function SolanaWalletPanel({ note }) {
               </button>
               <button
                 type="button"
-                onClick={clearWallet}
+                onClick={() => disconnect()}
                 style={{
                   flex: 1,
                   padding: '10px',
@@ -458,6 +235,10 @@ export function SolanaWalletPanel({ note }) {
             </div>
           </div>
         </>
+      ) : (
+        <p style={{ color: '#555', fontSize: '11px', textAlign: 'center', margin: 0 }}>
+          Not connected. Tap Select Wallet to choose a Solana wallet.
+        </p>
       )}
     </div>
   );
