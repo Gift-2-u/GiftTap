@@ -3,13 +3,15 @@ import { Buffer } from 'buffer';
 if (typeof window !== 'undefined') {
   window.Buffer = Buffer;
   window.global = window;
+  // Clear old sticky selection so the button shows "Select Wallet" again
+  try { localStorage.removeItem('gift2u_solana_wallet'); } catch (_) {}
 }
 import React, { useMemo, useState, useEffect, useCallback, Suspense, lazy } from 'react';
 import { BrowserRouter as Router, Routes, Route, Link, useLocation } from 'react-router-dom';
 import { ConnectionProvider, WalletProvider, useAnchorWallet, useConnection, useWallet } from '@solana/wallet-adapter-react';
 import { WalletModalProvider } from '@solana/wallet-adapter-react-ui';
-// Import individual adapters (not the full wallets barrel) to keep the bundle smaller.
-// Backpack, Glow, and other Wallet-Standard wallets still appear automatically.
+// Standard adapters. Wallet Standard wallets (Backpack, Glow, …) appear automatically.
+// Mobile Wallet Adapter is auto-added by WalletProvider.
 import { PhantomWalletAdapter } from '@solana/wallet-adapter-phantom';
 import { SolflareWalletAdapter } from '@solana/wallet-adapter-solflare';
 import { CoinbaseWalletAdapter } from '@solana/wallet-adapter-coinbase';
@@ -23,14 +25,6 @@ import { BitgetWalletAdapter } from '@solana/wallet-adapter-bitkeep';
 import { CloverWalletAdapter } from '@solana/wallet-adapter-clover';
 import { Coin98WalletAdapter } from '@solana/wallet-adapter-coin98';
 import { SafePalWalletAdapter } from '@solana/wallet-adapter-safepal';
-import {
-  SolanaMobileWalletAdapter,
-  createDefaultAddressSelector,
-  createDefaultAuthorizationResultCache,
-  createDefaultWalletNotFoundHandler,
-} from '@solana-mobile/wallet-adapter-mobile';
-import { WalletAdapterNetwork } from '@solana/wallet-adapter-base';
-import { BackpackWalletAdapter } from './backpackWalletAdapter';
 import * as splToken from "@solana/spl-token";
 import { clusterApiUrl, PublicKey, SystemProgram } from '@solana/web3.js';
 import { Program, AnchorProvider, BN } from '@coral-xyz/anchor';
@@ -53,98 +47,34 @@ const [vaultAuthority] = PublicKey.findProgramAddressSync(
   PROGRAM_ID // Your '8pWy3...' address
 );
 
-/** True for phone browsers (extensions don't exist like on desktop). */
-function isPhoneBrowser() {
-  if (typeof navigator === 'undefined') return false;
-  return /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || '');
-}
-
 // --- MAIN WRAPPER ---
 export default function App() {
   // Site staking IDL is still wired for devnet; Standard wallets still connect on any cluster.
   const endpoint = useMemo(() => clusterApiUrl('devnet'), []);
 
-  /**
-   * Desktop: adapters + Wallet Standard (extra extensions auto-appear when installed).
-   * Phone:
-   *   - Backpack / Phantom / Solflare use browse deep-links → open site in wallet browser
-   *   - Android Chrome also gets Solana Mobile Wallet Adapter (discovers installed apps)
-   * Mobile browsers never "detect" extensions like PC — that is normal, not a bug.
-   */
-  const wallets = useMemo(() => {
-    const phone = isPhoneBrowser();
-    const ua = typeof navigator !== 'undefined' ? navigator.userAgent || '' : '';
-    const isAndroid = /Android/i.test(ua);
-
-    const list = [];
-
-    // Android: explicit MWA so installed apps (Backpack, Phantom, etc.) show up
-    if (phone && isAndroid && typeof window !== 'undefined') {
-      list.push(
-        new SolanaMobileWalletAdapter({
-          addressSelector: createDefaultAddressSelector(),
-          appIdentity: {
-            name: 'Gift2U',
-            uri: window.location.origin,
-            icon: `${window.location.origin}/Gift2u_logo.png`,
-          },
-          authorizationResultCache: createDefaultAuthorizationResultCache(),
-          cluster: WalletAdapterNetwork.Devnet,
-          onWalletNotFound: createDefaultWalletNotFoundHandler(),
-        }),
-      );
-    }
-
-    // Backpack first so it is always visible (desktop inject + mobile browse UL)
-    list.push(new BackpackWalletAdapter());
-    list.push(new PhantomWalletAdapter());
-    list.push(new SolflareWalletAdapter());
-    list.push(new CoinbaseWalletAdapter());
-    list.push(new TrustWalletAdapter());
-
-    if (!phone) {
-      list.push(
-        new LedgerWalletAdapter(),
-        new TorusWalletAdapter(),
-        new NightlyWalletAdapter(),
-        new MathWalletAdapter(),
-        new TokenPocketWalletAdapter(),
-        new BitgetWalletAdapter(),
-        new CloverWalletAdapter(),
-        new Coin98WalletAdapter(),
-        new SafePalWalletAdapter(),
-      );
-    }
-
-    return list;
-  }, []);
-
-  // Only auto-reconnect wallets that are actually injected (never auto deep-link)
-  const handleAutoConnect = useCallback(async (adapter) => {
-    try {
-      return adapter?.readyState === 'Installed';
-    } catch {
-      return false;
-    }
-  }, []);
-
-  // Custom error handler: toast + never force-open "download" store pages
-  const handleWalletError = useCallback((error) => {
-    console.error('[wallet]', error);
-    const msg = error?.message || String(error) || 'Wallet error';
-    // Skip noisy disconnect spam
-    if (/disconnect/i.test(msg) && !/error/i.test(msg)) return;
-    toast.error(msg.length > 180 ? msg.slice(0, 180) + '…' : msg, { duration: 6000 });
-  }, []);
+  // Standard Select Wallet setup (site + game share this provider)
+  const wallets = useMemo(
+    () => [
+      new PhantomWalletAdapter(),
+      new SolflareWalletAdapter(),
+      new CoinbaseWalletAdapter(),
+      new LedgerWalletAdapter(),
+      new TrustWalletAdapter(),
+      new TorusWalletAdapter(),
+      new NightlyWalletAdapter(),
+      new MathWalletAdapter(),
+      new TokenPocketWalletAdapter(),
+      new BitgetWalletAdapter(),
+      new CloverWalletAdapter(),
+      new Coin98WalletAdapter(),
+      new SafePalWalletAdapter(),
+    ],
+    [],
+  );
 
   return (
     <ConnectionProvider endpoint={endpoint}>
-      <WalletProvider
-        wallets={wallets}
-        autoConnect={handleAutoConnect}
-        onError={handleWalletError}
-        localStorageKey="gift2u_solana_wallet"
-      >
+      <WalletProvider wallets={wallets} autoConnect>
         <WalletModalProvider>
           <Router>
             <Toaster position="bottom-right" /> {/* Added this */}
