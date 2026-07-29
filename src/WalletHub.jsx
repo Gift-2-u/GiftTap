@@ -46,6 +46,29 @@ export function SolanaWalletPanel({ note }) {
           'Your external Solana wallet (Phantom, Solflare, Backpack…). Use for vault, staking, and outside the game.'}
       </p>
 
+      {typeof navigator !== 'undefined' &&
+        /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || '') && (
+          <div
+            style={{
+              background: 'rgba(255, 215, 0, 0.08)',
+              border: '1px solid rgba(255, 215, 0, 0.35)',
+              borderRadius: '10px',
+              padding: '10px 12px',
+              marginBottom: '14px',
+              fontSize: '11px',
+              color: '#ccc',
+              lineHeight: 1.45,
+            }}
+          >
+            <strong style={{ color: '#ffd700' }}>Phone tip:</strong> Chrome/Safari
+            cannot see wallet apps the way desktop extensions do — so nothing says
+            &quot;Detected&quot;. Tap <strong style={{ color: '#fff' }}>Backpack</strong>,
+            Phantom, or Solflare to open this site inside that wallet. On Android you
+            can also use <strong style={{ color: '#fff' }}>Mobile Wallet Adapter</strong>{' '}
+            to pick any installed Solana app.
+          </div>
+        )}
+
       <div
         className="wallet-hub-select-wrap"
         style={{

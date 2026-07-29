@@ -23,6 +23,14 @@ import { BitgetWalletAdapter } from '@solana/wallet-adapter-bitkeep';
 import { CloverWalletAdapter } from '@solana/wallet-adapter-clover';
 import { Coin98WalletAdapter } from '@solana/wallet-adapter-coin98';
 import { SafePalWalletAdapter } from '@solana/wallet-adapter-safepal';
+import {
+  SolanaMobileWalletAdapter,
+  createDefaultAddressSelector,
+  createDefaultAuthorizationResultCache,
+  createDefaultWalletNotFoundHandler,
+} from '@solana-mobile/wallet-adapter-mobile';
+import { WalletAdapterNetwork } from '@solana/wallet-adapter-base';
+import { BackpackWalletAdapter } from './backpackWalletAdapter';
 import * as splToken from "@solana/spl-token";
 import { clusterApiUrl, PublicKey, SystemProgram } from '@solana/web3.js';
 import { Program, AnchorProvider, BN } from '@coral-xyz/anchor';
@@ -57,39 +65,58 @@ export default function App() {
   const endpoint = useMemo(() => clusterApiUrl('devnet'), []);
 
   /**
-   * Desktop: full list + Wallet Standard (Backpack, Glow, etc. when extensions installed).
-   * Phone: only wallets that work on mobile (deep-link / in-app browser).
-   *   - Phantom & Solflare open their apps via universal links
-   *   - WalletProvider auto-adds "Mobile Wallet Adapter" on Android for installed Solana apps
-   *   - Chrome extensions (Backpack/Glow desktop) will NOT appear on phones — that is normal
+   * Desktop: adapters + Wallet Standard (extra extensions auto-appear when installed).
+   * Phone:
+   *   - Backpack / Phantom / Solflare use browse deep-links → open site in wallet browser
+   *   - Android Chrome also gets Solana Mobile Wallet Adapter (discovers installed apps)
+   * Mobile browsers never "detect" extensions like PC — that is normal, not a bug.
    */
   const wallets = useMemo(() => {
     const phone = isPhoneBrowser();
+    const ua = typeof navigator !== 'undefined' ? navigator.userAgent || '' : '';
+    const isAndroid = /Android/i.test(ua);
 
-    if (phone) {
-      return [
-        new PhantomWalletAdapter(),
-        new SolflareWalletAdapter(),
-        new CoinbaseWalletAdapter(),
-        new TrustWalletAdapter(),
-      ];
+    const list = [];
+
+    // Android: explicit MWA so installed apps (Backpack, Phantom, etc.) show up
+    if (phone && isAndroid && typeof window !== 'undefined') {
+      list.push(
+        new SolanaMobileWalletAdapter({
+          addressSelector: createDefaultAddressSelector(),
+          appIdentity: {
+            name: 'Gift2U',
+            uri: window.location.origin,
+            icon: `${window.location.origin}/Gift2u_logo.png`,
+          },
+          authorizationResultCache: createDefaultAuthorizationResultCache(),
+          cluster: WalletAdapterNetwork.Devnet,
+          onWalletNotFound: createDefaultWalletNotFoundHandler(),
+        }),
+      );
     }
 
-    return [
-      new PhantomWalletAdapter(),
-      new SolflareWalletAdapter(),
-      new CoinbaseWalletAdapter(),
-      new LedgerWalletAdapter(),
-      new TrustWalletAdapter(),
-      new TorusWalletAdapter(),
-      new NightlyWalletAdapter(),
-      new MathWalletAdapter(),
-      new TokenPocketWalletAdapter(),
-      new BitgetWalletAdapter(),
-      new CloverWalletAdapter(),
-      new Coin98WalletAdapter(),
-      new SafePalWalletAdapter(),
-    ];
+    // Backpack first so it is always visible (desktop inject + mobile browse UL)
+    list.push(new BackpackWalletAdapter());
+    list.push(new PhantomWalletAdapter());
+    list.push(new SolflareWalletAdapter());
+    list.push(new CoinbaseWalletAdapter());
+    list.push(new TrustWalletAdapter());
+
+    if (!phone) {
+      list.push(
+        new LedgerWalletAdapter(),
+        new TorusWalletAdapter(),
+        new NightlyWalletAdapter(),
+        new MathWalletAdapter(),
+        new TokenPocketWalletAdapter(),
+        new BitgetWalletAdapter(),
+        new CloverWalletAdapter(),
+        new Coin98WalletAdapter(),
+        new SafePalWalletAdapter(),
+      );
+    }
+
+    return list;
   }, []);
 
   return (
