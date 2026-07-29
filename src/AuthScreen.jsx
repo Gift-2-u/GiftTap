@@ -5,7 +5,7 @@ import { registerAccount, loginAccount, suggestUsername, formatAuthError } from 
  * Cross-device account gate: Sign up / Log in with unique username + password.
  * 12-word restore remains available for legacy / lost-password recovery.
  */
-const AuthScreen = ({ onAuthenticated, onRestoreAccount }) => {
+const AuthScreen = ({ onAuthenticated, onRestoreAccount, embedded = false }) => {
   const [mode, setMode] = useState('login'); // 'login' | 'signup' | 'restore'
   const [username, setUsername] = useState(() => suggestUsername());
   const [password, setPassword] = useState('');
@@ -15,10 +15,10 @@ const AuthScreen = ({ onAuthenticated, onRestoreAccount }) => {
   const [error, setError] = useState('');
 
   const box = {
-    background: '#1c1e22',
-    border: '1px solid #333',
+    background: embedded ? 'transparent' : '#1c1e22',
+    border: embedded ? 'none' : '1px solid #333',
     borderRadius: '16px',
-    padding: '24px',
+    padding: embedded ? '0' : '24px',
     maxWidth: '400px',
     width: '100%',
     boxSizing: 'border-box',
@@ -124,23 +124,42 @@ const AuthScreen = ({ onAuthenticated, onRestoreAccount }) => {
 
   return (
     <div
-      style={{
-        minHeight: '100vh',
-        background: 'radial-gradient(circle at center, #1c1e22 0%, #000 100%)',
-        color: '#fff',
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: '24px',
-        boxSizing: 'border-box',
-        fontFamily: 'system-ui, sans-serif',
-      }}
+      style={
+        embedded
+          ? {
+              color: '#fff',
+              width: '100%',
+              boxSizing: 'border-box',
+              fontFamily: 'system-ui, sans-serif',
+              textAlign: 'left',
+            }
+          : {
+              minHeight: '100vh',
+              background: 'radial-gradient(circle at center, #1c1e22 0%, #000 100%)',
+              color: '#fff',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: '24px',
+              boxSizing: 'border-box',
+              fontFamily: 'system-ui, sans-serif',
+            }
+      }
     >
-      <h1 style={{ color: '#ffd700', margin: '0 0 8px', fontSize: '28px' }}>Gift Tap</h1>
-      <p style={{ color: '#888', margin: '0 0 24px', textAlign: 'center', fontSize: '14px', maxWidth: '360px' }}>
-        Same username + password on phone and desktop. No need for your 12 words every time.
-      </p>
+      {!embedded && (
+        <>
+          <h1 style={{ color: '#ffd700', margin: '0 0 8px', fontSize: '28px' }}>Gift Tap</h1>
+          <p style={{ color: '#888', margin: '0 0 24px', textAlign: 'center', fontSize: '14px', maxWidth: '360px' }}>
+            Same username + password on phone and desktop. No need for your 12 words every time.
+          </p>
+        </>
+      )}
+      {embedded && (
+        <p style={{ color: '#888', margin: '0 0 12px', fontSize: '12px', lineHeight: 1.4 }}>
+          Log in here to load your <strong style={{ color: '#ffd700' }}>game wallet</strong> without leaving this page.
+        </p>
+      )}
 
       <div style={box}>
         <div style={{ display: 'flex', marginBottom: '20px' }}>

@@ -44,7 +44,18 @@ body {
   min-width: 0;
 }
 
-/* Compact wallet button in site header on small screens */
+/* Site header Wallet hub trigger — always readable (overrides light-mode button styles) */
+.site-header-wallet-btn {
+  background: #7c3aed !important;
+  color: #ffffff !important;
+  border: 1px solid rgba(167, 139, 250, 0.45) !important;
+}
+.site-header-wallet-btn:hover {
+  background: #6d28d9 !important;
+  color: #ffffff !important;
+}
+
+/* Compact wallet button if used elsewhere */
 .site-wallet-btn .wallet-adapter-button {
   height: 36px !important;
   line-height: 36px !important;
@@ -54,6 +65,24 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* Solana tab "Select Wallet" — full width + centered label */
+.wallet-hub-select-wrap {
+  width: 100%;
+}
+.wallet-hub-select-wrap .wallet-adapter-button,
+.wallet-hub-select-btn.wallet-adapter-button,
+button.wallet-hub-select-btn {
+  width: 100% !important;
+  max-width: 100% !important;
+  height: 44px !important;
+  margin: 0 auto !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  border-radius: 12px !important;
+  font-weight: 700 !important;
 }
 
 /* Wallet modal must sit above sticky site header (z-50) */

@@ -29,6 +29,7 @@ import { Program, AnchorProvider, BN } from '@coral-xyz/anchor';
 import { Toaster, toast } from 'react-hot-toast';
 import DailyGiftBox from './DailyGiftBox';
 import WalletHub from './WalletHub';
+import { getPlayerId, isLoggedIn } from './playerIdentity';
 import idl from "../target/idl/gift_staking.json";
 import '@solana/wallet-adapter-react-ui/styles.css';
 
@@ -125,16 +126,23 @@ const Navigation = () => {
   const location = useLocation();
   const { publicKey, connected } = useWallet();
   const [walletHubOpen, setWalletHubOpen] = useState(false);
+  const gameLoggedIn = typeof window !== 'undefined' && isLoggedIn() && !!getPlayerId();
 
   // Full-screen game: hide site chrome only on /play
   if (location.pathname.startsWith('/play')) {
     return null;
   }
 
-  const short =
+  // Prefer showing Solana short addr if connected; else "Game" if Gift Tap session exists
+  const shortSol =
     connected && publicKey
       ? `${publicKey.toBase58().slice(0, 4)}…${publicKey.toBase58().slice(-4)}`
       : null;
+  const walletLabel = shortSol
+    ? `Wallet ${shortSol}`
+    : gameLoggedIn
+      ? 'Wallet · Game'
+      : 'Wallet';
 
   return (
     <>
@@ -156,52 +164,26 @@ const Navigation = () => {
             <button
               type="button"
               onClick={() => setWalletHubOpen(true)}
-              className="shrink-0 rounded-full bg-purple-600 hover:bg-purple-500 px-3 py-2 text-xs sm:text-sm font-bold text-white border border-white/10"
+              className="site-header-wallet-btn shrink-0 rounded-full px-3 py-2 text-xs sm:text-sm font-bold border border-purple-400/40"
+              style={{
+                background: '#7c3aed',
+                color: '#ffffff',
+                cursor: 'pointer',
+              }}
             >
-              {short ? `Wallet ${short}` : 'Wallet'}
+              {walletLabel}
             </button>
           </div>
         </div>
       </nav>
 
+      {/* Same hub as the game: Game tab = real Gift Tap wallet; Solana tab = Phantom etc. */}
       <WalletHub
         isOpen={walletHubOpen}
         onClose={() => setWalletHubOpen(false)}
         defaultTab="game"
         overlayStyle={{ zIndex: 100000 }}
-        gameContent={
-          <div style={{ textAlign: 'left' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-              <h3 style={{ margin: 0, color: '#ffd700' }}>Game Wallet</h3>
-              <button
-                type="button"
-                onClick={() => setWalletHubOpen(false)}
-                style={{ background: 'none', border: 'none', color: '#888', fontSize: '18px', cursor: 'pointer' }}
-              >
-                ✕
-              </button>
-            </div>
-            <p style={{ color: '#ccc', fontSize: '13px', lineHeight: 1.45, marginBottom: '16px' }}>
-              Your <strong>Game wallet</strong> is created inside Gift Tap (play account).
-              Locksmith NFTs and in-game balances live there.
-            </p>
-            <ul style={{ color: '#888', fontSize: '12px', lineHeight: 1.5, paddingLeft: '18px', marginBottom: '18px' }}>
-              <li>Shop &amp; Locksmith marketplace → Game wallet</li>
-              <li>Shard swap unlock → Game wallet NFT</li>
-              <li>Vault / staking on this site → Solana tab (Phantom, etc.)</li>
-            </ul>
-            <Link
-              to="/play"
-              onClick={() => setWalletHubOpen(false)}
-              className="block w-full text-center rounded-xl bg-yellow-400 hover:bg-yellow-300 text-black font-black py-3"
-            >
-              Open Gift Tap →
-            </Link>
-            <p style={{ color: '#555', fontSize: '11px', marginTop: '12px', marginBottom: 0, textAlign: 'center' }}>
-              Log in / sign up in the game to manage your game wallet.
-            </p>
-          </div>
-        }
+        useSharedGameWallet
       />
     </>
   );

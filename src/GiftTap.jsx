@@ -13,6 +13,8 @@ import WhitepaperModal from './WhitepaperModal';
 import LegalModal from './LegalModal';
 import { showRewardedAdWaterfall, AD_MIN_WATCH_SECONDS } from './adService';
 import WalletHub from './WalletHub';
+import TokenBalanceList from './TokenBalanceList';
+import { fetchFiatRates, FIAT_CURRENCIES } from './fiatPrices';
 import bs58 from "bs58";
 import CryptoJS from 'crypto-js';
 import { keypairFromMnemonic } from './solanaWallet';
@@ -365,8 +367,23 @@ const GiftTapGame = () => {
   const [decryptedPhrase, setDecryptedPhrase] = useState("");
   // Settings Menu State
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const [displayCurrency, setDisplayCurrency] = useState('USD'); 
-  const [solFiatRates, setSolFiatRates] = useState({}); // Now an empty object that fills dynamically
+  const [displayCurrency, setDisplayCurrencyState] = useState(() => {
+    try {
+      return localStorage.getItem('gift2u_display_currency') || 'USD';
+    } catch {
+      return 'USD';
+    }
+  });
+  const setDisplayCurrency = (c) => {
+    setDisplayCurrencyState(c);
+    try {
+      localStorage.setItem('gift2u_display_currency', c);
+    } catch {
+      /* ignore */
+    }
+  };
+  /** { sol: { USD: n, ... }, usdc: { USD: n, ... } } from CoinGecko */
+  const [fiatRates, setFiatRates] = useState({ sol: {}, usdc: {} });
   const [appLanguage, setAppLanguage] = useState('EN');
   const [isWhitepaperOpen, setIsWhitepaperOpen] = useState(false);
   const [legalKind, setLegalKind] = useState(null); // 'terms' | 'privacy' | null
@@ -510,37 +527,21 @@ const GiftTapGame = () => {
     return '0.00';
   };
 
-  const ALL_CURRENCIES = [
-    'USD', 'EUR', 'CAD', 'GBP', 'AUD', 'JPY', 'CNY', 'INR', 'PHP', 'IDR', 
-    'BRL', 'MXN', 'ARS', 'NGN', 'ZAR', 'TRY', 'AED', 'SGD', 'HKD', 'NZD', 
-    'KRW', 'THB', 'VND', 'MYR', 'CHF', 'SEK', 'NOK', 'DKK', 'PLN', 'CZK'
-  ];
+  const ALL_CURRENCIES = FIAT_CURRENCIES;
 
-  // Fetch real-time SOL price for ALL currencies instantly
+  // Live SOL + USDC → all fiat currencies (menu currency picker)
   useEffect(() => {
-    const fetchFiatPrices = async () => {
+    const load = async () => {
       try {
-        // Automatically formats the array into a comma-separated string for the API
-        const coinString = ALL_CURRENCIES.join(',').toLowerCase();
-        const res = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=${coinString}`);
-        const data = await res.json();
-        
-        if (data && data.solana) {
-          // Dynamically map the API response to uppercase keys
-          const rates = {};
-          ALL_CURRENCIES.forEach(currency => {
-            const lowerKey = currency.toLowerCase();
-            if (data.solana[lowerKey]) {
-              rates[currency] = data.solana[lowerKey];
-            }
-          });
-          setSolFiatRates(rates);
-        }
+        const rates = await fetchFiatRates();
+        setFiatRates(rates);
       } catch (err) {
-        console.error("Failed to fetch global fiat prices:", err);
+        console.error('Failed to fetch global fiat prices:', err);
       }
     };
-    fetchFiatPrices();
+    load();
+    const id = setInterval(load, 5 * 60 * 1000);
+    return () => clearInterval(id);
   }, []);
 
   // The Translation Engine Dictionary
@@ -2804,20 +2805,12 @@ const GiftTapGame = () => {
                     </div>
                   ) : (
                     <>
-                      {playerWallet ? (
-                        <p style={{ fontSize: '11px', color: '#666', marginBottom: '8px', wordBreak: 'break-all' }}>
-                          {playerWallet.slice(0, 6)}…{playerWallet.slice(-6)}
-                        </p>
-                      ) : null}
-                      <p style={{ fontSize: '12px', color: '#888', marginBottom: '15px' }}>Game wallet balance (Locksmith NFTs stay here).</p>
-                      <div style={{ marginTop: '10px' }}>
-                        {Object.entries(balances).map(([key, value]) => (
-                          <div key={key} style={styles.balanceRow}>
-                            <span style={{ textTransform: 'uppercase', color: '#888', fontSize: '12px' }}>{key}:</span>
-                            <span style={{ fontWeight: 'bold' }}>{key === 'GFTshards' ? value.toLocaleString() : value.toFixed(4)}</span>
-                          </div>
-                        ))}
-                      </div>
+                      <TokenBalanceList
+                        balances={balances}
+                        currency={displayCurrency}
+                        rates={fiatRates}
+                        style={{ marginBottom: '14px' }}
+                      />
                       <div style={styles.actionRow}>
                         <button style={styles.actionBtn} onClick={() => setIsReceiveOpen(true)}>Receive</button>
                         <button style={styles.actionBtn} onClick={() => setIsWithdrawOpen(true)}>Send</button>
