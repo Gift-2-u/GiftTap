@@ -1,8 +1,8 @@
 /**
- * Backpack wallet adapter with desktop inject + mobile browse deep-link.
- * Mirrors Phantom/Solflare: on phone without inject, open the site inside Backpack.
- *
- * Browse UL: https://backpack.app/ul/v1/browse/<url>?ref=<ref>
+ * Backpack adapter:
+ * - Desktop / in-app browser: window.backpack (Installed)
+ * - Mobile: Loadable → open site inside Backpack via browse UL
+ * - Local/private hosts: refuse broken deep-links (they send users to "download")
  */
 import {
   BaseMessageSignerWalletAdapter,
@@ -25,26 +25,66 @@ import { PublicKey } from '@solana/web3.js';
 
 export const BackpackWalletName = 'Backpack';
 
+/** Official-looking Backpack-style mark (not a red error square). */
+const BACKPACK_ICON =
+  'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMDggMTA4IiBmaWxsPSJub25lIj48cmVjdCB3aWR0aD0iMTA4IiBoZWlnaHQ9IjEwOCIgcng9IjI0IiBmaWxsPSIjMEYwRjBGIi8+PHBhdGggZD0iTTMwIDM4YzAtNi42MjcgNS4zNzMtMTIgMTItMTJoMjRjNi42MjcgMCAxMiA1LjM3MyAxMiAxMnY4SDMwdi04eiIgZmlsbD0iI0UzM0UzRiIvPjxwYXRoIGQ9Ik0yOCA0OGg1MnYyOGMwIDYuNjI3LTUuMzczIDEyLTEyIDEySDQwYy02LjYyNyAwLTEyLTUuMzczLTEyLTEyVjQ4eiIgZmlsbD0iI0UzM0UzRiIvPjxwYXRoIGQ9Ik00OCA1OGgxMnYxOEg0OFY1OHoiIGZpbGw9IiMwRjBGMEYiLz48L3N2Zz4=';
+
 function isMobileUserAgent() {
   if (typeof navigator === 'undefined') return false;
   return /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || '');
 }
 
-function getBackpackProvider() {
+function isAndroid() {
+  if (typeof navigator === 'undefined') return false;
+  return /Android/i.test(navigator.userAgent || '');
+}
+
+/** Hosts where backpack in-app browser / UL often fails and falls back to "download". */
+export function isLocalOrPrivateHost(hostname = '') {
+  const h = (hostname || '').toLowerCase();
+  if (!h || h === 'localhost' || h === '127.0.0.1' || h === '0.0.0.0' || h === '[::1]') {
+    return true;
+  }
+  // Private LAN
+  if (/^10\.\d+\.\d+\.\d+$/.test(h)) return true;
+  if (/^192\.168\.\d+\.\d+$/.test(h)) return true;
+  if (/^172\.(1[6-9]|2\d|3[0-1])\.\d+\.\d+$/.test(h)) return true;
+  return false;
+}
+
+export function getBackpackProvider() {
   if (typeof window === 'undefined') return null;
-  // Wallet Standard / extension inject
-  if (window.backpack?.isBackpack) return window.backpack;
-  if (window.backpack?.solana?.isBackpack) return window.backpack.solana;
-  // Some builds expose under xnft / solana
-  if (window.xnft?.solana) return window.xnft.solana;
+  const w = window;
+  if (w.backpack?.isBackpack) return w.backpack;
+  if (w.backpack?.solana?.isBackpack) return w.backpack.solana;
+  if (w.backpack?.solana) return w.backpack.solana;
+  if (w.xnft?.solana) return w.xnft.solana;
+  // Some in-app builds expose under solana with isBackpack
+  if (w.solana?.isBackpack) return w.solana;
   return null;
+}
+
+function openBackpackBrowse(targetUrl, refUrl) {
+  const encoded = encodeURIComponent(targetUrl);
+  const ref = encodeURIComponent(refUrl);
+  const httpsUl = `https://backpack.app/ul/v1/browse/${encoded}?ref=${ref}`;
+
+  if (isAndroid()) {
+    // Prefer Android intent so the installed app is forced over the website
+    const intent =
+      `intent://backpack.app/ul/v1/browse/${encoded}?ref=${ref}` +
+      `#Intent;scheme=https;package=app.backpack.mobile;S.browser_fallback_url=${encodeURIComponent(httpsUl)};end`;
+    window.location.href = intent;
+    return;
+  }
+
+  window.location.href = httpsUl;
 }
 
 export class BackpackWalletAdapter extends BaseMessageSignerWalletAdapter {
   name = BackpackWalletName;
-  url = 'https://backpack.app';
-  icon =
-    'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTA4IiBoZWlnaHQ9IjEwOCIgdmlld0JveD0iMCAwIDEwOCAxMDgiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PHJlY3Qgd2lkdGg9IjEwOCIgaGVpZ2h0PSIxMDgiIHJ4PSIyNCIgZmlsbD0iIzE0MTUxOSIvPjxwYXRoIGQ9Ik0zMiAzMmg0NHY0NEgzMnoiIGZpbGw9IiNFMzNDNTQiLz48cGF0aCBkPSJNNDQgNDRoMjB2MjBINDR6IiBmaWxsPSIjMTQxNTE5Ii8+PC9zdmc+';
+  url = 'https://backpack.app/download';
+  icon = BACKPACK_ICON;
   supportedTransactionVersions = new Set(['legacy', 0]);
 
   _connecting = false;
@@ -59,14 +99,16 @@ export class BackpackWalletAdapter extends BaseMessageSignerWalletAdapter {
     super();
     if (this._readyState === WalletReadyState.Unsupported) return;
 
-    // Phone browser without inject → Loadable (deep-link into Backpack in-app browser)
-    if (isMobileUserAgent() && !getBackpackProvider()) {
+    // If already inside Backpack (or extension), mark Installed immediately
+    if (getBackpackProvider()) {
+      this._readyState = WalletReadyState.Installed;
+    } else if (isMobileUserAgent()) {
+      // Mobile outside wallet browser: user can tap to open in-app browser
       this._readyState = WalletReadyState.Loadable;
     }
 
     scopePollingDetectionStrategy(() => {
-      const provider = getBackpackProvider();
-      if (provider) {
+      if (getBackpackProvider()) {
         this._readyState = WalletReadyState.Installed;
         this.emit('readyStateChange', this._readyState);
         return true;
@@ -88,7 +130,7 @@ export class BackpackWalletAdapter extends BaseMessageSignerWalletAdapter {
   }
 
   async autoConnect() {
-    // Don't auto deep-link without user tap
+    // Only when actually injected — never auto deep-link
     if (this.readyState === WalletReadyState.Installed) {
       await this.connect();
     }
@@ -98,20 +140,37 @@ export class BackpackWalletAdapter extends BaseMessageSignerWalletAdapter {
     try {
       if (this.connected || this.connecting) return;
 
-      // Mobile: open current page inside Backpack's in-app browser
-      if (this.readyState === WalletReadyState.Loadable) {
-        const url = encodeURIComponent(window.location.href);
-        const ref = encodeURIComponent(window.location.origin);
-        window.location.href = `https://backpack.app/ul/v1/browse/${url}?ref=${ref}`;
+      // Prefer live provider if it appeared (e.g. after opening in-app browser)
+      const live = getBackpackProvider();
+      if (live) {
+        this._readyState = WalletReadyState.Installed;
+        this.emit('readyStateChange', this._readyState);
+      }
+
+      if (this.readyState === WalletReadyState.Loadable && !live) {
+        const host = typeof window !== 'undefined' ? window.location.hostname : '';
+        if (isLocalOrPrivateHost(host)) {
+          const msg =
+            'Backpack cannot open localhost / private IPs in its in-app browser. ' +
+            'Use a public HTTPS URL (ngrok / deploy), OR open the site from Backpack’s built-in browser, ' +
+            'OR on Android use “Mobile Wallet Adapter”.';
+          throw new WalletConnectionError(msg);
+        }
+        if (typeof window !== 'undefined' && window.location.protocol !== 'https:' && host !== 'localhost') {
+          // Some wallets require HTTPS for browse UL
+          console.warn('[Backpack] Prefer HTTPS for mobile deep links');
+        }
+        openBackpackBrowse(window.location.href, window.location.origin);
+        // Do not throw — user is leaving the page. Selection stays until they return connected.
         return;
       }
 
-      if (this.readyState !== WalletReadyState.Installed) {
+      if (this.readyState !== WalletReadyState.Installed && !live) {
         throw new WalletNotReadyError();
       }
 
       this._connecting = true;
-      const wallet = getBackpackProvider();
+      const wallet = live || getBackpackProvider();
       if (!wallet) throw new WalletNotReadyError();
 
       try {
@@ -119,14 +178,17 @@ export class BackpackWalletAdapter extends BaseMessageSignerWalletAdapter {
           await wallet.connect();
         }
       } catch (error) {
-        throw new WalletConnectionError(error?.message, error);
+        throw new WalletConnectionError(error?.message || 'Backpack connection rejected', error);
       }
 
       if (!wallet.publicKey) throw new WalletAccountError();
 
       let publicKey;
       try {
-        publicKey = new PublicKey(wallet.publicKey.toBytes());
+        publicKey =
+          wallet.publicKey instanceof PublicKey
+            ? wallet.publicKey
+            : new PublicKey(wallet.publicKey.toBytes?.() ?? wallet.publicKey);
       } catch (error) {
         throw new WalletPublicKeyError(error?.message, error);
       }
@@ -175,8 +237,12 @@ export class BackpackWalletAdapter extends BaseMessageSignerWalletAdapter {
         }
         sendOptions.preflightCommitment =
           sendOptions.preflightCommitment || connection.commitment;
-        const { signature } = await wallet.signAndSendTransaction(transaction, sendOptions);
-        return signature;
+        if (wallet.signAndSendTransaction) {
+          const { signature } = await wallet.signAndSendTransaction(transaction, sendOptions);
+          return signature;
+        }
+        const signed = await wallet.signTransaction(transaction);
+        return await connection.sendRawTransaction(signed.serialize(), sendOptions);
       } catch (error) {
         if (error instanceof WalletError) throw error;
         throw new WalletSendTransactionError(error?.message, error);
@@ -222,8 +288,8 @@ export class BackpackWalletAdapter extends BaseMessageSignerWalletAdapter {
       const wallet = this._wallet;
       if (!wallet) throw new WalletNotConnectedError();
       try {
-        const { signature } = await wallet.signMessage(message);
-        return signature;
+        const result = await wallet.signMessage(message);
+        return result?.signature ?? result;
       } catch (error) {
         throw new WalletSignMessageError(error?.message, error);
       }
@@ -249,7 +315,10 @@ export class BackpackWalletAdapter extends BaseMessageSignerWalletAdapter {
     const publicKey = this._publicKey;
     if (!publicKey || !newPublicKey) return;
     try {
-      newPublicKey = new PublicKey(newPublicKey.toBytes?.() ?? newPublicKey);
+      newPublicKey =
+        newPublicKey instanceof PublicKey
+          ? newPublicKey
+          : new PublicKey(newPublicKey.toBytes?.() ?? newPublicKey);
     } catch (error) {
       this.emit('error', new WalletPublicKeyError(error?.message, error));
       return;

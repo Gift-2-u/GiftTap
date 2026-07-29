@@ -1,7 +1,13 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { useWallet } from '@solana/wallet-adapter-react';
-import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
+import { useWallet, useConnection } from '@solana/wallet-adapter-react';
+import { WalletMultiButton, useWalletModal } from '@solana/wallet-adapter-react-ui';
+import { WalletReadyState } from '@solana/wallet-adapter-base';
+import { toast } from 'react-hot-toast';
+import { isLocalOrPrivateHost } from './backpackWalletAdapter';
 import { Connection, PublicKey, LAMPORTS_PER_SOL } from '@solana/web3.js';
+import { getAssociatedTokenAddressSync } from '@solana/spl-token';
+import { MINT_ADDRESS } from './config';
+import { RPC_URL as MAINNET_RPC } from './gameWalletActions';
 import { supabase } from './supabaseClient';
 import {
   DB_PLAYER_ID,
@@ -15,6 +21,11 @@ import { keypairFromMnemonic } from './solanaWallet';
 import TokenBalanceList from './TokenBalanceList';
 import { fetchFiatRates } from './fiatPrices';
 import GameWalletActionModals from './GameWalletActionModals';
+
+/** Tokens shown on Solana tab — same set as the game wallet (shards are off-chain only). */
+const USDC_MINT = new PublicKey('EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v');
+/** GFT mint used by staking / site (config). */
+const GFT_MINT = MINT_ADDRESS;
 
 const tabBtn = (active) => ({
   flex: 1,
@@ -36,8 +47,168 @@ const tabBtn = (active) => ({
  */
 
 export function SolanaWalletPanel({ note }) {
-  const { publicKey, connected, disconnect, wallet } = useWallet();
+  const {
+    publicKey,
+    connected,
+    connecting,
+    disconnect,
+    wallet,
+    wallets,
+    select,
+    connect,
+  } = useWallet();
+  const { connection } = useConnection();
+  const { setVisible } = useWalletModal();
   const address = publicKey?.toBase58() || '';
+
+  const [balances, setBalances] = useState({
+    sol: 0,
+    usdc: 0,
+    GFT: 0,
+    GFTshards: 0,
+  });
+  const [balLoading, setBalLoading] = useState(false);
+  const [balError, setBalError] = useState('');
+  const [fiatRates, setFiatRates] = useState({ sol: {}, usdc: {} });
+  const [displayCurrency] = useState(() => {
+    try {
+      return localStorage.getItem('gift2u_display_currency') || 'USD';
+    } catch {
+      return 'USD';
+    }
+  });
+
+  const isPhone =
+    typeof navigator !== 'undefined' &&
+    /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || '');
+  const isAndroid =
+    typeof navigator !== 'undefined' && /Android/i.test(navigator.userAgent || '');
+  const localHost =
+    typeof window !== 'undefined' && isLocalOrPrivateHost(window.location.hostname);
+
+  const mwaWallet = wallets.find(
+    (w) =>
+      w.adapter.name === 'Mobile Wallet Adapter' ||
+      /mobile wallet adapter/i.test(String(w.adapter.name)),
+  );
+
+  // User wallets hold game tokens on mainnet; site staking Connection may be devnet.
+  const loadBalances = useCallback(async () => {
+    if (!publicKey) return;
+    setBalLoading(true);
+    setBalError('');
+    try {
+      const rpc = MAINNET_RPC || connection?.rpcEndpoint;
+      const conn = new Connection(rpc, 'confirmed');
+      const owner = publicKey;
+
+      const readSpl = async (mint) => {
+        try {
+          const ata = getAssociatedTokenAddressSync(mint, owner, false);
+          const bal = await conn.getTokenAccountBalance(ata);
+          return bal?.value?.uiAmount || 0;
+        } catch {
+          return 0;
+        }
+      };
+
+      const [solLamports, usdc, gft] = await Promise.all([
+        conn.getBalance(owner, 'confirmed'),
+        readSpl(USDC_MINT),
+        readSpl(GFT_MINT),
+      ]);
+      setBalances({
+        sol: solLamports / LAMPORTS_PER_SOL,
+        usdc,
+        GFT: gft,
+        // Shards live only on the game wallet (off-chain), not on external Solana wallets
+        GFTshards: 0,
+      });
+    } catch (e) {
+      console.error('Solana balance fetch failed', e);
+      setBalError(e?.message || 'Could not load balances');
+    } finally {
+      setBalLoading(false);
+    }
+  }, [publicKey, connection]);
+
+  useEffect(() => {
+    fetchFiatRates()
+      .then(setFiatRates)
+      .catch((e) => console.warn('fiat rates', e));
+  }, []);
+
+  useEffect(() => {
+    if (!connected || !publicKey) {
+      setBalances({ sol: 0, usdc: 0, GFT: 0, GFTshards: 0 });
+      return;
+    }
+    loadBalances();
+    const t = setInterval(loadBalances, 30_000);
+    return () => clearInterval(t);
+  }, [connected, publicKey, loadBalances]);
+
+  const clearWallet = async () => {
+    try {
+      await disconnect();
+    } catch {
+      /* ignore */
+    }
+    select(null);
+    try {
+      localStorage.removeItem('gift2u_solana_wallet');
+      localStorage.removeItem('walletName');
+    } catch {
+      /* ignore */
+    }
+  };
+
+  const connectNamed = async (name) => {
+    try {
+      const entry = wallets.find((w) => w.adapter.name === name);
+      if (!entry) {
+        toast.error(`${name} is not available in this browser`);
+        return;
+      }
+      if (
+        localHost &&
+        entry.readyState === WalletReadyState.Loadable &&
+        name !== 'Mobile Wallet Adapter'
+      ) {
+        toast.error(
+          'Localhost cannot open wallet apps reliably. Deploy or use ngrok HTTPS, open the site inside Backpack browser, or use Mobile Wallet Adapter on Android.',
+          { duration: 7000 },
+        );
+      }
+      select(name);
+      let lastErr;
+      for (let i = 0; i < 8; i++) {
+        await new Promise((r) => setTimeout(r, 60));
+        try {
+          await connect();
+          lastErr = null;
+          break;
+        } catch (e) {
+          lastErr = e;
+          if (!/not selected|WalletNotSelected/i.test(String(e?.message || e))) {
+            throw e;
+          }
+        }
+      }
+      if (lastErr) throw lastErr;
+    } catch (e) {
+      console.error(e);
+      toast.error(e?.message || `Could not connect ${name}`);
+      try {
+        select(null);
+        localStorage.removeItem('gift2u_solana_wallet');
+      } catch {
+        /* ignore */
+      }
+    }
+  };
+
+  const openModal = () => setVisible(true);
 
   return (
     <div style={{ textAlign: 'left' }}>
@@ -46,110 +217,252 @@ export function SolanaWalletPanel({ note }) {
           'Your external Solana wallet (Phantom, Solflare, Backpack…). Use for vault, staking, and outside the game.'}
       </p>
 
-      {typeof navigator !== 'undefined' &&
-        /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || '') && (
-          <div
-            style={{
-              background: 'rgba(255, 215, 0, 0.08)',
-              border: '1px solid rgba(255, 215, 0, 0.35)',
-              borderRadius: '10px',
-              padding: '10px 12px',
-              marginBottom: '14px',
-              fontSize: '11px',
-              color: '#ccc',
-              lineHeight: 1.45,
-            }}
-          >
-            <strong style={{ color: '#ffd700' }}>Phone tip:</strong> Chrome/Safari
-            cannot see wallet apps the way desktop extensions do — so nothing says
-            &quot;Detected&quot;. Tap <strong style={{ color: '#fff' }}>Backpack</strong>,
-            Phantom, or Solflare to open this site inside that wallet. On Android you
-            can also use <strong style={{ color: '#fff' }}>Mobile Wallet Adapter</strong>{' '}
-            to pick any installed Solana app.
-          </div>
-        )}
-
-      <div
-        className="wallet-hub-select-wrap"
-        style={{
-          display: 'flex',
-          justifyContent: 'center',
-          alignItems: 'center',
-          width: '100%',
-          marginBottom: '16px',
-        }}
-      >
-        <WalletMultiButton className="wallet-hub-select-btn" />
-      </div>
-
-      {connected && address ? (
+      {isPhone && (
         <div
           style={{
-            background: '#111',
-            border: '1px solid #333',
-            borderRadius: '12px',
-            padding: '12px',
+            background: localHost ? 'rgba(248,113,113,0.12)' : 'rgba(255, 215, 0, 0.08)',
+            border: localHost
+              ? '1px solid rgba(248,113,113,0.5)'
+              : '1px solid rgba(255, 215, 0, 0.35)',
+            borderRadius: '10px',
+            padding: '10px 12px',
+            marginBottom: '14px',
+            fontSize: '11px',
+            color: '#ccc',
+            lineHeight: 1.45,
           }}
         >
-          <div style={{ color: '#888', fontSize: '11px', marginBottom: '4px' }}>
-            Connected{wallet?.adapter?.name ? ` · ${wallet.adapter.name}` : ''}
-          </div>
+          {localHost ? (
+            <>
+              <strong style={{ color: '#f87171' }}>Localhost / LAN testing:</strong> Phone
+              browsers cannot “detect” installed apps, and Backpack deep-links to{' '}
+              <code style={{ color: '#fff' }}>localhost</code> or{' '}
+              <code style={{ color: '#fff' }}>192.168…</code> usually open a download page.
+              Use a public HTTPS URL, or open this URL from Backpack’s in-app browser
+              {isAndroid ? ', or tap Mobile Wallet Adapter below' : ''}.
+            </>
+          ) : (
+            <>
+              <strong style={{ color: '#ffd700' }}>Phone:</strong> Nothing will say
+              “Detected” in Safari/Chrome — that only works for desktop extensions. On
+              Android prefer <strong style={{ color: '#fff' }}>Mobile Wallet Adapter</strong>
+              . Or open this site from inside Backpack / Phantom / Solflare.
+            </>
+          )}
+        </div>
+      )}
+
+      {!connected ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '12px' }}>
+          {isAndroid && mwaWallet && (
+            <button
+              type="button"
+              disabled={connecting}
+              onClick={() => connectNamed(mwaWallet.adapter.name)}
+              style={{
+                width: '100%',
+                padding: '14px',
+                borderRadius: '12px',
+                border: 'none',
+                background: '#fbef43',
+                color: '#000',
+                fontWeight: 'bold',
+                fontSize: '14px',
+                cursor: connecting ? 'wait' : 'pointer',
+              }}
+            >
+              {connecting ? 'Connecting…' : 'Connect phone wallet (recommended)'}
+            </button>
+          )}
+
+          {isPhone && (
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+              {['Backpack', 'Phantom', 'Solflare', 'Trust'].map((name) => {
+                const available = wallets.some((w) => w.adapter.name === name);
+                if (!available) return null;
+                return (
+                  <button
+                    key={name}
+                    type="button"
+                    disabled={connecting}
+                    onClick={() => connectNamed(name)}
+                    style={{
+                      padding: '12px 8px',
+                      borderRadius: '10px',
+                      border: '1px solid #333',
+                      background: '#1c1e22',
+                      color: '#fff',
+                      fontWeight: 'bold',
+                      fontSize: '12px',
+                      cursor: connecting ? 'wait' : 'pointer',
+                    }}
+                  >
+                    {name}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
           <div
+            className="wallet-hub-select-wrap"
             style={{
-              color: '#fff',
-              fontSize: '12px',
-              wordBreak: 'break-all',
-              fontFamily: 'monospace',
+              display: 'flex',
+              justifyContent: 'center',
+              alignItems: 'center',
+              width: '100%',
             }}
           >
-            {address}
+            <WalletMultiButton className="wallet-hub-select-btn" />
           </div>
-          <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
+
+          {(wallet || connecting) && (
             <button
               type="button"
-              onClick={() => {
-                navigator.clipboard.writeText(address);
-                alert('Solana address copied');
-              }}
+              onClick={clearWallet}
               style={{
-                flex: 1,
-                background: '#222',
-                color: '#ffd700',
-                border: '1px solid #444',
-                borderRadius: '8px',
-                padding: '10px',
-                fontWeight: 'bold',
-                cursor: 'pointer',
-              }}
-            >
-              Copy
-            </button>
-            <button
-              type="button"
-              onClick={() => disconnect()}
-              style={{
-                flex: 1,
-                background: 'transparent',
+                background: 'none',
+                border: 'none',
                 color: '#f87171',
-                border: '1px solid #663333',
-                borderRadius: '8px',
-                padding: '10px',
-                fontWeight: 'bold',
+                fontSize: '12px',
+                cursor: 'pointer',
+                textDecoration: 'underline',
+                padding: '4px',
+              }}
+            >
+              Clear stuck wallet / try another
+            </button>
+          )}
+
+          {!isPhone && (
+            <button
+              type="button"
+              onClick={openModal}
+              style={{
+                background: 'none',
+                border: 'none',
+                color: '#888',
+                fontSize: '11px',
                 cursor: 'pointer',
               }}
             >
-              Disconnect
+              More wallet options
             </button>
-          </div>
+          )}
         </div>
       ) : (
-        <p style={{ color: '#555', fontSize: '11px', textAlign: 'center', margin: 0 }}>
-          Not connected. Tap the button above to choose a Solana wallet.
-        </p>
+        <>
+          <div
+            className="wallet-hub-select-wrap"
+            style={{
+              display: 'flex',
+              justifyContent: 'center',
+              alignItems: 'center',
+              width: '100%',
+              marginBottom: '12px',
+            }}
+          >
+            <WalletMultiButton className="wallet-hub-select-btn" />
+          </div>
+
+          {/* Same token detail UI as game wallet */}
+          <TokenBalanceList
+            balances={balances}
+            currency={displayCurrency}
+            rates={fiatRates}
+            style={{ marginBottom: '10px' }}
+          />
+          <p style={{ color: '#555', fontSize: '10px', margin: '0 0 10px', lineHeight: 1.4 }}>
+            Showing game-matching on-chain tokens: SOL, USDC, GFT.
+            GFTshards are game-only (not on external wallets).
+            {balLoading ? ' · Refreshing…' : ''}
+          </p>
+          {balError ? (
+            <p style={{ color: '#f87171', fontSize: '11px', margin: '0 0 10px' }}>{balError}</p>
+          ) : null}
+
+          <div
+            style={{
+              background: '#111',
+              border: '1px solid #333',
+              borderRadius: '12px',
+              padding: '12px',
+            }}
+          >
+            <div style={{ color: '#888', fontSize: '11px', marginBottom: '4px' }}>
+              Connected{wallet?.adapter?.name ? ` · ${wallet.adapter.name}` : ''}
+            </div>
+            <div
+              style={{
+                color: '#fff',
+                fontSize: '12px',
+                wordBreak: 'break-all',
+                fontFamily: 'monospace',
+              }}
+            >
+              {address}
+            </div>
+            <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
+              <button
+                type="button"
+                onClick={() => {
+                  navigator.clipboard.writeText(address);
+                  alert('Solana address copied');
+                }}
+                style={{
+                  flex: 1,
+                  padding: '10px',
+                  borderRadius: '10px',
+                  border: '1px solid #333',
+                  background: '#1c1e22',
+                  color: '#ffd700',
+                  fontWeight: 'bold',
+                  cursor: 'pointer',
+                }}
+              >
+                Copy
+              </button>
+              <button
+                type="button"
+                onClick={loadBalances}
+                disabled={balLoading}
+                style={{
+                  flex: 1,
+                  padding: '10px',
+                  borderRadius: '10px',
+                  border: '1px solid #333',
+                  background: '#1c1e22',
+                  color: '#888',
+                  fontWeight: 'bold',
+                  cursor: balLoading ? 'wait' : 'pointer',
+                }}
+              >
+                {balLoading ? '…' : 'Refresh'}
+              </button>
+              <button
+                type="button"
+                onClick={clearWallet}
+                style={{
+                  flex: 1,
+                  padding: '10px',
+                  borderRadius: '10px',
+                  border: '1px solid #333',
+                  background: '#1c1e22',
+                  color: '#f87171',
+                  fontWeight: 'bold',
+                  cursor: 'pointer',
+                }}
+              >
+                Disconnect
+              </button>
+            </div>
+          </div>
+        </>
       )}
     </div>
   );
 }
+
 
 /**
  * Loads the Gift Tap game wallet from the same session as /play

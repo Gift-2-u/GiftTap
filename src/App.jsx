@@ -119,9 +119,32 @@ export default function App() {
     return list;
   }, []);
 
+  // Only auto-reconnect wallets that are actually injected (never auto deep-link)
+  const handleAutoConnect = useCallback(async (adapter) => {
+    try {
+      return adapter?.readyState === 'Installed';
+    } catch {
+      return false;
+    }
+  }, []);
+
+  // Custom error handler: toast + never force-open "download" store pages
+  const handleWalletError = useCallback((error) => {
+    console.error('[wallet]', error);
+    const msg = error?.message || String(error) || 'Wallet error';
+    // Skip noisy disconnect spam
+    if (/disconnect/i.test(msg) && !/error/i.test(msg)) return;
+    toast.error(msg.length > 180 ? msg.slice(0, 180) + '…' : msg, { duration: 6000 });
+  }, []);
+
   return (
     <ConnectionProvider endpoint={endpoint}>
-      <WalletProvider wallets={wallets} autoConnect>
+      <WalletProvider
+        wallets={wallets}
+        autoConnect={handleAutoConnect}
+        onError={handleWalletError}
+        localStorageKey="gift2u_solana_wallet"
+      >
         <WalletModalProvider>
           <Router>
             <Toaster position="bottom-right" /> {/* Added this */}
