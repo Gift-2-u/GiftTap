@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useWallet, useConnection } from '@solana/wallet-adapter-react';
-import { WalletMultiButton, useWalletModal } from '@solana/wallet-adapter-react-ui';
+import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
 import { Connection, PublicKey, LAMPORTS_PER_SOL } from '@solana/web3.js';
 import { getAssociatedTokenAddressSync } from '@solana/spl-token';
 import { MINT_ADDRESS } from './config';
@@ -45,7 +45,6 @@ const tabBtn = (active) => ({
 
 export function SolanaWalletPanel({ note }) {
   const { publicKey, connected, connecting, disconnect, wallet, select, connect } = useWallet();
-  const { setVisible } = useWalletModal();
   const { connection } = useConnection();
   const address = publicKey?.toBase58() || '';
 
@@ -58,6 +57,7 @@ export function SolanaWalletPanel({ note }) {
   const [balLoading, setBalLoading] = useState(false);
   const [balError, setBalError] = useState('');
   const [fiatRates, setFiatRates] = useState({ sol: {}, usdc: {} });
+  const [hint, setHint] = useState('');
   const [displayCurrency] = useState(() => {
     try {
       return localStorage.getItem('gift2u_display_currency') || 'USD';
@@ -66,9 +66,9 @@ export function SolanaWalletPanel({ note }) {
     }
   });
 
-  const isMobile =
-    typeof navigator !== 'undefined' &&
-    /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || '');
+  const ua = typeof navigator !== 'undefined' ? navigator.userAgent || '' : '';
+  const isMobile = /Android|iPhone|iPad|iPod|Mobile/i.test(ua);
+  const isAndroid = /Android/i.test(ua);
 
   const inWalletApp = () => {
     if (typeof window === 'undefined') return false;
@@ -81,38 +81,66 @@ export function SolanaWalletPanel({ note }) {
     );
   };
 
-  const browseUrlFor = (walletName) => {
-    const page = encodeURIComponent(window.location.href);
-    const ref = encodeURIComponent(window.location.origin);
-    if (walletName === 'Solflare') return `https://solflare.com/ul/v1/browse/${page}?ref=${ref}`;
-    if (walletName === 'Phantom') return `https://phantom.app/ul/browse/${page}?ref=${ref}`;
-    if (walletName === 'Backpack') return `https://backpack.app/ul/v1/browse/${page}?ref=${ref}`;
-    return null;
+  const isLocalHost = () => {
+    const h = (typeof window !== 'undefined' ? window.location.hostname : '') || '';
+    const x = h.toLowerCase();
+    if (!x || x === 'localhost' || x === '127.0.0.1') return true;
+    if (/^10\.\d+\.\d+\.\d+$/.test(x)) return true;
+    if (/^192\.168\.\d+\.\d+$/.test(x)) return true;
+    if (/^172\.(1[6-9]|2\d|3[0-1])\.\d+\.\d+$/.test(x)) return true;
+    return false;
   };
 
-  // When user picks a wallet: close popup and never hang on Solflare mobile SDK.
-  useEffect(() => {
-    if (!wallet || connected) return;
+  /**
+   * Open THIS page inside the installed wallet app (not the download website).
+   * Android: intent:// + package name forces the app when installed.
+   */
+  const openInWallet = (name) => {
+    if (typeof window === 'undefined') return;
 
-    setVisible(false);
-
-    const name = String(wallet.adapter?.name || '');
-    const ready = wallet.readyState;
-
-    // Phone + wallet not injected → open game inside that wallet browser (no SDK hang)
-    if (isMobile && !inWalletApp() && ready !== 'Installed') {
-      const dest = browseUrlFor(name);
-      if (dest) {
-        try {
-          select(null);
-          localStorage.removeItem('walletName');
-        } catch (_) {}
-        window.location.assign(dest);
-        return;
-      }
+    if (isLocalHost()) {
+      setHint(
+        `Cannot open ${name} for localhost/LAN. Open https://gift2u.fun on your phone, or open ${name} → Browser → paste your game link.`,
+      );
+      return;
     }
 
-    // Extension / already in wallet browser
+    const page = encodeURIComponent(window.location.href);
+    const ref = encodeURIComponent(window.location.origin);
+
+    const apps = {
+      Phantom: { path: `phantom.app/ul/browse/${page}?ref=${ref}`, pkg: 'app.phantom' },
+      Solflare: { path: `solflare.com/ul/v1/browse/${page}?ref=${ref}`, pkg: 'com.solflare.mobile' },
+      Backpack: { path: `backpack.app/ul/v1/browse/${page}?ref=${ref}`, pkg: 'app.backpack.mobile' },
+    };
+    const app = apps[name];
+    if (!app) return;
+
+    setHint(`Opening ${name}… If the download page appears, open ${name} yourself and use its in-app browser.`);
+
+    // Clear any stuck adapter selection so we never sit on "Connecting…"
+    try {
+      select(null);
+      localStorage.removeItem('walletName');
+    } catch (_) {}
+
+    if (isAndroid) {
+      // Open installed app. No Play Store fallback URL (that was the "download" page).
+      window.location.href =
+        `intent://${app.path}#Intent;scheme=https;package=${app.pkg};end`;
+      return;
+    }
+
+    // iOS: universal link
+    window.location.href = `https://${app.path}`;
+  };
+
+  // Inside wallet browser: connect after user picks wallet from Select Wallet
+  useEffect(() => {
+    if (!wallet || connected || connecting) return;
+    // Only auto-connect when the provider is actually injected (in-app browser / extension)
+    if (wallet.readyState !== 'Installed' && !inWalletApp()) return;
+
     let cancelled = false;
     (async () => {
       try {
@@ -124,7 +152,6 @@ export function SolanaWalletPanel({ note }) {
             select(null);
             localStorage.removeItem('walletName');
           } catch (_) {}
-          setVisible(false);
         }
       }
     })();
@@ -134,21 +161,7 @@ export function SolanaWalletPanel({ note }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [wallet?.adapter?.name]);
 
-  // Force-close modal + unstick Connecting after 8s
-  useEffect(() => {
-    if (connecting || connected) setVisible(false);
-    if (!connecting) return;
-    const t = setTimeout(() => {
-      try {
-        select(null);
-        localStorage.removeItem('walletName');
-      } catch (_) {}
-      setVisible(false);
-    }, 8000);
-    return () => clearTimeout(t);
-  }, [connecting, connected, select, setVisible]);
-
-const loadBalances = useCallback(async () => {
+  const loadBalances = useCallback(async () => {
     if (!publicKey) return;
     setBalLoading(true);
     setBalError('');
@@ -200,6 +213,15 @@ const loadBalances = useCallback(async () => {
     return () => clearInterval(id);
   }, [connected, publicKey, loadBalances]);
 
+  const clearStuck = () => {
+    try {
+      select(null);
+      localStorage.removeItem('walletName');
+    } catch (_) {}
+    setHint('');
+  };
+
+  const showMobileOpenButtons = isMobile && !inWalletApp() && !connected;
 
   return (
     <div style={{ textAlign: 'left' }}>
@@ -208,12 +230,57 @@ const loadBalances = useCallback(async () => {
           'Your external Solana wallet (Phantom, Solflare, Backpack…). Use for vault, staking, and outside the game.'}
       </p>
 
+      {showMobileOpenButtons ? (
+        <div style={{ marginBottom: '14px' }}>
+          <p style={{ color: '#ffd700', fontSize: '13px', fontWeight: 'bold', margin: '0 0 8px' }}>
+            Connect on phone
+          </p>
+          <p style={{ color: '#aaa', fontSize: '11px', margin: '0 0 12px', lineHeight: 1.45 }}>
+            Phone browsers cannot see wallet apps like desktop does. Tap your wallet below to open
+            <strong style={{ color: '#fff' }}> this game inside the app</strong>, then connect there.
+            Use your live site (https://gift2u.fun), not localhost.
+          </p>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px' }}>
+            {['Phantom', 'Solflare', 'Backpack'].map((name) => (
+              <button
+                key={name}
+                type="button"
+                onClick={() => openInWallet(name)}
+                style={{
+                  padding: '14px 8px',
+                  borderRadius: '12px',
+                  border: '1px solid #444',
+                  background: '#1c1e22',
+                  color: '#fff',
+                  fontWeight: 'bold',
+                  fontSize: '13px',
+                  cursor: 'pointer',
+                }}
+              >
+                {name}
+              </button>
+            ))}
+          </div>
+          {hint ? (
+            <p style={{ color: '#fbbf24', fontSize: '11px', marginTop: '10px', lineHeight: 1.4 }}>{hint}</p>
+          ) : null}
+          <p style={{ color: '#555', fontSize: '10px', marginTop: '12px', lineHeight: 1.4 }}>
+            Manual: open Phantom/Solflare → Browser icon → gift2u.fun → come back here → Select Wallet.
+          </p>
+        </div>
+      ) : null}
+
+      {inWalletApp() && !connected ? (
+        <p style={{ color: '#4ade80', fontSize: '12px', margin: '0 0 10px' }}>
+          Wallet app browser detected — tap Select Wallet and choose your wallet.
+        </p>
+      ) : null}
+
       <div
         className="wallet-hub-select-wrap"
         style={{
           display: 'flex',
           flexDirection: 'column',
-          alignItems: 'stretch',
           gap: '8px',
           width: '100%',
           marginBottom: '16px',
@@ -222,13 +289,7 @@ const loadBalances = useCallback(async () => {
         {connecting ? (
           <button
             type="button"
-            onClick={() => {
-              try {
-                select(null);
-                localStorage.removeItem('walletName');
-              } catch (_) {}
-              setVisible(false);
-            }}
+            onClick={clearStuck}
             style={{
               width: '100%',
               padding: '14px',
@@ -237,7 +298,6 @@ const loadBalances = useCallback(async () => {
               background: '#1c1e22',
               color: '#f87171',
               fontWeight: 'bold',
-              fontSize: '14px',
               cursor: 'pointer',
             }}
           >
@@ -249,26 +309,19 @@ const loadBalances = useCallback(async () => {
         {!connected ? (
           <button
             type="button"
-            onClick={() => {
-              try {
-                select(null);
-                localStorage.removeItem('walletName');
-              } catch (_) {}
-              setVisible(true);
-            }}
+            onClick={clearStuck}
             style={{
               width: '100%',
-              padding: '10px',
-              borderRadius: '10px',
-              border: '1px solid #444',
+              padding: '8px',
+              borderRadius: '8px',
+              border: 'none',
               background: 'transparent',
-              color: '#ffd700',
-              fontWeight: 'bold',
-              fontSize: '12px',
+              color: '#666',
+              fontSize: '11px',
               cursor: 'pointer',
             }}
           >
-            Choose another wallet
+            Clear stuck wallet
           </button>
         ) : null}
       </div>
@@ -366,12 +419,11 @@ const loadBalances = useCallback(async () => {
             </div>
           </div>
         </>
-      ) : (
+      ) : !showMobileOpenButtons ? (
         <p style={{ color: '#555', fontSize: '11px', textAlign: 'center', margin: 0 }}>
-          Tap Select Wallet, pick a Solana wallet, then approve in the app.
-          If you get stuck on one wallet, tap Choose another wallet.
+          Tap Select Wallet and choose a Solana wallet.
         </p>
-      )}
+      ) : null}
     </div>
   );
 }
