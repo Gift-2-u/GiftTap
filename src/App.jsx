@@ -8,20 +8,14 @@ import React, { useMemo, useState, useEffect, useCallback, Suspense, lazy } from
 import { BrowserRouter as Router, Routes, Route, Link, useLocation } from 'react-router-dom';
 import { ConnectionProvider, WalletProvider, useAnchorWallet, useConnection, useWallet } from '@solana/wallet-adapter-react';
 import { WalletModalProvider } from '@solana/wallet-adapter-react-ui';
-// Phantom/Solflare for desktop + in-app browser. MWA registered in main.jsx for mobile.
+import {
+  SolanaMobileWalletAdapter,
+  createDefaultAddressSelector,
+  createDefaultAuthorizationResultCache,
+  createDefaultWalletNotFoundHandler,
+} from '@solana-mobile/wallet-adapter-mobile';
 import { PhantomWalletAdapter } from '@solana/wallet-adapter-phantom';
 import { SolflareWalletAdapter } from '@solana/wallet-adapter-solflare';
-import { CoinbaseWalletAdapter } from '@solana/wallet-adapter-coinbase';
-import { LedgerWalletAdapter } from '@solana/wallet-adapter-ledger';
-import { TrustWalletAdapter } from '@solana/wallet-adapter-trust';
-import { TorusWalletAdapter } from '@solana/wallet-adapter-torus';
-import { NightlyWalletAdapter } from '@solana/wallet-adapter-nightly';
-import { MathWalletAdapter } from '@solana/wallet-adapter-mathwallet';
-import { TokenPocketWalletAdapter } from '@solana/wallet-adapter-tokenpocket';
-import { BitgetWalletAdapter } from '@solana/wallet-adapter-bitkeep';
-import { CloverWalletAdapter } from '@solana/wallet-adapter-clover';
-import { Coin98WalletAdapter } from '@solana/wallet-adapter-coin98';
-import { SafePalWalletAdapter } from '@solana/wallet-adapter-safepal';
 import * as splToken from "@solana/spl-token";
 import { clusterApiUrl, PublicKey, SystemProgram } from '@solana/web3.js';
 import { Program, AnchorProvider, BN } from '@coral-xyz/anchor';
@@ -50,14 +44,30 @@ export default function App() {
   // Site staking IDL is still wired for devnet; Standard wallets still connect on any cluster.
   const endpoint = useMemo(() => clusterApiUrl('devnet'), []);
 
-  // Desktop/IAB: Phantom + Solflare. Mobile intents: registerMwa (main.jsx) injects MWA via Wallet Standard.
-  const wallets = useMemo(
-    () => [
+  // Explicit MWA + Phantom/Solflare. registerMwa (main.jsx) also registers standard MWA on HTTPS.
+  const wallets = useMemo(() => {
+    const list = [
       new PhantomWalletAdapter(),
       new SolflareWalletAdapter(),
-    ],
-    [],
-  );
+    ];
+    // Always include MWA adapter (Unsupported platforms filter it out of the UI).
+    if (typeof window !== 'undefined') {
+      list.unshift(
+        new SolanaMobileWalletAdapter({
+          addressSelector: createDefaultAddressSelector(),
+          appIdentity: {
+            name: 'Gift2U',
+            uri: window.location.origin,
+            icon: '/Gift2u_logo.png',
+          },
+          authorizationResultCache: createDefaultAuthorizationResultCache(),
+          cluster: 'devnet',
+          onWalletNotFound: createDefaultWalletNotFoundHandler(),
+        }),
+      );
+    }
+    return list;
+  }, []);
 
   return (
     <ConnectionProvider endpoint={endpoint}>

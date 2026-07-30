@@ -140,23 +140,49 @@ export function SolanaWalletPanel({ note }) {
   const handleConnectClick = () => {
     if (connected) return;
 
-    if (isMobile) {
-      const mwa = wallets.find(
-        (w) => w.adapter.name === SolanaMobileWalletAdapterWalletName,
-      );
-      if (mwa) {
-        // Synchronous select then connect — required for mobile OS user-gesture / intent
-        select(mwa.adapter.name);
-        // Connect on adapter instance (same tap) — avoids React select/connect race
-        Promise.resolve(mwa.adapter.connect()).catch((err) => {
-          console.warn('Mobile MWA connect interrupted or cancelled:', err);
-        });
-        return;
-      }
+    // Prefer MWA whenever present (mobile Chrome / Android)
+    const mwa = wallets.find(
+      (w) =>
+        w.adapter.name === SolanaMobileWalletAdapterWalletName ||
+        /mobile wallet adapter/i.test(String(w.adapter.name)),
+    );
+
+    // In-app browser (Phantom/Solflare already injected): use normal modal
+    const hasInstalled = wallets.some((w) => w.readyState === 'Installed');
+    if (hasInstalled && !mwa) {
+      setVisible(true);
+      return;
+    }
+    if (hasInstalled && !isMobile) {
+      setVisible(true);
+      return;
+    }
+    // Desktop without MWA need
+    if (!isMobile) {
+      setVisible(true);
+      return;
     }
 
-    // Desktop or MWA not available → full Solana wallet list modal
-    setVisible(true);
+    // Mobile: ONLY MWA — never open Phantom/Solflare modal (causes download page + stuck Connecting)
+    if (mwa && mwa.readyState !== 'Unsupported') {
+      select(mwa.adapter.name);
+      Promise.resolve(mwa.adapter.connect()).catch((err) => {
+        console.warn('Mobile MWA connect interrupted or cancelled:', err);
+        try {
+          select(null);
+          localStorage.removeItem('walletName');
+        } catch (_) {}
+      });
+      return;
+    }
+
+    // MWA missing: almost always non-HTTPS or unsupported browser
+    const secure = typeof window !== 'undefined' && window.isSecureContext;
+    alert(
+      secure
+        ? 'Mobile Wallet Adapter is not available in this browser. Use Android Chrome, or open the site inside Phantom/Solflare browser, then connect.'
+        : 'Mobile wallet connect needs HTTPS.\n\nOpen https://gift2u.fun on your phone (not http://localhost or http://192.168…).\n\nOr open Phantom → Browser → gift2u.fun → Connect.',
+    );
   };
 
   const short =
