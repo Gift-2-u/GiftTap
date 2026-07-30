@@ -8,9 +8,7 @@ import React, { useMemo, useState, useEffect, useCallback, Suspense, lazy } from
 import { BrowserRouter as Router, Routes, Route, Link, useLocation } from 'react-router-dom';
 import { ConnectionProvider, WalletProvider, useAnchorWallet, useConnection, useWallet } from '@solana/wallet-adapter-react';
 import { WalletModalProvider } from '@solana/wallet-adapter-react-ui';
-import { BaseWalletAdapter, WalletReadyState } from '@solana/wallet-adapter-base';
-// Standard adapters. Wallet Standard wallets (Backpack, Glow, …) appear automatically.
-// Mobile Wallet Adapter disabled — Solana wallets only.
+// Phantom/Solflare for desktop + in-app browser. MWA registered in main.jsx for mobile.
 import { PhantomWalletAdapter } from '@solana/wallet-adapter-phantom';
 import { SolflareWalletAdapter } from '@solana/wallet-adapter-solflare';
 import { CoinbaseWalletAdapter } from '@solana/wallet-adapter-coinbase';
@@ -47,51 +45,23 @@ const [vaultAuthority] = PublicKey.findProgramAddressSync(
 );
 
 
-/** Prevents WalletProvider from auto-adding Mobile Wallet Adapter on Android. */
-class DisableMobileWalletAdapter extends BaseWalletAdapter {
-  name = /** @type {any} */ ('Mobile Wallet Adapter');
-  url = 'https://solanamobile.com';
-  icon = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxIiBoZWlnaHQ9IjEiPjwvc3ZnPg==';
-  supportedTransactionVersions = null;
-  get readyState() {
-    return WalletReadyState.Unsupported;
-  }
-  async connect() {}
-  async disconnect() {}
-  async sendTransaction() {
-    throw new Error('Mobile Wallet Adapter disabled');
-  }
-}
-
 // --- MAIN WRAPPER ---
 export default function App() {
   // Site staking IDL is still wired for devnet; Standard wallets still connect on any cluster.
   const endpoint = useMemo(() => clusterApiUrl('devnet'), []);
 
-  // Solana wallets only (Mobile Wallet Adapter suppressed).
+  // Desktop/IAB: Phantom + Solflare. Mobile intents: registerMwa (main.jsx) injects MWA via Wallet Standard.
   const wallets = useMemo(
     () => [
-      new DisableMobileWalletAdapter(),
       new PhantomWalletAdapter(),
       new SolflareWalletAdapter(),
-      new CoinbaseWalletAdapter(),
-      new TrustWalletAdapter(),
-      new LedgerWalletAdapter(),
-      new TorusWalletAdapter(),
-      new NightlyWalletAdapter(),
-      new MathWalletAdapter(),
-      new TokenPocketWalletAdapter(),
-      new BitgetWalletAdapter(),
-      new CloverWalletAdapter(),
-      new Coin98WalletAdapter(),
-      new SafePalWalletAdapter(),
     ],
     [],
   );
 
   return (
     <ConnectionProvider endpoint={endpoint}>
-      <WalletProvider wallets={wallets} autoConnect={false}>
+      <WalletProvider wallets={wallets} autoConnect>
         <WalletModalProvider>
           <Router>
             <Toaster position="bottom-right" /> {/* Added this */}

@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useWallet, useConnection } from '@solana/wallet-adapter-react';
-import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
+import { WalletMultiButton, useWalletModal } from '@solana/wallet-adapter-react-ui';
+import { SolanaMobileWalletAdapterWalletName } from '@solana-mobile/wallet-standard-mobile';
 import { Connection, PublicKey, LAMPORTS_PER_SOL } from '@solana/web3.js';
 import { getAssociatedTokenAddressSync } from '@solana/spl-token';
 import { MINT_ADDRESS } from './config';
@@ -44,7 +45,17 @@ const tabBtn = (active) => ({
  */
 
 export function SolanaWalletPanel({ note }) {
-  const { publicKey, connected, connecting, disconnect, wallet, select, connect } = useWallet();
+  const {
+    publicKey,
+    connected,
+    connecting,
+    disconnect,
+    wallet,
+    wallets,
+    select,
+    connect,
+  } = useWallet();
+  const { setVisible } = useWalletModal();
   const { connection } = useConnection();
   const address = publicKey?.toBase58() || '';
 
@@ -57,7 +68,7 @@ export function SolanaWalletPanel({ note }) {
   const [balLoading, setBalLoading] = useState(false);
   const [balError, setBalError] = useState('');
   const [fiatRates, setFiatRates] = useState({ sol: {}, usdc: {} });
-  const [hint, setHint] = useState('');
+  const [isMobile, setIsMobile] = useState(false);
   const [displayCurrency] = useState(() => {
     try {
       return localStorage.getItem('gift2u_display_currency') || 'USD';
@@ -66,100 +77,9 @@ export function SolanaWalletPanel({ note }) {
     }
   });
 
-  const ua = typeof navigator !== 'undefined' ? navigator.userAgent || '' : '';
-  const isMobile = /Android|iPhone|iPad|iPod|Mobile/i.test(ua);
-  const isAndroid = /Android/i.test(ua);
-
-  const inWalletApp = () => {
-    if (typeof window === 'undefined') return false;
-    return !!(
-      window.solflare?.isSolflare ||
-      window.phantom?.solana?.isPhantom ||
-      window.solana?.isPhantom ||
-      window.backpack?.isBackpack ||
-      window.backpack?.solana
-    );
-  };
-
-  const isLocalHost = () => {
-    const h = (typeof window !== 'undefined' ? window.location.hostname : '') || '';
-    const x = h.toLowerCase();
-    if (!x || x === 'localhost' || x === '127.0.0.1') return true;
-    if (/^10\.\d+\.\d+\.\d+$/.test(x)) return true;
-    if (/^192\.168\.\d+\.\d+$/.test(x)) return true;
-    if (/^172\.(1[6-9]|2\d|3[0-1])\.\d+\.\d+$/.test(x)) return true;
-    return false;
-  };
-
-  /**
-   * Open THIS page inside the installed wallet app (not the download website).
-   * Android: intent:// + package name forces the app when installed.
-   */
-  const openInWallet = (name) => {
-    if (typeof window === 'undefined') return;
-
-    if (isLocalHost()) {
-      setHint(
-        `Cannot open ${name} for localhost/LAN. Open https://gift2u.fun on your phone, or open ${name} → Browser → paste your game link.`,
-      );
-      return;
-    }
-
-    const page = encodeURIComponent(window.location.href);
-    const ref = encodeURIComponent(window.location.origin);
-
-    const apps = {
-      Phantom: { path: `phantom.app/ul/browse/${page}?ref=${ref}`, pkg: 'app.phantom' },
-      Solflare: { path: `solflare.com/ul/v1/browse/${page}?ref=${ref}`, pkg: 'com.solflare.mobile' },
-      Backpack: { path: `backpack.app/ul/v1/browse/${page}?ref=${ref}`, pkg: 'app.backpack.mobile' },
-    };
-    const app = apps[name];
-    if (!app) return;
-
-    setHint(`Opening ${name}… If the download page appears, open ${name} yourself and use its in-app browser.`);
-
-    // Clear any stuck adapter selection so we never sit on "Connecting…"
-    try {
-      select(null);
-      localStorage.removeItem('walletName');
-    } catch (_) {}
-
-    if (isAndroid) {
-      // Open installed app. No Play Store fallback URL (that was the "download" page).
-      window.location.href =
-        `intent://${app.path}#Intent;scheme=https;package=${app.pkg};end`;
-      return;
-    }
-
-    // iOS: universal link
-    window.location.href = `https://${app.path}`;
-  };
-
-  // Inside wallet browser: connect after user picks wallet from Select Wallet
   useEffect(() => {
-    if (!wallet || connected || connecting) return;
-    // Only auto-connect when the provider is actually injected (in-app browser / extension)
-    if (wallet.readyState !== 'Installed' && !inWalletApp()) return;
-
-    let cancelled = false;
-    (async () => {
-      try {
-        await connect();
-      } catch (e) {
-        console.error('Solana connect failed', e);
-        if (!cancelled) {
-          try {
-            select(null);
-            localStorage.removeItem('walletName');
-          } catch (_) {}
-        }
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [wallet?.adapter?.name]);
+    setIsMobile(/iPhone|iPad|iPod|Android/i.test(navigator.userAgent || ''));
+  }, []);
 
   const loadBalances = useCallback(async () => {
     if (!publicKey) return;
@@ -213,118 +133,82 @@ export function SolanaWalletPanel({ note }) {
     return () => clearInterval(id);
   }, [connected, publicKey, loadBalances]);
 
-  const clearStuck = () => {
-    try {
-      select(null);
-      localStorage.removeItem('walletName');
-    } catch (_) {}
-    setHint('');
+  /**
+   * Doc path — mobile: select MWA + connect in the SAME click (no await before connect).
+   * Desktop: open standard wallet modal (Phantom / Solflare / extensions).
+   */
+  const handleConnectClick = () => {
+    if (connected) return;
+
+    if (isMobile) {
+      const mwa = wallets.find(
+        (w) => w.adapter.name === SolanaMobileWalletAdapterWalletName,
+      );
+      if (mwa) {
+        // Synchronous select then connect — required for mobile OS user-gesture / intent
+        select(mwa.adapter.name);
+        // Connect on adapter instance (same tap) — avoids React select/connect race
+        Promise.resolve(mwa.adapter.connect()).catch((err) => {
+          console.warn('Mobile MWA connect interrupted or cancelled:', err);
+        });
+        return;
+      }
+    }
+
+    // Desktop or MWA not available → full Solana wallet list modal
+    setVisible(true);
   };
 
-  const showMobileOpenButtons = isMobile && !inWalletApp() && !connected;
+  const short =
+    address.length > 12 ? `${address.slice(0, 4)}…${address.slice(-4)}` : address;
 
   return (
     <div style={{ textAlign: 'left' }}>
       <p style={{ color: '#888', fontSize: '12px', marginTop: 0, marginBottom: '14px', lineHeight: 1.4 }}>
         {note ||
-          'Your external Solana wallet (Phantom, Solflare, Backpack…). Use for vault, staking, and outside the game.'}
+          (isMobile
+            ? 'On phone: Connect opens your installed Solana wallets (Phantom, Solflare, Backpack…). On desktop: choose from the wallet list.'
+            : 'Connect a Solana wallet (Phantom, Solflare, Backpack…) for vault and staking.')}
       </p>
 
-      {showMobileOpenButtons ? (
-        <div style={{ marginBottom: '14px' }}>
-          <p style={{ color: '#ffd700', fontSize: '13px', fontWeight: 'bold', margin: '0 0 8px' }}>
-            Connect on phone
-          </p>
-          <p style={{ color: '#aaa', fontSize: '11px', margin: '0 0 12px', lineHeight: 1.45 }}>
-            Phone browsers cannot see wallet apps like desktop does. Tap your wallet below to open
-            <strong style={{ color: '#fff' }}> this game inside the app</strong>, then connect there.
-            Use your live site (https://gift2u.fun), not localhost.
-          </p>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px' }}>
-            {['Phantom', 'Solflare', 'Backpack'].map((name) => (
-              <button
-                key={name}
-                type="button"
-                onClick={() => openInWallet(name)}
-                style={{
-                  padding: '14px 8px',
-                  borderRadius: '12px',
-                  border: '1px solid #444',
-                  background: '#1c1e22',
-                  color: '#fff',
-                  fontWeight: 'bold',
-                  fontSize: '13px',
-                  cursor: 'pointer',
-                }}
-              >
-                {name}
-              </button>
-            ))}
-          </div>
-          {hint ? (
-            <p style={{ color: '#fbbf24', fontSize: '11px', marginTop: '10px', lineHeight: 1.4 }}>{hint}</p>
-          ) : null}
-          <p style={{ color: '#555', fontSize: '10px', marginTop: '12px', lineHeight: 1.4 }}>
-            Manual: open Phantom/Solflare → Browser icon → gift2u.fun → come back here → Select Wallet.
-          </p>
+      {!connected ? (
+        <button
+          type="button"
+          disabled={connecting}
+          onClick={handleConnectClick}
+          style={{
+            width: '100%',
+            padding: '14px 16px',
+            borderRadius: '12px',
+            border: 'none',
+            background: '#fbef43',
+            color: '#000',
+            fontWeight: 'bold',
+            fontSize: '15px',
+            cursor: connecting ? 'wait' : 'pointer',
+            marginBottom: '10px',
+          }}
+        >
+          {connecting
+            ? 'Connecting…'
+            : isMobile
+              ? 'Connect Solana Wallet'
+              : 'Select Solana Wallet'}
+        </button>
+      ) : (
+        <div
+          className="wallet-hub-select-wrap"
+          style={{ width: '100%', marginBottom: '12px' }}
+        >
+          <WalletMultiButton className="wallet-hub-select-btn" />
         </div>
-      ) : null}
+      )}
 
-      {inWalletApp() && !connected ? (
-        <p style={{ color: '#4ade80', fontSize: '12px', margin: '0 0 10px' }}>
-          Wallet app browser detected — tap Select Wallet and choose your wallet.
+      {!connected && !isMobile ? (
+        <p style={{ color: '#555', fontSize: '11px', textAlign: 'center', margin: '0 0 12px' }}>
+          Opens the Solana wallet list (Phantom, Solflare, extensions…).
         </p>
       ) : null}
-
-      <div
-        className="wallet-hub-select-wrap"
-        style={{
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '8px',
-          width: '100%',
-          marginBottom: '16px',
-        }}
-      >
-        {connecting ? (
-          <button
-            type="button"
-            onClick={clearStuck}
-            style={{
-              width: '100%',
-              padding: '14px',
-              borderRadius: '12px',
-              border: '1px solid #f87171',
-              background: '#1c1e22',
-              color: '#f87171',
-              fontWeight: 'bold',
-              cursor: 'pointer',
-            }}
-          >
-            Connecting… tap to cancel
-          </button>
-        ) : (
-          <WalletMultiButton className="wallet-hub-select-btn" />
-        )}
-        {!connected ? (
-          <button
-            type="button"
-            onClick={clearStuck}
-            style={{
-              width: '100%',
-              padding: '8px',
-              borderRadius: '8px',
-              border: 'none',
-              background: 'transparent',
-              color: '#666',
-              fontSize: '11px',
-              cursor: 'pointer',
-            }}
-          >
-            Clear stuck wallet
-          </button>
-        ) : null}
-      </div>
 
       {connected && address ? (
         <>
@@ -351,7 +235,7 @@ export function SolanaWalletPanel({ note }) {
             }}
           >
             <div style={{ color: '#888', fontSize: '11px', marginBottom: '4px' }}>
-              Connected{wallet?.adapter?.name ? ` · ${wallet.adapter.name}` : ''}
+              Connected{wallet?.adapter?.name ? ` · ${wallet.adapter.name}` : ''} · {short}
             </div>
             <div
               style={{
@@ -419,10 +303,6 @@ export function SolanaWalletPanel({ note }) {
             </div>
           </div>
         </>
-      ) : !showMobileOpenButtons ? (
-        <p style={{ color: '#555', fontSize: '11px', textAlign: 'center', margin: 0 }}>
-          Tap Select Wallet and choose a Solana wallet.
-        </p>
       ) : null}
     </div>
   );
