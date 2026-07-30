@@ -24,6 +24,49 @@ const USDC_MINT = new PublicKey('EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v');
 /** GFT mint used by staking / site (config). */
 const GFT_MINT = MINT_ADDRESS;
 
+/** Open current page inside a wallet in-app browser (best mobile UX). */
+const WALLET_BROWSE = [
+  {
+    id: 'phantom',
+    label: 'Phantom',
+    open: (url, ref) =>
+      `https://phantom.app/ul/browse/${encodeURIComponent(url)}?ref=${encodeURIComponent(ref)}`,
+  },
+  {
+    id: 'solflare',
+    label: 'Solflare',
+    open: (url, ref) =>
+      `https://solflare.com/ul/v1/browse/${encodeURIComponent(url)}?ref=${encodeURIComponent(ref)}`,
+  },
+  {
+    id: 'backpack',
+    label: 'Backpack',
+    open: (url, ref) =>
+      `https://backpack.app/ul/v1/browse/${encodeURIComponent(url)}?ref=${encodeURIComponent(ref)}`,
+  },
+];
+
+function openGameInWallet(walletId) {
+  if (typeof window === 'undefined') return;
+  const entry = WALLET_BROWSE.find((w) => w.id === walletId);
+  if (!entry) return;
+  const url = window.location.href;
+  const ref = window.location.origin;
+  window.location.href = entry.open(url, ref);
+}
+
+function isInsideWalletBrowser() {
+  if (typeof window === 'undefined') return false;
+  return !!(
+    window.phantom?.solana?.isPhantom ||
+    window.solana?.isPhantom ||
+    window.solflare?.isSolflare ||
+    window.backpack?.isBackpack ||
+    window.backpack?.solana
+  );
+}
+
+
 const tabBtn = (active) => ({
   flex: 1,
   padding: '10px 8px',
@@ -121,12 +164,52 @@ export function SolanaWalletPanel({ note }) {
     return () => clearInterval(t);
   }, [connected, publicKey, loadBalances]);
 
+  const inWalletBrowser = isInsideWalletBrowser();
+
   return (
     <div style={{ textAlign: 'left' }}>
       <p style={{ color: '#888', fontSize: '12px', marginTop: 0, marginBottom: '14px', lineHeight: 1.4 }}>
         {note ||
           'Your external Solana wallet (Phantom, Solflare, Backpack…). Use for vault, staking, and outside the game.'}
       </p>
+
+      {!connected && !inWalletBrowser && (
+        <div style={{ marginBottom: '14px' }}>
+          <p style={{ color: '#ffd700', fontSize: '12px', fontWeight: 'bold', margin: '0 0 8px' }}>
+            Open game in your wallet (recommended on phone)
+          </p>
+          <p style={{ color: '#666', fontSize: '11px', margin: '0 0 10px', lineHeight: 1.4 }}>
+            Tap a wallet — this site opens inside that app, then connect works normally.
+          </p>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px' }}>
+            {WALLET_BROWSE.map((w) => (
+              <button
+                key={w.id}
+                type="button"
+                onClick={() => openGameInWallet(w.id)}
+                style={{
+                  padding: '12px 8px',
+                  borderRadius: '10px',
+                  border: '1px solid #333',
+                  background: '#1c1e22',
+                  color: '#fff',
+                  fontWeight: 'bold',
+                  fontSize: '12px',
+                  cursor: 'pointer',
+                }}
+              >
+                {w.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {inWalletBrowser && !connected && (
+        <p style={{ color: '#4ade80', fontSize: '12px', margin: '0 0 12px' }}>
+          Wallet browser detected — tap Select Wallet / Connect below.
+        </p>
+      )}
 
       <div
         className="wallet-hub-select-wrap"
