@@ -12,9 +12,11 @@ if (typeof window !== 'undefined') {
   if (!window.process.versions) {
     window.process.versions = { node: '18.0.0' };
   }
-  // Clear sticky Select Wallet state from earlier experiments
+  // Clear sticky Select Wallet state (Base/Coinbase/Connect stuck)
   try {
-    localStorage.removeItem('gift2u_solana_wallet');
+    ['walletName', 'gift2u_solana_wallet', 'walletAdapter', 'SolanaWalletName'].forEach((k) => {
+      localStorage.removeItem(k);
+    });
   } catch (_) {}
 }
 globalThis.Buffer = Buffer;
@@ -34,17 +36,22 @@ import App from './App.jsx';
 
 // Mobile Wallet Adapter (Android): Select Wallet → Mobile Wallet Adapter → Backpack/Phantom/etc.
 // Must run once before the React tree mounts.
-registerMwa({
-  appIdentity: {
-    name: 'Gift2U',
-    uri: 'https://gift2u.fun',
-    icon: '/Gift2u_logo.png',
-  },
-  authorizationCache: createDefaultAuthorizationCache(),
-  chains: ['solana:mainnet', 'solana:devnet'],
-  chainSelector: createDefaultChainSelector(),
-  onWalletNotFound: createDefaultWalletNotFoundHandler(),
-});
+try {
+  const origin = window.location?.origin || 'https://gift2u.fun';
+  registerMwa({
+    appIdentity: {
+      name: 'Gift2U',
+      uri: origin,
+      icon: '/Gift2u_logo.png',
+    },
+    authorizationCache: createDefaultAuthorizationCache(),
+    chains: ['solana:mainnet', 'solana:devnet'],
+    chainSelector: createDefaultChainSelector(),
+    onWalletNotFound: createDefaultWalletNotFoundHandler(),
+  });
+} catch (e) {
+  console.warn('[MWA]', e);
+}
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>

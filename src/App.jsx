@@ -3,8 +3,12 @@ import { Buffer } from 'buffer';
 if (typeof window !== 'undefined') {
   window.Buffer = Buffer;
   window.global = window;
-  // Clear old sticky selection so the button shows "Select Wallet" again
-  try { localStorage.removeItem('gift2u_solana_wallet'); } catch (_) {}
+  // Force clean Solana wallet selection every load (fixes stuck Base / Coinbase / Connect icon)
+  try {
+    ['walletName', 'gift2u_solana_wallet', 'walletAdapter', 'SolanaWalletName'].forEach((k) => {
+      localStorage.removeItem(k);
+    });
+  } catch (_) {}
 }
 import React, { useMemo, useState, useEffect, useCallback, Suspense, lazy } from 'react';
 import { BrowserRouter as Router, Routes, Route, Link, useLocation } from 'react-router-dom';
@@ -52,29 +56,21 @@ export default function App() {
   // Site staking IDL is still wired for devnet; Standard wallets still connect on any cluster.
   const endpoint = useMemo(() => clusterApiUrl('devnet'), []);
 
-  // Standard Select Wallet setup (site + game share this provider)
+  // Solana-only adapters (no Coinbase — it can stick as "Base" multi-chain).
+  // Backpack & others still appear via Wallet Standard when injected.
   const wallets = useMemo(
     () => [
       new PhantomWalletAdapter(),
       new SolflareWalletAdapter(),
-      new CoinbaseWalletAdapter(),
-      new LedgerWalletAdapter(),
       new TrustWalletAdapter(),
-      new TorusWalletAdapter(),
-      new NightlyWalletAdapter(),
-      new MathWalletAdapter(),
-      new TokenPocketWalletAdapter(),
-      new BitgetWalletAdapter(),
-      new CloverWalletAdapter(),
-      new Coin98WalletAdapter(),
-      new SafePalWalletAdapter(),
+      new LedgerWalletAdapter(),
     ],
     [],
   );
 
   return (
     <ConnectionProvider endpoint={endpoint}>
-      <WalletProvider wallets={wallets} autoConnect>
+      <WalletProvider wallets={wallets} autoConnect={false} localStorageKey="walletName">
         <WalletModalProvider>
           <Router>
             <Toaster position="bottom-right" /> {/* Added this */}

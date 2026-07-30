@@ -87,9 +87,41 @@ const tabBtn = (active) => ({
  */
 
 export function SolanaWalletPanel({ note }) {
-  const { publicKey, connected, disconnect, wallet } = useWallet();
+  const { publicKey, connected, disconnect, wallet, select, connecting } = useWallet();
   const { connection } = useConnection();
   const address = publicKey?.toBase58() || '';
+
+  // Unstick any saved wallet (e.g. Base / Coinbase) when not actually connected
+  useEffect(() => {
+    if (connected || connecting) return;
+    try {
+      localStorage.removeItem('walletName');
+      localStorage.removeItem('gift2u_solana_wallet');
+    } catch (_) {}
+    if (wallet) {
+      try {
+        select(null);
+      } catch (_) {}
+    }
+    // run once on open
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const resetWallet = async () => {
+    try {
+      await disconnect();
+    } catch (_) {}
+    try {
+      select(null);
+    } catch (_) {}
+    try {
+      localStorage.removeItem('walletName');
+      localStorage.removeItem('gift2u_solana_wallet');
+      localStorage.removeItem('walletAdapter');
+    } catch (_) {}
+    // hard reset button state
+    window.location.reload();
+  };
 
   const [balances, setBalances] = useState({
     sol: 0,
@@ -215,13 +247,34 @@ export function SolanaWalletPanel({ note }) {
         className="wallet-hub-select-wrap"
         style={{
           display: 'flex',
+          flexDirection: 'column',
           justifyContent: 'center',
           alignItems: 'center',
           width: '100%',
           marginBottom: '16px',
+          gap: '8px',
         }}
       >
         <WalletMultiButton className="wallet-hub-select-btn" />
+        {(wallet || connected) && (
+          <button
+            type="button"
+            onClick={resetWallet}
+            style={{
+              background: 'none',
+              border: '1px solid #663333',
+              color: '#f87171',
+              borderRadius: '8px',
+              padding: '8px 12px',
+              fontSize: '12px',
+              fontWeight: 'bold',
+              cursor: 'pointer',
+              width: '100%',
+            }}
+          >
+            Change / reset wallet
+          </button>
+        )}
       </div>
 
       {connected && address ? (
