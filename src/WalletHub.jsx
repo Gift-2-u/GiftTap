@@ -44,8 +44,8 @@ const tabBtn = (active) => ({
  */
 
 export function SolanaWalletPanel({ note }) {
-  const { publicKey, connected, connecting, disconnect, wallet, select } = useWallet();
-  const { setVisible, visible } = useWalletModal();
+  const { publicKey, connected, connecting, disconnect, wallet, select, connect } = useWallet();
+  const { setVisible } = useWalletModal();
   const { connection } = useConnection();
   const address = publicKey?.toBase58() || '';
 
@@ -66,51 +66,77 @@ export function SolanaWalletPanel({ note }) {
     }
   });
 
-  // Close wallet popup immediately when a wallet is chosen / connecting starts
-  // (Solflare/Phantom deep-link leaves the modal open stuck on "Connecting…")
-  useEffect(() => {
-    if (wallet || connecting || connected) {
-      setVisible(false);
-    }
-  }, [wallet, connecting, connected, setVisible]);
+  const isMobile =
+    typeof navigator !== 'undefined' &&
+    /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || '');
 
-  // Mobile: if wallet app is not injected, open the game inside that wallet browser.
-  // Official Solflare adapter only does this on iOS; on Android it hangs on SDK connect.
-  useEffect(() => {
-    if (!wallet || connected) return;
-    if (typeof window === 'undefined') return;
-    const mobile = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || '');
-    if (!mobile) return;
-    // Already inside a wallet in-app browser — let normal connect finish
-    if (
+  const inWalletApp = () => {
+    if (typeof window === 'undefined') return false;
+    return !!(
       window.solflare?.isSolflare ||
       window.phantom?.solana?.isPhantom ||
       window.solana?.isPhantom ||
-      window.backpack?.isBackpack
-    ) {
-      return;
-    }
-    if (wallet.readyState === 'Installed') return;
+      window.backpack?.isBackpack ||
+      window.backpack?.solana
+    );
+  };
 
-    const name = String(wallet.adapter?.name || '');
+  const browseUrlFor = (walletName) => {
     const page = encodeURIComponent(window.location.href);
     const ref = encodeURIComponent(window.location.origin);
-    let dest = null;
-    if (name === 'Solflare') {
-      dest = `https://solflare.com/ul/v1/browse/${page}?ref=${ref}`;
-    } else if (name === 'Phantom') {
-      dest = `https://phantom.app/ul/browse/${page}?ref=${ref}`;
-    } else if (name === 'Backpack') {
-      dest = `https://backpack.app/ul/v1/browse/${page}?ref=${ref}`;
-    }
-    if (dest) {
-      setVisible(false);
-      window.location.href = dest;
-    }
-  }, [wallet, connected, setVisible]);
+    if (walletName === 'Solflare') return `https://solflare.com/ul/v1/browse/${page}?ref=${ref}`;
+    if (walletName === 'Phantom') return `https://phantom.app/ul/browse/${page}?ref=${ref}`;
+    if (walletName === 'Backpack') return `https://backpack.app/ul/v1/browse/${page}?ref=${ref}`;
+    return null;
+  };
 
-  // Unstick infinite "Connecting…" if wallet never responds
+  // When user picks a wallet: close popup and never hang on Solflare mobile SDK.
   useEffect(() => {
+    if (!wallet || connected) return;
+
+    setVisible(false);
+
+    const name = String(wallet.adapter?.name || '');
+    const ready = wallet.readyState;
+
+    // Phone + wallet not injected → open game inside that wallet browser (no SDK hang)
+    if (isMobile && !inWalletApp() && ready !== 'Installed') {
+      const dest = browseUrlFor(name);
+      if (dest) {
+        try {
+          select(null);
+          localStorage.removeItem('walletName');
+        } catch (_) {}
+        window.location.assign(dest);
+        return;
+      }
+    }
+
+    // Extension / already in wallet browser
+    let cancelled = false;
+    (async () => {
+      try {
+        await connect();
+      } catch (e) {
+        console.error('Solana connect failed', e);
+        if (!cancelled) {
+          try {
+            select(null);
+            localStorage.removeItem('walletName');
+          } catch (_) {}
+          setVisible(false);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [wallet?.adapter?.name]);
+
+  // Force-close modal + unstick Connecting after 8s
+  useEffect(() => {
+    if (connecting || connected) setVisible(false);
     if (!connecting) return;
     const t = setTimeout(() => {
       try {
@@ -118,11 +144,11 @@ export function SolanaWalletPanel({ note }) {
         localStorage.removeItem('walletName');
       } catch (_) {}
       setVisible(false);
-    }, 20000);
+    }, 8000);
     return () => clearTimeout(t);
-  }, [connecting, select, setVisible]);
+  }, [connecting, connected, select, setVisible]);
 
-  const loadBalances = useCallback(async () => {
+const loadBalances = useCallback(async () => {
     if (!publicKey) return;
     setBalLoading(true);
     setBalError('');
@@ -174,14 +200,6 @@ export function SolanaWalletPanel({ note }) {
     return () => clearInterval(id);
   }, [connected, publicKey, loadBalances]);
 
-  // Re-open the full wallet list (fixes mobile stuck on one wallet with no scroll/list)
-  const chooseAnotherWallet = () => {
-    try {
-      select(null);
-      localStorage.removeItem('walletName');
-    } catch (_) {}
-    setVisible(true);
-  };
 
   return (
     <div style={{ textAlign: 'left' }}>
@@ -201,11 +219,43 @@ export function SolanaWalletPanel({ note }) {
           marginBottom: '16px',
         }}
       >
-        <WalletMultiButton className="wallet-hub-select-btn" />
-        {!connected && wallet ? (
+        {connecting ? (
           <button
             type="button"
-            onClick={chooseAnotherWallet}
+            onClick={() => {
+              try {
+                select(null);
+                localStorage.removeItem('walletName');
+              } catch (_) {}
+              setVisible(false);
+            }}
+            style={{
+              width: '100%',
+              padding: '14px',
+              borderRadius: '12px',
+              border: '1px solid #f87171',
+              background: '#1c1e22',
+              color: '#f87171',
+              fontWeight: 'bold',
+              fontSize: '14px',
+              cursor: 'pointer',
+            }}
+          >
+            Connecting… tap to cancel
+          </button>
+        ) : (
+          <WalletMultiButton className="wallet-hub-select-btn" />
+        )}
+        {!connected ? (
+          <button
+            type="button"
+            onClick={() => {
+              try {
+                select(null);
+                localStorage.removeItem('walletName');
+              } catch (_) {}
+              setVisible(true);
+            }}
             style={{
               width: '100%',
               padding: '10px',
