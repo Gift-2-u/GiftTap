@@ -44,8 +44,8 @@ const tabBtn = (active) => ({
  */
 
 export function SolanaWalletPanel({ note }) {
-  const { publicKey, connected, disconnect, wallet, select } = useWallet();
-  const { setVisible } = useWalletModal();
+  const { publicKey, connected, connecting, disconnect, wallet, select } = useWallet();
+  const { setVisible, visible } = useWalletModal();
   const { connection } = useConnection();
   const address = publicKey?.toBase58() || '';
 
@@ -65,6 +65,62 @@ export function SolanaWalletPanel({ note }) {
       return 'USD';
     }
   });
+
+  // Close wallet popup immediately when a wallet is chosen / connecting starts
+  // (Solflare/Phantom deep-link leaves the modal open stuck on "Connecting…")
+  useEffect(() => {
+    if (wallet || connecting || connected) {
+      setVisible(false);
+    }
+  }, [wallet, connecting, connected, setVisible]);
+
+  // Mobile: if wallet app is not injected, open the game inside that wallet browser.
+  // Official Solflare adapter only does this on iOS; on Android it hangs on SDK connect.
+  useEffect(() => {
+    if (!wallet || connected) return;
+    if (typeof window === 'undefined') return;
+    const mobile = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || '');
+    if (!mobile) return;
+    // Already inside a wallet in-app browser — let normal connect finish
+    if (
+      window.solflare?.isSolflare ||
+      window.phantom?.solana?.isPhantom ||
+      window.solana?.isPhantom ||
+      window.backpack?.isBackpack
+    ) {
+      return;
+    }
+    if (wallet.readyState === 'Installed') return;
+
+    const name = String(wallet.adapter?.name || '');
+    const page = encodeURIComponent(window.location.href);
+    const ref = encodeURIComponent(window.location.origin);
+    let dest = null;
+    if (name === 'Solflare') {
+      dest = `https://solflare.com/ul/v1/browse/${page}?ref=${ref}`;
+    } else if (name === 'Phantom') {
+      dest = `https://phantom.app/ul/browse/${page}?ref=${ref}`;
+    } else if (name === 'Backpack') {
+      dest = `https://backpack.app/ul/v1/browse/${page}?ref=${ref}`;
+    }
+    if (dest) {
+      setVisible(false);
+      window.location.href = dest;
+    }
+  }, [wallet, connected, setVisible]);
+
+  // Unstick infinite "Connecting…" if wallet never responds
+  useEffect(() => {
+    if (!connecting) return;
+    const t = setTimeout(() => {
+      try {
+        select(null);
+        localStorage.removeItem('walletName');
+      } catch (_) {}
+      setVisible(false);
+    }, 20000);
+    return () => clearTimeout(t);
+  }, [connecting, select, setVisible]);
 
   const loadBalances = useCallback(async () => {
     if (!publicKey) return;
