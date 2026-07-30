@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useWallet, useConnection } from '@solana/wallet-adapter-react';
-import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
+import { WalletMultiButton, useWalletModal } from '@solana/wallet-adapter-react-ui';
 import { Connection, PublicKey, LAMPORTS_PER_SOL } from '@solana/web3.js';
 import { getAssociatedTokenAddressSync } from '@solana/spl-token';
 import { MINT_ADDRESS } from './config';
@@ -24,49 +24,6 @@ const USDC_MINT = new PublicKey('EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v');
 /** GFT mint used by staking / site (config). */
 const GFT_MINT = MINT_ADDRESS;
 
-/** Open current page inside a wallet in-app browser (best mobile UX). */
-const WALLET_BROWSE = [
-  {
-    id: 'phantom',
-    label: 'Phantom',
-    open: (url, ref) =>
-      `https://phantom.app/ul/browse/${encodeURIComponent(url)}?ref=${encodeURIComponent(ref)}`,
-  },
-  {
-    id: 'solflare',
-    label: 'Solflare',
-    open: (url, ref) =>
-      `https://solflare.com/ul/v1/browse/${encodeURIComponent(url)}?ref=${encodeURIComponent(ref)}`,
-  },
-  {
-    id: 'backpack',
-    label: 'Backpack',
-    open: (url, ref) =>
-      `https://backpack.app/ul/v1/browse/${encodeURIComponent(url)}?ref=${encodeURIComponent(ref)}`,
-  },
-];
-
-function openGameInWallet(walletId) {
-  if (typeof window === 'undefined') return;
-  const entry = WALLET_BROWSE.find((w) => w.id === walletId);
-  if (!entry) return;
-  const url = window.location.href;
-  const ref = window.location.origin;
-  window.location.href = entry.open(url, ref);
-}
-
-function isInsideWalletBrowser() {
-  if (typeof window === 'undefined') return false;
-  return !!(
-    window.phantom?.solana?.isPhantom ||
-    window.solana?.isPhantom ||
-    window.solflare?.isSolflare ||
-    window.backpack?.isBackpack ||
-    window.backpack?.solana
-  );
-}
-
-
 const tabBtn = (active) => ({
   flex: 1,
   padding: '10px 8px',
@@ -87,41 +44,10 @@ const tabBtn = (active) => ({
  */
 
 export function SolanaWalletPanel({ note }) {
-  const { publicKey, connected, disconnect, wallet, select, connecting } = useWallet();
+  const { publicKey, connected, disconnect, wallet, select } = useWallet();
+  const { setVisible } = useWalletModal();
   const { connection } = useConnection();
   const address = publicKey?.toBase58() || '';
-
-  // Unstick any saved wallet (e.g. Base / Coinbase) when not actually connected
-  useEffect(() => {
-    if (connected || connecting) return;
-    try {
-      localStorage.removeItem('walletName');
-      localStorage.removeItem('gift2u_solana_wallet');
-    } catch (_) {}
-    if (wallet) {
-      try {
-        select(null);
-      } catch (_) {}
-    }
-    // run once on open
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const resetWallet = async () => {
-    try {
-      await disconnect();
-    } catch (_) {}
-    try {
-      select(null);
-    } catch (_) {}
-    try {
-      localStorage.removeItem('walletName');
-      localStorage.removeItem('gift2u_solana_wallet');
-      localStorage.removeItem('walletAdapter');
-    } catch (_) {}
-    // hard reset button state
-    window.location.reload();
-  };
 
   const [balances, setBalances] = useState({
     sol: 0,
@@ -140,7 +66,6 @@ export function SolanaWalletPanel({ note }) {
     }
   });
 
-  // User wallets hold game tokens on mainnet; site staking Connection may be devnet.
   const loadBalances = useCallback(async () => {
     if (!publicKey) return;
     setBalLoading(true);
@@ -149,7 +74,6 @@ export function SolanaWalletPanel({ note }) {
       const rpc = MAINNET_RPC || connection?.rpcEndpoint;
       const conn = new Connection(rpc, 'confirmed');
       const owner = publicKey;
-
       const readSpl = async (mint) => {
         try {
           const ata = getAssociatedTokenAddressSync(mint, owner, false);
@@ -159,7 +83,6 @@ export function SolanaWalletPanel({ note }) {
           return 0;
         }
       };
-
       const [solLamports, usdc, gft] = await Promise.all([
         conn.getBalance(owner, 'confirmed'),
         readSpl(USDC_MINT),
@@ -169,7 +92,6 @@ export function SolanaWalletPanel({ note }) {
         sol: solLamports / LAMPORTS_PER_SOL,
         usdc,
         GFT: gft,
-        // Shards live only on the game wallet (off-chain), not on external Solana wallets
         GFTshards: 0,
       });
     } catch (e) {
@@ -192,11 +114,18 @@ export function SolanaWalletPanel({ note }) {
       return;
     }
     loadBalances();
-    const t = setInterval(loadBalances, 30_000);
-    return () => clearInterval(t);
+    const id = setInterval(loadBalances, 30_000);
+    return () => clearInterval(id);
   }, [connected, publicKey, loadBalances]);
 
-  const inWalletBrowser = isInsideWalletBrowser();
+  // Re-open the full wallet list (fixes mobile stuck on one wallet with no scroll/list)
+  const chooseAnotherWallet = () => {
+    try {
+      select(null);
+      localStorage.removeItem('walletName');
+    } catch (_) {}
+    setVisible(true);
+  };
 
   return (
     <div style={{ textAlign: 'left' }}>
@@ -205,76 +134,37 @@ export function SolanaWalletPanel({ note }) {
           'Your external Solana wallet (Phantom, Solflare, Backpack…). Use for vault, staking, and outside the game.'}
       </p>
 
-      {!connected && !inWalletBrowser && (
-        <div style={{ marginBottom: '14px' }}>
-          <p style={{ color: '#ffd700', fontSize: '12px', fontWeight: 'bold', margin: '0 0 8px' }}>
-            Open game in your wallet (recommended on phone)
-          </p>
-          <p style={{ color: '#666', fontSize: '11px', margin: '0 0 10px', lineHeight: 1.4 }}>
-            Tap a wallet — this site opens inside that app, then connect works normally.
-          </p>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px' }}>
-            {WALLET_BROWSE.map((w) => (
-              <button
-                key={w.id}
-                type="button"
-                onClick={() => openGameInWallet(w.id)}
-                style={{
-                  padding: '12px 8px',
-                  borderRadius: '10px',
-                  border: '1px solid #333',
-                  background: '#1c1e22',
-                  color: '#fff',
-                  fontWeight: 'bold',
-                  fontSize: '12px',
-                  cursor: 'pointer',
-                }}
-              >
-                {w.label}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {inWalletBrowser && !connected && (
-        <p style={{ color: '#4ade80', fontSize: '12px', margin: '0 0 12px' }}>
-          Wallet browser detected — tap Select Wallet / Connect below.
-        </p>
-      )}
-
       <div
         className="wallet-hub-select-wrap"
         style={{
           display: 'flex',
           flexDirection: 'column',
-          justifyContent: 'center',
-          alignItems: 'center',
+          alignItems: 'stretch',
+          gap: '8px',
           width: '100%',
           marginBottom: '16px',
-          gap: '8px',
         }}
       >
         <WalletMultiButton className="wallet-hub-select-btn" />
-        {(wallet || connected) && (
+        {!connected && wallet ? (
           <button
             type="button"
-            onClick={resetWallet}
+            onClick={chooseAnotherWallet}
             style={{
-              background: 'none',
-              border: '1px solid #663333',
-              color: '#f87171',
-              borderRadius: '8px',
-              padding: '8px 12px',
-              fontSize: '12px',
-              fontWeight: 'bold',
-              cursor: 'pointer',
               width: '100%',
+              padding: '10px',
+              borderRadius: '10px',
+              border: '1px solid #444',
+              background: 'transparent',
+              color: '#ffd700',
+              fontWeight: 'bold',
+              fontSize: '12px',
+              cursor: 'pointer',
             }}
           >
-            Change / reset wallet
+            Choose another wallet
           </button>
-        )}
+        ) : null}
       </div>
 
       {connected && address ? (
@@ -293,7 +183,6 @@ export function SolanaWalletPanel({ note }) {
           {balError ? (
             <p style={{ color: '#f87171', fontSize: '11px', margin: '0 0 10px' }}>{balError}</p>
           ) : null}
-
           <div
             style={{
               background: '#111',
@@ -373,7 +262,8 @@ export function SolanaWalletPanel({ note }) {
         </>
       ) : (
         <p style={{ color: '#555', fontSize: '11px', textAlign: 'center', margin: 0 }}>
-          Not connected. Tap Select Wallet to choose a Solana wallet.
+          Tap Select Wallet, pick a Solana wallet, then approve in the app.
+          If you get stuck on one wallet, tap Choose another wallet.
         </p>
       )}
     </div>

@@ -142,3 +142,20 @@ button:focus-visible {
   100% { opacity: 0; transform: translateY(-100px); }
   }
 }
+
+
+/* Solana wallet modal above hub + scrollable list on mobile */
+.wallet-adapter-modal,
+.wallet-adapter-modal-wrapper {
+  z-index: 200000 !important;
+}
+.wallet-adapter-modal-wrapper {
+  max-height: min(80vh, 560px) !important;
+  overflow-y: auto !important;
+  -webkit-overflow-scrolling: touch;
+}
+.wallet-adapter-modal-list {
+  max-height: 55vh !important;
+  overflow-y: auto !important;
+  -webkit-overflow-scrolling: touch;
+}

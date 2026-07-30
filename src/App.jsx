@@ -3,19 +3,14 @@ import { Buffer } from 'buffer';
 if (typeof window !== 'undefined') {
   window.Buffer = Buffer;
   window.global = window;
-  // Force clean Solana wallet selection every load (fixes stuck Base / Coinbase / Connect icon)
-  try {
-    ['walletName', 'gift2u_solana_wallet', 'walletAdapter', 'SolanaWalletName'].forEach((k) => {
-      localStorage.removeItem(k);
-    });
-  } catch (_) {}
 }
 import React, { useMemo, useState, useEffect, useCallback, Suspense, lazy } from 'react';
 import { BrowserRouter as Router, Routes, Route, Link, useLocation } from 'react-router-dom';
 import { ConnectionProvider, WalletProvider, useAnchorWallet, useConnection, useWallet } from '@solana/wallet-adapter-react';
 import { WalletModalProvider } from '@solana/wallet-adapter-react-ui';
+import { BaseWalletAdapter, WalletReadyState } from '@solana/wallet-adapter-base';
 // Standard adapters. Wallet Standard wallets (Backpack, Glow, …) appear automatically.
-// Mobile Wallet Adapter is auto-added by WalletProvider.
+// Mobile Wallet Adapter disabled — Solana wallets only.
 import { PhantomWalletAdapter } from '@solana/wallet-adapter-phantom';
 import { SolflareWalletAdapter } from '@solana/wallet-adapter-solflare';
 import { CoinbaseWalletAdapter } from '@solana/wallet-adapter-coinbase';
@@ -51,26 +46,52 @@ const [vaultAuthority] = PublicKey.findProgramAddressSync(
   PROGRAM_ID // Your '8pWy3...' address
 );
 
+
+/** Prevents WalletProvider from auto-adding Mobile Wallet Adapter on Android. */
+class DisableMobileWalletAdapter extends BaseWalletAdapter {
+  name = /** @type {any} */ ('Mobile Wallet Adapter');
+  url = 'https://solanamobile.com';
+  icon = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxIiBoZWlnaHQ9IjEiPjwvc3ZnPg==';
+  supportedTransactionVersions = null;
+  get readyState() {
+    return WalletReadyState.Unsupported;
+  }
+  async connect() {}
+  async disconnect() {}
+  async sendTransaction() {
+    throw new Error('Mobile Wallet Adapter disabled');
+  }
+}
+
 // --- MAIN WRAPPER ---
 export default function App() {
   // Site staking IDL is still wired for devnet; Standard wallets still connect on any cluster.
   const endpoint = useMemo(() => clusterApiUrl('devnet'), []);
 
-  // Solana-only adapters (no Coinbase — it can stick as "Base" multi-chain).
-  // Backpack & others still appear via Wallet Standard when injected.
+  // Solana wallets only (Mobile Wallet Adapter suppressed).
   const wallets = useMemo(
     () => [
+      new DisableMobileWalletAdapter(),
       new PhantomWalletAdapter(),
       new SolflareWalletAdapter(),
+      new CoinbaseWalletAdapter(),
       new TrustWalletAdapter(),
       new LedgerWalletAdapter(),
+      new TorusWalletAdapter(),
+      new NightlyWalletAdapter(),
+      new MathWalletAdapter(),
+      new TokenPocketWalletAdapter(),
+      new BitgetWalletAdapter(),
+      new CloverWalletAdapter(),
+      new Coin98WalletAdapter(),
+      new SafePalWalletAdapter(),
     ],
     [],
   );
 
   return (
     <ConnectionProvider endpoint={endpoint}>
-      <WalletProvider wallets={wallets} autoConnect={false} localStorageKey="walletName">
+      <WalletProvider wallets={wallets} autoConnect>
         <WalletModalProvider>
           <Router>
             <Toaster position="bottom-right" /> {/* Added this */}
