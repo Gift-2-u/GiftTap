@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { useWallet, useConnection } from '@solana/wallet-adapter-react';
 import { WalletMultiButton, useWalletModal } from '@solana/wallet-adapter-react-ui';
 import { SolanaMobileWalletAdapterWalletName } from '@solana-mobile/wallet-standard-mobile';
@@ -68,6 +68,7 @@ export function SolanaWalletPanel({ note }) {
   const [balLoading, setBalLoading] = useState(false);
   const [balError, setBalError] = useState('');
   const [fiatRates, setFiatRates] = useState({ sol: {}, usdc: {} });
+  const [msg, setMsg] = useState('');
   const [isMobile, setIsMobile] = useState(false);
   const [displayCurrency] = useState(() => {
     try {
@@ -80,6 +81,162 @@ export function SolanaWalletPanel({ note }) {
   useEffect(() => {
     setIsMobile(/iPhone|iPad|iPod|Android/i.test(navigator.userAgent || ''));
   }, []);
+
+  const ua = typeof navigator !== 'undefined' ? navigator.userAgent || '' : '';
+  const isAndroid = /Android/i.test(ua);
+
+  /** True when this page is already running inside a wallet webview */
+  const injected = useMemo(() => {
+    if (typeof window === 'undefined') return { phantom: false, solflare: false, backpack: false };
+    return {
+      phantom: !!(window.phantom?.solana?.isPhantom || window.solana?.isPhantom),
+      solflare: !!window.solflare?.isSolflare,
+      backpack: !!(window.backpack?.isBackpack || window.backpack?.solana),
+    };
+  }, [connected, publicKey]); // re-check when connection changes
+
+  const anyInjected = injected.phantom || injected.solflare || injected.backpack;
+
+  const clearSelection = () => {
+    try {
+      select(null);
+      localStorage.removeItem('walletName');
+    } catch (_) {}
+  };
+
+  /** Connect an already-injected wallet (desktop extension or wallet in-app browser). */
+  const connectNamed = async (name) => {
+    setMsg('');
+    setVisible(false);
+    try {
+      const entry = wallets.find((w) => w.adapter.name === name);
+      if (!entry) {
+        setMsg(`${name} adapter not available.`);
+        return;
+      }
+      // Only connect if installed/injected — never call connect on NotDetected (download page)
+      if (entry.readyState !== 'Installed' && !anyInjected) {
+        openInWalletApp(name);
+        return;
+      }
+      select(name);
+      await entry.adapter.connect();
+    } catch (e) {
+      console.error(e);
+      clearSelection();
+      setMsg(e?.message || `Could not connect ${name}`);
+    }
+  };
+
+  /**
+   * Open this page inside Phantom / Solflare / Backpack app.
+   * After reload inside the app, the wallet is Detected and Connect works.
+   */
+  const openInWalletApp = (name) => {
+    if (typeof window === 'undefined') return;
+    const host = (window.location.hostname || '').toLowerCase();
+    const local =
+      !host ||
+      host === 'localhost' ||
+      host === '127.0.0.1' ||
+      /^10\.\d+\.\d+\.\d+$/.test(host) ||
+      /^192\.168\.\d+\.\d+$/.test(host) ||
+      /^172\.(1[6-9]|2\d|3[0-1])\.\d+\.\d+$/.test(host);
+
+    if (local) {
+      setMsg(
+        `Open ${name} on your phone → Browser → go to https://gift2u.fun (not localhost). Then tap ${name} again to connect.`,
+      );
+      clearSelection();
+      return;
+    }
+
+    if (!window.isSecureContext) {
+      setMsg('Use https://gift2u.fun (HTTPS). Wallet apps cannot open insecure http links reliably.');
+      clearSelection();
+      return;
+    }
+
+    const page = encodeURIComponent(window.location.href);
+    const ref = encodeURIComponent(window.location.origin);
+
+    // Official browse deep links (open dApp inside wallet browser)
+    const httpsLinks = {
+      Phantom: `https://phantom.app/ul/browse/${page}?ref=${ref}`,
+      Solflare: `https://solflare.com/ul/v1/browse/${page}?ref=${ref}`,
+      Backpack: `https://backpack.app/ul/v1/browse/${page}?ref=${ref}`,
+    };
+    // Android: force installed package (avoids Play Store when app exists)
+    const androidIntents = {
+      Phantom: `intent://phantom.app/ul/browse/${page}?ref=${ref}#Intent;scheme=https;package=app.phantom;end`,
+      Solflare: `intent://solflare.com/ul/v1/browse/${page}?ref=${ref}#Intent;scheme=https;package=com.solflare.mobile;end`,
+      Backpack: `intent://backpack.app/ul/v1/browse/${page}?ref=${ref}#Intent;scheme=https;package=app.backpack.mobile;end`,
+    };
+
+    const https = httpsLinks[name];
+    if (!https) return;
+
+    clearSelection();
+    setMsg(`Opening ${name}… Approve to open the app, then tap ${name} again to finish connect.`);
+
+    if (isAndroid && androidIntents[name]) {
+      window.location.href = androidIntents[name];
+    } else {
+      window.location.href = https;
+    }
+  };
+
+  /** Mobile: MWA opens system chooser of installed Solana wallets */
+  const connectMobileAdapter = () => {
+    setMsg('');
+    const mwa = wallets.find(
+      (w) =>
+        w.adapter.name === SolanaMobileWalletAdapterWalletName ||
+        /mobile wallet adapter/i.test(String(w.adapter.name)),
+    );
+    if (!mwa || mwa.readyState === 'Unsupported') {
+      setMsg(
+        window.isSecureContext
+          ? 'Installed-wallet connect needs Android Chrome. Or use Phantom / Solflare buttons below.'
+          : 'Need HTTPS — open https://gift2u.fun on your phone.',
+      );
+      return;
+    }
+    select(mwa.adapter.name);
+    Promise.resolve(mwa.adapter.connect()).catch((err) => {
+      console.warn(err);
+      clearSelection();
+      setMsg(err?.message || 'Connection cancelled or failed.');
+    });
+  };
+
+  // Auto-connect when page is already inside Phantom/Solflare browser
+  useEffect(() => {
+    if (connected || connecting || !anyInjected) return;
+    const name = injected.phantom
+      ? 'Phantom'
+      : injected.solflare
+        ? 'Solflare'
+        : injected.backpack
+          ? 'Backpack'
+          : null;
+    if (!name) return;
+    const entry = wallets.find((w) => w.adapter.name === name && w.readyState === 'Installed');
+    if (!entry) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        select(name);
+        await entry.adapter.connect();
+      } catch (e) {
+        if (!cancelled) console.warn('auto inject connect', e);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [anyInjected, connected]);
 
   const loadBalances = useCallback(async () => {
     if (!publicKey) return;
@@ -133,108 +290,132 @@ export function SolanaWalletPanel({ note }) {
     return () => clearInterval(id);
   }, [connected, publicKey, loadBalances]);
 
-  /**
-   * Doc path — mobile: select MWA + connect in the SAME click (no await before connect).
-   * Desktop: open standard wallet modal (Phantom / Solflare / extensions).
-   */
-  const handleConnectClick = () => {
-    if (connected) return;
-
-    // Prefer MWA whenever present (mobile Chrome / Android)
-    const mwa = wallets.find(
-      (w) =>
-        w.adapter.name === SolanaMobileWalletAdapterWalletName ||
-        /mobile wallet adapter/i.test(String(w.adapter.name)),
-    );
-
-    // In-app browser (Phantom/Solflare already injected): use normal modal
-    const hasInstalled = wallets.some((w) => w.readyState === 'Installed');
-    if (hasInstalled && !mwa) {
-      setVisible(true);
-      return;
-    }
-    if (hasInstalled && !isMobile) {
-      setVisible(true);
-      return;
-    }
-    // Desktop without MWA need
-    if (!isMobile) {
-      setVisible(true);
-      return;
-    }
-
-    // Mobile: ONLY MWA — never open Phantom/Solflare modal (causes download page + stuck Connecting)
-    if (mwa && mwa.readyState !== 'Unsupported') {
-      select(mwa.adapter.name);
-      Promise.resolve(mwa.adapter.connect()).catch((err) => {
-        console.warn('Mobile MWA connect interrupted or cancelled:', err);
-        try {
-          select(null);
-          localStorage.removeItem('walletName');
-        } catch (_) {}
-      });
-      return;
-    }
-
-    // MWA missing: almost always non-HTTPS or unsupported browser
-    const secure = typeof window !== 'undefined' && window.isSecureContext;
-    alert(
-      secure
-        ? 'Mobile Wallet Adapter is not available in this browser. Use Android Chrome, or open the site inside Phantom/Solflare browser, then connect.'
-        : 'Mobile wallet connect needs HTTPS.\n\nOpen https://gift2u.fun on your phone (not http://localhost or http://192.168…).\n\nOr open Phantom → Browser → gift2u.fun → Connect.',
-    );
-  };
-
   const short =
     address.length > 12 ? `${address.slice(0, 4)}…${address.slice(-4)}` : address;
+
+  const walletBtn = (label, onClick) => (
+    <button
+      key={label}
+      type="button"
+      disabled={connecting}
+      onClick={onClick}
+      style={{
+        padding: '14px 10px',
+        borderRadius: '12px',
+        border: '1px solid #444',
+        background: '#1c1e22',
+        color: '#fff',
+        fontWeight: 'bold',
+        fontSize: '13px',
+        cursor: connecting ? 'wait' : 'pointer',
+      }}
+    >
+      {label}
+    </button>
+  );
 
   return (
     <div style={{ textAlign: 'left' }}>
       <p style={{ color: '#888', fontSize: '12px', marginTop: 0, marginBottom: '14px', lineHeight: 1.4 }}>
         {note ||
-          (isMobile
-            ? 'On phone: Connect opens your installed Solana wallets (Phantom, Solflare, Backpack…). On desktop: choose from the wallet list.'
-            : 'Connect a Solana wallet (Phantom, Solflare, Backpack…) for vault and staking.')}
+          'Connect your Solana wallet for vault and staking. Game wallet is on the Game tab.'}
       </p>
 
-      {!connected ? (
-        <button
-          type="button"
-          disabled={connecting}
-          onClick={handleConnectClick}
-          style={{
-            width: '100%',
-            padding: '14px 16px',
-            borderRadius: '12px',
-            border: 'none',
-            background: '#fbef43',
-            color: '#000',
-            fontWeight: 'bold',
-            fontSize: '15px',
-            cursor: connecting ? 'wait' : 'pointer',
-            marginBottom: '10px',
-          }}
-        >
-          {connecting
-            ? 'Connecting…'
-            : isMobile
-              ? 'Connect Solana Wallet'
-              : 'Select Solana Wallet'}
-        </button>
-      ) : (
-        <div
-          className="wallet-hub-select-wrap"
-          style={{ width: '100%', marginBottom: '12px' }}
-        >
-          <WalletMultiButton className="wallet-hub-select-btn" />
+      {!connected && isMobile && (
+        <div style={{ marginBottom: '14px' }}>
+          <p style={{ color: '#ffd700', fontSize: '13px', fontWeight: 'bold', margin: '0 0 8px' }}>
+            Connect on your phone
+          </p>
+          <p style={{ color: '#aaa', fontSize: '11px', margin: '0 0 12px', lineHeight: 1.45 }}>
+            Tap <strong style={{ color: '#fff' }}>Phantom</strong> or{' '}
+            <strong style={{ color: '#fff' }}>Solflare</strong> to open this game inside that app,
+            then approve. Use <strong style={{ color: '#fff' }}>https://gift2u.fun</strong> (not
+            localhost).
+          </p>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px' }}>
+            {walletBtn('Phantom', () => connectNamed('Phantom'))}
+            {walletBtn('Solflare', () => connectNamed('Solflare'))}
+            {walletBtn('Backpack', () => connectNamed('Backpack'))}
+          </div>
+          <button
+            type="button"
+            disabled={connecting}
+            onClick={connectMobileAdapter}
+            style={{
+              width: '100%',
+              marginTop: '10px',
+              padding: '12px',
+              borderRadius: '12px',
+              border: '1px solid #ffd700',
+              background: 'rgba(255,215,0,0.12)',
+              color: '#ffd700',
+              fontWeight: 'bold',
+              fontSize: '13px',
+              cursor: connecting ? 'wait' : 'pointer',
+            }}
+          >
+            {connecting ? 'Connecting…' : 'Other installed wallets'}
+          </button>
         </div>
       )}
 
-      {!connected && !isMobile ? (
-        <p style={{ color: '#555', fontSize: '11px', textAlign: 'center', margin: '0 0 12px' }}>
-          Opens the Solana wallet list (Phantom, Solflare, extensions…).
+      {!connected && !isMobile && (
+        <div style={{ marginBottom: '12px' }}>
+          <button
+            type="button"
+            onClick={() => setVisible(true)}
+            style={{
+              width: '100%',
+              padding: '14px',
+              borderRadius: '12px',
+              border: 'none',
+              background: '#fbef43',
+              color: '#000',
+              fontWeight: 'bold',
+              fontSize: '15px',
+              cursor: 'pointer',
+            }}
+          >
+            Select Solana Wallet
+          </button>
+          <p style={{ color: '#555', fontSize: '11px', textAlign: 'center', margin: '8px 0 0' }}>
+            Phantom, Solflare, and other browser wallets.
+          </p>
+        </div>
+      )}
+
+      {anyInjected && !connected && (
+        <p style={{ color: '#4ade80', fontSize: '12px', margin: '0 0 10px' }}>
+          Wallet browser detected — connecting…
         </p>
+      )}
+
+      {msg ? (
+        <p style={{ color: '#fbbf24', fontSize: '11px', margin: '0 0 12px', lineHeight: 1.4 }}>{msg}</p>
       ) : null}
+
+      {connecting && (
+        <button
+          type="button"
+          onClick={() => {
+            clearSelection();
+            setMsg('');
+          }}
+          style={{
+            width: '100%',
+            padding: '10px',
+            marginBottom: '10px',
+            borderRadius: '10px',
+            border: '1px solid #f87171',
+            background: '#1c1e22',
+            color: '#f87171',
+            fontWeight: 'bold',
+            cursor: 'pointer',
+          }}
+        >
+          Cancel connecting
+        </button>
+      )}
 
       {connected && address ? (
         <>
@@ -245,8 +426,7 @@ export function SolanaWalletPanel({ note }) {
             style={{ marginBottom: '10px' }}
           />
           <p style={{ color: '#555', fontSize: '10px', margin: '0 0 10px', lineHeight: 1.4 }}>
-            Showing game-matching on-chain tokens: SOL, USDC, GFT.
-            GFTshards are game-only (not on external wallets).
+            SOL, USDC, GFT on-chain. GFTshards are game-only.
             {balLoading ? ' · Refreshing…' : ''}
           </p>
           {balError ? (
