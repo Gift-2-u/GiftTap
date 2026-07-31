@@ -32,3 +32,9 @@ dist-ssr
 .env
 .env*.local
 .vercel
+
+# Seeker shell
+seeker/node_modules/
+seeker/android/
+seeker/ios/
+seeker/.expo/

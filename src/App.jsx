@@ -41,8 +41,13 @@ const [vaultAuthority] = PublicKey.findProgramAddressSync(
 
 // --- MAIN WRAPPER ---
 export default function App() {
-  // Site staking IDL is still wired for devnet; Standard wallets still connect on any cluster.
-  const endpoint = useMemo(() => clusterApiUrl('devnet'), []);
+  // Mainnet for wallets, staking UI, and Solscan links. Prefer paid RPC when set.
+  const endpoint = useMemo(
+    () =>
+      import.meta.env.VITE_SOLANA_RPC_URL ||
+      clusterApiUrl('mainnet-beta'),
+    [],
+  );
 
   // Explicit MWA + Phantom/Solflare. registerMwa (main.jsx) also registers standard MWA on HTTPS.
   const wallets = useMemo(() => {
@@ -61,7 +66,7 @@ export default function App() {
             icon: '/Gift2u_logo.png',
           },
           authorizationResultCache: createDefaultAuthorizationResultCache(),
-          cluster: 'devnet',
+          cluster: 'mainnet-beta',
           onWalletNotFound: createDefaultWalletNotFoundHandler(),
         }),
       );
@@ -380,7 +385,7 @@ const StakingPage = () => {
                 <span>
                   Stake successful! <br />
                   <a
-                    href={`https://solscan.io/tx/${signature}?cluster=devnet`}
+                    href={`https://solscan.io/tx/${signature}`}
                     target="_blank"
                     className="underline text-xs"
                   >

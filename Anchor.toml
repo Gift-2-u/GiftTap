@@ -6,6 +6,10 @@ package_manager = "yarn"
 resolution = true
 skip-lint = false
 
+[programs.mainnet]
+gift_staking = "CX5aqenEeWvfwvhF8Xek8Dd6sVPn8uHRhXafbKQvUAxy"
+
+# Keep devnet id for local/test deploys if you still need it
 [programs.devnet]
 gift_staking = "CX5aqenEeWvfwvhF8Xek8Dd6sVPn8uHRhXafbKQvUAxy"
 
@@ -13,7 +17,7 @@ gift_staking = "CX5aqenEeWvfwvhF8Xek8Dd6sVPn8uHRhXafbKQvUAxy"
 url = "https://api.apr.dev"
 
 [provider]
-cluster = "devnet"
+cluster = "mainnet"
 wallet = "~/.config/solana/id.json"
 
 [scripts]

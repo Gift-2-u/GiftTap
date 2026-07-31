@@ -1,0 +1,28 @@
+{
+  "name": "Gift2U — Gift Tap",
+  "short_name": "Gift2U",
+  "description": "Gift Tap play-to-earn game and Solana wallet on Gift2U",
+  "start_url": "/play",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0f172a",
+  "theme_color": "#0f172a",
+  "lang": "en",
+  "icons": [
+    {
+      "src": "/Gift2u_logo.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/logo-white.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ],
+  "categories": ["games", "entertainment", "finance"],
+  "prefer_related_applications": false
+}

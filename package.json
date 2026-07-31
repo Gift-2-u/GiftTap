@@ -10,7 +10,9 @@
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "seeker:start": "npm --prefix seeker start",
+    "seeker:android": "npm --prefix seeker run android"
   },
   "dependencies": {
     "@adsgram/vue": "^1.0.2",

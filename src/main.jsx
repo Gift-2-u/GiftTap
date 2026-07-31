@@ -44,7 +44,7 @@ function initMobileWalletAdapter() {
         icon: '/Gift2u_logo.png',
       },
       authorizationCache: createDefaultAuthorizationCache(),
-      chains: ['solana:mainnet', 'solana:devnet'],
+      chains: ['solana:mainnet'],
       chainSelector: createDefaultChainSelector(),
       onWalletNotFound: createDefaultWalletNotFoundHandler(),
     });
