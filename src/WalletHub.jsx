@@ -44,7 +44,7 @@ const tabBtn = (active) => ({
  * Site and game both use this so both wallets are visible on gift2u.fun and /play.
  */
 
-export function SolanaWalletPanel({ note }) {
+export function SolanaWalletPanel({ note, onClose }) {
   const {
     publicKey,
     connected,
@@ -316,6 +316,19 @@ export function SolanaWalletPanel({ note }) {
 
   return (
     <div style={{ textAlign: 'left' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+        <h3 style={{ margin: 0, color: '#ffd700' }}>Solana Wallet</h3>
+        {onClose ? (
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close"
+            style={{ background: 'none', border: 'none', color: '#888', fontSize: '18px', cursor: 'pointer' }}
+          >
+            ✕
+          </button>
+        ) : null}
+      </div>
       <p style={{ color: '#888', fontSize: '12px', marginTop: 0, marginBottom: '14px', lineHeight: 1.4 }}>
         {note ||
           'Connect your Solana wallet for vault and staking. Game wallet is on the Game tab.'}
@@ -887,7 +900,7 @@ export default function WalletHub({
             gameContent
           )
         ) : (
-          <SolanaWalletPanel note={solanaNote} />
+          <SolanaWalletPanel note={solanaNote} onClose={onClose} />
         )}
       </div>
     </div>
