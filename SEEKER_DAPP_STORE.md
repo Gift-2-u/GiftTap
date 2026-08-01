@@ -1,137 +1,190 @@
-# Gift2U: Web + Solana Seeker dApp Store
+# Gift2U → Solana Seeker dApp Store
 
-You keep **one game** (this Vite React app). Delivery is dual:
+**Chosen path: Option A — Bubblewrap (Trusted Web Activity)**
 
-| Surface | What it is |
-|--------|------------|
-| **Web** | `https://gift2u.fun` — play in any browser (as now) |
-| **Seeker dApp Store** | Android APK wrapping the same site (PWA / TWA) or Expo WebView shell |
+One game codebase (this Vite app).  
+- **Web:** `https://gift2u.fun`  
+- **Seeker:** signed APK that opens the same site in Chrome TWA  
 
-Solana Mobile’s official path for web games: **PWA → Bubblewrap TWA → signed APK → dApp Store**.  
-See: [Publishing a Web App](https://docs.solanamobile.com/recipes/general/publishing-a-web-app)
+Expo shell in `seeker/` is optional later if you need native features (push, etc.). Not required for first store release.
 
----
-
-## Architecture
-
-```
-                    ┌─────────────────────────────┐
-                    │  Gift2U web app (this repo) │
-                    │  Vite + React + wallets     │
-                    │  Deployed on Vercel / CDN   │
-                    └─────────────┬───────────────┘
-                                  │
-              ┌───────────────────┼───────────────────┐
-              ▼                   ▼                   ▼
-        Browser users      Seeker / Android      Future native
-        gift2u.fun         dApp Store APK         (optional RN)
-                           (TWA or WebView)
-```
-
-Same Supabase, same game wallet, same Solana connect (MWA works best inside the store app / HTTPS).
+Official docs: [Publishing a Web App](https://docs.solanamobile.com/recipes/general/publishing-a-web-app)
 
 ---
 
-## Part A — Keep shipping the web app (unchanged workflow)
+## Why Bubblewrap
 
-```bash
-cd /home/tower/gift_memecoin   # or your clone
-npm run dev      # local
-npm run build    # production
-# Deploy dist/ to Vercel / your host → https://gift2u.fun
-```
-
-Ensure production is **HTTPS** so Mobile Wallet Adapter can register.
+| | |
+|--|--|
+| Product | Same site as browser users |
+| Updates | Deploy web → Seeker users see changes (no APK for most game updates) |
+| Effort | Lowest path to first store release |
+| Solana Mobile | Recommended for websites / PWAs |
 
 ---
 
-## Part B — Official path: PWA → Bubblewrap APK (recommended for Seeker store)
+## Prerequisites (your machine)
 
-### 1. PWA files (already added in this repo)
+- Node.js 18+
+- Java JDK 17+
+- Android SDK command-line tools (Bubblewrap can help install)
+- Publisher account: [publish.solanamobile.com](https://publish.solanamobile.com)
+- App created + **App NFT minted** (mainnet wallet, enough SOL)
+- Live site HTTPS: `https://gift2u.fun` with working PWA manifest
+
+Check:
+
+- https://gift2u.fun/manifest.webmanifest  
+- https://gift2u.fun/play loads the game  
+
+Repo already has:
 
 - `public/manifest.webmanifest`
 - Linked from `index.html`
-- Icons: `public/Gift2u_logo.png`
+- Icons under `public/`
 
-After deploy, check:
+---
 
-- `https://gift2u.fun/manifest.webmanifest`
-- Lighthouse → PWA section (optional)
-
-### 2. Build a Trusted Web Activity (TWA) with Bubblewrap
-
-On a machine with Node + Java (JDK 17+):
+## Step 1 — Install Bubblewrap
 
 ```bash
 npm install -g @bubblewrap/cli
+bubblewrap --version
+```
+
+---
+
+## Step 2 — Init project from your live PWA
+
+Use a **new empty folder** (not inside this git repo unless you want to commit the Android project):
+
+```bash
+mkdir -p ~/gift2u-twa && cd ~/gift2u-twa
 bubblewrap init --manifest https://gift2u.fun/manifest.webmanifest
-# Follow prompts: package id e.g. fun.gift2u.tap
+```
+
+Suggested answers:
+
+| Prompt | Value |
+|--------|--------|
+| Package / Application ID | `fun.gift2u.tap` |
+| App name | `Gift2U` |
+| Launcher name | `Gift2U` |
+| Theme color | `#0f172a` |
+| Start URL | leave as manifest (`/play` or full URL) |
+| Signing key | create new (save passwords & keystore path) |
+
+**Important:** never lose the keystore + passwords. Every future update must use the same signing key.
+
+---
+
+## Step 3 — Build signed release APK
+
+```bash
+cd ~/gift2u-twa
 bubblewrap build
 ```
 
-You get a **signed release APK** (or AAB if configured).
+Output is typically something like:
 
-Details: [Build and sign an APK](https://docs.solanamobile.com/dapp-store/build-and-sign-an-apk)
+- `./app-release-signed.apk`  
+  or under `./app/build/outputs/apk/release/`
 
-### 3. Submit to Solana dApp Store
-
-1. Create publisher account: [publish.solanamobile.com](https://publish.solanamobile.com)  
-2. Prepare assets (icons, screenshots, listing text)  
-3. Submit the APK through the publisher portal  
-4. Wait for review (typically a few business days)
-
-Guides:
-
-- [dApp publishing setup](https://docs.solanamobile.com/dapp-publishing/setup)  
-- [Submit a new app](https://docs.solanamobile.com/dapp-store/submit-new-app)
+That **signed APK** is what you upload to the Publisher Portal.
 
 ---
 
-## Part C — Optional: Expo WebView shell (`seeker/`)
+## Step 4 — Digital Asset Links (so TWA stays full-screen)
 
-For a true **SDK-style** Android project (React Native + WebView loading the live site):
+Bubblewrap prints a **SHA-256 fingerprint** for your signing key. Host this file on your site:
 
-```bash
-cd seeker
-npm install
-# Set your production URL in app.json extra.webUrl
-npx expo prebuild --platform android
-npx expo run:android
+**URL:** `https://gift2u.fun/.well-known/assetlinks.json`
+
+Example (replace fingerprint after build):
+
+```json
+[
+  {
+    "relation": [
+      "delegate_permission/common.handle_all_urls"
+    ],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "fun.gift2u.tap",
+      "sha256_cert_fingerprints": [
+        "AA:BB:CC:…REPLACE_WITH_BUBBLEWRAP_FINGERPRINT…"
+      ]
+    }
+  }
+]
 ```
 
-Then sign the APK and submit the same way as Part B.
+In this repo, put the file at:
 
-This is useful if you later want native splash screens, push, or deeper Seed Vault UI without rewriting Gift Tap.
+```
+public/.well-known/assetlinks.json
+```
+
+Then redeploy the website so the URL is live. Without this, the app may open with a browser URL bar (still works, looks less “native”).
 
 ---
 
-## Wallet connect on Seeker
+## Step 5 — First release on Publisher Portal
 
-| Context | Behavior |
-|---------|----------|
-| Web (Chrome on phone) | MWA / in-app browser (see WalletHub Solana tab) |
-| Seeker / TWA APK | Same site; MWA works well with Seed Vault / installed wallets |
-| Opened inside Phantom browser | Phantom injects provider → Select Wallet works like desktop |
+1. Open [publish.solanamobile.com](https://publish.solanamobile.com) → your app  
+2. You should see: **No releases yet. Create your first release**  
+3. **New Version** / Create release  
+4. Upload the **signed** APK from Step 3  
+5. Fill listing: screenshots, short description, version name (`1.0.0`), version code (`1`)  
+6. Submit  
+7. Wallet on **Mainnet** — approve **every** prompt (upload + release NFT)  
+8. Wait for review  
 
-Keep testing wallets on **https://gift2u.fun**.
+Store listing ideas (you used these before):
+
+- **Subtitle:** Play-to-earn gift tap game on Solana  
+- **Description:** Gift Tap on Gift2U — open gift boxes, earn shards, manage your in-app Solana wallet. Same game as gift2u.fun, optimized for Seeker.
+
+---
+
+## After you’re live
+
+| Change | Need new APK? |
+|--------|----------------|
+| Game UI, economy, wallet fixes | **No** — deploy website |
+| Package name / signing key | Avoid changing |
+| Store screenshots / copy | Portal only |
+| Android permissions / TWA config | **Yes** — `bubblewrap build` + new release |
+| Bump store version for policy | **Yes** — new release APK |
 
 ---
 
 ## Checklist
 
-- [x] Web game (current repo)
-- [x] PWA manifest for store wrapping
-- [x] Seeker Expo shell scaffold (`seeker/`)
-- [x] Publishing guide (this file)
-- [ ] Deploy latest web to `https://gift2u.fun`
-- [ ] Bubblewrap APK (or Expo Android build)
-- [ ] Submit on publish.solanamobile.com
+- [x] Web game + PWA manifest in repo  
+- [x] Path chosen: Bubblewrap (not Expo for v1)  
+- [ ] App NFT minted (mainnet)  
+- [ ] `bubblewrap init` + `build`  
+- [ ] Keystore backed up safely  
+- [ ] `assetlinks.json` deployed  
+- [ ] First release uploaded + submitted  
+- [ ] Approved in dApp Store  
 
 ---
 
-## Notes
+## Optional later: Expo (`seeker/`)
 
-- **One game codebase** — do not fork Gift Tap for Seeker.  
-- **Do not use localhost** for store / MWA testing.  
-- Monetag `sw.js` remains separate; PWA can still use the same origin.  
-- If you change domain, update `manifest.webmanifest` and Bubblewrap Digital Asset Links.  
+Only if you need native push, deep Seed Vault UI, etc.  
+Until then, ignore `seeker/` for publishing.
+
+---
+
+## Troubleshooting
+
+| Problem | Fix |
+|---------|-----|
+| Wallet: network is devnet | Switch wallet to **Mainnet** |
+| Mint / release fails | More mainnet SOL (~0.02+) |
+| Manifest 404 | Deploy site; check `/manifest.webmanifest` |
+| TWA shows URL bar | Fix `assetlinks.json` fingerprint + package name |
+| Lost keystore | Cannot update same app; treat as new package (bad) |

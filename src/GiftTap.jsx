@@ -121,6 +121,13 @@ export const ASCENSION_WALLS = {
   49: { targetLevel: 50, shardCost: 250000, solCost: 0.50, newCap: 50 }
 };
 
+/** True when player is at a hard wall and cannot gain level from more lifetime taps. */
+export const isAtAscensionWall = (currentLevel, maxUnlockedLevel, lifetimeTaps) => {
+  if (!ASCENSION_WALLS[maxUnlockedLevel]) return false;
+  if (currentLevel < maxUnlockedLevel) return false;
+  return calculateLevel(Number(lifetimeTaps) + 1) > maxUnlockedLevel;
+};
+
 const GiftTapGame = () => {
 
   const styles = {
@@ -359,6 +366,8 @@ const GiftTapGame = () => {
   const [lifetimeTaps, setLifetimeTaps] = useState(0);
   const [maxUnlockedLevel, setMaxUnlockedLevel] = useState(4);
   const [showAscensionModal, setShowAscensionModal] = useState(false);
+  /** Fills only the missing ascension fee while locked — does NOT count toward level taps. */
+  const [wallFeeProgress, setWallFeeProgress] = useState(0);
   const [currentLevel, setCurrentLevel] = useState(0);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [itemToBuy, setItemToBuy] = useState(null);
@@ -714,8 +723,9 @@ const GiftTapGame = () => {
         setMaxDailyLimit(playerRow.max_daily_limit || 1000);
         
         // Load Backpack and Timers
+        const inv = playerRow.inventory || {};
         setStats({
-          inventory: playerRow.inventory || {},
+          inventory: inv,
           frenzy_expires: playerRow.frenzy_expires || null,
           efficiency_expires: playerRow.efficiency_expires || null,
           energy_boost_expires: playerRow.energy_boost_expires || null,
@@ -727,8 +737,15 @@ const GiftTapGame = () => {
         
         setLifetimeTaps(Number(playerRow.lifetime_taps) || 0);
         setSeasonShards(Number(playerRow.season_shards) || 0); 
-        setMaxUnlockedLevel(playerRow.max_unlocked_level || 4); 
+        const loadedMax = playerRow.max_unlocked_level || 4;
+        setMaxUnlockedLevel(loadedMax); 
         setCurrentLevel(calculateLevel(Number(playerRow.lifetime_taps) || 0));
+        // Wall recovery progress (only valid for current wall key)
+        if (Number(inv.wall_fee_wall) === loadedMax) {
+          setWallFeeProgress(Number(inv.wall_fee_progress) || 0);
+        } else {
+          setWallFeeProgress(0);
+        }
         // 🚨 ADD THIS LINE TO LOAD ENERGY FROM DB
         setEnergy(Number(playerRow.last_energy) || 0);
 
@@ -1282,12 +1299,21 @@ const GiftTapGame = () => {
   }, [playerId]);
 
   // 6. SAVE PROGRESS
-  const saveToDatabase = (b, e, dt, ltd, strk, ltt, mul, s) => {
+  // wallProg: optional wall recovery progress (fills missing fee only; not level taps)
+  const saveToDatabase = (b, e, dt, ltd, strk, ltt, mul, s, wallProg) => {
     
     // 1. Don't save if we don't have a valid user ID
     if (!playerId) return;
 
     clearTimeout(window.saveTimeout);
+
+    const progressToSave =
+      wallProg !== undefined && wallProg !== null ? wallProg : wallFeeProgress;
+    const nextInventory = {
+      ...(stats.inventory || {}),
+      wall_fee_progress: progressToSave,
+      wall_fee_wall: mul,
+    };
 
     window.saveTimeout = setTimeout(async () => {
       const { data, error } = await supabase.from('players').update({
@@ -1304,10 +1330,15 @@ const GiftTapGame = () => {
         max_daily_limit: maxDailyLimit, // This is your 2000 (Base + Ads)
         limit_boost_amount: stats.limit_boost_amount,
         limit_boost_expires: stats.limit_boost_expires,
+        inventory: nextInventory,
         last_updated: new Date().toISOString()
       })
       .eq(DB_PLAYER_ID, playerId) // Match their specific row
       .select(); // Added .select() so Supabase actually returns the 'data' for your check
+
+      if (!error) {
+        setStats((prev) => ({ ...prev, inventory: nextInventory }));
+      }
 
       // 🚨 OPTION A: THE FRONTEND CATCH
       if (error) {
@@ -1398,12 +1429,6 @@ const GiftTapGame = () => {
       // 🚨 FIX: Use the synchronous Ref to prevent rapid-click bypasses
       const safeLifetimeTaps = Number(optimisticTaps.current) || 0;
 
-      // --- ASCENSION WALL CHECK ---
-      if (currentLevel >= maxUnlockedLevel && calculateLevel(safeLifetimeTaps + 1) > maxUnlockedLevel) {
-        setShowAscensionModal(true);
-        return; 
-      }
-
       const baseRate = getLevelMultiplier(currentLevel); 
       let payoutMultiplier = 1;
       let costMultiplier = 1;
@@ -1425,6 +1450,62 @@ const GiftTapGame = () => {
 
       if (validTaps <= 0) return; 
 
+      const wallData = ASCENSION_WALLS[maxUnlockedLevel];
+      const atWall = isAtAscensionWall(currentLevel, maxUnlockedLevel, safeLifetimeTaps);
+
+      // --- WALL RECOVERY MODE ---
+      // Taps fill ONLY the missing ascension fee. No level taps, no spendable shards, no season.
+      if (atWall && wallData) {
+        const rawGain = (baseRate * payoutMultiplier) * validTaps;
+        const feeGain = Math.round(rawGain * 1000) / 1000;
+        const perTapAmount = Math.round((baseRate * payoutMultiplier) * 1000) / 1000;
+        const totalCost = costMultiplier * validTaps;
+        const nextEnergy = energy - totalCost;
+        const nextDaily = currentDailyTaps + totalCost;
+        const nextWallProgress = Math.round((wallFeeProgress + feeGain) * 1000) / 1000;
+        const missing = Math.max(0, wallData.shardCost - Number(balance) - wallFeeProgress);
+
+        setIsPressed(true);
+        setTimeout(() => setIsPressed(false), 100);
+        setWallFeeProgress(nextWallProgress);
+        setEnergy((prev) => Math.max(0, prev - totalCost));
+        setDailyTaps((prev) => prev + totalCost);
+
+        // Open modal when they first reach the wall or when fee becomes ready
+        if (missing > 0 && wallFeeProgress === 0) {
+          setShowAscensionModal(true);
+        }
+        if (Number(balance) + nextWallProgress >= wallData.shardCost) {
+          setShowAscensionModal(true);
+        }
+
+        saveToDatabase(
+          balance,
+          nextEnergy,
+          nextDaily,
+          today,
+          currentStreak,
+          safeLifetimeTaps,
+          maxUnlockedLevel,
+          seasonShards,
+          nextWallProgress,
+        );
+
+        const nowMs = now.getTime();
+        const newTapVisuals = tapPoints.slice(0, validTaps).map((point, index) => ({
+          id: nowMs + index,
+          x: point.x,
+          y: point.y,
+          amount: perTapAmount,
+          wall: true,
+        }));
+        setTaps((t) => [...t, ...newTapVisuals]);
+        setTimeout(() => {
+          setTaps((t) => t.filter((tap) => !newTapVisuals.map((nt) => nt.id).includes(tap.id)));
+        }, 500);
+        return;
+      }
+
       // 4. MULTIPLY BY FINGER COUNT & ASCENSION CLAMP
       const targetTaps = getNextLevelTarget(currentLevel);
       const isAtLevelCap = currentLevel >= maxUnlockedLevel;
@@ -1433,15 +1514,19 @@ const GiftTapGame = () => {
       let shardsEarned = Math.round(rawShardsEarned * 1000) / 1000;
       const perTapAmount = Math.round((baseRate * payoutMultiplier) * 1000) / 1000; 
       
-      // --- THE CLAMP ---
+      // --- THE CLAMP (edge of tier before hard wall) ---
       if (isAtLevelCap && (safeLifetimeTaps + shardsEarned) >= targetTaps) {
         shardsEarned = Math.max(0, targetTaps - safeLifetimeTaps);
         
-        if ((safeLifetimeTaps + shardsEarned) === targetTaps) {
+        if ((safeLifetimeTaps + shardsEarned) >= targetTaps) {
           setShowAscensionModal(true);
         }
         
-        if (shardsEarned <= 0) return; 
+        if (shardsEarned <= 0) {
+          // Fully at wall — next taps use recovery mode (retry path next frame)
+          setShowAscensionModal(true);
+          return;
+        }
       }
 
       // 🚨 FIX: Update the optimistic ref INSTANTLY so the next rapid tap is blocked
@@ -1500,22 +1585,38 @@ const GiftTapGame = () => {
     if (!wallData) return;
 
     if (method === 'shards') {
-      if (balance < wallData.shardCost) {
-        alert("Not enough Shards!");
+      const totalAvailable = Number(balance) + Number(wallFeeProgress);
+      if (totalAvailable < wallData.shardCost) {
+        alert(
+          `Not enough yet. Need ${wallData.shardCost.toLocaleString()} — you have ${Number(balance).toLocaleString()} shards + ${Number(wallFeeProgress).toLocaleString()} wall progress. Keep tapping to fill the missing fee (does not level you up).`,
+        );
         return;
       }
-      
-      const newBalance = balance - wallData.shardCost;
+
+      // Spend balance first, then wall recovery progress (progress is not spendable elsewhere)
+      const fromBalance = Math.min(Number(balance), wallData.shardCost);
+      const newBalance = Math.round((Number(balance) - fromBalance) * 1000) / 1000;
       const newCap = wallData.newCap;
       const newLevel = wallData.targetLevel;
       
       setBalance(newBalance);
+      setWallFeeProgress(0);
       setMaxUnlockedLevel(newCap);
       setCurrentLevel(newLevel);
       setEnergy(maxDailyLimit); 
       setShowAscensionModal(false);
       
-      await saveToDatabase(newBalance, maxDailyLimit, dailyTaps, lastTapDate, streak, lifetimeTaps, newCap);
+      await saveToDatabase(
+        newBalance,
+        maxDailyLimit,
+        dailyTaps,
+        lastTapDate,
+        streak,
+        lifetimeTaps,
+        newCap,
+        seasonShards,
+        0,
+      );
       // Referral: +3000 when invitee clears first wall (4→5)
       if (wallKey === 4) {
         tryPayReferrerForWall5(playerId).catch((e) =>
@@ -1601,11 +1702,22 @@ const GiftTapGame = () => {
         
         setMaxUnlockedLevel(newCap);
         setCurrentLevel(newLevel);
+        setWallFeeProgress(0);
         setEnergy(maxDailyLimit); 
         setShowAscensionModal(false);
         
         // Pass the current 'balance' because we didn't burn any shards
-        await saveToDatabase(balance, maxDailyLimit, dailyTaps, lastTapDate, streak, lifetimeTaps, newCap);
+        await saveToDatabase(
+          balance,
+          maxDailyLimit,
+          dailyTaps,
+          lastTapDate,
+          streak,
+          lifetimeTaps,
+          newCap,
+          seasonShards,
+          0,
+        );
         if (wallKey === 4) {
           tryPayReferrerForWall5(playerId).catch((e) =>
             console.warn('referral wall5', e?.message || e),
@@ -2290,37 +2402,102 @@ const GiftTapGame = () => {
         <div style={{ ...styles.container, flexDirection: 'column', height: '100%', width: '100%', overflow: 'hidden' }}>
           
           {/* ASCENSION WALL MODAL */}
-          {showAscensionModal && ASCENSION_WALLS[maxUnlockedLevel] && (
-            <div style={{ position: 'relative', top: 0, left: 0, width: '100%', height: '100%', background: 'rgba(0,0,0,0.9)', zIndex: 1000, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-              {/* Drop this inside your Ascension Modal's main content <div> */}
+          {showAscensionModal && ASCENSION_WALLS[maxUnlockedLevel] && (() => {
+            const wall = ASCENSION_WALLS[maxUnlockedLevel];
+            const have = Number(balance) || 0;
+            const progress = Number(wallFeeProgress) || 0;
+            const need = wall.shardCost;
+            const toward = Math.min(need, have + progress);
+            const missing = Math.max(0, need - have - progress);
+            const ready = missing <= 0;
+            const pct = Math.min(100, Math.round((toward / need) * 100));
+            return (
+            <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', background: 'rgba(0,0,0,0.9)', zIndex: 1000, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
               <button 
                 onClick={() => setShowAscensionModal(false)}
                 style={{ position: 'absolute', top: '15px', right: '15px', background: 'transparent', color: '#888', border: 'none', fontSize: '20px', fontWeight: 'bold', cursor: 'pointer' }}
               >
                 ✕
               </button>
-              <div style={{ background: '#1c1e22', border: '1px solid #ffd700', borderRadius: '20px', padding: '30px', textAlign: 'center', maxWidth: '300px' }}>
+              <div style={{ background: '#1c1e22', border: '1px solid #ffd700', borderRadius: '20px', padding: '24px', textAlign: 'center', maxWidth: '320px', width: '90%' }}>
                 <h2 style={{ color: '#ffd700', marginTop: 0 }}>Tier Complete! 🏆</h2>
-                <p style={{ color: '#ddd', fontSize: '14px' }}>
-                  You've hit the Level {maxUnlockedLevel} wall. To ascend to Level {ASCENSION_WALLS[maxUnlockedLevel].targetLevel} and permanently increase your tap power to <strong>{getLevelMultiplier(ASCENSION_WALLS[maxUnlockedLevel].targetLevel)}x</strong>, you must pay the Ascension Fee.
+                <p style={{ color: '#ddd', fontSize: '13px', lineHeight: 1.45 }}>
+                  Level {maxUnlockedLevel} wall → ascend to Level {wall.targetLevel} (
+                  <strong>{getLevelMultiplier(wall.targetLevel)}x</strong> power).
                 </p>
+
+                <div style={{ background: '#111', borderRadius: 12, padding: 12, marginBottom: 12, textAlign: 'left', fontSize: 13, color: '#ccc' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span>Fee</span><strong style={{ color: '#ffd700' }}>{need.toLocaleString()}</strong>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6 }}>
+                    <span>Your shards</span><span>{have.toLocaleString()}</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6 }}>
+                    <span>Wall tap progress</span><span style={{ color: '#60a5fa' }}>{progress.toLocaleString()}</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6 }}>
+                    <span>Missing</span>
+                    <strong style={{ color: ready ? '#4ade80' : '#f87171' }}>
+                      {ready ? 'Ready!' : missing.toLocaleString()}
+                    </strong>
+                  </div>
+                  <div style={{ marginTop: 10, height: 8, background: '#333', borderRadius: 4, overflow: 'hidden' }}>
+                    <div style={{ width: `${pct}%`, height: '100%', background: ready ? '#4ade80' : '#3b82f6' }} />
+                  </div>
+                  <p style={{ margin: '10px 0 0', fontSize: 11, color: '#888', lineHeight: 1.4 }}>
+                    Keep tapping to fill the missing fee. Those taps do <strong style={{ color: '#aaa' }}>not</strong> count for level-up or season shards — only the wall fee.
+                  </p>
+                </div>
                 
                 <button 
                   onClick={() => handleAscensionPayment('shards')}
-                  style={{ width: '100%', background: '#2a2d34', color: '#fff', border: '1px solid #4ade80', padding: '15px', borderRadius: '12px', fontWeight: 'bold', cursor: 'pointer', marginBottom: '10px' }}
+                  disabled={!ready}
+                  style={{
+                    width: '100%',
+                    background: ready ? '#2a2d34' : '#1a1a1a',
+                    color: ready ? '#fff' : '#666',
+                    border: `1px solid ${ready ? '#4ade80' : '#444'}`,
+                    padding: '15px',
+                    borderRadius: '12px',
+                    fontWeight: 'bold',
+                    cursor: ready ? 'pointer' : 'not-allowed',
+                    marginBottom: '10px',
+                  }}
                 >
-                  Burn {ASCENSION_WALLS[maxUnlockedLevel].shardCost.toLocaleString()} Shards
+                  {ready
+                    ? `Ascend (pay ${need.toLocaleString()} fee)`
+                    : `Need ${missing.toLocaleString()} more (tap to fill)`}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setShowAscensionModal(false)}
+                  style={{
+                    width: '100%',
+                    background: 'transparent',
+                    color: '#94a3b8',
+                    border: '1px solid #334155',
+                    padding: '12px',
+                    borderRadius: '12px',
+                    fontWeight: 'bold',
+                    cursor: 'pointer',
+                    marginBottom: '10px',
+                  }}
+                >
+                  Keep tapping
                 </button>
                 
                 <button 
                   onClick={() => handleAscensionPayment('sol')}
                   style={{ width: '100%', background: 'linear-gradient(90deg, #9945FF, #14F195)', color: '#000', border: 'none', padding: '15px', borderRadius: '12px', fontWeight: 'bold', cursor: 'pointer' }}
                 >
-                  Pay {ASCENSION_WALLS[maxUnlockedLevel].solCost} SOL
+                  Pay {wall.solCost} SOL — skip wait
                 </button>
               </div>
             </div>
-          )}
+            );
+          })()}
 
           {/* TOP HEADER */}
           <div style={styles.headerContainer}>
@@ -2420,15 +2597,59 @@ const GiftTapGame = () => {
                         <span style={{ color: '#ffd700', background: '#333', padding: '4px 8px', borderRadius: '8px', border: '1px solid #555', fontSize: '11px', fontWeight: 'bold', whiteSpace: 'nowrap' }}>
                           Lvl {currentLevel}
                         </span>
-                        <span style={{ color: '#888', fontSize: '10px', whiteSpace: 'nowrap', fontWeight: 'bold' }}>
-                          {currentLevel < 50 ? `${Math.floor(lifetimeTaps).toLocaleString()} / ${getNextLevelTarget(currentLevel).toLocaleString()}` : 'MAX'}
-                        </span>
+                        {isAtAscensionWall(currentLevel, maxUnlockedLevel, lifetimeTaps) && ASCENSION_WALLS[maxUnlockedLevel] ? (
+                          <button
+                            type="button"
+                            onClick={() => setShowAscensionModal(true)}
+                            style={{
+                              color: '#60a5fa',
+                              fontSize: '10px',
+                              whiteSpace: 'nowrap',
+                              fontWeight: 'bold',
+                              background: 'rgba(59,130,246,0.15)',
+                              border: '1px solid #3b82f6',
+                              borderRadius: 8,
+                              padding: '3px 8px',
+                              cursor: 'pointer',
+                            }}
+                          >
+                            Wall{' '}
+                            {Math.min(
+                              ASCENSION_WALLS[maxUnlockedLevel].shardCost,
+                              Number(balance) + Number(wallFeeProgress),
+                            ).toLocaleString()}
+                            {' / '}
+                            {ASCENSION_WALLS[maxUnlockedLevel].shardCost.toLocaleString()}
+                          </button>
+                        ) : (
+                          <span style={{ color: '#888', fontSize: '10px', whiteSpace: 'nowrap', fontWeight: 'bold' }}>
+                            {currentLevel < 50 ? `${Math.floor(lifetimeTaps).toLocaleString()} / ${getNextLevelTarget(currentLevel).toLocaleString()}` : 'MAX'}
+                          </span>
+                        )}
                       </div>
                       
-                      {/* Progress Bar takes up the remaining horizontal space */}
+                      {/* Progress Bar: level XP normally; wall fee while locked */}
                       {currentLevel < 50 && (
                         <div style={{ flex: 1, background: 'rgba(0, 0, 0, 0.6)', borderRadius: '10px', height: '6px', overflow: 'hidden', border: '1px solid #333' }}>
-                          <div style={{ height: '100%', background: '#4ade80', width: `${Math.min((lifetimeTaps / getNextLevelTarget(currentLevel)) * 100, 100)}%` }} />
+                          <div
+                            style={{
+                              height: '100%',
+                              background: isAtAscensionWall(currentLevel, maxUnlockedLevel, lifetimeTaps)
+                                ? '#3b82f6'
+                                : '#4ade80',
+                              width: `${
+                                isAtAscensionWall(currentLevel, maxUnlockedLevel, lifetimeTaps) &&
+                                ASCENSION_WALLS[maxUnlockedLevel]
+                                  ? Math.min(
+                                      100,
+                                      ((Number(balance) + Number(wallFeeProgress)) /
+                                        ASCENSION_WALLS[maxUnlockedLevel].shardCost) *
+                                        100,
+                                    )
+                                  : Math.min((lifetimeTaps / getNextLevelTarget(currentLevel)) * 100, 100)
+                              }%`,
+                            }}
+                          />
                         </div>
                       )}
 
@@ -2480,9 +2701,15 @@ const GiftTapGame = () => {
                         initial={{ opacity: 1, y: t.y - 100 }}
                         animate={{ opacity: 0, y: t.y - 250 }}
                         exit={{ opacity: 0 }}
-                        style={{ ...styles.floatingText, left: t.x, top: t.y, position: 'fixed' }}
+                        style={{
+                          ...styles.floatingText,
+                          left: t.x,
+                          top: t.y,
+                          position: 'fixed',
+                          color: t.wall ? '#60a5fa' : styles.floatingText.color,
+                        }}
                       >
-                        +{t.amount}
+                        {t.wall ? `🧱+${t.amount}` : `+${t.amount}`}
                       </motion.span>
                     ))}
                   </AnimatePresence>

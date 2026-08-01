@@ -1,0 +1,16 @@
+{
+  "name": "GiftLocksmith",
+  "symbol": "Locksmith",
+  "description": "GiftLocksmith unlocks the GFTshard → $GFT swap and access to the Gift2u vault for improved APY. Part of the Gift2u Elves collection (Gen 1). Planned max supply: 5000.",
+  "seller_fee_basis_points": 500,
+  "external_url": "https://gift2u.fun",
+  "attributes": [
+    { "trait_type": "Collection", "value": "Gift2u Elves" },
+    { "trait_type": "Class", "value": "GiftLocksmith" },
+    { "trait_type": "Generation", "value": "Gen 1" },
+    { "trait_type": "Rarity", "value": "Rare" },
+    { "trait_type": "Utility", "value": "GFTshard Swap + Vault APY" },
+    { "trait_type": "Type", "value": "Utility" },
+    { "trait_type": "Max Supply", "value": "5000" }
+  ]
+}
