@@ -13,7 +13,14 @@ function ShopItemIcon({ item, size = 52, variant = 'row' }) {
   const to = item.iconTo || '#111';
   const ring = item.iconRing || 'rgba(255,255,255,0.12)';
   const isWide = variant === 'card';
-  const glyphSize = isWide ? 44 : Math.round(size * 0.62);
+  // Custom PNGs (e.g. GFTshard) need more room than line glyphs to read clearly
+  const glyphSize = item.iconUrl
+    ? isWide
+      ? 64
+      : Math.round(size * 0.78)
+    : isWide
+      ? 44
+      : Math.round(size * 0.62);
 
   return (
     <div
@@ -206,8 +213,8 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
       price: 0.05,
       currency: 'SOL',
       iconUrl: '/shop/GFTshard.png',
-      iconFrom: '#1a1520',
-      iconTo: '#0c0a10',
+      iconFrom: '#2a2030',
+      iconTo: '#121018',
       iconRing: 'rgba(251,191,36,0.5)',
       iconGlow: 'rgba(255,215,0,0.25)',
     },
@@ -616,8 +623,15 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
     }
   };
 
-  // --- CALCULATE TOTAL BACKPACK ITEMS ---
-  const backpackItemCount = Object.values(localInventory || {}).reduce((total, qty) => total + Number(qty), 0);
+  // --- BACKPACK: only count real shop items (not wall/swap metadata keys) ---
+  // inventory also stores wall_fee_progress, swap_unlocked, etc. — those must NOT inflate the Pack badge.
+  const SHOP_ITEM_IDS = new Set(allItems.map((i) => i.id));
+  const backpackItemCount = Object.entries(localInventory || {}).reduce((total, [key, qty]) => {
+    if (!SHOP_ITEM_IDS.has(key)) return total;
+    const n = Number(qty);
+    return total + (Number.isFinite(n) && n > 0 ? n : 0);
+  }, 0);
+  const backpackItems = allItems.filter((item) => Number(localInventory[item.id]) > 0);
   const currentTodayStr = getTodayUTCString();
 
   return (
@@ -659,11 +673,11 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
           <img
             src="/shop/GFTshard.png"
             alt=""
-            width={22}
-            height={22}
-            style={{ display: 'block', objectFit: 'contain' }}
+            width={36}
+            height={36}
+            style={{ display: 'block', objectFit: 'contain', flexShrink: 0 }}
           />
-          <span>{balance.toLocaleString()} GFTshards</span>
+          <span style={{ fontSize: 15 }}>{balance.toLocaleString()} GFTshards</span>
         </div>
       </div>
 
@@ -673,7 +687,7 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
         <button onClick={() => setActiveTab('market')} style={{ flex: 1, padding: '10px 2px', borderRadius: '10px', border: 'none', background: activeTab === 'market' ? '#fbef43' : 'transparent', color: activeTab === 'market' ? '#000' : '#888', fontWeight: 'bold' }}>Boosts</button>
         <button onClick={() => setActiveTab('nft')} style={{ flex: 1, padding: '10px 2px', borderRadius: '10px', border: 'none', background: activeTab === 'nft' ? 'linear-gradient(90deg,#9945FF,#14F195)' : 'transparent', color: activeTab === 'nft' ? '#000' : '#888', fontWeight: 'bold' }}>NFTs</button>
         <button onClick={() => setActiveTab('inventory')} style={{ flex: 1, padding: '10px 2px', borderRadius: '10px', border: 'none', background: activeTab === 'inventory' ? '#9945FF' : 'transparent', color: activeTab === 'inventory' ? '#fff' : '#888', fontWeight: 'bold' }}>
-          Pack {backpackItemCount > 0 && <span style={{ color: activeTab === 'inventory' ? '#fff' : '#4ade80', marginLeft: '2px' }}>({backpackItemCount})</span>}
+          BackPack {backpackItemCount > 0 && <span style={{ color: activeTab === 'inventory' ? '#fff' : '#4ade80', marginLeft: '2px' }}>({backpackItemCount})</span>}
         </button>
       </div>
 
@@ -920,14 +934,14 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
         {/* --- TAB 3: THE BACKPACK --- */}
         {activeTab === 'inventory' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-            {Object.keys(localInventory).length === 0 ? (
+            {backpackItems.length === 0 ? (
               <div style={{ textAlign: 'center', padding: '40px 20px', color: '#888' }}>
                 <div style={{ fontSize: '48px', marginBottom: '15px' }}>🎒</div>
                 <h3 style={{ color: '#fff', margin: '0 0 10px 0' }}>Backpack is Empty</h3>
                 <p style={{ fontSize: '12px' }}>Visit the shop to purchase boosts and gear.</p>
               </div>
             ) : (
-              allItems.filter(item => localInventory[item.id] > 0).map(item => {
+              backpackItems.map(item => {
                 
                 // NEW: Check if button should be disabled due to daily limit
                 const isUsedToday = dailyUsage[item.id] === currentTodayStr;
