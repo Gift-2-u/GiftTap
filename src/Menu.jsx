@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useState } from 'react';
+import AppNotice from './AppNotice';
 
 // We store the massive arrays here to keep the main game file clean!
 const ALL_CURRENCIES = [
@@ -37,11 +38,20 @@ const Menu = ({
   onOpenLeaderboard,
 }) => {
   const playerIdHint = playerId ? String(playerId).slice(-8) : '';
+  const [appNotice, setAppNotice] = useState({ show: false, message: '', success: false });
   
   // If the menu is closed, render absolutely nothing
-  if (!isMenuOpen) return null;
+  if (!isMenuOpen && !appNotice.show) return null;
 
   return (
+    <>
+      <AppNotice
+        show={appNotice.show}
+        message={appNotice.message}
+        success={appNotice.success}
+        onClose={() => setAppNotice((n) => ({ ...n, show: false }))}
+      />
+      {isMenuOpen ? (
     <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.85)', zIndex: 10000, display: 'flex', justifyContent: 'center', alignItems: 'flex-end' }}>
       <div style={{ background: '#1c1e22', width: '100%', borderTopLeftRadius: '20px', borderTopRightRadius: '20px', padding: '25px', paddingBottom: '40px', boxSizing: 'border-box', borderTop: '1px solid #333' }}>
         
@@ -88,7 +98,13 @@ const Menu = ({
             onClick={() => {
               setIsMenuOpen(false);
               if (typeof onLogout === 'function') onLogout();
-              else alert('Log out is not available. Refresh the page.');
+              else {
+                setAppNotice({
+                  show: true,
+                  message: 'Log out is not available. Refresh the page.',
+                  success: false,
+                });
+              }
             }}
             style={{
               flexShrink: 0,
@@ -274,6 +290,8 @@ const Menu = ({
 
       </div>
     </div>
+      ) : null}
+    </>
   );
 };
 

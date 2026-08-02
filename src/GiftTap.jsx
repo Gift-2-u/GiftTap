@@ -11,6 +11,7 @@ import Friends from './Friends';
 import Menu from './Menu';
 import WhitepaperModal from './WhitepaperModal';
 import LegalModal from './LegalModal';
+import AppNotice from './AppNotice';
 import { showRewardedAdWaterfall, AD_MIN_WATCH_SECONDS } from './adService';
 import WalletHub from './WalletHub';
 import TokenBalanceList from './TokenBalanceList';
@@ -392,6 +393,32 @@ const GiftTapGame = () => {
   const [showAscensionModal, setShowAscensionModal] = useState(false);
   /** Fills only the missing ascension fee while locked — does NOT count toward level taps. */
   const [wallFeeProgress, setWallFeeProgress] = useState(0);
+  /** In-app notices (replaces browser alert() "gift2u.fun says…") */
+  const [appNotice, setAppNotice] = useState({
+    show: false,
+    message: '',
+    loading: false,
+    success: null,
+  });
+  const notify = useCallback((message, opts = {}) => {
+    const msg = String(message ?? '');
+    const looksError =
+      opts.success === false ||
+      /fail|error|invalid|denied|not enough|too low|no |need |wait for|locked|unavailable/i.test(
+        msg,
+      );
+    const looksOk =
+      opts.success === true ||
+      (/^✅|success|copied|unlocked|ascended|added|restored|complete/i.test(msg) &&
+        opts.success !== false);
+    setAppNotice({
+      show: true,
+      message: msg,
+      loading: !!opts.loading,
+      success: opts.success !== undefined ? opts.success : looksOk ? true : looksError ? false : null,
+      title: opts.title,
+    });
+  }, []);
   const [currentLevel, setCurrentLevel] = useState(0);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [itemToBuy, setItemToBuy] = useState(null);
@@ -441,7 +468,7 @@ const GiftTapGame = () => {
     if (e) e.stopPropagation(); // Stop click-through to Gift
     if (isWatchingAd) return;
     if (dailyAdsWatched >= 10) {
-      alert("Daily limit reached! (10/10)");
+      notify("Daily limit reached! (10/10)");
       return;
     }
 
@@ -500,9 +527,9 @@ const GiftTapGame = () => {
         if (setStats) setStats({ ...stats, ...dbUpdates });
         setIsAdModalOpen(false);
 
-        alert("✅ +100 Energy Capacity added. Thanks for watching!");
+        notify("✅ +100 Energy Capacity added. Thanks for watching!");
       } else {
-        alert(
+        notify(
           result?.error ||
             "⚠️ Keep Gift Tap open and wait until the countdown hits 0 for +100 energy.",
         );
@@ -542,13 +569,13 @@ const GiftTapGame = () => {
           setDailyAdsWatched(newAdsCount);
           if (setStats) setStats({ ...stats, ...dbUpdates });
           setIsAdModalOpen(false);
-          alert("✅ +100 Energy Capacity added. Thanks for watching!");
+          notify("✅ +100 Energy Capacity added. Thanks for watching!");
           return;
         } catch (e2) {
           console.error("Reward grant failed:", e2);
         }
       }
-      alert(err?.message || "No ads available. Please try again later.");
+      notify(err?.message || "No ads available. Please try again later.");
     } finally {
       setIsWatchingAd(false);
       setAdSecondsLeft(null);
@@ -934,7 +961,7 @@ const GiftTapGame = () => {
 
                     // Fire the welcome back popup!
                     setTimeout(() => {
-                        alert(`🤖 Welcome back! Your Bot farmed ${offlineShardsEarned.toLocaleString()} Shards while you were away!`);
+                        notify(`🤖 Welcome back! Your Bot farmed ${offlineShardsEarned.toLocaleString()} Shards while you were away!`);
                         // If the bot drove them directly into the wall, show the Ascension Modal immediately
                         if (calculateLevel(projectedLifetime) >= maxUnlockedLevel) {
                              setShowAscensionModal(true);
@@ -1118,7 +1145,7 @@ const GiftTapGame = () => {
       setIsDataLoaded(true);
     } catch (err) {
       console.error("Init Error:", err);
-      alert(err?.message || "Error during initialization. Please reload.");
+      notify(err?.message || "Error during initialization. Please reload.");
     } finally {
       setIsLoading(false);
     }
@@ -1129,7 +1156,7 @@ const GiftTapGame = () => {
   const restoreAccountFromMnemonic = async (mnemonic) => {
     const cleaned = (mnemonic || "").trim().toLowerCase().replace(/\s+/g, " ");
     if (!cleaned || cleaned.split(" ").length < 12) {
-      alert("Enter your full 12-word secret phrase.");
+      notify("Enter your full 12-word secret phrase.");
       return false;
     }
     setIsLoading(true);
@@ -1138,7 +1165,7 @@ const GiftTapGame = () => {
       try {
         keypair = keypairFromMnemonic(cleaned);
       } catch {
-        alert("Invalid secret phrase. Check the words and try again.");
+        notify("Invalid secret phrase. Check the words and try again.");
         return false;
       }
       const publicKey = keypair.publicKey.toBase58();
@@ -1151,7 +1178,7 @@ const GiftTapGame = () => {
 
       if (error) throw error;
       if (!row) {
-        alert("No Gift Tap account found for this phrase. Sign up for a new account instead.");
+        notify("No Gift Tap account found for this phrase. Sign up for a new account instead.");
         return false;
       }
 
@@ -1197,16 +1224,16 @@ const GiftTapGame = () => {
       setNeedsPassword(missingPw);
       if (missingPw) {
         setShowClaimAccount(true);
-        alert(
+        notify(
           "Account restored! Next: keep or change your username and create a password so you can log in on any device without the 12 words.",
         );
       } else {
-        alert("Account restored! Loading your progress...");
+        notify("Account restored! Loading your progress...");
       }
       return true;
     } catch (err) {
       console.error("Restore failed:", err);
-      alert(`Restore failed: ${err.message || err}`);
+      notify(`Restore failed: ${err.message || err}`);
       return false;
     } finally {
       setIsLoading(false);
@@ -1389,10 +1416,10 @@ const GiftTapGame = () => {
           setShowAscensionModal(true); 
         } else {
           console.error("🚨 SUPABASE REJECTION:", error);
-          alert(`Save Failed: ${error.message} \nCode: ${error.code}`); 
+          notify(`Save Failed: ${error.message} \nCode: ${error.code}`); 
         }
       } else if (!data || data.length === 0) {
-        alert(`Save Failed: No matching player found for ${playerId}`);
+        notify(`Save Failed: No matching player found for ${playerId}`);
       } else {
         console.log("✅ SAVE SUCCESS:");
         // Referral: +1000 to referrer when this player first hits Level 1
@@ -1462,7 +1489,7 @@ const GiftTapGame = () => {
 
       // 2. THE CHECK (Using your live 'dailyTaps' state)
       if (dailyTaps >= currentMaxLimit) {
-        alert("Daily limit reached! Wait for tomorrow or use a boost.");
+        notify("Daily limit reached! Wait for tomorrow or use a boost.");
         return;
       }
 
@@ -1629,7 +1656,7 @@ const GiftTapGame = () => {
     if (method === 'shards') {
       const totalAvailable = Number(balance) + Number(wallFeeProgress);
       if (totalAvailable < wallData.shardCost) {
-        alert(
+        notify(
           `Not enough yet. Need ${wallData.shardCost.toLocaleString()} — you have ${Number(balance).toLocaleString()} shards + ${Number(wallFeeProgress).toLocaleString()} wall progress. Keep tapping to fill the missing fee (does not level you up).`,
         );
         return;
@@ -1665,7 +1692,7 @@ const GiftTapGame = () => {
           console.warn('referral wall5', e?.message || e),
         );
       }
-      alert(`Ascended to Level ${newLevel}! Tap Power Increased.`);
+      notify(`Ascended to Level ${newLevel}! Tap Power Increased.`);
       
     } else if (method === 'sol') {
       try {
@@ -1691,7 +1718,7 @@ const GiftTapGame = () => {
         }
 
         // Temporary alert so the player knows the transaction is processing
-        alert(`Initiating SOL transaction for Level ${wallData.targetLevel}... Please wait.`);
+        notify(`Initiating SOL transaction for Level ${wallData.targetLevel}... Please wait.`);
 
         // --- 2. Setup Connection & Keypair (Using the decrypted storedSecret) ---
         const connection = new Connection("https://mainnet.helius-rpc.com/?api-key=538f6c8f-c773-46a2-939c-6d48c75b2226", 'confirmed');
@@ -1765,11 +1792,11 @@ const GiftTapGame = () => {
             console.warn('referral wall5', e?.message || e),
           );
         }
-        alert(`Payment successful! Ascended to Level ${newLevel}! Tap Power Increased.`);
+        notify(`Payment successful! Ascended to Level ${newLevel}! Tap Power Increased.`);
 
       } catch (err) {
         console.error("SOL Payment Error:", err);
-        alert(`Transaction Failed: ${err.message || "An error occurred during the SOL payment."}`);
+        notify(`Transaction Failed: ${err.message || "An error occurred during the SOL payment."}`);
       }
     }
   };
@@ -2111,7 +2138,7 @@ const GiftTapGame = () => {
       setWithdrawAmount((Math.floor(safeMax * 100000) / 100000).toString());
     } else {
       setWithdrawAmount("");
-      alert("Balance is too low to cover the 0.001 SOL transaction fee.");
+      notify("Balance is too low to cover the 0.001 SOL transaction fee.");
     }
   };
 
@@ -2179,17 +2206,17 @@ const GiftTapGame = () => {
   const buySwapLicense = async () => {
     const cost = SHARD_SWAP_CONFIG.freeUnlockBurnShards;
     if (currentLevel < SHARD_SWAP_CONFIG.freeUnlockMinLevel) {
-      alert(
+      notify(
         `Free swap license requires Level ${SHARD_SWAP_CONFIG.freeUnlockMinLevel}+ first (you are Level ${currentLevel}).`,
       );
       return;
     }
     if (balance < cost) {
-      alert(`Need ${cost.toLocaleString()} GFTshards to buy the free swap license.`);
+      notify(`Need ${cost.toLocaleString()} GFTshards to buy the free swap license.`);
       return;
     }
     if (stats.inventory?.swap_unlocked || stats.inventory?.swap_unlock_burned) {
-      alert('Swap license already paid. Need Level 10+ if still locked.');
+      notify('Swap license already paid. Need Level 10+ if still locked.');
       return;
     }
     setShardSwapBusy(true);
@@ -2207,10 +2234,10 @@ const GiftTapGame = () => {
       if (error) throw error;
       setBalance(newBal);
       setStats((s) => ({ ...s, inventory: nextInv }));
-      alert('✅ Free swap unlocked! Fees are higher than GiftLocksmith holders.');
+      notify('✅ Free swap unlocked! Fees are higher than GiftLocksmith holders.');
     } catch (e) {
       console.error(e);
-      alert(e?.message || 'Failed to unlock swap');
+      notify(e?.message || 'Failed to unlock swap');
     } finally {
       setShardSwapBusy(false);
     }
@@ -2229,12 +2256,12 @@ const GiftTapGame = () => {
     });
     const quote = quoteShardSwap(shardSwapAmount, access, stats.inventory);
     if (!quote.ok) {
-      alert(quote.error);
+      notify(quote.error);
       return;
     }
     const amt = Number(shardSwapAmount);
     if (balance < amt) {
-      alert('Not enough GFTshards.');
+      notify('Not enough GFTshards.');
       return;
     }
 
@@ -2262,13 +2289,13 @@ const GiftTapGame = () => {
       setBalances((b) => ({ ...b, GFT: newGft, GFTshards: newShardBal }));
       setStats((s) => ({ ...s, inventory: nextInv }));
       setShardSwapAmount('');
-      alert(
+      notify(
         `✅ Swapped ${amt.toLocaleString()} GFTshards → ${quote.gftOut} GFT ` +
           `(${access.label}). Fee ${quote.feeGft} GFT (${(access.feeBps / 100).toFixed(1)}%) retained by platform.`,
       );
     } catch (e) {
       console.error(e);
-      alert(e?.message || 'Shard swap failed');
+      notify(e?.message || 'Shard swap failed');
     } finally {
       setShardSwapBusy(false);
     }
@@ -2441,16 +2468,16 @@ const GiftTapGame = () => {
     const phraseToCopy = decryptedPhrase || generatedSecret;
     
     if (!phraseToCopy) {
-      alert("Error: No secret phrase found to copy.");
+      notify("Error: No secret phrase found to copy.");
       return;
     }
 
     try {
       await navigator.clipboard.writeText(phraseToCopy);
-      alert("✅ 12-Word Phrase Copied to clipboard!");
+      notify("✅ 12-Word Phrase Copied to clipboard!");
     } catch (err) {
       console.error("Failed to copy text: ", err);
-      alert("❌ Clipboard access denied. Please write it down manually.");
+      notify("❌ Clipboard access denied. Please write it down manually.");
     }
   };
 
@@ -2551,6 +2578,14 @@ const GiftTapGame = () => {
 
   return (
     <div style={{ backgroundColor: '#000', minHeight: '100vh', width: '100%' }}>
+      <AppNotice
+        show={appNotice.show}
+        message={appNotice.message}
+        loading={appNotice.loading}
+        success={appNotice.success}
+        title={appNotice.title}
+        onClose={() => setAppNotice((n) => ({ ...n, show: false }))}
+      />
       {/* Public launch: no BetaGate / invite codes */}
         <div style={{ ...styles.container, flexDirection: 'column', height: '100%', width: '100%', overflow: 'hidden' }}>
           
@@ -3272,7 +3307,7 @@ const GiftTapGame = () => {
                       style={styles.copyBtn} 
                       onClick={() => {
                         navigator.clipboard.writeText(playerWallet);
-                        alert("Address copied!");
+                        notify("Address copied!");
                       }}
                     >
                       ❐ {/* The "two squares" copy icon */}
@@ -3733,7 +3768,7 @@ const GiftTapGame = () => {
                 <button 
                   onClick={() => {
                     navigator.clipboard.writeText(generatedSecret);
-                    alert("Key Copied!");
+                    notify("Key Copied!");
                   }}
                   style={{...styles.actionBtn, width: '100%', marginBottom: '10px', background: '#333', color: '#fff', border: '1px solid #444'}}
                 >

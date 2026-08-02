@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from './supabaseClient';
 import { DB_PLAYER_ID } from './playerIdentity';
+import AppNotice from './AppNotice';
 
 const Tasks = ({ balance, setBalance, player, tgUser }) => {
   const user = player || tgUser;
@@ -9,6 +10,7 @@ const Tasks = ({ balance, setBalance, player, tgUser }) => {
   const [loadingTasks, setLoadingTasks] = useState(true);
   // NEW: State to track player's real progression stats
   const [playerStats, setPlayerStats] = useState({ streak: 0, purchased: false });
+  const [appNotice, setAppNotice] = useState({ show: false, message: '', success: true });
 
   const TASK_LIST = [
     { id: 'sub_tg', title: 'Join telegram', reward: 250, link: 'https://t.me/Gift2u_GiftTap_official', icon: 'https://upload.wikimedia.org/wikipedia/commons/8/82/Telegram_logo.svg', type: 'social' },
@@ -70,7 +72,11 @@ const Tasks = ({ balance, setBalance, player, tgUser }) => {
       })
       .eq(DB_PLAYER_ID, String(user.id));
       
-    alert(`🎉 You earned ${task.reward.toLocaleString()} Shards!`);
+    setAppNotice({
+      show: true,
+      message: `You earned ${task.reward.toLocaleString()} Shards!`,
+      success: true,
+    });
   };
 
   if (loadingTasks) return <div style={{ color: '#888', marginTop: '20px' }}>Loading Tasks...</div>;
@@ -78,6 +84,12 @@ const Tasks = ({ balance, setBalance, player, tgUser }) => {
   const safeCompletedTasks = Array.isArray(completedTasks) ? completedTasks : [];
   return (
     <div style={{ flex: 1, width: '100%', display: 'flex', flexDirection: 'column', paddingBottom: '100px', padding: '20px', boxSizing: 'border-box' }}>
+      <AppNotice
+        show={appNotice.show}
+        message={appNotice.message}
+        success={appNotice.success}
+        onClose={() => setAppNotice((n) => ({ ...n, show: false }))}
+      />
 
       <div style={{ flex: 1, overflowY: 'auto', paddingBottom: '120px' }}>
         {TASK_LIST.map((task) => {

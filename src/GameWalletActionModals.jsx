@@ -203,7 +203,13 @@ export default function GameWalletActionModals({
       setAmount((Math.floor(safeMax * 100000) / 100000).toString());
     } else {
       setAmount('');
-      alert('Balance is too low to cover the 0.001 SOL transaction fee.');
+      setStatus({
+        show: true,
+        loading: false,
+        message: 'Balance is too low to cover the 0.001 SOL transaction fee.',
+        success: false,
+        txid: null,
+      });
     }
   };
 
@@ -359,7 +365,13 @@ export default function GameWalletActionModals({
                   style={styles.copyBtn}
                   onClick={() => {
                     navigator.clipboard.writeText(address);
-                    alert('Address copied!');
+                    setStatus({
+                      show: true,
+                      loading: false,
+                      message: 'Address copied!',
+                      success: true,
+                      txid: null,
+                    });
                   }}
                 >
                   ❐

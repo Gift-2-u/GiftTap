@@ -19,6 +19,7 @@ import { keypairFromMnemonic } from './solanaWallet';
 import TokenBalanceList from './TokenBalanceList';
 import { fetchFiatRates } from './fiatPrices';
 import GameWalletActionModals from './GameWalletActionModals';
+import AppNotice from './AppNotice';
 
 /** Tokens shown on Solana tab — same set as the game wallet (shards are off-chain only). */
 const USDC_MINT = new PublicKey('EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v');
@@ -69,6 +70,7 @@ export function SolanaWalletPanel({ note, onClose }) {
   const [balError, setBalError] = useState('');
   const [fiatRates, setFiatRates] = useState({ sol: {}, usdc: {} });
   const [msg, setMsg] = useState('');
+  const [appNotice, setAppNotice] = useState({ show: false, message: '', success: true });
   const [isMobile, setIsMobile] = useState(false);
   const [displayCurrency] = useState(() => {
     try {
@@ -316,6 +318,12 @@ export function SolanaWalletPanel({ note, onClose }) {
 
   return (
     <div style={{ textAlign: 'left' }}>
+      <AppNotice
+        show={appNotice.show}
+        message={appNotice.message}
+        success={appNotice.success}
+        onClose={() => setAppNotice((n) => ({ ...n, show: false }))}
+      />
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
         <h3 style={{ margin: 0, color: '#ffd700' }}>Solana Wallet</h3>
         {onClose ? (
@@ -471,7 +479,11 @@ export function SolanaWalletPanel({ note, onClose }) {
                 type="button"
                 onClick={() => {
                   navigator.clipboard.writeText(address);
-                  alert('Solana address copied');
+                  setAppNotice({
+                    show: true,
+                    message: 'Solana address copied',
+                    success: true,
+                  });
                 }}
                 style={{
                   flex: 1,
