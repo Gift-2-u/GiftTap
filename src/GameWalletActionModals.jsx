@@ -4,6 +4,17 @@ import {
   swapFromGameWallet,
   quoteJupiter,
 } from './gameWalletActions';
+import { hasLocksmith } from './locksmith';
+import {
+  SHARD_SWAP_CONFIG,
+  getSwapAccess,
+  quoteShardSwap,
+  inventoryAfterSwap,
+  inventoryAfterUnlockBurn,
+  getDailySwapUsed,
+} from './shardSwap';
+import { supabase } from './supabaseClient';
+import { DB_PLAYER_ID, getPlayerId } from './playerIdentity';
 
 /**
  * Receive / Send / Swap / Shard sheets for the main-site game wallet.
@@ -72,6 +83,10 @@ export default function GameWalletActionModals({
   address,
   balances = {},
   onSuccess,
+  inventory: inventoryProp = {},
+  currentLevel = 0,
+  maxUnlockedLevel = 4,
+  playerId: playerIdProp,
 }) {
   const [toAddr, setToAddr] = useState('');
   const [amount, setAmount] = useState('');
@@ -86,6 +101,37 @@ export default function GameWalletActionModals({
     txid: null,
   });
   const [shardAmt, setShardAmt] = useState('');
+  const [inventory, setInventory] = useState(inventoryProp || {});
+  const [hasLocksmithNft, setHasLocksmithNft] = useState(false);
+  const [shardBusy, setShardBusy] = useState(false);
+
+  useEffect(() => {
+    setInventory(inventoryProp || {});
+  }, [inventoryProp]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      if (action !== 'shard' || !address) {
+        setHasLocksmithNft(false);
+        return;
+      }
+      const ok = await hasLocksmith(address);
+      if (!cancelled) setHasLocksmithNft(ok);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [action, address]);
+
+  const playerId = playerIdProp || getPlayerId() || '';
+  const swapAccess = getSwapAccess({
+    currentLevel,
+    maxUnlockedLevel,
+    inventory,
+    hasLocksmithNft,
+  });
+  const shardQuote = quoteShardSwap(shardAmt, swapAccess, inventory);
 
   // Same fee model as GiftTap (base fee + 25% buffer + fixed project fee)
   const transactionCosts = useMemo(
@@ -948,7 +994,7 @@ export default function GameWalletActionModals({
                 <input
                   type="number"
                   placeholder="0.00"
-                  value={shardAmt ? shardAmt / 1000 : ''}
+                  value={shardQuote.ok ? shardQuote.gftOut : ''}
                   readOnly
                   style={{
                     background: 'none',
@@ -973,34 +1019,219 @@ export default function GameWalletActionModals({
               </div>
             </div>
 
-            <p
+            <div
               style={{
-                fontSize: '12px',
-                color: '#888',
-                marginTop: '20px',
-                textAlign: 'center',
+                background:
+                  swapAccess.tier === 'locksmith'
+                    ? 'rgba(153,69,255,0.15)'
+                    : swapAccess.allowed
+                      ? 'rgba(74,222,128,0.1)'
+                      : 'rgba(248,113,113,0.1)',
+                border: `1px solid ${
+                  swapAccess.tier === 'locksmith'
+                    ? '#9945FF'
+                    : swapAccess.allowed
+                      ? '#4ade80'
+                      : '#f87171'
+                }`,
+                borderRadius: 12,
+                padding: '10px 12px',
+                marginBottom: 12,
+                fontSize: 12,
+                color: '#ccc',
+                textAlign: 'left',
+                lineHeight: 1.45,
               }}
             >
-              Official conversion rate to be announced.
+              <div style={{ fontWeight: 'bold', color: '#fff', marginBottom: 4 }}>
+                Tier: {swapAccess.label}
+                {hasLocksmithNft ? ' 🔑' : ''}
+              </div>
+              {swapAccess.allowed ? (
+                <>
+                  Fee {(swapAccess.feeBps / 100).toFixed(1)}% in GFT · Min{' '}
+                  {swapAccess.minShards.toLocaleString()} shards
+                  <br />
+                  Today: {getDailySwapUsed(inventory).toLocaleString()} /{' '}
+                  {swapAccess.dailyCapShards.toLocaleString()} shards
+                  <br />
+                  Rate: {SHARD_SWAP_CONFIG.shardsPerGft.toLocaleString()} shards → 1 GFT (provisional)
+                </>
+              ) : (
+                <span>{swapAccess.reason}</span>
+              )}
+            </div>
+
+            {shardQuote.ok && (
+              <p style={{ fontSize: 11, color: '#888', marginTop: 8 }}>
+                Gross {shardQuote.gftGross} GFT · fee {shardQuote.feeGft} GFT · you get {shardQuote.gftOut} GFT
+              </p>
+            )}
+            {!shardQuote.ok && shardAmt && (
+              <p style={{ fontSize: 11, color: '#f87171', marginTop: 8 }}>{shardQuote.error}</p>
+            )}
+
+            <p
+              style={{
+                fontSize: '11px',
+                color: '#666',
+                marginTop: '12px',
+                textAlign: 'center',
+                lineHeight: 1.4,
+              }}
+            >
+              GFT credit on your account. GiftLocksmith = lower fees + higher cap. Free path after Level 10 or burn unlock.
             </p>
+
+            {!swapAccess.allowed && (
+              <button
+                type="button"
+                disabled={
+                  shardBusy || balShards < SHARD_SWAP_CONFIG.freeUnlockBurnShards || !playerId
+                }
+                onClick={async () => {
+                  const cost = SHARD_SWAP_CONFIG.freeUnlockBurnShards;
+                  if (balShards < cost) return;
+                  setShardBusy(true);
+                  try {
+                    const newBal = Math.round((balShards - cost) * 1000) / 1000;
+                    const nextInv = inventoryAfterUnlockBurn(inventory);
+                    const { error } = await supabase
+                      .from('players')
+                      .update({
+                        shard_balance: newBal,
+                        inventory: nextInv,
+                        last_updated: new Date().toISOString(),
+                      })
+                      .eq(DB_PLAYER_ID, String(playerId));
+                    if (error) throw error;
+                    setInventory(nextInv);
+                    onSuccess?.();
+                    setStatus({
+                      show: true,
+                      loading: false,
+                      message: '✅ Free swap unlocked',
+                      success: true,
+                      txid: null,
+                    });
+                  } catch (e) {
+                    setStatus({
+                      show: true,
+                      loading: false,
+                      message: e?.message || 'Unlock failed',
+                      success: false,
+                      txid: null,
+                    });
+                  } finally {
+                    setShardBusy(false);
+                  }
+                }}
+                style={{
+                  width: '100%',
+                  background: '#2a2d34',
+                  color: '#fff',
+                  border: '1px solid #4ade80',
+                  padding: '14px',
+                  borderRadius: '30px',
+                  fontWeight: 'bold',
+                  fontSize: '14px',
+                  marginTop: '12px',
+                  cursor: 'pointer',
+                }}
+              >
+                Unlock free swap (burn{' '}
+                {SHARD_SWAP_CONFIG.freeUnlockBurnShards.toLocaleString()} shards)
+              </button>
+            )}
 
             <button
               type="button"
-              disabled
+              disabled={
+                !swapAccess.allowed ||
+                !shardQuote.ok ||
+                shardBusy ||
+                balShards < Number(shardAmt) ||
+                !playerId
+              }
+              onClick={async () => {
+                const amt = Number(shardAmt);
+                const access = getSwapAccess({
+                  currentLevel,
+                  maxUnlockedLevel,
+                  inventory,
+                  hasLocksmithNft,
+                });
+                const quote = quoteShardSwap(amt, access, inventory);
+                if (!quote.ok) {
+                  setStatus({
+                    show: true,
+                    loading: false,
+                    message: quote.error,
+                    success: false,
+                    txid: null,
+                  });
+                  return;
+                }
+                setShardBusy(true);
+                try {
+                  const newShardBal = Math.round((balShards - amt) * 1000) / 1000;
+                  const newGft =
+                    Math.round((balGft + quote.gftOut) * 1e6) / 1e6;
+                  const nextInv = inventoryAfterSwap(inventory, amt, quote.feeGft);
+                  const { error } = await supabase
+                    .from('players')
+                    .update({
+                      shard_balance: newShardBal,
+                      gft_token_balance: newGft,
+                      inventory: nextInv,
+                      last_updated: new Date().toISOString(),
+                    })
+                    .eq(DB_PLAYER_ID, String(playerId));
+                  if (error) throw error;
+                  setInventory(nextInv);
+                  setShardAmt('');
+                  onSuccess?.();
+                  setStatus({
+                    show: true,
+                    loading: false,
+                    message: `✅ ${quote.gftOut} GFT credited (fee ${quote.feeGft} GFT, ${access.label})`,
+                    success: true,
+                    txid: null,
+                  });
+                } catch (e) {
+                  setStatus({
+                    show: true,
+                    loading: false,
+                    message: e?.message || 'Swap failed',
+                    success: false,
+                    txid: null,
+                  });
+                } finally {
+                  setShardBusy(false);
+                }
+              }}
               style={{
                 width: '100%',
-                background: '#333',
-                color: '#888',
+                background:
+                  swapAccess.allowed && shardQuote.ok
+                    ? 'linear-gradient(90deg, #9945FF, #14F195)'
+                    : '#333',
+                color: swapAccess.allowed && shardQuote.ok ? '#000' : '#888',
                 border: 'none',
                 padding: '16px',
                 borderRadius: '30px',
                 fontWeight: 'bold',
                 fontSize: '16px',
-                marginTop: '20px',
-                cursor: 'not-allowed',
+                marginTop: '12px',
+                cursor:
+                  swapAccess.allowed && shardQuote.ok ? 'pointer' : 'not-allowed',
               }}
             >
-              Unlocks at Token Launch
+              {shardBusy
+                ? 'Swapping…'
+                : !swapAccess.allowed
+                  ? 'Swap locked'
+                  : 'Swap GFTshards → GFT'}
             </button>
           </div>
         </div>

@@ -577,7 +577,7 @@ export function GameWalletPanel({ onClose }) {
       const { data, error: qErr } = await supabase
         .from('players')
         .select(
-          'wallet_address, username, sol_balance, shard_balance, gft_token_balance, usdc_balance',
+          'wallet_address, username, sol_balance, shard_balance, gft_token_balance, usdc_balance, inventory, max_unlocked_level',
         )
         .eq(DB_PLAYER_ID, String(id))
         .maybeSingle();
@@ -801,6 +801,10 @@ export function GameWalletPanel({ onClose }) {
           GFT: gft,
           GFTshards: shards,
         }}
+        inventory={row?.inventory || {}}
+        maxUnlockedLevel={Number(row?.max_unlocked_level) || 4}
+        currentLevel={0}
+        playerId={playerId}
         onSuccess={load}
       />
     </div>

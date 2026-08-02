@@ -1,38 +1,32 @@
-# GiftLocksmith mint
+# GiftLocksmith — Metaplex Core
 
-## Locked metadata
+## Plan locked
 
-| Field | Value |
-|--------|--------|
-| Name | GiftLocksmith |
-| Symbol | Locksmith |
-| Royalties | 5% |
-| Collection (trait) | Gift2u Elves |
-| Generation | Gen 1 |
-| Rarity | Rare |
-| Max supply (trait / plan) | 5000 |
+| | |
+|--|--|
+| Standard | **Metaplex Core** |
+| Test | Mint **1** now (`mint-core.mjs`) |
+| Public | **3 waves**: 500 → 1500 → 3000 (max 5000) |
+| Price | **Increases each wave** (see `WAVES.md`) |
 
-Description uses **GFTshard** (in-game name).
+## Mint the test piece (mainnet)
 
-## This script vs 5000 supply
-
-| Now | Later for 5000 players |
-|-----|-------------------------|
-| `node mint.mjs` = **1** NFT in your wallet | Collection NFT + Candy Machine (or similar) capped at 5000 |
-| Same art / traits for every copy | Each mint is a separate token, same metadata template |
-
-Trait `Max Supply: 5000` is **label only** — it does not enforce a cap on-chain. Cap is enforced by Candy Machine config.
-
-## Mint one (mainnet)
+Wallet: `~/.config/solana/id.json` must have **mainnet** SOL (~0.02+ for upload + rent).
 
 ```bash
 cd /home/tower/gift_memecoin/scripts/nft/gift-locksmith
 npm install
 
-export KEYPAIR_PATH="$HOME/.config/solana/id.json"
+# Use mainnet RPC (Helius from project .env is fine)
 export RPC_URL="https://mainnet.helius-rpc.com/?api-key=YOUR_KEY"
 export CONFIRM_MAINNET=yes
-node mint.mjs
+node mint-core.mjs
 ```
 
-Image: `GiftLocksmith.jpg` (from OneDrive Gift2u elves nft).
+Result: `mint-result.json` (asset address + Solscan + Core explorer).
+
+## Next after test mint
+
+1. Core **Collection**  
+2. Core Candy Machine wave 1 (500, lowest price)  
+3. Waves 2–3 with higher prices when sold out  

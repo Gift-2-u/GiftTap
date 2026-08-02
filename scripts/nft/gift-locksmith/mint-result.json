@@ -1,0 +1,30 @@
+{
+  "standard": "metaplex-core",
+  "name": "GiftLocksmith",
+  "symbol": "Locksmith",
+  "asset": "Fsx9L4oS9pG4P4t338DwUtQpLX7oQTsxgGvK1JmTe3Tt",
+  "metadataUri": "https://gateway.irys.xyz/fZbq4x6aVQH7i5lAhvcEx1eACPmzKuKdWfao3fIz7UU",
+  "imageUri": "https://gateway.irys.xyz/HXQ5D7Iu_vkgUsW4I6W7LQ0Vn3J5rTQJXkgxMwh28k4",
+  "signature": "5aPVpX8VmurXwVeVDGSh5aREngHnWAUKP2wtEboVWJkwXx3nHoBRDxiPnR3ronrjiYpTrMBkFwWg4CopnfRSWEzo",
+  "owner": "AdvMvv6GzGvdLRtuxaso1Eubk7jmn6LCZEeEFHn22yeb",
+  "cluster": "mainnet",
+  "royaltiesBps": 500,
+  "solscan": "https://solscan.io/account/Fsx9L4oS9pG4P4t338DwUtQpLX7oQTsxgGvK1JmTe3Tt",
+  "solscanTx": "https://solscan.io/tx/5aPVpX8VmurXwVeVDGSh5aREngHnWAUKP2wtEboVWJkwXx3nHoBRDxiPnR3ronrjiYpTrMBkFwWg4CopnfRSWEzo",
+  "coreExplorer": "https://core.metaplex.com/explorer/Fsx9L4oS9pG4P4t338DwUtQpLX7oQTsxgGvK1JmTe3Tt",
+  "wavesPlan": {
+    "wave1": {
+      "supply": 500,
+      "priceSol": 0.25
+    },
+    "wave2": {
+      "supply": 1500,
+      "priceSol": 0.4
+    },
+    "wave3": {
+      "supply": 3000,
+      "priceSol": 0.6
+    },
+    "maxGen1": 5000
+  }
+}

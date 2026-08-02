@@ -1,0 +1,32 @@
+{
+  "standard": "metaplex-core",
+  "wave": 1,
+  "itemsAvailable": 500,
+  "priceSol": 0.25,
+  "treasury": "AdvMvv6GzGvdLRtuxaso1Eubk7jmn6LCZEeEFHn22yeb",
+  "collection": "FQPYWSohCPnS57W2AWAqwmQM21KRxGi4YXcCaiXUghPD",
+  "collectionUri": "https://gateway.irys.xyz/5ZzpokyISH4bCL7_uLSoYGDpVVpYBtUR0bxAAIS87gQ",
+  "candyMachine": "AQbpmorxtBaaipqm4WcmCyBzci8Qf8km9qF8kAidsMkC",
+  "candyGuard": "CBK1Zwsnwwks3BLmhHASzD9Rsq8i2Xgs6RWMZGNSQRJ9",
+  "itemUri": "https://gateway.irys.xyz/VpqsfinMVQ8-doPcTKVS69AAF8jK67n8rxLAMGky_Wg",
+  "imageUri": "https://gateway.irys.xyz/HXQ5D7Iu_vkgUsW4I6W7LQ0Vn3J5rTQJXkgxMwh28k4",
+  "testMint": "Fsx9L4oS9pG4P4t338DwUtQpLX7oQTsxgGvK1JmTe3Tt",
+  "cluster": "mainnet",
+  "guards": {
+    "solPayment": 0.25,
+    "botTax": 0.001,
+    "mintLimitPerWallet": 5
+  },
+  "txs": {
+    "collection": "2XX2mYKZhpJUGfDuNy7apaRtWLALLevTf3iAKa2BEqzGna7KvRQVD8jU59xobSsevJe4aBPNR5gVbEwoXwUJVAz3",
+    "candyMachine": "qB3k7kxXzywiEonWKA2wJYG9ZjNPPcC73BGiQfbSZNJ9AxBGq2oNPsw8ztmhNMJXifarcn2TDLDv8YwS6z3Vt9p",
+    "guard": "5xmR8YtxXiy4KnqeJ2TuFvZSWq4X4XCwCjBFr8ecm65zAg21fgR8kiGXkgxFc8hsQaTM8bt7LsNb4oS27shxAaY1",
+    "wrap": "3kQ8Abv6o9c4CbzJQkc83Znvixvez8KqzHh95Fhoe56xzdSWEfLMafQ6D5ABJPHjRpxUnF8CPyfsJsv7syffrtEa"
+  },
+  "links": {
+    "solscanCollection": "https://solscan.io/account/FQPYWSohCPnS57W2AWAqwmQM21KRxGi4YXcCaiXUghPD",
+    "solscanCandyMachine": "https://solscan.io/account/AQbpmorxtBaaipqm4WcmCyBzci8Qf8km9qF8kAidsMkC",
+    "coreExplorerCollection": "https://core.metaplex.com/explorer/FQPYWSohCPnS57W2AWAqwmQM21KRxGi4YXcCaiXUghPD"
+  },
+  "note": "Wave 1 live on-chain. Buyers mint via Core Candy Machine + Guard (0.25 SOL to treasury). Hidden settings: GiftLocksmith #1…#500 same art. Max 5 mints per wallet."
+}
