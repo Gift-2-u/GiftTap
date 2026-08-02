@@ -5,6 +5,60 @@ import { Connection, PublicKey, Keypair, Transaction, SystemProgram, ComputeBudg
 import bs58 from 'bs58';
 import { keypairFromMnemonic } from './solanaWallet';
 import { mintLocksmithWave1, LOCKSMITH_WAVE1 } from './mintLocksmith';
+import { ShopGlyph } from './shopIcons';
+
+/** Professional icon tile — custom SVG / image or built-in glyph */
+function ShopItemIcon({ item, size = 52, variant = 'row' }) {
+  const from = item.iconFrom || '#333';
+  const to = item.iconTo || '#111';
+  const ring = item.iconRing || 'rgba(255,255,255,0.12)';
+  const isWide = variant === 'card';
+  const glyphSize = isWide ? 44 : Math.round(size * 0.62);
+
+  return (
+    <div
+      style={{
+        width: isWide ? '100%' : size,
+        height: isWide ? 88 : size,
+        minWidth: isWide ? undefined : size,
+        borderRadius: isWide ? 12 : 14,
+        background: `linear-gradient(145deg, ${from} 0%, ${to} 100%)`,
+        border: `1px solid ${ring}`,
+        boxShadow: `0 4px 14px ${item.iconGlow || 'rgba(0,0,0,0.35)'}, inset 0 1px 0 rgba(255,255,255,0.12)`,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        flexShrink: 0,
+        position: 'relative',
+        overflow: 'hidden',
+      }}
+      aria-hidden
+    >
+      <div
+        style={{
+          position: 'absolute',
+          inset: 0,
+          background:
+            'radial-gradient(circle at 30% 25%, rgba(255,255,255,0.14) 0%, transparent 45%)',
+          pointerEvents: 'none',
+        }}
+      />
+      <div style={{ position: 'relative', filter: 'drop-shadow(0 2px 6px rgba(0,0,0,0.35))' }}>
+        {item.iconUrl ? (
+          <img
+            src={item.iconUrl}
+            alt=""
+            width={glyphSize}
+            height={glyphSize}
+            style={{ display: 'block', objectFit: 'contain' }}
+          />
+        ) : (
+          <ShopGlyph itemId={item.id} size={glyphSize} />
+        )}
+      </div>
+    </div>
+  );
+}
 
 const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, tgUser, playerWallet, decryptedPhrase }) => {
   const user = player || tgUser;
@@ -49,22 +103,142 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
     ));
   };
 
-  // --- ITEM DEFINITIONS ---
+  // --- ITEM DEFINITIONS (icon + gradient for ShopItemIcon) ---
   const shardListings = [
-    { id: 'frenzy', name: "60-Second Frenzy", desc: "2x Payout per energy", duration: "60 Seconds", cost: 700, icon: "🔥" },
-    { id: 'battery', name: "Expanded Battery", desc: "+1,000 Max Energy", duration: "Until UTC midnight", cost: 650, icon: "🔋" },
-    { id: 'heavy', name: "Heavy Hands", desc: "2x Efficiency (Drains 2x, Pays 2x)", duration: "Until UTC midnight", cost: 750, icon: "🥊" },
-    { id: 'refill', name: "Instant Refill", desc: "Fills energy to max", duration: "Instant", cost: 250, icon: "⚡" }
+    {
+      id: 'frenzy',
+      name: '60-Second Frenzy',
+      desc: '2x Payout per energy',
+      duration: '60 Seconds',
+      cost: 700,
+      iconFrom: '#ff6b35',
+      iconTo: '#7c1d12',
+      iconRing: 'rgba(255,107,53,0.45)',
+      iconGlow: 'rgba(255,107,53,0.25)',
+    },
+    {
+      id: 'battery',
+      name: 'Expanded Battery',
+      desc: '+1,000 Max Energy',
+      duration: 'Until UTC midnight',
+      cost: 750,
+      iconFrom: '#4ade80',
+      iconTo: '#14532d',
+      iconRing: 'rgba(74,222,128,0.4)',
+      iconGlow: 'rgba(74,222,128,0.2)',
+    },
+    {
+      id: 'heavy',
+      name: 'Heavy Hands',
+      desc: '2x Efficiency (Drains 2x, Pays 2x)',
+      duration: 'Until UTC midnight',
+      cost: 750,
+      iconUrl: '/shop/heavy-hands.svg',
+      iconFrom: '#3f1f1a',
+      iconTo: '#1a0f0c',
+      iconRing: 'rgba(234,90,71,0.45)',
+      iconGlow: 'rgba(234,90,71,0.2)',
+    },
+    {
+      id: 'refill',
+      name: 'Instant Refill',
+      desc: 'Fills energy to max',
+      duration: 'Instant',
+      cost: 300,
+      iconFrom: '#facc15',
+      iconTo: '#854d0e',
+      iconRing: 'rgba(250,204,21,0.45)',
+      iconGlow: 'rgba(250,204,21,0.25)',
+    },
   ];
 
   /** SOL boosts only — not NFTs */
   const premiumListings = [
-    { id: 'bot', name: "Weekend Bot", type: "Misc", rarity: "Epic", boost: "Auto-tap max limits", duration: "3 Days", price: 0.01, currency: "SOL", image: "🤖" },
-    { id: 'grinder', name: "Grinder's Contract", type: "Power", rarity: "Rare", boost: "2,000 Daily Limit", duration: "7 Days", price: 0.01, currency: "SOL", image: "📜" },
-    { id: 'whale', name: "Whale's Contract", type: "Power", rarity: "Legendary", boost: "5,000 Daily Limit", duration: "7 Days", price: 0.03, currency: "SOL", image: "🐳" },
-    { id: 'crate', name: "The Vault Drop", type: "Misc", rarity: "Legendary", boost: "+50,000 Shards", duration: "Instant", price: 0.05, currency: "SOL", image: "💎" },
-    { id: 'x2_boost', name: "Double Power", type: "Power", rarity: "Epic", boost: "2x Shards", duration: "7 Days", price: 0.0125, currency: "SOL", image: "🔥" },
-    { id: 'x3_boost', name: "Triple Power", type: "Power", rarity: "Legendary", boost: "3x Shards", duration: "7 Days", price: 0.025, currency: "SOL", image: "🚀" }
+    {
+      id: 'bot',
+      name: 'Weekend Bot',
+      type: 'Misc',
+      rarity: 'Epic',
+      boost: 'Auto-tap max limits',
+      duration: '3 Days',
+      price: 0.01,
+      currency: 'SOL',
+      iconFrom: '#a78bfa',
+      iconTo: '#4c1d95',
+      iconRing: 'rgba(167,139,250,0.5)',
+      iconGlow: 'rgba(153,69,255,0.3)',
+    },
+    {
+      id: 'grinder',
+      name: '+2K Daily Energy',
+      type: 'Power',
+      rarity: 'Rare',
+      boost: '+2,000 daily energy boost (3,000 total)',
+      duration: '7 Days',
+      price: 0.01,
+      currency: 'SOL',
+      iconFrom: '#60a5fa',
+      iconTo: '#1e3a8a',
+      iconRing: 'rgba(96,165,250,0.45)',
+      iconGlow: 'rgba(59,130,246,0.25)',
+    },
+    {
+      id: 'whale',
+      name: '+5K Daily Energy',
+      type: 'Power',
+      rarity: 'Legendary',
+      boost: '+5,000 daily energy boost (6,000 total)',
+      duration: '7 Days',
+      price: 0.03,
+      currency: 'SOL',
+      iconFrom: '#38bdf8',
+      iconTo: '#0c4a6e',
+      iconRing: 'rgba(56,189,248,0.5)',
+      iconGlow: 'rgba(14,165,233,0.3)',
+    },
+    {
+      id: 'crate',
+      name: 'The Vault Drop',
+      type: 'Misc',
+      rarity: 'Legendary',
+      boost: '+50,000 Shards',
+      duration: 'Instant',
+      price: 0.05,
+      currency: 'SOL',
+      iconUrl: '/shop/GFTshard.png',
+      iconFrom: '#1a1520',
+      iconTo: '#0c0a10',
+      iconRing: 'rgba(251,191,36,0.5)',
+      iconGlow: 'rgba(255,215,0,0.25)',
+    },
+    {
+      id: 'x2_boost',
+      name: 'Double Power',
+      type: 'Power',
+      rarity: 'Epic',
+      boost: '2x Shards',
+      duration: '7 Days',
+      price: 0.0125,
+      currency: 'SOL',
+      iconFrom: '#fb7185',
+      iconTo: '#9f1239',
+      iconRing: 'rgba(251,113,133,0.45)',
+      iconGlow: 'rgba(244,63,94,0.25)',
+    },
+    {
+      id: 'x3_boost',
+      name: 'Triple Power',
+      type: 'Power',
+      rarity: 'Legendary',
+      boost: '3x Shards',
+      duration: '7 Days',
+      price: 0.025,
+      currency: 'SOL',
+      iconFrom: '#c084fc',
+      iconTo: '#5b21b6',
+      iconRing: 'rgba(192,132,252,0.55)',
+      iconGlow: 'rgba(168,85,247,0.35)',
+    },
   ];
 
   /** Separate NFT marketplace (on-chain mints) — not backpack boosts */
@@ -471,7 +645,26 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
       {/* Header */}
       <div style={{ textAlign: 'center', marginBottom: '15px' }}>
         <h2 style={{ color: '#ffd700', fontSize: '24px', margin: '0 0 5px 0' }}>Gift Shop</h2>
-        <div style={{ color: '#888', fontSize: '14px', fontWeight: 'bold' }}>💎 {balance.toLocaleString()} GFTshards</div>
+        <div
+          style={{
+            color: '#888',
+            fontSize: '14px',
+            fontWeight: 'bold',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 8,
+          }}
+        >
+          <img
+            src="/shop/GFTshard.png"
+            alt=""
+            width={22}
+            height={22}
+            style={{ display: 'block', objectFit: 'contain' }}
+          />
+          <span>{balance.toLocaleString()} GFTshards</span>
+        </div>
       </div>
 
       {/* Main Navigation Tabs */}
@@ -509,10 +702,10 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
               const isDisabled = isActive || !canAfford;
 
               return (
-                <div key={item.id} style={{ background: '#1c1e22', borderRadius: '15px', padding: '15px', border: '1px solid #333', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <div style={{ flex: 1 }}>
+                <div key={item.id} style={{ background: '#1c1e22', borderRadius: '15px', padding: '12px 15px', border: '1px solid #333', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+                  <ShopItemIcon item={item} size={52} variant="row" />
+                  <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '5px' }}>
-                      <span style={{ fontSize: '18px' }}>{item.icon}</span>
                       <h3 style={{ margin: 0, color: '#ffd700', fontSize: '16px' }}>{item.name}</h3>
                     </div>
                     <p style={{ margin: '0 0 4px 0', color: '#ccc', fontSize: '12px' }}>{item.desc}</p>
@@ -569,8 +762,8 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
               {filteredListings.map((item) => (
                 <div key={item.id} style={{ background: '#111', border: item.rarity === 'Legendary' ? '1px solid #ffd700' : item.rarity === 'Epic' ? '1px solid #9945FF' : '1px solid #333', borderRadius: '12px', padding: '10px', display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center' }}>
                  
-                  <div style={{ fontSize: '40px', background: '#222', width: '100%', borderRadius: '8px', padding: '15px 0', marginBottom: '10px' }}>
-                    {item.image}
+                  <div style={{ width: '100%', marginBottom: 10 }}>
+                    <ShopItemIcon item={item} variant="card" />
                   </div>
                  
                   <div style={{ color: '#fff', fontWeight: 'bold', fontSize: '13px', width: '100%', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
@@ -740,10 +933,10 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
                 const isUsedToday = dailyUsage[item.id] === currentTodayStr;
 
                 return (
-                  <div key={item.id} style={{ background: '#1c1e22', borderRadius: '15px', padding: '15px', border: '1px solid #9945FF', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <div style={{ flex: 1 }}>
+                  <div key={item.id} style={{ background: '#1c1e22', borderRadius: '15px', padding: '12px 15px', border: '1px solid #9945FF', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+                    <ShopItemIcon item={item} size={48} variant="row" />
+                    <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '5px' }}>
-                        <span style={{ fontSize: '18px' }}>{item.icon || item.image}</span>
                         <h3 style={{ margin: 0, color: '#fff', fontSize: '16px' }}>{item.name}</h3>
                       </div>
                       <span style={{ color: '#888', fontSize: '11px', fontWeight: 'bold' }}>Owned: {localInventory[item.id]}</span>
