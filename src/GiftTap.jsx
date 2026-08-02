@@ -125,10 +125,10 @@ export const getLevelMultiplier = (level) => {
 
 export const ASCENSION_WALLS = {
   4: { targetLevel: 5, shardCost: 15000, solCost: 0.025, newCap: 9 },
-  9: { targetLevel: 10, shardCost: 25000, solCost: 0.05, newCap: 19 },
-  19: { targetLevel: 20, shardCost: 50000, solCost: 0.10, newCap: 29 },
-  29: { targetLevel: 30, shardCost: 100000, solCost: 0.20, newCap: 49 },
-  49: { targetLevel: 50, shardCost: 250000, solCost: 0.50, newCap: 50 }
+  9: { targetLevel: 10, shardCost: 30000, solCost: 0.05, newCap: 19 },
+  19: { targetLevel: 20, shardCost: 75000, solCost: 0.10, newCap: 29 },
+  29: { targetLevel: 30, shardCost: 150000, solCost: 0.20, newCap: 49 },
+  49: { targetLevel: 50, shardCost: 500000, solCost: 0.60, newCap: 50 }
 };
 
 /** True when player is at a hard wall and cannot gain level from more lifetime taps. */

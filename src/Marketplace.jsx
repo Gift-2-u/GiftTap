@@ -4,6 +4,7 @@ import { DB_PLAYER_ID } from './playerIdentity';
 import { Connection, PublicKey, Keypair, Transaction, SystemProgram, ComputeBudgetProgram, sendAndConfirmTransaction } from '@solana/web3.js';
 import bs58 from 'bs58';
 import { keypairFromMnemonic } from './solanaWallet';
+import { mintLocksmithWave1, LOCKSMITH_WAVE1 } from './mintLocksmith';
 
 const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, tgUser, playerWallet, decryptedPhrase }) => {
   const user = player || tgUser;
@@ -51,11 +52,12 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
   // --- ITEM DEFINITIONS ---
   const shardListings = [
     { id: 'frenzy', name: "60-Second Frenzy", desc: "2x Payout per energy", duration: "60 Seconds", cost: 700, icon: "🔥" },
-    { id: 'battery', name: "Expanded Battery", desc: "+1,000 Max Energy", duration: "Until UTC midnight", cost: 750, icon: "🔋" },
+    { id: 'battery', name: "Expanded Battery", desc: "+1,000 Max Energy", duration: "Until UTC midnight", cost: 650, icon: "🔋" },
     { id: 'heavy', name: "Heavy Hands", desc: "2x Efficiency (Drains 2x, Pays 2x)", duration: "Until UTC midnight", cost: 750, icon: "🥊" },
-    { id: 'refill', name: "Instant Refill", desc: "Fills energy to max", duration: "Instant", cost: 300, icon: "⚡" }
+    { id: 'refill', name: "Instant Refill", desc: "Fills energy to max", duration: "Instant", cost: 250, icon: "⚡" }
   ];
 
+  /** SOL boosts only — not NFTs */
   const premiumListings = [
     { id: 'bot', name: "Weekend Bot", type: "Misc", rarity: "Epic", boost: "Auto-tap max limits", duration: "3 Days", price: 0.01, currency: "SOL", image: "🤖" },
     { id: 'grinder', name: "Grinder's Contract", type: "Power", rarity: "Rare", boost: "2,000 Daily Limit", duration: "7 Days", price: 0.01, currency: "SOL", image: "📜" },
@@ -63,6 +65,33 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
     { id: 'crate', name: "The Vault Drop", type: "Misc", rarity: "Legendary", boost: "+50,000 Shards", duration: "Instant", price: 0.05, currency: "SOL", image: "💎" },
     { id: 'x2_boost', name: "Double Power", type: "Power", rarity: "Epic", boost: "2x Shards", duration: "7 Days", price: 0.0125, currency: "SOL", image: "🔥" },
     { id: 'x3_boost', name: "Triple Power", type: "Power", rarity: "Legendary", boost: "3x Shards", duration: "7 Days", price: 0.025, currency: "SOL", image: "🚀" }
+  ];
+
+  /** Separate NFT marketplace (on-chain mints) — not backpack boosts */
+  const nftListings = [
+    {
+      id: 'locksmith',
+      name: 'GiftLocksmith',
+      type: 'NFT',
+      rarity: 'Rare',
+      collection: 'Gift2u Elves',
+      /** Short line under name */
+      boost: 'Unlocks Shard Swap (GFTshards → GFT) with better fees',
+      /** Bullet benefits shown on card */
+      perks: [
+        '4% fee',
+        'Higher daily swap cap',
+        'Vault better APY (coming soon)',
+      ],
+      duration: 'Permanent · Gen 1 · Wave 1 of 3',
+      price: LOCKSMITH_WAVE1.priceSol,
+      currency: 'SOL',
+      image: '🔑',
+      imageUrl: LOCKSMITH_WAVE1.imageUri,
+      supply: LOCKSMITH_WAVE1.itemsAvailable,
+      maxPerWallet: LOCKSMITH_WAVE1.maxPerWallet,
+      isNftMint: true,
+    },
   ];
 
   const allItems = [...shardListings, ...premiumListings];
@@ -101,7 +130,43 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
     }
   };
 
+  /** Mint GiftLocksmith Wave 1 from Core Candy Machine (0.25 SOL). */
+  const handleLocksmithMint = async () => {
+    setTxStatus({
+      show: true,
+      loading: true,
+      message: `Minting GiftLocksmith for ${LOCKSMITH_WAVE1.priceSol} SOL…`,
+      success: false,
+    });
+    try {
+      const storedSecret = decryptedPhrase;
+      if (!storedSecret) {
+        throw new Error('Unlock your game wallet in settings first.');
+      }
+      const result = await mintLocksmithWave1(storedSecret);
+      setTxStatus({
+        show: true,
+        loading: false,
+        message: `✅ GiftLocksmith minted!\nAsset: ${result.asset.slice(0, 8)}…\nOpen Shard Swap for better fees.`,
+        success: true,
+      });
+    } catch (err) {
+      console.error('Locksmith mint error', err);
+      const msg = err?.message || String(err);
+      setTxStatus({
+        show: true,
+        loading: false,
+        message: `❌ Mint failed: ${msg}`,
+        success: false,
+      });
+    }
+  };
+
   const handlePremiumBuy = async (item) => {
+    if (item?.isNftMint || item?.id === 'locksmith') {
+      return handleLocksmithMint();
+    }
+
     // Open the pop-up immediately in a loading state
     setTxStatus({ show: true, loading: true, message: `Initiating purchase for ${item.name}...`, success: false });
 
@@ -409,11 +474,12 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
       </div>
 
       {/* Main Navigation Tabs */}
-      <div style={{ display: 'flex', background: '#111', borderRadius: '12px', padding: '5px', marginBottom: '15px', fontSize: '12px' }}>
-        <button onClick={() => setActiveTab('upgrades')} style={{ flex: 1, padding: '10px 0', borderRadius: '10px', border: 'none', background: activeTab === 'upgrades' ? '#4ade80' : 'transparent', color: activeTab === 'upgrades' ? '#000' : '#888', fontWeight: 'bold' }}>Shards</button>
-        <button onClick={() => setActiveTab('market')} style={{ flex: 1, padding: '10px 0', borderRadius: '10px', border: 'none', background: activeTab === 'market' ? '#fbef43' : 'transparent', color: activeTab === 'market' ? '#000' : '#888', fontWeight: 'bold' }}>Premium (SOL)</button>
-        <button onClick={() => setActiveTab('inventory')} style={{ flex: 1, padding: '10px 0', borderRadius: '10px', border: 'none', background: activeTab === 'inventory' ? '#9945FF' : 'transparent', color: activeTab === 'inventory' ? '#fff' : '#888', fontWeight: 'bold' }}>
-          Backpack {backpackItemCount > 0 && <span style={{ color: activeTab === 'inventory' ? '#fff' : '#4ade80', marginLeft: '4px' }}>({backpackItemCount})</span>}
+      <div style={{ display: 'flex', background: '#111', borderRadius: '12px', padding: '5px', marginBottom: '15px', fontSize: '11px', gap: 2 }}>
+        <button onClick={() => setActiveTab('upgrades')} style={{ flex: 1, padding: '10px 2px', borderRadius: '10px', border: 'none', background: activeTab === 'upgrades' ? '#4ade80' : 'transparent', color: activeTab === 'upgrades' ? '#000' : '#888', fontWeight: 'bold' }}>Shards</button>
+        <button onClick={() => setActiveTab('market')} style={{ flex: 1, padding: '10px 2px', borderRadius: '10px', border: 'none', background: activeTab === 'market' ? '#fbef43' : 'transparent', color: activeTab === 'market' ? '#000' : '#888', fontWeight: 'bold' }}>Boosts</button>
+        <button onClick={() => setActiveTab('nft')} style={{ flex: 1, padding: '10px 2px', borderRadius: '10px', border: 'none', background: activeTab === 'nft' ? 'linear-gradient(90deg,#9945FF,#14F195)' : 'transparent', color: activeTab === 'nft' ? '#000' : '#888', fontWeight: 'bold' }}>NFTs</button>
+        <button onClick={() => setActiveTab('inventory')} style={{ flex: 1, padding: '10px 2px', borderRadius: '10px', border: 'none', background: activeTab === 'inventory' ? '#9945FF' : 'transparent', color: activeTab === 'inventory' ? '#fff' : '#888', fontWeight: 'bold' }}>
+          Pack {backpackItemCount > 0 && <span style={{ color: activeTab === 'inventory' ? '#fff' : '#4ade80', marginLeft: '2px' }}>({backpackItemCount})</span>}
         </button>
       </div>
 
@@ -478,9 +544,12 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
           </div>
         )}
 
-        {/* --- TAB 2: PREMIUM SOL SHOP --- */}
+        {/* --- TAB 2: PREMIUM SOL BOOSTS (not NFTs) --- */}
         {activeTab === 'market' && (
           <>
+            <p style={{ color: '#666', fontSize: 11, margin: '0 0 12px', textAlign: 'center' }}>
+              Temporary boosts paid in SOL · NFTs live in the NFT tab
+            </p>
             <div style={{ display: 'flex', gap: '8px', marginBottom: '15px', overflowX: 'auto', paddingBottom: '5px' }}>
               {['All', 'Power', 'Misc'].map(filter => (
                 <button
@@ -516,18 +585,142 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
                     </div>
                     <button
                       onClick={() => {
-                        setItemToBuy(item); // Load the item into state
-                        setShowConfirmModal(true); // Open the pop-up
+                        setItemToBuy(item);
+                        setShowConfirmModal(true);
                       }}
                       style={{ width: '100%', background: '#9945FF', color: '#fff', border: 'none', padding: '6px 0', borderRadius: '6px', fontWeight: 'bold', fontSize: '12px', cursor: 'pointer' }}
                     >
-                      {item.price ? 'Buy' : item.cost}
+                      Buy
                     </button>
                   </div>
                 </div>
               ))}
             </div>
           </>
+        )}
+
+        {/* --- TAB: NFT MARKETPLACE (on-chain, separate from boosts) --- */}
+        {activeTab === 'nft' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <div style={{ textAlign: 'center' }}>
+              <h3 style={{ color: '#fff', margin: '0 0 4px', fontSize: 16 }}>NFT Marketplace</h3>
+              <p style={{ color: '#888', fontSize: 11, margin: 0, lineHeight: 1.4 }}>
+                On-chain Metaplex Core · permanent · not a boost
+              </p>
+            </div>
+
+            {nftListings.map((item) => (
+              <div
+                key={item.id}
+                style={{
+                  background: 'linear-gradient(145deg, #1a1525 0%, #111 50%, #0d1a18 100%)',
+                  border: '1px solid #9945FF',
+                  borderRadius: 16,
+                  padding: 16,
+                  boxShadow: '0 8px 24px rgba(153,69,255,0.15)',
+                }}
+              >
+                <div style={{ display: 'flex', gap: 14, alignItems: 'flex-start' }}>
+                  <div
+                    style={{
+                      width: 96,
+                      height: 96,
+                      borderRadius: 12,
+                      overflow: 'hidden',
+                      background: '#222',
+                      border: '1px solid #333',
+                      flexShrink: 0,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      fontSize: 40,
+                    }}
+                  >
+                    {item.imageUrl ? (
+                      <img
+                        src={item.imageUrl}
+                        alt={item.name}
+                        style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                      />
+                    ) : (
+                      item.image
+                    )}
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ color: '#a78bfa', fontSize: 10, fontWeight: 'bold', letterSpacing: 0.5 }}>
+                      {item.collection} · {item.rarity}
+                    </div>
+                    <h3 style={{ color: '#ffd700', margin: '4px 0 6px', fontSize: 18 }}>{item.name}</h3>
+                    <div
+                      style={{
+                        background: 'rgba(20,241,149,0.12)',
+                        border: '1px solid #14F195',
+                        borderRadius: 8,
+                        padding: '8px 10px',
+                        marginBottom: 8,
+                      }}
+                    >
+                      <div style={{ color: '#14F195', fontSize: 11, fontWeight: 'bold', marginBottom: 2 }}>
+                        🔓 Unlocks Shard Swap
+                      </div>
+                      <div style={{ color: '#ccc', fontSize: 11, lineHeight: 1.35 }}>
+                        {item.boost}
+                      </div>
+                    </div>
+                    {item.perks?.length > 0 && (
+                      <ul
+                        style={{
+                          margin: '0 0 8px',
+                          paddingLeft: 16,
+                          color: '#aaa',
+                          fontSize: 10,
+                          lineHeight: 1.45,
+                          textAlign: 'left',
+                        }}
+                      >
+                        {item.perks.map((p) => (
+                          <li key={p}>{p}</li>
+                        ))}
+                      </ul>
+                    )}
+                    <div style={{ color: '#888', fontSize: 10, marginBottom: 10 }}>
+                      {item.duration}
+                      <br />
+                      Supply wave: {item.supply} · Max {item.maxPerWallet}/wallet
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+                      <div style={{ color: '#14F195', fontWeight: 'bold', fontSize: 18 }}>
+                        {item.price} {item.currency}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setItemToBuy(item);
+                          setShowConfirmModal(true);
+                        }}
+                        style={{
+                          background: 'linear-gradient(90deg, #9945FF, #14F195)',
+                          color: '#000',
+                          border: 'none',
+                          padding: '12px 20px',
+                          borderRadius: 12,
+                          fontWeight: 'bold',
+                          fontSize: 13,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        Mint NFT
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))}
+
+            <p style={{ color: '#555', fontSize: 10, textAlign: 'center', lineHeight: 1.4, margin: '4px 0 0' }}>
+              Mints from your game wallet on Solana mainnet. After mint, open Wallet → Shard to use the unlocked swap.
+            </p>
+          </div>
         )}
 
         {/* --- TAB 3: THE BACKPACK --- */}
@@ -583,7 +776,24 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
         <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', background: 'rgba(0,0,0,0.9)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 10000 }}>
           <div style={{ background: '#1c1e22', padding: '25px', borderRadius: '15px', border: '2px solid #ffd700', textAlign: 'center', width: '80%', maxWidth: '320px' }}>
             <h3 style={{ color: '#fff', marginTop: 0 }}>Confirm Purchase?</h3>
-            <p style={{ color: '#ccc', fontSize: '14px' }}>Do you want to buy <strong>{itemToBuy.name}</strong>?</p>
+            <p style={{ color: '#ccc', fontSize: '14px' }}>
+              {itemToBuy.isNftMint || itemToBuy.id === 'locksmith' ? (
+                <>
+                  Mint <strong>{itemToBuy.name}</strong> for{' '}
+                  <strong style={{ color: '#14F195' }}>{itemToBuy.price} SOL</strong>?
+                  <br />
+                  <span style={{ fontSize: 12, color: '#14F195', fontWeight: 'bold', display: 'block', marginTop: 10 }}>
+                    Unlocks Shard Swap (GFTshards → GFT)
+                  </span>
+                  <span style={{ fontSize: 11, color: '#888', display: 'block', marginTop: 6, lineHeight: 1.4 }}>
+                    Instant access (skip Level 10) · 4% fee vs 10% free · higher daily cap · Wave 1 · max{' '}
+                    {LOCKSMITH_WAVE1.maxPerWallet}/wallet
+                  </span>
+                </>
+              ) : (
+                <>Do you want to buy <strong>{itemToBuy.name}</strong>?</>
+              )}
+            </p>
            
             <div style={{ display: 'flex', gap: '10px', marginTop: '20px' }}>
               <button
@@ -595,7 +805,9 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
               <button
                 onClick={() => {
                   setShowConfirmModal(false);
-                  if (itemToBuy.price) {
+                  if (itemToBuy.isNftMint || itemToBuy.id === 'locksmith') {
+                    handleLocksmithMint();
+                  } else if (itemToBuy.price) {
                     handlePremiumBuy(itemToBuy); // Triggers SOL transaction
                   } else {
                     handleShardBuy(itemToBuy); // Triggers Shard purchase
@@ -603,7 +815,7 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
                 }}
                 style={{ flex: 1, padding: '12px', background: '#4ade80', color: '#000', borderRadius: '10px', border: 'none', fontWeight: 'bold' }}
               >
-                Confirm
+                {itemToBuy.isNftMint ? 'Mint NFT' : 'Confirm'}
               </button>
             </div>
           </div>
