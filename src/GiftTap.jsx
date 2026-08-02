@@ -201,19 +201,33 @@ const GiftTapGame = () => {
       background: 'rgba(255, 255, 255, 0.05)', // Matches the toggle wrapper
       color: '#fff', 
       border: '1px solid rgba(255, 215, 0, 0.25)', // Softer, more elegant gold border
-      padding: '8px 14px', 
+      padding: '6px 10px', 
       borderRadius: '20px', 
       cursor: 'pointer', 
       fontWeight: 'bold', 
-      fontSize: '12px', 
+      fontSize: '11px', 
       display: 'flex', 
       alignItems: 'center', 
       gap: '8px', 
       boxShadow: '0 4px 12px rgba(0, 0, 0, 0.2)', // Sleek drop shadow
       outline: 'none', 
-      WebkitTapHighlightColor: 'transparent'
+      WebkitTapHighlightColor: 'transparent',
+      maxWidth: 'min(58vw, 240px)',
     },
     walletDot: { width: '8px', height: '8px', background: '#4ade80', borderRadius: '50%', boxShadow: '0 0 8px rgba(74, 222, 128, 0.6)' },
+    walletChip: {
+      display: 'flex',
+      alignItems: 'center',
+      gap: '4px',
+      whiteSpace: 'nowrap',
+    },
+    walletChipIcon: {
+      width: 20,
+      height: 20,
+      objectFit: 'contain',
+      flexShrink: 0,
+      display: 'block',
+    },
     leaderBadgePremium: { fontSize: '9px', color: '#aaa', marginTop: '2px', fontWeight: 'normal', maxWidth: '75px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
     container: {
       position: 'fixed', 
@@ -2710,9 +2724,36 @@ const GiftTapGame = () => {
                   setIsModalOpen(true); 
                 }} 
                 style={{ ...styles.walletBtnPremium, outline: 'none', WebkitTapHighlightColor: 'transparent' }}
+                title={playerWallet ? `${playerWallet.slice(0, 4)}…${playerWallet.slice(-4)} — open wallet` : 'Open wallet'}
               >
-                <div style={styles.walletDot}></div>
-                {playerWallet?.slice(0, 4)}...{playerWallet?.slice(-4)}
+                {/* GFT + SOL only — GFTshards shown large in center HUD */}
+                <span style={{ ...styles.walletChip, opacity: 0.95 }}>
+                  {/* Blue gift = GFT token / credit logo */}
+                  <img src="/Gift2u_logo.png" alt="GFT" style={styles.walletChipIcon} />
+                  <span style={{ color: '#7dd3fc' }}>
+                    {Number(balances.GFT || 0).toLocaleString(undefined, {
+                      maximumFractionDigits: 2,
+                    })}
+                  </span>
+                </span>
+                <span style={styles.walletChip}>
+                  <img
+                    src="/shop/solana-logo.svg"
+                    alt="SOL"
+                    style={{
+                      ...styles.walletChipIcon,
+                      // SVG logomark reads larger than the gift PNG — keep it visually matched
+                      width: 14,
+                      height: 14,
+                    }}
+                  />
+                  <span style={{ color: '#c4b5fd' }}>
+                    {Number(balances.sol || 0).toLocaleString(undefined, {
+                      maximumFractionDigits: 3,
+                      minimumFractionDigits: 0,
+                    })}
+                  </span>
+                </span>
               </button>
             </div>
           </div>
@@ -2794,8 +2835,20 @@ const GiftTapGame = () => {
 
                     </div>
 
-                    {/* THE MAIN EVENT: Balance */}
-                    <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'baseline', justifyContent: 'center', gap: '8px' }}>
+                    {/* THE MAIN EVENT: Balance + GFTshard logo */}
+                    <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: '10px' }}>
+                      <img
+                        src="/shop/GFTshard.png"
+                        alt=""
+                        width={52}
+                        height={52}
+                        style={{
+                          display: 'block',
+                          objectFit: 'contain',
+                          flexShrink: 0,
+                          filter: 'drop-shadow(0 2px 8px rgba(0,0,0,0.45))',
+                        }}
+                      />
                       <h1 style={{ ...styles.balance, margin: '0', fontSize: '3.2rem', fontVariantNumeric: 'tabular-nums', textShadow: '0 4px 10px rgba(0,0,0,0.5)' }}>
                         {balance.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                       </h1>
