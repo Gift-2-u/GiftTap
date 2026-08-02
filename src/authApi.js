@@ -123,9 +123,9 @@ export function formatAuthError(err) {
   }
 }
 
+/** Players choose their own name at signup — no auto Elf_ prefix. */
 export function suggestUsername() {
-  const n = Math.floor(1000 + Math.random() * 9000);
-  return `Elf_${n}`;
+  return '';
 }
 
 /**

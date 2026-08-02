@@ -22,6 +22,7 @@ import { Program, AnchorProvider, BN } from '@coral-xyz/anchor';
 import { Toaster, toast } from 'react-hot-toast';
 import DailyGiftBox from './DailyGiftBox';
 import WalletHub from './WalletHub';
+import VaultPage from './VaultPage';
 import { getPlayerId, isLoggedIn } from './playerIdentity';
 import idl from "../target/idl/gift_staking.json";
 import '@solana/wallet-adapter-react-ui/styles.css';
@@ -94,7 +95,10 @@ export default function App() {
                     </Suspense>
                   }
                 />
+                {/* On-chain GFT staking (Solana Playground program) */}
                 <Route path="/stake" element={<StakingPage />} />
+                {/* Off-chain GFT credit vault — GiftLocksmith NFT holders */}
+                <Route path="/vault" element={<VaultPage />} />
               </Routes>
             </div>
           </Router>
@@ -138,7 +142,8 @@ const Navigation = () => {
           </Link>
           <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-2 sm:gap-6 text-sm sm:text-base min-w-0">
             <Link to="/" className="hover:text-purple-400 font-bold whitespace-nowrap">Home</Link>
-            <Link to="/stake" className="hover:text-purple-400 font-bold whitespace-nowrap">Staking</Link>
+            <Link to="/stake" className="hover:text-purple-400 font-bold whitespace-nowrap">Stake</Link>
+            <Link to="/vault" className="hover:text-purple-400 font-bold whitespace-nowrap">Vault</Link>
             <Link to="/play" className="hover:text-purple-400 font-bold text-yellow-400 whitespace-nowrap">
               <span className="sm:hidden">Play</span>
               <span className="hidden sm:inline">Play Game</span>
@@ -174,7 +179,8 @@ const Navigation = () => {
 const StakingPage = () => {
   const { connection } = useConnection();
   const wallet = useAnchorWallet();
-  const { publicKey } = useWallet();
+  const { publicKey, connected } = useWallet();
+  const [walletHubOpen, setWalletHubOpen] = useState(false);
 
   const [tvl, setTvl] = useState(0); // Ensure this is its own line
   const [stakeAccountData, setStakeAccountData] = useState(null);
@@ -484,88 +490,217 @@ const StakingPage = () => {
     }
   };
 
+  const card =
+    'rounded-2xl border border-white/10 bg-slate-900/80 p-5 sm:p-6 shadow-xl';
+
+  // Mirror vault metrics: liquid / staked principal / APY / pending rewards
+  const liquidGft = parseFloat(balance) || 0;
+  let stakedPrincipal = 0;
+  try {
+    if (stakeAccountData?.amount) {
+      stakedPrincipal = stakeAccountData.amount.toNumber() / 1e9;
+    }
+  } catch {
+    stakedPrincipal = 0;
+  }
+  const pendingRewards = Math.max(0, (stakedDisplay || 0) - stakedPrincipal);
+  const shortAddr = publicKey
+    ? `${publicKey.toBase58().slice(0, 6)}…${publicKey.toBase58().slice(-6)}`
+    : '';
+  const isConnected = !!(connected && publicKey);
+
+  const handleClaimRewards = () => {
+    if (pendingRewards <= 0) {
+      return toast.error('No pending rewards yet. Stake GFT to start earning.');
+    }
+    // On-chain program auto-compounds into principal — no separate claim ix
+    toast.success(
+      `~${pendingRewards.toLocaleString(undefined, { maximumFractionDigits: 6 })} GFT already compounding into your staked balance.`,
+    );
+  };
+
   return (
-    <main className="w-full min-h-screen px-6 py-20 flex flex-col items-center">
-      {/* TVL Header */}
-      <div className="flex flex-col items-center mb-10">
-          <p className="text-gray-500 text-xs font-black uppercase tracking-[0.3em] mb-2">Total Value Locked</p>
-          <h2 className="text-5xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-green-400">
-              ${(tvl || 0).toLocaleString()} <span className="text-lg text-gray-600 font-medium">GFT</span>
-          </h2>
-      </div>
+    <div className="min-h-[calc(100vh-4rem)] w-full bg-slate-950 text-white px-4 py-8 sm:px-6">
+      <WalletHub
+        isOpen={walletHubOpen}
+        onClose={() => {
+          setWalletHubOpen(false);
+          fetchBalance();
+          fetchStakeAccount();
+          fetchTVL();
+        }}
+        defaultTab="solana"
+        overlayStyle={{ zIndex: 100000 }}
+        useSharedGameWallet
+      />
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8 items-stretch">
-        {/* Box 1, 2, and 3 stay centered as we designed... */}
-      </div>
-      <div className="bg-white/5 p-10 rounded-[32px] border border-white/10 text-center max-w-l w-full">
-        <h2 className="text-4xl font-black mb-4 italic">STAKING VAULT</h2>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8 items-stretch">
- 
-          {/* Box 1: Wallet Balance */}
-          <div className="relative group p-6 bg-gray-900/50 border border-gray-800 rounded-2xl backdrop-blur-sm transition-all hover:border-blue-500/50 flex flex-col items-center justify-center min-h-[160px]">
-            <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-1 bg-blue-600 rounded-full text-[10px] font-bold tracking-widest uppercase">
-              Available
+      <div className="mx-auto max-w-lg space-y-6">
+        <div className="text-center space-y-2">
+          <p className="text-xs font-bold uppercase tracking-widest text-purple-400">
+            Gift2u · Main site
+          </p>
+          <h1 className="text-3xl sm:text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-yellow-300">
+            GFT Staking
+          </h1>
+          <p className="text-sm text-slate-400 leading-relaxed">
+            Stake on-chain GFT for yield. All GFT holders earn{' '}
+            <span className="text-yellow-400 font-bold">{apy}% APY</span>
+            . Deposit from your Solana wallet token balance.
+          </p>
+        </div>
+
+        {/* Access card — same slot as vault Locksmith card */}
+        <div
+          className={
+            card + (isConnected ? ' border-purple-500/40' : ' border-amber-500/30')
+          }
+        >
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-xs text-slate-500 font-bold uppercase">Access</p>
+              <p className="text-lg font-bold mt-1">
+                {isConnected ? (
+                  <span className="text-purple-300">Wallet connected</span>
+                ) : (
+                  <span className="text-amber-300">Wallet required</span>
+                )}
+              </p>
+              <p className="text-xs text-slate-500 mt-1 break-all">
+                {shortAddr || 'Connect Phantom / Solflare / Seeker to stake'}
+              </p>
             </div>
-            <p className="text-gray-400 text-sm font-medium mb-2 text-center">Wallet Balance</p>
-            <div className="flex flex-col items-center gap-1">
-              <span className="text-3xl font-bold text-white leading-none">
-                {(parseFloat(balance) || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
-              </span>
-              <span className="text-blue-900 text-[10px] font-black uppercase tracking-widest mt-1">GFT TOKENS</span>
-            </div>
+            <img
+              src="/Gift2u_logo.png"
+              alt=""
+              className="w-12 h-12 object-contain opacity-90"
+            />
           </div>
+          {!isConnected && (
+            <div className="mt-4 space-y-3">
+              <p className="text-sm text-slate-300">
+                Connect a Solana wallet that holds GFT to deposit into on-chain staking.
+              </p>
+              <button
+                type="button"
+                onClick={() => setWalletHubOpen(true)}
+                className="w-full rounded-xl bg-purple-600 hover:bg-purple-500 font-bold py-3"
+              >
+                Connect wallet
+              </button>
+            </div>
+          )}
+        </div>
 
-          {/* Box 2: Staked + Rewards (The Reference Box) */}
-          <div className="relative group p-6 bg-gray-900/50 border border-green-900/30 rounded-2xl backdrop-blur-sm transition-all hover:border-green-500/50 shadow-[0_0_20px_rgba(34,197,94,0.05)] flex flex-col items-center justify-center min-h-[160px]">
-            <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-1 bg-green-600 rounded-full text-[10px] font-bold tracking-widest uppercase animate-pulse whitespace-nowrap">
-              Live Yield
-            </div>
-            <p className="text-gray-400 text-sm font-medium mb-2 text-center">Staked + Rewards</p>
-            <div className="flex flex-col items-center gap-1">
-              <span className="text-4xl font-mono font-bold text-green-400 leading-none tracking-tight">
-                {stakedDisplay > 0 ? stakedDisplay.toFixed(7) : "0.0000000"}
-              </span>
-              <span className="text-green-900 text-[10px] font-black uppercase tracking-widest mt-1">GFT TOKENS</span>
-            </div>
-            <div className="mt-4 flex items-center gap-2 bg-green-500/10 px-3 py-1 rounded-full border border-green-500/20">
-              <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-ping"></div>
-              <span className="text-[9px] text-green-500 font-bold uppercase tracking-tighter">Auto-compounding live</span>
-            </div>
-          </div>
-
-          {/* Box 3: Current APY */}
-          <div className="relative group p-6 bg-gray-900/50 border border-gray-800 rounded-2xl backdrop-blur-sm transition-all hover:border-purple-500/50 flex flex-col items-center justify-center min-h-[160px]">
-            <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-1 bg-purple-600 rounded-full text-[10px] font-bold tracking-widest uppercase">
-              Incentive
-            </div>
-            <p className="text-gray-400 text-sm font-medium mb-2 text-center">Current APY</p>
-            <div className="flex flex-col items-center gap-1">
-              <span className="text-4xl font-bold text-white leading-none">{apy}%</span>
-              <span className="text-purple-900 text-[10px] font-black uppercase tracking-widest mt-1">Fixed Rate</span>
-            </div>
-            <p className="mt-3 text-[10px] text-gray-500 text-center leading-tight max-w-[150px]">
-              Calculated per-second and added to principal.
+        {/* Stats — identical labels/order to Vault */}
+        <div className="grid grid-cols-2 gap-3">
+          <div className={card}>
+            <p className="text-xs text-slate-500">Liquid GFT</p>
+            <p className="text-2xl font-black text-sky-300 mt-1">
+              {liquidGft.toLocaleString(undefined, { maximumFractionDigits: 4 })}
             </p>
           </div>
-
-        </div>    
-        <input
-          type="number"
-          className="w-full bg-slate-800 border border-white/10 p-4 rounded-xl mb-6 text-white"
-          value={amount}
-          onChange={(e) => setAmount(e.target.value)}
-          placeholder="0.00"
-        />
-        <div className="flex gap-4">
-            <button onClick={handleStake} className="flex-1 bg-purple-600 hover:bg-purple-700 py-3 rounded-xl font-bold">
-            STAKE
-            </button>
-            <button onClick={handleUnstake} className="flex-1 bg-slate-700 hover:bg-slate-600 py-3 rounded-xl font-bold">
-            UNSTAKE
-            </button>
+          <div className={card}>
+            <p className="text-xs text-slate-500">Staked</p>
+            <p className="text-2xl font-black text-yellow-300 mt-1">
+              {stakedPrincipal.toLocaleString(undefined, { maximumFractionDigits: 4 })}
+            </p>
+          </div>
+          <div className={card}>
+            <p className="text-xs text-slate-500">Your APY</p>
+            <p className="text-2xl font-black text-purple-300 mt-1">{apy}%</p>
+          </div>
+          <div className={card}>
+            <p className="text-xs text-slate-500">Pending rewards</p>
+            <p className="text-2xl font-black text-emerald-300 mt-1">
+              {pendingRewards.toLocaleString(undefined, { maximumFractionDigits: 6 })}
+            </p>
+          </div>
         </div>
+
+        {/* Actions — Deposit / Withdraw / Claim like Vault */}
+        <div className={card + ' space-y-4'}>
+          <label className="block text-xs font-bold text-slate-400 uppercase">
+            Amount (GFT)
+          </label>
+          <input
+            type="number"
+            min="0"
+            step="any"
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+            placeholder="0.00"
+            disabled={!isConnected}
+            className="w-full rounded-xl bg-black/50 border border-white/15 px-4 py-3 text-lg font-bold text-white outline-none focus:border-purple-400 disabled:opacity-50"
+          />
+          <div className="flex gap-2 text-xs">
+            <button
+              type="button"
+              className="text-purple-400 font-bold disabled:opacity-40"
+              disabled={!isConnected}
+              onClick={() => setAmount(String(liquidGft))}
+            >
+              Max liquid
+            </button>
+            <span className="text-slate-600">·</span>
+            <button
+              type="button"
+              className="text-yellow-400 font-bold disabled:opacity-40"
+              disabled={!isConnected}
+              onClick={() =>
+                setAmount(
+                  stakedPrincipal > 0
+                    ? String(Math.floor(stakedPrincipal * 1e6) / 1e6)
+                    : '0',
+                )
+              }
+            >
+              Max staked
+            </button>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <button
+              type="button"
+              disabled={!isConnected}
+              onClick={handleStake}
+              className="rounded-xl bg-gradient-to-r from-purple-600 to-violet-500 font-bold py-3 disabled:opacity-40"
+            >
+              Deposit
+            </button>
+            <button
+              type="button"
+              disabled={!isConnected || stakedPrincipal <= 0}
+              onClick={handleUnstake}
+              className="rounded-xl bg-slate-700 hover:bg-slate-600 font-bold py-3 disabled:opacity-40"
+            >
+              Withdraw
+            </button>
+          </div>
+          <button
+            type="button"
+            disabled={!isConnected || pendingRewards <= 0}
+            onClick={handleClaimRewards}
+            className="w-full rounded-xl border border-emerald-500/50 text-emerald-300 font-bold py-3 disabled:opacity-40"
+          >
+            Claim rewards → liquid GFT
+          </button>
+          <p className="text-[11px] text-slate-500 text-center leading-relaxed">
+            Pending rewards auto-compound into <span className="text-slate-400">Staked</span> on-chain.
+            Claim shows live accrual; unstake (Withdraw) returns principal + compounded yield to liquid.
+          </p>
+        </div>
+
+        <p className="text-center text-sm text-slate-400">
+          Looking for Locksmith credit yield?{' '}
+          <Link to="/vault" className="text-yellow-400 font-bold hover:underline">
+            Open Vault →
+          </Link>
+        </p>
+        <p className="text-center text-xs text-slate-500 leading-relaxed px-2">
+          On-chain SPL GFT · TVL {(tvl || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })} GFT
+          in protocol. Confirm txs in your wallet. Rates may change — see Terms.
+        </p>
       </div>
-    </main>
+    </div>
   );
 };
 
@@ -582,9 +717,18 @@ const HomePage = () => {
       {/* If this tag is missing, the box will never show up */}
       <DailyGiftBox wallet={wallet} connection={connection} />
       
-      <Link to="/stake" className="bg-purple-600 hover:bg-purple-700 px-10 py-4 rounded-full font-black text-lg inline-block mt-10">
-        GO TO STAKING VAULT
-      </Link>
+      <div className="mt-10 flex flex-col sm:flex-row gap-4 items-center justify-center">
+        <Link to="/stake" className="bg-purple-600 hover:bg-purple-700 px-10 py-4 rounded-full font-black text-lg inline-block">
+          STAKE GFT
+        </Link>
+        <Link to="/vault" className="bg-slate-700 hover:bg-slate-600 border border-yellow-500/40 px-10 py-4 rounded-full font-black text-lg inline-block">
+          LOCKSMITH VAULT
+        </Link>
+      </div>
+      <p className="mt-4 text-sm text-slate-400 max-w-md">
+        <span className="text-purple-300 font-bold">Stake</span> = on-chain GFT for all holders ·{" "}
+        <span className="text-yellow-300 font-bold">Vault</span> = credit yield for GiftLocksmith NFTs
+      </p>
     </main>
   );
 };

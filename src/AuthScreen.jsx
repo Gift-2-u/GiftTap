@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { registerAccount, loginAccount, suggestUsername, formatAuthError } from './authApi';
+import { registerAccount, loginAccount, formatAuthError } from './authApi';
 
 /**
  * Cross-device account gate: Sign up / Log in with unique username + password.
@@ -7,7 +7,7 @@ import { registerAccount, loginAccount, suggestUsername, formatAuthError } from 
  */
 const AuthScreen = ({ onAuthenticated, onRestoreAccount, embedded = false }) => {
   const [mode, setMode] = useState('login'); // 'login' | 'signup' | 'restore'
-  const [username, setUsername] = useState(() => suggestUsername());
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [password2, setPassword2] = useState('');
   const [mnemonic, setMnemonic] = useState('');
@@ -166,7 +166,7 @@ const AuthScreen = ({ onAuthenticated, onRestoreAccount, embedded = false }) => 
           <button type="button" style={tab(mode === 'login')} onClick={() => { setMode('login'); setError(''); }}>
             Log in
           </button>
-          <button type="button" style={tab(mode === 'signup')} onClick={() => { setMode('signup'); setError(''); setUsername(suggestUsername()); }}>
+          <button type="button" style={tab(mode === 'signup')} onClick={() => { setMode('signup'); setError(''); setUsername(''); }}>
             Sign up
           </button>
           <button type="button" style={tab(mode === 'restore')} onClick={() => { setMode('restore'); setError(''); }}>
@@ -183,7 +183,7 @@ const AuthScreen = ({ onAuthenticated, onRestoreAccount, embedded = false }) => 
               style={input}
               value={username}
               onChange={(e) => setUsername(e.target.value.replace(/\s/g, ''))}
-              placeholder="Elf_1234"
+              placeholder="ChooseYourName"
               autoComplete="username"
               disabled={loading}
               required
@@ -217,7 +217,7 @@ const AuthScreen = ({ onAuthenticated, onRestoreAccount, embedded = false }) => 
               {loading ? 'Creating…' : 'Create account'}
             </button>
             <p style={{ color: '#666', fontSize: '11px', marginTop: '12px', lineHeight: 1.4 }}>
-              Pick a name no one else has. You will still back up your wallet 12 words once for safety.
+              Choose your own name (3–20 letters, numbers, underscore). This is what others see on the leaderboard — make it yours. You will still back up your wallet 12 words once for safety.
             </p>
           </form>
         )}
