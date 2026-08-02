@@ -46,9 +46,11 @@ export const SHARD_SWAP_CONFIG = {
     dailyCapShards: 1_000_000,
   },
 
-  /** Free unlock requires real progression (NFT holders skip this) */
+  /**
+   * Free unlock = Level 10+ AND one-time GFTshard license burn.
+   * (Both required — not either/or.) GiftLocksmith skips this entirely.
+   */
   freeUnlockMinLevel: 10,
-  freeUnlockMinMaxLevel: 9, // past first wall at least
   freeUnlockBurnShards: 25_000,
 };
 
@@ -70,11 +72,9 @@ export function getSwapAccess({
   hasLocksmithNft = false,
 }) {
   const inv = inventory || {};
-  const freeUnlocked =
-    !!inv.swap_unlocked ||
-    (Number(currentLevel) >= SHARD_SWAP_CONFIG.freeUnlockMinLevel &&
-      Number(maxUnlockedLevel) >= SHARD_SWAP_CONFIG.freeUnlockMinMaxLevel) ||
-    Number(currentLevel) >= SHARD_SWAP_CONFIG.freeUnlockMinLevel;
+  const levelOk = Number(currentLevel) >= SHARD_SWAP_CONFIG.freeUnlockMinLevel;
+  const licensePaid = !!(inv.swap_unlocked || inv.swap_unlock_burned);
+  const freeUnlocked = levelOk && licensePaid;
 
   if (hasLocksmithNft) {
     return {
@@ -96,13 +96,26 @@ export function getSwapAccess({
     };
   }
 
+  const missing = [];
+  if (!levelOk) {
+    missing.push(`reach Level ${SHARD_SWAP_CONFIG.freeUnlockMinLevel}`);
+  }
+  if (!licensePaid) {
+    missing.push(
+      `pay the free license (${SHARD_SWAP_CONFIG.freeUnlockBurnShards.toLocaleString()} GFTshards once)`,
+    );
+  }
+
   return {
     allowed: false,
     tier: 'locked',
     label: 'Locked',
+    levelOk,
+    licensePaid,
     reason:
-      `Unlock free swap at Level ${SHARD_SWAP_CONFIG.freeUnlockMinLevel}+ ` +
-      `or burn ${SHARD_SWAP_CONFIG.freeUnlockBurnShards.toLocaleString()} GFTshards once. ` +
+      `Free Shard Swap needs Level ${SHARD_SWAP_CONFIG.freeUnlockMinLevel}+ AND ` +
+      `${SHARD_SWAP_CONFIG.freeUnlockBurnShards.toLocaleString()} GFTshards (license). ` +
+      `Still needed: ${missing.join(' + ')}. ` +
       `GiftLocksmith NFT unlocks instantly with lower fees and a higher daily cap.`,
     feeBps: SHARD_SWAP_CONFIG.free.feeBps,
     minShards: SHARD_SWAP_CONFIG.free.minShards,

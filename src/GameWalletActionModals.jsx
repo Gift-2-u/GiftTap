@@ -1080,17 +1080,31 @@ export default function GameWalletActionModals({
                 lineHeight: 1.4,
               }}
             >
-              GFT credit on your account. GiftLocksmith = lower fees + higher cap. Free path after Level 10 or burn unlock.
+              GFT credit on your account. Free path: Level 10+ AND shard license. GiftLocksmith skips both.
             </p>
 
             {!swapAccess.allowed && (
               <button
                 type="button"
                 disabled={
-                  shardBusy || balShards < SHARD_SWAP_CONFIG.freeUnlockBurnShards || !playerId
+                  shardBusy ||
+                  !playerId ||
+                  currentLevel < SHARD_SWAP_CONFIG.freeUnlockMinLevel ||
+                  balShards < SHARD_SWAP_CONFIG.freeUnlockBurnShards ||
+                  !!(inventory?.swap_unlocked || inventory?.swap_unlock_burned)
                 }
                 onClick={async () => {
                   const cost = SHARD_SWAP_CONFIG.freeUnlockBurnShards;
+                  if (currentLevel < SHARD_SWAP_CONFIG.freeUnlockMinLevel) {
+                    setStatus({
+                      show: true,
+                      loading: false,
+                      message: `Need Level ${SHARD_SWAP_CONFIG.freeUnlockMinLevel}+ first`,
+                      success: false,
+                      txid: null,
+                    });
+                    return;
+                  }
                   if (balShards < cost) return;
                   setShardBusy(true);
                   try {
@@ -1139,8 +1153,9 @@ export default function GameWalletActionModals({
                   cursor: 'pointer',
                 }}
               >
-                Unlock free swap (burn{' '}
-                {SHARD_SWAP_CONFIG.freeUnlockBurnShards.toLocaleString()} shards)
+                {currentLevel < SHARD_SWAP_CONFIG.freeUnlockMinLevel
+                  ? `Need Level ${SHARD_SWAP_CONFIG.freeUnlockMinLevel} first`
+                  : `Pay free license (${SHARD_SWAP_CONFIG.freeUnlockBurnShards.toLocaleString()} shards) · L${SHARD_SWAP_CONFIG.freeUnlockMinLevel}+`}
               </button>
             )}
 

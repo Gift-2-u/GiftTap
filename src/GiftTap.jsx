@@ -128,7 +128,7 @@ export const ASCENSION_WALLS = {
   9: { targetLevel: 10, shardCost: 30000, solCost: 0.05, newCap: 19 },
   19: { targetLevel: 20, shardCost: 75000, solCost: 0.10, newCap: 29 },
   29: { targetLevel: 30, shardCost: 150000, solCost: 0.20, newCap: 49 },
-  49: { targetLevel: 50, shardCost: 500000, solCost: 0.60, newCap: 50 }
+  49: { targetLevel: 50, shardCost: 500000, solCost: 0.75, newCap: 50 }
 };
 
 /** True when player is at a hard wall and cannot gain level from more lifetime taps. */
@@ -2161,15 +2161,21 @@ const GiftTapGame = () => {
     stats.inventory,
   );
 
-  /** One-time free unlock: burn shards for swap license */
+  /** One-time free unlock: burn shards for swap license (also requires Level 10+) */
   const buySwapLicense = async () => {
     const cost = SHARD_SWAP_CONFIG.freeUnlockBurnShards;
+    if (currentLevel < SHARD_SWAP_CONFIG.freeUnlockMinLevel) {
+      alert(
+        `Free swap license requires Level ${SHARD_SWAP_CONFIG.freeUnlockMinLevel}+ first (you are Level ${currentLevel}).`,
+      );
+      return;
+    }
     if (balance < cost) {
       alert(`Need ${cost.toLocaleString()} GFTshards to buy the free swap license.`);
       return;
     }
-    if (stats.inventory?.swap_unlocked) {
-      alert('Swap already unlocked.');
+    if (stats.inventory?.swap_unlocked || stats.inventory?.swap_unlock_burned) {
+      alert('Swap license already paid. Need Level 10+ if still locked.');
       return;
     }
     setShardSwapBusy(true);
@@ -3576,24 +3582,45 @@ const GiftTapGame = () => {
                 {!swapAccess.allowed && (
                   <button
                     type="button"
-                    disabled={shardSwapBusy || balance < SHARD_SWAP_CONFIG.freeUnlockBurnShards}
+                    disabled={
+                      shardSwapBusy ||
+                      currentLevel < SHARD_SWAP_CONFIG.freeUnlockMinLevel ||
+                      balance < SHARD_SWAP_CONFIG.freeUnlockBurnShards ||
+                      !!(stats.inventory?.swap_unlocked || stats.inventory?.swap_unlock_burned)
+                    }
                     onClick={buySwapLicense}
                     style={{
                       width: '100%',
-                      background: balance >= SHARD_SWAP_CONFIG.freeUnlockBurnShards ? '#2a2d34' : '#222',
-                      color: balance >= SHARD_SWAP_CONFIG.freeUnlockBurnShards ? '#fff' : '#666',
+                      background:
+                        currentLevel >= SHARD_SWAP_CONFIG.freeUnlockMinLevel &&
+                        balance >= SHARD_SWAP_CONFIG.freeUnlockBurnShards
+                          ? '#2a2d34'
+                          : '#222',
+                      color:
+                        currentLevel >= SHARD_SWAP_CONFIG.freeUnlockMinLevel &&
+                        balance >= SHARD_SWAP_CONFIG.freeUnlockBurnShards
+                          ? '#fff'
+                          : '#666',
                       border: '1px solid #4ade80',
                       padding: '14px',
                       borderRadius: '30px',
                       fontWeight: 'bold',
-                      fontSize: '14px',
+                      fontSize: '13px',
                       marginTop: '12px',
-                      cursor: balance >= SHARD_SWAP_CONFIG.freeUnlockBurnShards ? 'pointer' : 'not-allowed',
+                      cursor:
+                        currentLevel >= SHARD_SWAP_CONFIG.freeUnlockMinLevel &&
+                        balance >= SHARD_SWAP_CONFIG.freeUnlockBurnShards
+                          ? 'pointer'
+                          : 'not-allowed',
                     }}
                   >
                     {shardSwapBusy
                       ? 'Working…'
-                      : `Unlock free swap (burn ${SHARD_SWAP_CONFIG.freeUnlockBurnShards.toLocaleString()} shards)`}
+                      : currentLevel < SHARD_SWAP_CONFIG.freeUnlockMinLevel
+                        ? `Need Level ${SHARD_SWAP_CONFIG.freeUnlockMinLevel} first (you: ${currentLevel})`
+                        : stats.inventory?.swap_unlock_burned || stats.inventory?.swap_unlocked
+                          ? 'License paid — need Level 10+'
+                          : `Pay free license (${SHARD_SWAP_CONFIG.freeUnlockBurnShards.toLocaleString()} shards) · L${SHARD_SWAP_CONFIG.freeUnlockMinLevel}+`}
                   </button>
                 )}
 

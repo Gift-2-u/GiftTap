@@ -6,24 +6,34 @@ import React from 'react';
  */
 
 const TERMS_BODY = `
-Last updated: July 2026
+Last updated: August 2026
 
 1. Who we are
 Gift Tap is an entertainment and blockchain-related game experience operated in connection with the Gift2u project ("we", "us", "Gift2u"). By creating an account, connecting a wallet, or using gift2u.fun / Gift Tap ("the Service"), you agree to these Terms of Use.
 
 2. Entertainment only — not financial advice
-The Service is provided for entertainment and experimental software purposes. Nothing in the game, website, whitepaper, social media, or communications is investment advice, financial advice, legal advice, or a solicitation to buy or sell any security, commodity, or financial instrument.
+The Service is provided for entertainment and experimental software purposes. Nothing in the game, website, whitepaper ("Playbook"), social media, or communications is investment advice, financial advice, legal advice, or a solicitation to buy or sell any security, commodity, or financial instrument. Descriptions of NFT "utility," swap fees, or future vault APY are game design features — not promises of profit or ROI.
 
 3. GFT, GFTshards, and digital assets — important risk disclaimer
-• GFTshards are in-game / off-chain (or app-tracked) points used inside Gift Tap. They are not money, not a bank deposit, and not a guarantee of any future value.
-• The $GFT token (if and when launched) is a digital asset on a public blockchain. Cryptocurrency and tokens are highly volatile and speculative.
-• $GFT IS NOT AN INVESTMENT PRODUCT. We do not promise profits, yield, price appreciation, liquidity, or any return.
-• You alone are responsible for any decision to acquire, hold, trade, or sell $GFT, SOL, or any other asset.
+• GFTshards are in-game / app-tracked points used inside Gift Tap. They are not money, not a bank deposit, and not a guarantee of any future value.
+• GFT credit on your account (from Shard Swap) is an in-app balance until/unless converted to an on-chain $GFT token under rules we publish. It is not a bank deposit.
+• The $GFT token (if and when fully launched on-chain) is a digital asset on a public blockchain. Cryptocurrency and tokens are highly volatile and speculative.
+• $GFT AND GFTSHARDS ARE NOT INVESTMENT PRODUCTS. We do not promise profits, yield, price appreciation, liquidity, or any return. Any internal design values (e.g. illustrative shard value) are not market guarantees.
+• You alone are responsible for any decision to acquire, hold, trade, or sell $GFT, SOL, NFTs, or any other asset.
 • WE ARE NOT RESPONSIBLE FOR PRICE CHANGES of $GFT, SOL, NFTs, or any other asset, including total loss of value.
-• Past activity, roadmaps, or marketing do not guarantee future results. Token launch timing, utility, and economics may change or never occur as described.
+• Past activity, roadmaps, or marketing do not guarantee future results. Token launch timing, swap rates, fees, caps, and NFT utilities may change or never occur exactly as described.
+
+3A. NFTs (including GiftLocksmith / Gift2u Elves)
+• NFTs are optional digital assets minted on Solana (e.g. Metaplex Core). They may unlock or improve in-game features such as Shard Swap access, lower swap fees, higher daily caps, or future vault benefits.
+• Free players may still access Shard Swap by meeting progression requirements (e.g. Level 10+) and paying any in-app GFTshard license we require, typically with less favorable fees/caps than NFT holders.
+• Holding an NFT is not a guarantee of profit, airdrop size, or secondary-market value. Supply waves, mint prices, and utilities may be adjusted for security, fairness, or operations.
+
+3B. Shard Swap
+• Shard Swap converts GFTshards into GFT (credit and/or token under then-current rules). Platform fees may apply in GFT after conversion. Daily caps and minimums may apply.
+• Conversion rates may be provisional until official launch parameters are set. We may change rates, fees, and caps for abuse prevention or economic balance.
 
 4. No guarantees about the game economy
-Energy, levels, NFTs, boosts, referrals, leaderboards, swaps, and rewards may be changed, balanced, delayed, limited, or removed. We may fix bugs, fight abuse, and adjust rates without notice when needed for security or fair play.
+Energy, levels, NFTs, boosts, referrals, leaderboards, swaps, vaults, and rewards may be changed, balanced, delayed, limited, or removed. We may fix bugs, fight abuse, and adjust rates without notice when needed for security or fair play.
 
 5. Accounts, wallets, and security
 • You must keep your password and 12-word recovery phrase secret. Anyone with your phrase can control your wallet.
@@ -31,7 +41,7 @@ Energy, levels, NFTs, boosts, referrals, leaderboards, swaps, and rewards may be
 • You are responsible for all activity under your account and wallet.
 
 6. Purchases and fees
-In-app purchases (e.g. SOL for NFTs, boosts, ascension) may include network fees and platform fees. Blockchain transactions are generally irreversible. Refunds, if any, are at our discretion except where law requires otherwise.
+In-app purchases (e.g. SOL for NFT mints, boosts, ascension) and swap fees may include network fees and platform fees. Blockchain transactions are generally irreversible. Refunds, if any, are at our discretion except where law requires otherwise.
 
 7. Prohibited conduct
 You may not: use bots/auto-clickers/scripts to cheat; create fake accounts for referral or reward farming (Sybil attacks); exploit bugs without reporting them; launder funds; harass others; or violate applicable law. We may suspend or ban accounts and void illegitimate rewards.
