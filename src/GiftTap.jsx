@@ -682,11 +682,23 @@ const GiftTapGame = () => {
   // 2. FETCH TOP LEADER (Individual Badge)
   const fetchTopLeader = useCallback(async () => {
     try {
-      const { data } = await supabase.from('leaderboard_all_time').select('*').order('lifetime_taps', { ascending: false }).limit(1).maybeSingle();
+      const { data: rows } = await supabase
+        .from('leaderboard_all_time')
+        .select('*')
+        .order('lifetime_taps', { ascending: false })
+        .limit(20);
+      const ranked = (rows || [])
+        .map((row) => {
+          const farm = Number(row.inventory?.farm_lifetime_taps) || 0;
+          const life = Number(row.lifetime_taps) || 0;
+          return { ...row, _score: Math.max(life, farm) };
+        })
+        .sort((a, b) => b._score - a._score);
+      const data = ranked[0];
       if (data) {
         setTopLeader({
           name: data.username || (data[DB_PLAYER_ID] ? `ID:..${String(data[DB_PLAYER_ID]).slice(-4)}` : 'Anon'),
-          score: data.lifetime_taps
+          score: data._score,
         });
       }
     } catch (err) { console.error("Badge fetch error:", err); }
@@ -695,18 +707,51 @@ const GiftTapGame = () => {
   // Full leaderboard list for the Ranks page (not a modal)
   const fetchFullLeaderboard = async (typeOverride) => {
     const targetType = typeOverride || leaderboardType;
-    const tableName = targetType === 'all_time' ? 'leaderboard_all_time' : 'leaderboard_season';
-    const sortColumn = targetType === 'all_time' ? 'lifetime_taps' : 'score';
-
     setLeaderboardLoading(true);
     try {
-      const { data } = await supabase
-        .from(tableName)
-        .select('*')
-        .order(sortColumn, { ascending: false })
-        .limit(100);
+      if (targetType === 'all_time' || targetType === 'All-time') {
+        // Prefer view (after SQL: uses GREATEST lifetime + farm_lifetime_taps)
+        let { data, error } = await supabase
+          .from('leaderboard_all_time')
+          .select('*')
+          .order('lifetime_taps', { ascending: false })
+          .limit(100);
 
-      setLeaderboard(data || []);
+        // Fallback: raw players + compute true lifetime from inventory
+        if (error || !data?.length) {
+          const res = await supabase
+            .from('players')
+            .select(`${DB_PLAYER_ID}, username, lifetime_taps, inventory, season_shards, shard_balance`)
+            .order('lifetime_taps', { ascending: false })
+            .limit(150);
+          data = res.data;
+          error = res.error;
+        }
+
+        const ranked = (data || [])
+          .map((row) => {
+            const inv = row.inventory || {};
+            const farm = Number(inv.farm_lifetime_taps) || 0;
+            const life = Number(row.lifetime_taps) || 0;
+            const trueLife = Math.max(life, farm);
+            return {
+              ...row,
+              lifetime_taps: trueLife,
+              score: trueLife,
+            };
+          })
+          .sort((a, b) => (Number(b.lifetime_taps) || 0) - (Number(a.lifetime_taps) || 0))
+          .slice(0, 100);
+
+        setLeaderboard(ranked);
+      } else {
+        const { data } = await supabase
+          .from('leaderboard_season')
+          .select('*')
+          .order('score', { ascending: false })
+          .limit(100);
+        setLeaderboard(data || []);
+      }
     } catch (err) {
       console.error('Leaderboard fetch error:', err);
       setLeaderboard([]);
@@ -1469,14 +1514,15 @@ const GiftTapGame = () => {
 
       let { data, error } = await doUpdate(baseRow);
 
-      // Legacy PAYWALL_LOCKED: whole row rejected when lifetime > wall cap.
-      // Retry: still save SHARDS + energy + season; cap lifetime column for DB only.
-      if (error && String(error.message || '').includes('PAYWALL_LOCKED')) {
+      // Legacy PAYWALL_LOCKED: DB trigger blocks lifetime past wall (e.g. 50000 at L4).
+      // Save shards + true farm lifetime in inventory; keep attempting real lifetime_taps.
+      if (error && String(error.message || error.code || '').includes('PAYWALL_LOCKED')) {
         const cap = getPaywallCap(p.mul);
         const cappedLife = Math.min(p.ltt, Number.isFinite(cap) ? cap : p.ltt);
         console.warn(
-          'PAYWALL_LOCKED — retrying open-farm save (shards + capped lifetime). Run SQL migration to drop trigger.',
+          'PAYWALL_LOCKED — saving shards; lifetime_taps still blocked by Supabase trigger. Run open-farm SQL.',
         );
+        // 1) Shards + inventory (farm_lifetime_taps holds the real score)
         ({ data, error } = await doUpdate({
           ...baseRow,
           lifetime_taps: cappedLife,
@@ -1486,6 +1532,33 @@ const GiftTapGame = () => {
             paywall_legacy_cap: true,
           },
         }));
+        // 2) Immediately try to write true lifetime alone (works after SQL drop)
+        if (!error) {
+          const lifeTry = await doUpdate({
+            lifetime_taps: p.ltt,
+            inventory: {
+              ...nextInventory,
+              farm_lifetime_taps: p.ltt,
+              paywall_legacy_cap: false,
+            },
+            last_updated: new Date().toISOString(),
+          });
+          if (!lifeTry.error && lifeTry.data?.length) {
+            data = lifeTry.data;
+            error = null;
+            console.log('✅ lifetime_taps unblocked — full life saved', p.ltt);
+          } else if (lifeTry.error) {
+            // still locked — surface once so user runs SQL
+            const now = Date.now();
+            if (now - saveFailNotifiedRef.current > 60000) {
+              saveFailNotifiedRef.current = now;
+              notify(
+                'Shards save OK, but lifetime is stuck at the wall cap in the cloud (50k at L4).\n\nLeaderboard stays frozen until you run the open-farm SQL in Supabase (migrations/20260803_open_farm_drop_paywall.sql).',
+                { success: false, title: 'Lifetime not saving' },
+              );
+            }
+          }
+        }
       }
 
       // Last resort: save shards only (never lose balance)
