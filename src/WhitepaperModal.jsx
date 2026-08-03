@@ -21,7 +21,7 @@ const WhitepaperModal = ({ isWhitepaperOpen, setIsWhitepaperOpen, onClose }) => 
     {
       id: 3,
       title: "3. Levels & Ascension Walls",
-      content: "Level rises with lifetime taps. Higher tiers raise permanent tap multipliers:\n\n• Levels 0–4: 1.00x (10,000 taps per level)\n• Levels 5–9: 1.15x (15,000 taps per level)\n• Levels 10–19: 1.30x (25,000 taps per level)\n• Levels 20–29: 1.50x (50,000 taps per level)\n• Levels 30–49: 1.75x (100,000 taps per level)\n• Level 50: 2.00x\n\nAscension walls (pay Shards and/or SOL to unlock the next tier):\n• Wall L4 → L5: 15,000 Shards or 0.025 SOL\n• Wall L9 → L10: 30,000 Shards or 0.05 SOL\n• Wall L19 → L20: 75,000 Shards or 0.10 SOL\n• Wall L29 → L30: 150,000 Shards or 0.20 SOL\n• Wall L49 → L50: 500,000 Shards or 0.75 SOL\n\nWalls are OPTIONAL power-ups: you can stay and play on any Level and keep earning spendable GFTshards forever. Climbing costs Shards or SOL and unlocks higher multipliers and the next tier. You are never forced to pay to keep farming. SOL skips the shard grind for the climb fee."
+      content: "Level rises with lifetime taps. Higher tiers raise permanent tap multipliers:\n\n• Levels 0–4: 1.00x (10,000 taps per level)\n• Levels 5–9: 1.15x (15,000 taps per level)\n• Levels 10–19: 1.30x (25,000 taps per level)\n• Levels 20–29: 1.50x (50,000 taps per level)\n• Levels 30–49: 1.75x (100,000 taps per level)\n• Level 50: 2.00x\n\nAscension walls (pay Shards and/or SOL to unlock the next tier):\n• Wall L4 → L5: 15,000 Shards or 0.025 SOL\n• Wall L9 → L10: 30,000 Shards or 0.05 SOL\n• Wall L19 → L20: 75,000 Shards or 0.10 SOL\n• Wall L29 → L30: 150,000 Shards or 0.20 SOL\n• Wall L49 → L50: 500,000 Shards or 0.75 SOL\n\nWalls are OPTIONAL power-ups: you can stay and play on any Level and keep earning spendable GFTshards forever. Climbing costs Shards or SOL and unlocks higher multipliers and the next tier. You are never forced to pay to keep mining. SOL skips the shard grind for the climb fee."
     },
     {
       id: 4,
@@ -46,12 +46,12 @@ const WhitepaperModal = ({ isWhitepaperOpen, setIsWhitepaperOpen, onClose }) => 
     {
       id: 8,
       title: "8. Referrals (Invite Friends)",
-      content: "Grow the Gift Tap community with invite links from the Friends tab.\n\nJoiner bonus:\n• New players who join with your link receive +500 GFTshards when they start.\n\nReferrer bonuses (you earn these — not paid on mere join):\n• +1,000 GFTshards when your friend reaches Level 1 (10,000 lifetime taps).\n• +3,000 GFTshards when your friend clears the first Ascension Wall (Level 4 → Level 5), by paying the wall fee in Shards or SOL.\n\nEach milestone is paid once per invited friend. Farming fake accounts is banned under the Code of Conduct."
+      content: "Grow the Gift Tap community with invite links from the Friends tab.\n\nJoiner bonus:\n• New players who join with your link receive +500 GFTshards when they start.\n\nReferrer bonuses (you earn these — not paid on mere join):\n• +1,000 GFTshards when your friend reaches Level 1 (10,000 lifetime taps).\n• +3,000 GFTshards when your friend clears the first Ascension Wall (Level 4 → Level 5), by paying the wall fee in Shards or SOL.\n\nEach milestone is paid once per invited friend. Mining fake accounts is banned under the Code of Conduct."
     },
     {
       id: 9,
       title: "9. Code of Conduct",
-      content: "No auto-clickers, scripts, multi-account farming, or abuse of swap/referral systems.\n\nFlagged accounts may be locked and lose GFTshard-to-GFT swap eligibility and other rewards. Play fair."
+      content: "No auto-clickers, scripts, multi-account mining, or abuse of swap/referral systems.\n\nFlagged accounts may be locked and lose GFTshard-to-GFT swap eligibility and other rewards. Play fair."
     }
   ];
 

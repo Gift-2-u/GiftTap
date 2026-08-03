@@ -46,7 +46,7 @@ Energy, levels, NFTs, boosts, referrals, leaderboards, swaps, vaults, and reward
 In-app purchases (e.g. SOL for NFT mints, boosts, ascension) and swap fees may include network fees and platform fees. Blockchain transactions are generally irreversible. Refunds, if any, are at our discretion except where law requires otherwise.
 
 7. Prohibited conduct
-You may not: use bots/auto-clickers/scripts to cheat; create fake accounts for referral or reward farming (Sybil attacks); exploit bugs without reporting them; launder funds; harass others; or violate applicable law. We may suspend or ban accounts and void illegitimate rewards.
+You may not: use bots/auto-clickers/scripts to cheat; create fake accounts for referral or reward mining (Sybil attacks); exploit bugs without reporting them; launder funds; harass others; or violate applicable law. We may suspend or ban accounts and void illegitimate rewards.
 
 8. Third-party services
 Ads, analytics, RPC providers, Supabase, Solana, wallets, and other third parties have their own terms. We are not liable for third-party outages, ads, or content.

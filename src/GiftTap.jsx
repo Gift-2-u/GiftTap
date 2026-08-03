@@ -400,8 +400,6 @@ const GiftTapGame = () => {
   const [lifetimeTaps, setLifetimeTaps] = useState(0);
   const [maxUnlockedLevel, setMaxUnlockedLevel] = useState(4);
   const [showAscensionModal, setShowAscensionModal] = useState(false);
-  /** Legacy banked wall progress (still counts toward climb fee if any). New taps earn spendable shards. */
-  const [wallFeeProgress, setWallFeeProgress] = useState(0);
   /**
    * When set to current maxUnlockedLevel, never auto-popup the climb modal for this wall.
    * Player opens climb only via HUD "Level up / Climb" button.
@@ -682,23 +680,16 @@ const GiftTapGame = () => {
   // 2. FETCH TOP LEADER (Individual Badge)
   const fetchTopLeader = useCallback(async () => {
     try {
-      const { data: rows } = await supabase
+      const { data } = await supabase
         .from('leaderboard_all_time')
         .select('*')
         .order('lifetime_taps', { ascending: false })
-        .limit(20);
-      const ranked = (rows || [])
-        .map((row) => {
-          const farm = Number(row.inventory?.farm_lifetime_taps) || 0;
-          const life = Number(row.lifetime_taps) || 0;
-          return { ...row, _score: Math.max(life, farm) };
-        })
-        .sort((a, b) => b._score - a._score);
-      const data = ranked[0];
+        .limit(1)
+        .maybeSingle();
       if (data) {
         setTopLeader({
           name: data.username || (data[DB_PLAYER_ID] ? `ID:..${String(data[DB_PLAYER_ID]).slice(-4)}` : 'Anon'),
-          score: data._score,
+          score: data.lifetime_taps,
         });
       }
     } catch (err) { console.error("Badge fetch error:", err); }
@@ -707,86 +698,19 @@ const GiftTapGame = () => {
   // Full leaderboard list for the Ranks page (not a modal)
   const fetchFullLeaderboard = async (typeOverride) => {
     const targetType = typeOverride || leaderboardType;
+    const isAllTime = targetType === 'all_time' || targetType === 'All-time';
+    const tableName = isAllTime ? 'leaderboard_all_time' : 'leaderboard_season';
+    const sortColumn = isAllTime ? 'lifetime_taps' : 'score';
+
     setLeaderboardLoading(true);
     try {
-      if (targetType === 'all_time' || targetType === 'All-time') {
-        // Pull inventory + true_lifetime so ranks work even when lifetime_taps stuck at 50k
-        let data = null;
-        let error = null;
-
-        // 1) players table (has inventory JSON)
-        {
-          const res = await supabase
-            .from('players')
-            .select(
-              `${DB_PLAYER_ID}, username, lifetime_taps, true_lifetime_taps, inventory, season_shards, shard_balance`,
-            )
-            .order('lifetime_taps', { ascending: false })
-            .limit(200);
-          data = res.data;
-          error = res.error;
-          // Column true_lifetime_taps may not exist yet
-          if (
-            error &&
-            (/true_lifetime_taps/i.test(String(error.message || '')) ||
-              error.code === 'PGRST204' ||
-              error.code === '42703')
-          ) {
-            const res2 = await supabase
-              .from('players')
-              .select(
-                `${DB_PLAYER_ID}, username, lifetime_taps, inventory, season_shards, shard_balance`,
-              )
-              .order('lifetime_taps', { ascending: false })
-              .limit(200);
-            data = res2.data;
-            error = res2.error;
-          }
-        }
-
-        // 2) view fallback (after SQL migration)
-        if (error || !data?.length) {
-          const res = await supabase
-            .from('leaderboard_all_time')
-            .select('*')
-            .order('lifetime_taps', { ascending: false })
-            .limit(100);
-          if (!res.error && res.data?.length) {
-            data = res.data;
-            error = null;
-          }
-        }
-
-        const scoreOf = (row) => {
-          const inv = row.inventory || {};
-          const farm = Number(inv.farm_lifetime_taps) || 0;
-          const life = Number(row.lifetime_taps) || 0;
-          const trueCol = Number(row.true_lifetime_taps) || 0;
-          return Math.max(life, farm, trueCol);
-        };
-
-        const ranked = (data || [])
-          .map((row) => {
-            const trueLife = scoreOf(row);
-            return {
-              ...row,
-              lifetime_taps: trueLife,
-              score: trueLife,
-            };
-          })
-          .sort((a, b) => (Number(b.lifetime_taps) || 0) - (Number(a.lifetime_taps) || 0))
-          .slice(0, 100);
-
-        if (error) console.warn('all-time leaderboard:', error.message || error);
-        setLeaderboard(ranked);
-      } else {
-        const { data } = await supabase
-          .from('leaderboard_season')
-          .select('*')
-          .order('score', { ascending: false })
-          .limit(100);
-        setLeaderboard(data || []);
-      }
+      const { data, error } = await supabase
+        .from(tableName)
+        .select('*')
+        .order(sortColumn, { ascending: false })
+        .limit(100);
+      if (error) console.warn('Leaderboard fetch:', error.message || error);
+      setLeaderboard(data || []);
     } catch (err) {
       console.error('Leaderboard fetch error:', err);
       setLeaderboard([]);
@@ -905,11 +829,7 @@ const GiftTapGame = () => {
           limit_boost_expires: playerRow.limit_boost_expires || null
         });
         
-        const invEarly = playerRow.inventory || {};
-        const dbLife = Number(playerRow.lifetime_taps) || 0;
-        const farmLife = Number(invEarly.farm_lifetime_taps) || 0;
-        const trueCol = Number(playerRow.true_lifetime_taps) || 0;
-        const _lt = Math.max(dbLife, farmLife, trueCol);
+        const _lt = Number(playerRow.lifetime_taps) || 0;
         setLifetimeTaps(_lt);
         optimisticTaps.current = _lt;
         setSeasonShards(Number(playerRow.season_shards) || 0); 
@@ -917,13 +837,7 @@ const GiftTapGame = () => {
         setMaxUnlockedLevel(loadedMax); 
         const _max = loadedMax;
         setCurrentLevel(Math.min(calculateLevel(_lt), _max));
-        // Wall recovery progress (only valid for current wall key)
-        if (Number(inv.wall_fee_wall) === loadedMax) {
-          setWallFeeProgress(Number(inv.wall_fee_progress) || 0);
-        } else {
-          setWallFeeProgress(0);
-        }
-        // Persist "stay farming" so wall modal does not re-open after each save/tap pause
+        // Persist "stay mining" so wall modal does not re-open after each save/tap pause
         if (Number(inv.wall_snooze_level) === loadedMax) {
           setWallSnoozedFor(loadedMax);
         } else {
@@ -983,7 +897,7 @@ const GiftTapGame = () => {
         const dbEnergy = (Number(playerRow.last_energy) > 0) ? Number(playerRow.last_energy) : 500;
         setEnergy(Math.min(dbEnergy + recovered, 500));
         
-        // 🚨 NEW: B. Weekend Bot (Offline Farming) Multi-Day Math
+        // 🚨 NEW: B. Weekend Bot (Offline Mining) Multi-Day Math
         let offlineShardsEarned = 0;
         const botExpiresMs = playerRow.bot_expires ? new Date(playerRow.bot_expires).getTime() : 0;
         
@@ -1047,9 +961,9 @@ const GiftTapGame = () => {
                 const playerMaxLevel = playerRow.max_unlocked_level || 4;
                 let projectedLifetime = currentLifetimeTaps + offlineShardsEarned;
                 
-                // Open farm: wall does NOT stop bot shards. Level stays capped client-side.
+                // Open mining: wall does NOT stop bot shards. Level stays capped client-side.
                 if (calculateLevel(projectedLifetime) > playerMaxLevel) {
-                    console.log("Bot farming past wall threshold — shards still earned; level unlock optional.");
+                    console.log("Bot mining past wall threshold — shards still earned; level unlock optional.");
                 }
 
                 if (offlineShardsEarned > 0) {
@@ -1077,8 +991,8 @@ const GiftTapGame = () => {
 
                     // Fire the welcome back popup!
                     setTimeout(() => {
-                        notify(`🤖 Welcome back! Your Bot farmed ${offlineShardsEarned.toLocaleString()} Shards while you were away!`);
-                        // Open farm: no auto climb popup after bot farm (use HUD Level up).
+                        notify(`🤖 Welcome back! Your Bot mined ${offlineShardsEarned.toLocaleString()} Shards while you were away!`);
+                        // Open mining: no auto climb popup after bot mining (use HUD Level up).
                     }, 1000);
                 } else {
                     // Bot active but mined 0 (daily limit maxed before they left) — no forced wall modal
@@ -1488,12 +1402,9 @@ const GiftTapGame = () => {
 
   }, [playerId]);
 
-  // 6. SAVE PROGRESS — always persist shards; open-farm past walls
-  const saveToDatabase = (b, e, dt, ltd, strk, ltt, mul, s, wallProg) => {
+  // 6. SAVE PROGRESS — always persist shards; open mining past walls
+  const saveToDatabase = (b, e, dt, ltd, strk, ltt, mul, s) => {
     if (!playerId) return;
-
-    const progressToSave =
-      wallProg !== undefined && wallProg !== null ? wallProg : wallFeeProgress;
 
     // Merge: never write lower shards/lifetime than a newer pending save
     const prev = pendingSaveRef.current;
@@ -1506,7 +1417,6 @@ const GiftTapGame = () => {
       ltt: Math.max(Number(ltt) || 0, Number(prev?.ltt) || 0),
       mul,
       s: Math.max(Number(s) || 0, Number(prev?.s) || 0),
-      progressToSave: Number(progressToSave) || 0,
     };
     pendingSaveRef.current = merged;
 
@@ -1515,16 +1425,15 @@ const GiftTapGame = () => {
       const p = pendingSaveRef.current;
       if (!p || !playerId) return;
 
+      const inv = { ...(stats.inventory || {}) };
+      delete inv.wall_fee_progress;
+      delete inv.wall_fee_wall;
       const nextInventory = {
-        ...(stats.inventory || {}),
-        wall_fee_progress: p.progressToSave,
-        wall_fee_wall: p.mul,
+        ...inv,
         wall_snooze_level:
           wallSnoozedFor === p.mul
             ? p.mul
-            : (stats.inventory || {}).wall_snooze_level ?? null,
-        // Always store real lifetime here (leaderboard + multi-device)
-        farm_lifetime_taps: p.ltt,
+            : inv.wall_snooze_level ?? null,
       };
 
       const baseRow = {
@@ -1537,8 +1446,6 @@ const GiftTapGame = () => {
         last_tap_date: p.ltd,
         current_streak: p.strk,
         lifetime_taps: p.ltt,
-        // Open-farm column (added by SQL migration) — not blocked by old paywall
-        true_lifetime_taps: p.ltt,
         max_unlocked_level: p.mul,
         max_daily_limit: maxDailyLimit,
         limit_boost_amount: stats.limit_boost_amount,
@@ -1552,104 +1459,29 @@ const GiftTapGame = () => {
 
       let { data, error } = await doUpdate(baseRow);
 
-      // Column missing until SQL runs — retry without true_lifetime_taps
-      if (
-        error &&
-        (/true_lifetime_taps/i.test(String(error.message || '')) ||
-          error.code === 'PGRST204' ||
-          error.code === '42703')
-      ) {
-        const { true_lifetime_taps: _drop, ...noTrueCol } = baseRow;
-        ({ data, error } = await doUpdate(noTrueCol));
-      }
-
-      // PAYWALL_LOCKED or any error mentioning paywall / lifetime: save via open-farm fields
-      const errText = `${error?.message || ''} ${error?.details || ''} ${error?.code || ''}`;
-      const isPaywall =
-        error &&
-        (/PAYWALL/i.test(errText) ||
-          (/lifetime/i.test(errText) && /wall|cap|max_unlocked/i.test(errText)));
-
-      if (isPaywall) {
+      // Legacy PAYWALL trigger still blocks lifetime_taps past wall until you drop it in SQL.
+      // Retry keeps the SAME field name (lifetime_taps) at wall cap so shards still save.
+      // After SQL drops the trigger, the first update above saves full lifetime_taps again.
+      if (error && /PAYWALL/i.test(`${error.message || ''} ${error.details || ''}`)) {
         const cap = getPaywallCap(p.mul);
         const cappedLife = Math.min(p.ltt, Number.isFinite(cap) ? cap : p.ltt);
-        console.warn('Paywall block on lifetime_taps — using true_lifetime_taps + inventory farm.', errText);
-
-        // Path A: new column + inventory (works after ALTER TABLE; no paywall on this col)
-        let retry = await doUpdate({
-          shard_balance: p.b,
-          season_shards: p.s,
-          last_energy: p.e,
-          daily_taps: p.dt,
-          last_tap_date: p.ltd,
-          current_streak: p.strk,
-          lifetime_taps: cappedLife, // keep column valid for old trigger
-          true_lifetime_taps: p.ltt,
-          max_unlocked_level: p.mul,
-          inventory: {
-            ...nextInventory,
-            farm_lifetime_taps: p.ltt,
-            paywall_legacy_cap: true,
-          },
-          last_updated: new Date().toISOString(),
-        });
-
-        // Path B: no true_lifetime column yet
-        if (
-          retry.error &&
-          (/true_lifetime_taps/i.test(String(retry.error.message || '')) ||
-            retry.error.code === 'PGRST204' ||
-            retry.error.code === '42703')
-        ) {
-          retry = await doUpdate({
-            shard_balance: p.b,
-            season_shards: p.s,
-            last_energy: p.e,
-            daily_taps: p.dt,
-            last_tap_date: p.ltd,
-            current_streak: p.strk,
-            lifetime_taps: cappedLife,
-            max_unlocked_level: p.mul,
-            inventory: {
-              ...nextInventory,
-              farm_lifetime_taps: p.ltt,
-              paywall_legacy_cap: true,
-            },
-            last_updated: new Date().toISOString(),
-          });
-        }
-
-        // Path C: after SQL dropped trigger — push real lifetime_taps
-        if (!retry.error) {
-          const lifeTry = await doUpdate({
+        console.warn('PAYWALL_LOCKED — retry with lifetime_taps at wall cap. Drop trigger in Supabase to unlock.');
+        ({ data, error } = await doUpdate({
+          ...baseRow,
+          lifetime_taps: cappedLife,
+        }));
+        if (!error) {
+          const full = await doUpdate({
             lifetime_taps: p.ltt,
-            true_lifetime_taps: p.ltt,
-            inventory: {
-              ...nextInventory,
-              farm_lifetime_taps: p.ltt,
-              paywall_legacy_cap: false,
-            },
             last_updated: new Date().toISOString(),
           });
-          if (!lifeTry.error && lifeTry.data?.length) {
-            data = lifeTry.data;
-            error = null;
-            console.log('✅ Full lifetime_taps saved', p.ltt);
-          } else {
-            data = retry.data;
-            error = retry.error;
-            if (!error) {
-              // shards+farm saved; lifetime col still capped until SQL
-              data = retry.data;
-              error = null;
-              console.log('✅ Farm lifetime saved to inventory/true_lifetime', p.ltt);
-            }
+          if (!full.error && full.data?.length) {
+            data = full.data;
+            console.log('✅ lifetime_taps saved', p.ltt);
           }
-        } else {
-          data = retry.data;
-          error = retry.error;
         }
       }
+
 
       // Last resort: save shards only (never lose balance)
       if (error) {
@@ -1684,7 +1516,7 @@ const GiftTapGame = () => {
         if (now - saveFailNotifiedRef.current > 15000) {
           saveFailNotifiedRef.current = now;
           notify(
-            `Cloud save failed — progress may not sync.\n${error.message || error.code || 'Unknown error'}\n\nIf you see PAYWALL_LOCKED, run the open-farm SQL in Supabase (see migrations).`,
+            `Cloud save failed — progress may not sync.\n${error.message || error.code || 'Unknown error'}\n\nIf you see PAYWALL_LOCKED, run the open mining SQL in Supabase (see migrations).`,
             { success: false, title: 'Save failed' },
           );
         }
@@ -1783,7 +1615,7 @@ const GiftTapGame = () => {
 
       if (validTaps <= 0) return; 
 
-      // 4. ALWAYS EARN SHARDS (open farm). Wall only caps *level unlock*, not earnings.
+      // 4. ALWAYS EARN SHARDS (open mining). Wall only caps *level unlock*, not earnings.
       const isAtLevelCap = currentLevel >= maxUnlockedLevel;
       const atWall =
         isAtLevelCap && !!ASCENSION_WALLS[maxUnlockedLevel];
@@ -1792,8 +1624,8 @@ const GiftTapGame = () => {
       const shardsEarned = Math.round(rawShardsEarned * 1000) / 1000;
       const perTapAmount = Math.round((baseRate * payoutMultiplier) * 1000) / 1000;
 
-      // Climb UI is opt-in only (HUD "Level up" / "Climb"). No auto-popup while farming.
-      // First time they hit the wall, show once unless they already chose Stay farming.
+      // Climb UI is opt-in only (HUD "Level up" / "Climb"). No auto-popup while mining.
+      // First time they hit the wall, show once unless they already chose Stay mining.
       if (
         atWall &&
         wallSnoozedFor !== maxUnlockedLevel &&
@@ -1856,7 +1688,7 @@ const GiftTapGame = () => {
       }, 500);
   };
 
-  /** Close climb UI and remember player chose to farm (no more auto popups for this wall). */
+  /** Close climb UI and remember player chose to mine (no more auto popups for this wall). */
   const dismissWallClimb = (snooze = true) => {
     setShowAscensionModal(false);
     if (!snooze) return;
@@ -1866,9 +1698,9 @@ const GiftTapGame = () => {
     const nextInv = {
       ...(stats.inventory || {}),
       wall_snooze_level: wallKey,
-      wall_fee_progress: wallFeeProgress,
-      wall_fee_wall: wallKey,
     };
+    delete nextInv.wall_fee_progress;
+    delete nextInv.wall_fee_wall;
     setStats((prev) => ({ ...prev, inventory: nextInv }));
     if (playerId) {
       supabase
@@ -1890,22 +1722,18 @@ const GiftTapGame = () => {
     if (!wallData) return;
 
     if (method === 'shards') {
-      const totalAvailable = Number(balance) + Number(wallFeeProgress);
-      if (totalAvailable < wallData.shardCost) {
+      if (Number(balance) < wallData.shardCost) {
         notify(
-          `Need ${wallData.shardCost.toLocaleString()} shards to climb (optional). You have ${Number(balance).toLocaleString()} + ${Number(wallFeeProgress).toLocaleString()} banked. Keep farming anytime — wall is extra power, not required.`,
+          `Need ${wallData.shardCost.toLocaleString()} shards to climb (optional). You have ${Number(balance).toLocaleString()}. Keep mining anytime — wall is extra power, not required.`,
         );
         return;
       }
 
-      // Spend balance first, then wall recovery progress (progress is not spendable elsewhere)
-      const fromBalance = Math.min(Number(balance), wallData.shardCost);
-      const newBalance = Math.round((Number(balance) - fromBalance) * 1000) / 1000;
+      const newBalance = Math.round((Number(balance) - wallData.shardCost) * 1000) / 1000;
       const newCap = wallData.newCap;
       const newLevel = wallData.targetLevel;
       
       setBalance(newBalance);
-      setWallFeeProgress(0);
       setMaxUnlockedLevel(newCap);
       setCurrentLevel(newLevel);
       setEnergy(maxDailyLimit); 
@@ -2012,8 +1840,7 @@ const GiftTapGame = () => {
         
         setMaxUnlockedLevel(newCap);
         setCurrentLevel(newLevel);
-        setWallFeeProgress(0);
-        setEnergy(maxDailyLimit); 
+          setEnergy(maxDailyLimit); 
         setShowAscensionModal(false);
         setWallSnoozedFor(null);
         setStats((prev) => ({
@@ -2058,20 +1885,17 @@ const GiftTapGame = () => {
           // 1. Update your personal balance (Seamless Sync)
           if (payload.new[DB_PLAYER_ID] === playerId) {
             
-            // Sync when another device is ahead (shards OR lifetime / farm taps)
+            // Sync when another device is ahead (shards OR lifetime / mining taps)
             const incomingTaps = Number(payload.new.lifetime_taps) || 0;
             const inv = payload.new.inventory || {};
-            const farmLife = Number(inv.farm_lifetime_taps) || 0;
-            const bestIncomingLife = Math.max(incomingTaps, farmLife);
             const incomingShards = Number(payload.new.shard_balance) || 0;
 
             setLifetimeTaps((prevTaps) => {
               const prevLife = Number(prevTaps) || 0;
               setBalance((prevBal) => {
                 const localBal = Number(prevBal) || 0;
-                // Only pull remote if they are clearly ahead (avoid wiping local unsent taps)
                 const remoteAhead =
-                  incomingShards > localBal + 0.001 || bestIncomingLife > prevLife + 0.001;
+                  incomingShards > localBal + 0.001 || incomingTaps > prevLife + 0.001;
                 if (!remoteAhead) return prevBal;
 
                 setEnergy(Number(payload.new.last_energy));
@@ -2086,13 +1910,10 @@ const GiftTapGame = () => {
                   efficiency_expires: payload.new.efficiency_expires,
                   energy_boost_expires: payload.new.energy_boost_expires,
                 }));
-                if (Number(inv.wall_fee_wall) === (payload.new.max_unlocked_level || 4)) {
-                  setWallFeeProgress(Number(inv.wall_fee_progress) || 0);
-                }
-                optimisticTaps.current = Math.max(optimisticTaps.current, bestIncomingLife);
+                optimisticTaps.current = Math.max(optimisticTaps.current, incomingTaps);
                 return incomingShards;
               });
-              return bestIncomingLife > prevLife ? bestIncomingLife : prevLife;
+              return incomingTaps > prevLife ? incomingTaps : prevLife;
             });
           }
 
@@ -2863,10 +2684,9 @@ const GiftTapGame = () => {
           {showAscensionModal && ASCENSION_WALLS[maxUnlockedLevel] && (() => {
             const wall = ASCENSION_WALLS[maxUnlockedLevel];
             const have = Number(balance) || 0;
-            const progress = Number(wallFeeProgress) || 0;
             const need = wall.shardCost;
-            const toward = Math.min(need, have + progress);
-            const missing = Math.max(0, need - have - progress);
+            const toward = Math.min(need, have);
+            const missing = Math.max(0, need - have);
             const ready = missing <= 0;
             const pct = Math.min(100, Math.round((toward / need) * 100));
             return (
@@ -2892,15 +2712,7 @@ const GiftTapGame = () => {
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6 }}>
                     <span>Your shards</span><span>{have.toLocaleString()}</span>
                   </div>
-                  {progress > 0 && (
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6 }}>
-                      <span title="Old wall-fee bank from before open-farm — counts toward climb cost">
-                        Old wall bank
-                      </span>
-                      <span style={{ color: '#60a5fa' }}>{progress.toLocaleString()}</span>
-                    </div>
-                  )}
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6 }}>
+<div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6 }}>
                     <span>Still need</span>
                     <strong style={{ color: ready ? '#4ade80' : '#fbbf24' }}>
                       {ready ? 'Ready to climb!' : missing.toLocaleString()}
@@ -2932,7 +2744,7 @@ const GiftTapGame = () => {
                 >
                   {ready
                     ? `Climb to L${wall.targetLevel} (${need.toLocaleString()} shards)`
-                    : `Farm ${missing.toLocaleString()} more shards to climb`}
+                    : `Mine ${missing.toLocaleString()} more shards to climb`}
                 </button>
 
                 <button
@@ -2950,7 +2762,7 @@ const GiftTapGame = () => {
                     marginBottom: '10px',
                   }}
                 >
-                  Stay on L{maxUnlockedLevel} & keep mining
+                  Stay on L{maxUnlockedLevel} & keep mining shards
                 </button>
                 
                 <button 
@@ -3100,7 +2912,7 @@ const GiftTapGame = () => {
                               title="Open climb when you are ready — mining never stops"
                               style={{
                                 color: (
-                                  Number(balance) + Number(wallFeeProgress) >=
+                                  Number(balance) >=
                                   ASCENSION_WALLS[maxUnlockedLevel].shardCost
                                 )
                                   ? '#4ade80'
@@ -3109,13 +2921,13 @@ const GiftTapGame = () => {
                                 whiteSpace: 'nowrap',
                                 fontWeight: 'bold',
                                 background: (
-                                  Number(balance) + Number(wallFeeProgress) >=
+                                  Number(balance) >=
                                   ASCENSION_WALLS[maxUnlockedLevel].shardCost
                                 )
                                   ? 'rgba(74,222,128,0.15)'
                                   : 'rgba(168,85,247,0.15)',
                                 border: (
-                                  Number(balance) + Number(wallFeeProgress) >=
+                                  Number(balance) >=
                                   ASCENSION_WALLS[maxUnlockedLevel].shardCost
                                 )
                                   ? '1px solid #4ade80'
@@ -3126,7 +2938,7 @@ const GiftTapGame = () => {
                               }}
                             >
                               {(
-                                Number(balance) + Number(wallFeeProgress) >=
+                                Number(balance) >=
                                 ASCENSION_WALLS[maxUnlockedLevel].shardCost
                               )
                                 ? 'Level up'
@@ -3134,7 +2946,7 @@ const GiftTapGame = () => {
                               {' '}
                               {Math.min(
                                 ASCENSION_WALLS[maxUnlockedLevel].shardCost,
-                                Number(balance) + Number(wallFeeProgress),
+                                Number(balance),
                               ).toLocaleString()}
                               {' / '}
                               {ASCENSION_WALLS[maxUnlockedLevel].shardCost.toLocaleString()}
@@ -3147,7 +2959,7 @@ const GiftTapGame = () => {
                         )}
                       </div>
                       
-                      {/* Progress: level XP; at wall show full green (farming open) */}
+                      {/* Progress: level XP; at wall show full green (mining open) */}
                       {currentLevel < 50 && (
                         <div style={{ flex: 1, background: 'rgba(0, 0, 0, 0.6)', borderRadius: '10px', height: '6px', overflow: 'hidden', border: '1px solid #333' }}>
                           <div
