@@ -2648,7 +2648,7 @@ const GiftTapGame = () => {
               <div style={{ background: '#1c1e22', border: '1px solid #ffd700', borderRadius: '20px', padding: '24px', textAlign: 'center', maxWidth: '320px', width: '90%' }}>
                 <h2 style={{ color: '#ffd700', marginTop: 0 }}>Optional climb 🚀</h2>
                 <p style={{ color: '#ddd', fontSize: '13px', lineHeight: 1.45 }}>
-                  You can <strong style={{ color: '#4ade80' }}>keep farming GFTshards</strong> at Level{' '}
+                  You can <strong style={{ color: '#4ade80' }}>keep mining GFTshards</strong> at Level{' '}
                   {maxUnlockedLevel} forever. Climb only if you want higher power (
                   <strong>{getLevelMultiplier(wall.targetLevel)}x</strong> at L{wall.targetLevel}).
                 </p>
@@ -2857,7 +2857,7 @@ const GiftTapGame = () => {
                         {isAtAscensionWall(currentLevel, maxUnlockedLevel, lifetimeTaps) && ASCENSION_WALLS[maxUnlockedLevel] ? (
                           <>
                             <span style={{ color: '#888', fontSize: '10px', whiteSpace: 'nowrap', fontWeight: 'bold' }}>
-                              Farming · {Math.floor(lifetimeTaps).toLocaleString()} taps
+                             {Math.floor(lifetimeTaps).toLocaleString()} taps
                             </span>
                             <button
                               type="button"
