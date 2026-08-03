@@ -12,6 +12,7 @@ import Menu from './Menu';
 import WhitepaperModal from './WhitepaperModal';
 import LegalModal from './LegalModal';
 import AppNotice from './AppNotice';
+import HelpTip from './HelpTip';
 import { showRewardedAdWaterfall, AD_MIN_WATCH_SECONDS } from './adService';
 import WalletHub from './WalletHub';
 import TokenBalanceList from './TokenBalanceList';
@@ -648,14 +649,14 @@ const GiftTapGame = () => {
       language: "Language",
       currency: "Currency",
       secret: "View Secret Phrase",
-      rules: "Whitepaper & Rules"
+      rules: "Game Guide"
     },
     FR: {
       menu: "Menu",
       language: "Langue",
       currency: "Devise",
       secret: "Voir la phrase secrète",
-      rules: "Livre blanc & Règles"
+      rules: "Guide du jeu"
     }
     // You can add ES, PT, etc., as you expand!
   };
@@ -2698,7 +2699,10 @@ const GiftTapGame = () => {
                 ✕
               </button>
               <div style={{ background: '#1c1e22', border: '1px solid #ffd700', borderRadius: '20px', padding: '24px', textAlign: 'center', maxWidth: '320px', width: '90%' }}>
-                <h2 style={{ color: '#ffd700', marginTop: 0 }}>Optional climb 🚀</h2>
+                <h2 style={{ color: '#ffd700', marginTop: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+                  Optional climb 🚀
+                  <HelpTip tipKey="climb" size={18} onOpenPlaybook={() => setIsWhitepaperOpen(true)} />
+                </h2>
                 <p style={{ color: '#ddd', fontSize: '13px', lineHeight: 1.45 }}>
                   You can <strong style={{ color: '#4ade80' }}>keep mining GFTshards</strong> at Level{' '}
                   {maxUnlockedLevel} forever. Climb only if you want higher power (
@@ -2898,8 +2902,11 @@ const GiftTapGame = () => {
                     <div style={{ display: 'flex', alignItems: 'center', width: '100%', gap: '10px', marginBottom: '15px' }}>
                       
                       <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px' }}>
-                        <span style={{ color: '#ffd700', background: '#333', padding: '4px 8px', borderRadius: '8px', border: '1px solid #555', fontSize: '11px', fontWeight: 'bold', whiteSpace: 'nowrap' }}>
-                          Lvl {currentLevel}
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                          <span style={{ color: '#ffd700', background: '#333', padding: '4px 8px', borderRadius: '8px', border: '1px solid #555', fontSize: '11px', fontWeight: 'bold', whiteSpace: 'nowrap' }}>
+                            Lvl {currentLevel}
+                          </span>
+                          <HelpTip tipKey="level" size={15} onOpenPlaybook={() => setIsWhitepaperOpen(true)} />
                         </span>
                         {isAtAscensionWall(currentLevel, maxUnlockedLevel, lifetimeTaps) && ASCENSION_WALLS[maxUnlockedLevel] ? (
                           <>
@@ -2951,9 +2958,10 @@ const GiftTapGame = () => {
                               {' / '}
                               {ASCENSION_WALLS[maxUnlockedLevel].shardCost.toLocaleString()}
                             </button>
+                            <HelpTip tipKey="climb" size={15} onOpenPlaybook={() => setIsWhitepaperOpen(true)} />
                           </>
                         ) : (
-                          <span style={{ color: '#888', fontSize: '10px', whiteSpace: 'nowrap', fontWeight: 'bold' }}>
+                          <span style={{ color: '#888', fontSize: '10px', whiteSpace: 'nowrap', fontWeight: 'bold', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                             {currentLevel < 50 ? `${Math.floor(lifetimeTaps).toLocaleString()} / ${getNextLevelTarget(currentLevel).toLocaleString()}` : 'MAX'}
                           </span>
                         )}
@@ -2997,7 +3005,10 @@ const GiftTapGame = () => {
                       <h1 style={{ ...styles.balance, margin: '0', fontSize: '3.2rem', fontVariantNumeric: 'tabular-nums', textShadow: '0 4px 10px rgba(0,0,0,0.5)' }}>
                         {balance.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                       </h1>
-                      <span style={{ color: '#ffd700', fontSize: '16px', fontWeight: 'bold' }}>GFTshards</span>
+                      <span style={{ color: '#ffd700', fontSize: '16px', fontWeight: 'bold', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                        GFTshards
+                        <HelpTip tipKey="shards" size={16} onOpenPlaybook={() => setIsWhitepaperOpen(true)} />
+                      </span>
                     </div>
 
                   </div>
@@ -3005,6 +3016,25 @@ const GiftTapGame = () => {
 
                 {/* 2. MIDDLE ZONE: CENTERED GIFT */}
                 <div style={styles.giftZone}>
+                  <div
+                    style={{
+                      position: 'absolute',
+                      top: 8,
+                      right: 12,
+                      zIndex: 20,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 6,
+                      background: 'rgba(0,0,0,0.45)',
+                      border: '1px solid #444',
+                      borderRadius: 20,
+                      padding: '4px 8px 4px 10px',
+                    }}
+                  >
+                    <span style={{ color: '#aaa', fontSize: 11, fontWeight: 'bold' }}>How to play</span>
+                    <HelpTip tipKey="how_to_play" size={18} onOpenPlaybook={() => setIsWhitepaperOpen(true)} />
+                  </div>
+
                   {/* Pro Touch: A subtle blue Hamster-style halo behind the gift */}
                   <div style={{ position: 'absolute', width: '250px', height: '250px', background: 'radial-gradient(circle, rgba(50, 100, 255, 0.3) 0%, transparent 70%)', zIndex: 0, borderRadius: '50%', marginTop: '-60px' }} />
                   
@@ -3057,7 +3087,10 @@ const GiftTapGame = () => {
                    
                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', width: '45%', maxWidth: '160px' }}>
                      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-                       <p style={{ ...styles.energy, margin: '0', fontSize: '12px', whiteSpace: 'nowrap' }}>⚡ {energy} / 500</p>
+                       <p style={{ ...styles.energy, margin: '0', fontSize: '12px', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: 5, justifyContent: 'center' }}>
+                         ⚡ {energy} / 500
+                         <HelpTip tipKey="energy" size={14} onOpenPlaybook={() => setIsWhitepaperOpen(true)} />
+                       </p>
                      </div>
                      
                      <div style={{ width: '100%', height: '6px', background: 'rgba(0, 0, 0, 0.6)', borderRadius: '4px', overflow: 'hidden', border: '1px solid #444' }}>
@@ -3069,7 +3102,10 @@ const GiftTapGame = () => {
                         }} />
                      </div>
                      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-                     <p style={{ color: '#888', fontSize: '10px', margin: '0', fontWeight: 'bold' }}>Daily Limit: {dailyTaps}/{dynamicMaxLimit}</p>
+                     <p style={{ color: '#888', fontSize: '10px', margin: '0', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: 4, justifyContent: 'center' }}>
+                       Daily Limit: {dailyTaps}/{dynamicMaxLimit}
+                       <HelpTip tipKey="daily_limit" size={13} onOpenPlaybook={() => setIsWhitepaperOpen(true)} />
+                     </p>
                      </div>
                    </div>
                    

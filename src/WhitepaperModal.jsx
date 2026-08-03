@@ -6,7 +6,7 @@ const WhitepaperModal = ({ isWhitepaperOpen, setIsWhitepaperOpen, onClose }) => 
 
   if (!isWhitepaperOpen) return null;
 
-  // The Playbook Data (Clean and easy to edit!)
+  // Game Guide sections (Clean and easy to edit!)
   const PLAYBOOK = [
     {
       id: 1,
@@ -67,10 +67,10 @@ const WhitepaperModal = ({ isWhitepaperOpen, setIsWhitepaperOpen, onClose }) => 
         
         {/* Sticky Header */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '20px', borderBottom: '1px solid #333', background: '#111', flexShrink: 0 }}>
-          <h2 style={{ color: '#fff', margin: 0, fontSize: '20px' }}>📖 The Playbook</h2>
+          <h2 style={{ color: '#fff', margin: 0, fontSize: '20px' }}>📖 Game Guide</h2>
           <button 
             onClick={() => {
-              // Close playbook and return to menu (parent may reopen menu via onClose)
+              // Close game guide and return to menu (parent may reopen menu via onClose)
               if (typeof onClose === 'function') onClose();
               else setIsWhitepaperOpen(false);
             }} 
@@ -82,7 +82,7 @@ const WhitepaperModal = ({ isWhitepaperOpen, setIsWhitepaperOpen, onClose }) => 
 
         {/* Scrollable Accordion Area */}
         <div style={{ padding: '20px', overflowY: 'auto' }}>
-          <p style={{ fontStyle: 'italic', color: '#888', marginTop: 0, marginBottom: '20px' }}>Tap a section to expand.</p>
+          <p style={{ fontStyle: 'italic', color: '#888', marginTop: 0, marginBottom: '20px' }}>How Gift Tap works — tap a section to expand.</p>
 
           {PLAYBOOK.map((section) => (
             <div key={section.id} style={{ marginBottom: '10px' }}>

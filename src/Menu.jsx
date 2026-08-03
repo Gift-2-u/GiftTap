@@ -247,7 +247,7 @@ const Menu = ({
           <span style={{ color: '#888' }}>{'❯'}</span>
         </button>
 
-        {/* 4. Whitepaper & Rules */}
+        {/* 4. Game Guide */}
         <button 
           onClick={() => {
             setIsMenuOpen(false);
@@ -255,7 +255,7 @@ const Menu = ({
           }}
           style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#111', padding: '15px', borderRadius: '12px', marginBottom: '10px', border: '1px solid #222', cursor: 'pointer' }}
         >
-          <span style={{ color: '#fff', fontWeight: 'bold' }}>📄 {t('rules')}</span>
+          <span style={{ color: '#fff', fontWeight: 'bold' }}>📖 {t('rules')}</span>
           <span style={{ color: '#888' }}>{'❯'}</span>
         </button>
 
