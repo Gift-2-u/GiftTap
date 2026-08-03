@@ -402,6 +402,11 @@ const GiftTapGame = () => {
   const [showAscensionModal, setShowAscensionModal] = useState(false);
   /** Legacy banked wall progress (still counts toward climb fee if any). New taps earn spendable shards. */
   const [wallFeeProgress, setWallFeeProgress] = useState(0);
+  /**
+   * When set to current maxUnlockedLevel, never auto-popup the climb modal for this wall.
+   * Player opens climb only via HUD "Level up / Climb" button.
+   */
+  const [wallSnoozedFor, setWallSnoozedFor] = useState(null);
   /** In-app notices (replaces browser alert() "gift2u.fun says…") */
   const [appNotice, setAppNotice] = useState({
     show: false,
@@ -831,6 +836,12 @@ const GiftTapGame = () => {
         } else {
           setWallFeeProgress(0);
         }
+        // Persist "stay farming" so wall modal does not re-open after each save/tap pause
+        if (Number(inv.wall_snooze_level) === loadedMax) {
+          setWallSnoozedFor(loadedMax);
+        } else {
+          setWallSnoozedFor(null);
+        }
         // 🚨 ADD THIS LINE TO LOAD ENERGY FROM DB
         setEnergy(Number(playerRow.last_energy) || 0);
 
@@ -980,14 +991,7 @@ const GiftTapGame = () => {
                     // Fire the welcome back popup!
                     setTimeout(() => {
                         notify(`🤖 Welcome back! Your Bot farmed ${offlineShardsEarned.toLocaleString()} Shards while you were away!`);
-                        // Optional climb hint if they crossed a wall threshold while away
-                        if (
-                          ASCENSION_WALLS[playerMaxLevel] &&
-                          calculateLevel(projectedLifetime) > playerMaxLevel
-                        ) {
-                          // Do not force — player can dismiss and keep farming
-                          setShowAscensionModal(true);
-                        }
+                        // Open farm: no auto climb popup after bot farm (use HUD Level up).
                     }, 1000);
                 } else {
                     // Bot active but mined 0 (daily limit maxed before they left) — no forced wall modal
@@ -1412,6 +1416,11 @@ const GiftTapGame = () => {
       ...(stats.inventory || {}),
       wall_fee_progress: progressToSave,
       wall_fee_wall: mul,
+      // Keep snooze so Stay farming survives progress saves
+      wall_snooze_level:
+        wallSnoozedFor === mul
+          ? mul
+          : (stats.inventory || {}).wall_snooze_level ?? null,
     };
 
     window.saveTimeout = setTimeout(async () => {
@@ -1442,9 +1451,9 @@ const GiftTapGame = () => {
       // 🚨 OPTION A: THE FRONTEND CATCH
       if (error) {
         if (error.message && error.message.includes('PAYWALL_LOCKED')) {
-          // Legacy server guard — open optional climb UI; farming should still work after deploy
-          console.warn('PAYWALL_LOCKED from server — climb is optional; check DB trigger if saves fail.');
-          setShowAscensionModal(true);
+          // Legacy DB trigger — do NOT open climb modal (was spammy after every tap pause).
+          // Farming continues client-side; player climbs via HUD when ready.
+          console.warn('PAYWALL_LOCKED from server — ignore for open-farm. Climb is opt-in via HUD.');
         } else {
           console.error("🚨 SUPABASE REJECTION:", error);
           notify(`Save Failed: ${error.message} \nCode: ${error.code}`); 
@@ -1559,9 +1568,11 @@ const GiftTapGame = () => {
       const shardsEarned = Math.round(rawShardsEarned * 1000) / 1000;
       const perTapAmount = Math.round((baseRate * payoutMultiplier) * 1000) / 1000;
 
-      // Soft hint when they first reach an optional wall (once per session via modal dismiss)
+      // Climb UI is opt-in only (HUD "Level up" / "Climb"). No auto-popup while farming.
+      // First time they hit the wall, show once unless they already chose Stay farming.
       if (
         atWall &&
+        wallSnoozedFor !== maxUnlockedLevel &&
         safeLifetimeTaps < getPaywallCap(maxUnlockedLevel) &&
         safeLifetimeTaps + shardsEarned >= getPaywallCap(maxUnlockedLevel)
       ) {
@@ -1621,6 +1632,34 @@ const GiftTapGame = () => {
       }, 500);
   };
 
+  /** Close climb UI and remember player chose to farm (no more auto popups for this wall). */
+  const dismissWallClimb = (snooze = true) => {
+    setShowAscensionModal(false);
+    if (!snooze) return;
+    const wallKey = maxUnlockedLevel;
+    if (!ASCENSION_WALLS[wallKey]) return;
+    setWallSnoozedFor(wallKey);
+    const nextInv = {
+      ...(stats.inventory || {}),
+      wall_snooze_level: wallKey,
+      wall_fee_progress: wallFeeProgress,
+      wall_fee_wall: wallKey,
+    };
+    setStats((prev) => ({ ...prev, inventory: nextInv }));
+    if (playerId) {
+      supabase
+        .from('players')
+        .update({
+          inventory: nextInv,
+          last_updated: new Date().toISOString(),
+        })
+        .eq(DB_PLAYER_ID, String(playerId))
+        .then(({ error }) => {
+          if (error) console.warn('wall snooze save', error.message);
+        });
+    }
+  };
+
   const handleAscensionPayment = async (method) => {
     const wallKey = maxUnlockedLevel; // e.g. 4 for wall 4→5
     const wallData = ASCENSION_WALLS[wallKey];
@@ -1647,6 +1686,11 @@ const GiftTapGame = () => {
       setCurrentLevel(newLevel);
       setEnergy(maxDailyLimit); 
       setShowAscensionModal(false);
+      setWallSnoozedFor(null);
+      setStats((prev) => ({
+        ...prev,
+        inventory: { ...(prev.inventory || {}), wall_snooze_level: null },
+      }));
       
       await saveToDatabase(
         newBalance,
@@ -1747,6 +1791,11 @@ const GiftTapGame = () => {
         setWallFeeProgress(0);
         setEnergy(maxDailyLimit); 
         setShowAscensionModal(false);
+        setWallSnoozedFor(null);
+        setStats((prev) => ({
+          ...prev,
+          inventory: { ...(prev.inventory || {}), wall_snooze_level: null },
+        }));
         
         // Pass the current 'balance' because we didn't burn any shards
         await saveToDatabase(
@@ -2591,7 +2640,7 @@ const GiftTapGame = () => {
             return (
             <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', background: 'rgba(0,0,0,0.9)', zIndex: 1000, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
               <button 
-                onClick={() => setShowAscensionModal(false)}
+                onClick={() => dismissWallClimb(true)}
                 style={{ position: 'absolute', top: '15px', right: '15px', background: 'transparent', color: '#888', border: 'none', fontSize: '20px', fontWeight: 'bold', cursor: 'pointer' }}
               >
                 ✕
@@ -2653,7 +2702,7 @@ const GiftTapGame = () => {
 
                 <button
                   type="button"
-                  onClick={() => setShowAscensionModal(false)}
+                  onClick={() => dismissWallClimb(true)}
                   style={{
                     width: '100%',
                     background: 'rgba(74, 222, 128, 0.12)',
@@ -2666,7 +2715,7 @@ const GiftTapGame = () => {
                     marginBottom: '10px',
                   }}
                 >
-                  Stay on L{maxUnlockedLevel} & keep farming
+                  Stay on L{maxUnlockedLevel} & keep mining
                 </button>
                 
                 <button 
@@ -2813,19 +2862,41 @@ const GiftTapGame = () => {
                             <button
                               type="button"
                               onClick={() => setShowAscensionModal(true)}
+                              title="Open climb when you are ready — mining never stops"
                               style={{
-                                color: '#c4b5fd',
+                                color: (
+                                  Number(balance) + Number(wallFeeProgress) >=
+                                  ASCENSION_WALLS[maxUnlockedLevel].shardCost
+                                )
+                                  ? '#4ade80'
+                                  : '#c4b5fd',
                                 fontSize: '10px',
                                 whiteSpace: 'nowrap',
                                 fontWeight: 'bold',
-                                background: 'rgba(168,85,247,0.15)',
-                                border: '1px solid #a855f7',
+                                background: (
+                                  Number(balance) + Number(wallFeeProgress) >=
+                                  ASCENSION_WALLS[maxUnlockedLevel].shardCost
+                                )
+                                  ? 'rgba(74,222,128,0.15)'
+                                  : 'rgba(168,85,247,0.15)',
+                                border: (
+                                  Number(balance) + Number(wallFeeProgress) >=
+                                  ASCENSION_WALLS[maxUnlockedLevel].shardCost
+                                )
+                                  ? '1px solid #4ade80'
+                                  : '1px solid #a855f7',
                                 borderRadius: 8,
                                 padding: '3px 8px',
                                 cursor: 'pointer',
                               }}
                             >
-                              Climb{' '}
+                              {(
+                                Number(balance) + Number(wallFeeProgress) >=
+                                ASCENSION_WALLS[maxUnlockedLevel].shardCost
+                              )
+                                ? 'Level up'
+                                : 'Climb'}
+                              {' '}
                               {Math.min(
                                 ASCENSION_WALLS[maxUnlockedLevel].shardCost,
                                 Number(balance) + Number(wallFeeProgress),
