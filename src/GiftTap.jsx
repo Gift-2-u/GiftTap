@@ -710,30 +710,64 @@ const GiftTapGame = () => {
     setLeaderboardLoading(true);
     try {
       if (targetType === 'all_time' || targetType === 'All-time') {
-        // Prefer view (after SQL: uses GREATEST lifetime + farm_lifetime_taps)
-        let { data, error } = await supabase
-          .from('leaderboard_all_time')
-          .select('*')
-          .order('lifetime_taps', { ascending: false })
-          .limit(100);
+        // Pull inventory + true_lifetime so ranks work even when lifetime_taps stuck at 50k
+        let data = null;
+        let error = null;
 
-        // Fallback: raw players + compute true lifetime from inventory
-        if (error || !data?.length) {
+        // 1) players table (has inventory JSON)
+        {
           const res = await supabase
             .from('players')
-            .select(`${DB_PLAYER_ID}, username, lifetime_taps, inventory, season_shards, shard_balance`)
+            .select(
+              `${DB_PLAYER_ID}, username, lifetime_taps, true_lifetime_taps, inventory, season_shards, shard_balance`,
+            )
             .order('lifetime_taps', { ascending: false })
-            .limit(150);
+            .limit(200);
           data = res.data;
           error = res.error;
+          // Column true_lifetime_taps may not exist yet
+          if (
+            error &&
+            (/true_lifetime_taps/i.test(String(error.message || '')) ||
+              error.code === 'PGRST204' ||
+              error.code === '42703')
+          ) {
+            const res2 = await supabase
+              .from('players')
+              .select(
+                `${DB_PLAYER_ID}, username, lifetime_taps, inventory, season_shards, shard_balance`,
+              )
+              .order('lifetime_taps', { ascending: false })
+              .limit(200);
+            data = res2.data;
+            error = res2.error;
+          }
         }
+
+        // 2) view fallback (after SQL migration)
+        if (error || !data?.length) {
+          const res = await supabase
+            .from('leaderboard_all_time')
+            .select('*')
+            .order('lifetime_taps', { ascending: false })
+            .limit(100);
+          if (!res.error && res.data?.length) {
+            data = res.data;
+            error = null;
+          }
+        }
+
+        const scoreOf = (row) => {
+          const inv = row.inventory || {};
+          const farm = Number(inv.farm_lifetime_taps) || 0;
+          const life = Number(row.lifetime_taps) || 0;
+          const trueCol = Number(row.true_lifetime_taps) || 0;
+          return Math.max(life, farm, trueCol);
+        };
 
         const ranked = (data || [])
           .map((row) => {
-            const inv = row.inventory || {};
-            const farm = Number(inv.farm_lifetime_taps) || 0;
-            const life = Number(row.lifetime_taps) || 0;
-            const trueLife = Math.max(life, farm);
+            const trueLife = scoreOf(row);
             return {
               ...row,
               lifetime_taps: trueLife,
@@ -743,6 +777,7 @@ const GiftTapGame = () => {
           .sort((a, b) => (Number(b.lifetime_taps) || 0) - (Number(a.lifetime_taps) || 0))
           .slice(0, 100);
 
+        if (error) console.warn('all-time leaderboard:', error.message || error);
         setLeaderboard(ranked);
       } else {
         const { data } = await supabase
@@ -873,7 +908,8 @@ const GiftTapGame = () => {
         const invEarly = playerRow.inventory || {};
         const dbLife = Number(playerRow.lifetime_taps) || 0;
         const farmLife = Number(invEarly.farm_lifetime_taps) || 0;
-        const _lt = Math.max(dbLife, farmLife);
+        const trueCol = Number(playerRow.true_lifetime_taps) || 0;
+        const _lt = Math.max(dbLife, farmLife, trueCol);
         setLifetimeTaps(_lt);
         optimisticTaps.current = _lt;
         setSeasonShards(Number(playerRow.season_shards) || 0); 
@@ -1487,7 +1523,7 @@ const GiftTapGame = () => {
           wallSnoozedFor === p.mul
             ? p.mul
             : (stats.inventory || {}).wall_snooze_level ?? null,
-        // True farm counter if a legacy DB trigger still caps lifetime_taps
+        // Always store real lifetime here (leaderboard + multi-device)
         farm_lifetime_taps: p.ltt,
       };
 
@@ -1501,6 +1537,8 @@ const GiftTapGame = () => {
         last_tap_date: p.ltd,
         current_streak: p.strk,
         lifetime_taps: p.ltt,
+        // Open-farm column (added by SQL migration) — not blocked by old paywall
+        true_lifetime_taps: p.ltt,
         max_unlocked_level: p.mul,
         max_daily_limit: maxDailyLimit,
         limit_boost_amount: stats.limit_boost_amount,
@@ -1514,28 +1552,78 @@ const GiftTapGame = () => {
 
       let { data, error } = await doUpdate(baseRow);
 
-      // Legacy PAYWALL_LOCKED: DB trigger blocks lifetime past wall (e.g. 50000 at L4).
-      // Save shards + true farm lifetime in inventory; keep attempting real lifetime_taps.
-      if (error && String(error.message || error.code || '').includes('PAYWALL_LOCKED')) {
+      // Column missing until SQL runs — retry without true_lifetime_taps
+      if (
+        error &&
+        (/true_lifetime_taps/i.test(String(error.message || '')) ||
+          error.code === 'PGRST204' ||
+          error.code === '42703')
+      ) {
+        const { true_lifetime_taps: _drop, ...noTrueCol } = baseRow;
+        ({ data, error } = await doUpdate(noTrueCol));
+      }
+
+      // PAYWALL_LOCKED or any error mentioning paywall / lifetime: save via open-farm fields
+      const errText = `${error?.message || ''} ${error?.details || ''} ${error?.code || ''}`;
+      const isPaywall =
+        error &&
+        (/PAYWALL/i.test(errText) ||
+          (/lifetime/i.test(errText) && /wall|cap|max_unlocked/i.test(errText)));
+
+      if (isPaywall) {
         const cap = getPaywallCap(p.mul);
         const cappedLife = Math.min(p.ltt, Number.isFinite(cap) ? cap : p.ltt);
-        console.warn(
-          'PAYWALL_LOCKED — saving shards; lifetime_taps still blocked by Supabase trigger. Run open-farm SQL.',
-        );
-        // 1) Shards + inventory (farm_lifetime_taps holds the real score)
-        ({ data, error } = await doUpdate({
-          ...baseRow,
-          lifetime_taps: cappedLife,
+        console.warn('Paywall block on lifetime_taps — using true_lifetime_taps + inventory farm.', errText);
+
+        // Path A: new column + inventory (works after ALTER TABLE; no paywall on this col)
+        let retry = await doUpdate({
+          shard_balance: p.b,
+          season_shards: p.s,
+          last_energy: p.e,
+          daily_taps: p.dt,
+          last_tap_date: p.ltd,
+          current_streak: p.strk,
+          lifetime_taps: cappedLife, // keep column valid for old trigger
+          true_lifetime_taps: p.ltt,
+          max_unlocked_level: p.mul,
           inventory: {
             ...nextInventory,
             farm_lifetime_taps: p.ltt,
             paywall_legacy_cap: true,
           },
-        }));
-        // 2) Immediately try to write true lifetime alone (works after SQL drop)
-        if (!error) {
+          last_updated: new Date().toISOString(),
+        });
+
+        // Path B: no true_lifetime column yet
+        if (
+          retry.error &&
+          (/true_lifetime_taps/i.test(String(retry.error.message || '')) ||
+            retry.error.code === 'PGRST204' ||
+            retry.error.code === '42703')
+        ) {
+          retry = await doUpdate({
+            shard_balance: p.b,
+            season_shards: p.s,
+            last_energy: p.e,
+            daily_taps: p.dt,
+            last_tap_date: p.ltd,
+            current_streak: p.strk,
+            lifetime_taps: cappedLife,
+            max_unlocked_level: p.mul,
+            inventory: {
+              ...nextInventory,
+              farm_lifetime_taps: p.ltt,
+              paywall_legacy_cap: true,
+            },
+            last_updated: new Date().toISOString(),
+          });
+        }
+
+        // Path C: after SQL dropped trigger — push real lifetime_taps
+        if (!retry.error) {
           const lifeTry = await doUpdate({
             lifetime_taps: p.ltt,
+            true_lifetime_taps: p.ltt,
             inventory: {
               ...nextInventory,
               farm_lifetime_taps: p.ltt,
@@ -1546,18 +1634,20 @@ const GiftTapGame = () => {
           if (!lifeTry.error && lifeTry.data?.length) {
             data = lifeTry.data;
             error = null;
-            console.log('✅ lifetime_taps unblocked — full life saved', p.ltt);
-          } else if (lifeTry.error) {
-            // still locked — surface once so user runs SQL
-            const now = Date.now();
-            if (now - saveFailNotifiedRef.current > 60000) {
-              saveFailNotifiedRef.current = now;
-              notify(
-                'Shards save OK, but lifetime is stuck at the wall cap in the cloud (50k at L4).\n\nLeaderboard stays frozen until you run the open-farm SQL in Supabase (migrations/20260803_open_farm_drop_paywall.sql).',
-                { success: false, title: 'Lifetime not saving' },
-              );
+            console.log('✅ Full lifetime_taps saved', p.ltt);
+          } else {
+            data = retry.data;
+            error = retry.error;
+            if (!error) {
+              // shards+farm saved; lifetime col still capped until SQL
+              data = retry.data;
+              error = null;
+              console.log('✅ Farm lifetime saved to inventory/true_lifetime', p.ltt);
             }
           }
+        } else {
+          data = retry.data;
+          error = retry.error;
         }
       }
 
