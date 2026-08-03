@@ -459,6 +459,8 @@ const GiftTapGame = () => {
   const [itemToBuy, setItemToBuy] = useState(null);
   const touchLock = useRef(false);
   const optimisticTaps = useRef(lifetimeTaps);
+  const pendingSaveRef = useRef(null);
+  const saveFailNotifiedRef = useRef(0);
   const [decryptedPhrase, setDecryptedPhrase] = useState("");
   // Settings Menu State
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -823,12 +825,16 @@ const GiftTapGame = () => {
           limit_boost_expires: playerRow.limit_boost_expires || null
         });
         
-        setLifetimeTaps(Number(playerRow.lifetime_taps) || 0);
+        const invEarly = playerRow.inventory || {};
+        const dbLife = Number(playerRow.lifetime_taps) || 0;
+        const farmLife = Number(invEarly.farm_lifetime_taps) || 0;
+        const _lt = Math.max(dbLife, farmLife);
+        setLifetimeTaps(_lt);
+        optimisticTaps.current = _lt;
         setSeasonShards(Number(playerRow.season_shards) || 0); 
         const loadedMax = playerRow.max_unlocked_level || 4;
         setMaxUnlockedLevel(loadedMax); 
-        const _lt = Number(playerRow.lifetime_taps) || 0;
-        const _max = playerRow.max_unlocked_level || 4;
+        const _max = loadedMax;
         setCurrentLevel(Math.min(calculateLevel(_lt), _max));
         // Wall recovery progress (only valid for current wall key)
         if (Number(inv.wall_fee_wall) === loadedMax) {
@@ -1401,73 +1407,128 @@ const GiftTapGame = () => {
 
   }, [playerId]);
 
-  // 6. SAVE PROGRESS
-  // wallProg: optional wall recovery progress (fills missing fee only; not level taps)
+  // 6. SAVE PROGRESS — always persist shards; open-farm past walls
   const saveToDatabase = (b, e, dt, ltd, strk, ltt, mul, s, wallProg) => {
-    
-    // 1. Don't save if we don't have a valid user ID
     if (!playerId) return;
-
-    clearTimeout(window.saveTimeout);
 
     const progressToSave =
       wallProg !== undefined && wallProg !== null ? wallProg : wallFeeProgress;
-    const nextInventory = {
-      ...(stats.inventory || {}),
-      wall_fee_progress: progressToSave,
-      wall_fee_wall: mul,
-      // Keep snooze so Stay farming survives progress saves
-      wall_snooze_level:
-        wallSnoozedFor === mul
-          ? mul
-          : (stats.inventory || {}).wall_snooze_level ?? null,
-    };
 
+    // Merge: never write lower shards/lifetime than a newer pending save
+    const prev = pendingSaveRef.current;
+    const merged = {
+      b: Math.max(Number(b) || 0, Number(prev?.b) || 0),
+      e: Number(e),
+      dt: Math.max(Number(dt) || 0, Number(prev?.dt) || 0),
+      ltd,
+      strk,
+      ltt: Math.max(Number(ltt) || 0, Number(prev?.ltt) || 0),
+      mul,
+      s: Math.max(Number(s) || 0, Number(prev?.s) || 0),
+      progressToSave: Number(progressToSave) || 0,
+    };
+    pendingSaveRef.current = merged;
+
+    clearTimeout(window.saveTimeout);
     window.saveTimeout = setTimeout(async () => {
-      const { data, error } = await supabase.from('players').update({
+      const p = pendingSaveRef.current;
+      if (!p || !playerId) return;
+
+      const nextInventory = {
+        ...(stats.inventory || {}),
+        wall_fee_progress: p.progressToSave,
+        wall_fee_wall: p.mul,
+        wall_snooze_level:
+          wallSnoozedFor === p.mul
+            ? p.mul
+            : (stats.inventory || {}).wall_snooze_level ?? null,
+        // True farm counter if a legacy DB trigger still caps lifetime_taps
+        farm_lifetime_taps: p.ltt,
+      };
+
+      const baseRow = {
         [DB_PLAYER_ID]: playerId,
         username: player.username || player.first_name || 'Player',
-        shard_balance: b,
-        season_shards: s,
-        last_energy: e,
-        daily_taps: dt, // Make sure these columns exist in Supabase!
-        last_tap_date: ltd,
-        current_streak: strk, // <--- Now it saves the streak!
-        lifetime_taps: ltt,
-        max_unlocked_level: mul,
-        max_daily_limit: maxDailyLimit, // This is your 2000 (Base + Ads)
+        shard_balance: p.b,
+        season_shards: p.s,
+        last_energy: p.e,
+        daily_taps: p.dt,
+        last_tap_date: p.ltd,
+        current_streak: p.strk,
+        lifetime_taps: p.ltt,
+        max_unlocked_level: p.mul,
+        max_daily_limit: maxDailyLimit,
         limit_boost_amount: stats.limit_boost_amount,
         limit_boost_expires: stats.limit_boost_expires,
         inventory: nextInventory,
-        last_updated: new Date().toISOString()
-      })
-      .eq(DB_PLAYER_ID, playerId) // Match their specific row
-      .select(); // Added .select() so Supabase actually returns the 'data' for your check
+        last_updated: new Date().toISOString(),
+      };
 
-      if (!error) {
-        setStats((prev) => ({ ...prev, inventory: nextInventory }));
+      const doUpdate = async (row) =>
+        supabase.from('players').update(row).eq(DB_PLAYER_ID, playerId).select();
+
+      let { data, error } = await doUpdate(baseRow);
+
+      // Legacy PAYWALL_LOCKED: whole row rejected when lifetime > wall cap.
+      // Retry: still save SHARDS + energy + season; cap lifetime column for DB only.
+      if (error && String(error.message || '').includes('PAYWALL_LOCKED')) {
+        const cap = getPaywallCap(p.mul);
+        const cappedLife = Math.min(p.ltt, Number.isFinite(cap) ? cap : p.ltt);
+        console.warn(
+          'PAYWALL_LOCKED — retrying open-farm save (shards + capped lifetime). Run SQL migration to drop trigger.',
+        );
+        ({ data, error } = await doUpdate({
+          ...baseRow,
+          lifetime_taps: cappedLife,
+          inventory: {
+            ...nextInventory,
+            farm_lifetime_taps: p.ltt,
+            paywall_legacy_cap: true,
+          },
+        }));
       }
 
-      // 🚨 OPTION A: THE FRONTEND CATCH
+      // Last resort: save shards only (never lose balance)
       if (error) {
-        if (error.message && error.message.includes('PAYWALL_LOCKED')) {
-          // Legacy DB trigger — do NOT open climb modal (was spammy after every tap pause).
-          // Farming continues client-side; player climbs via HUD when ready.
-          console.warn('PAYWALL_LOCKED from server — ignore for open-farm. Climb is opt-in via HUD.');
-        } else {
-          console.error("🚨 SUPABASE REJECTION:", error);
-          notify(`Save Failed: ${error.message} \nCode: ${error.code}`); 
-        }
-      } else if (!data || data.length === 0) {
-        notify(`Save Failed: No matching player found for ${playerId}`);
-      } else {
-        console.log("✅ SAVE SUCCESS:");
-        // Referral: +1000 to referrer when this player first hits Level 1
-        tryPayReferrerForLevel1(playerId, ltt).catch((e) =>
+        console.warn('Full save failed, trying shards-only:', error.message);
+        ({ data, error } = await doUpdate({
+          shard_balance: p.b,
+          season_shards: p.s,
+          last_energy: p.e,
+          daily_taps: p.dt,
+          last_tap_date: p.ltd,
+          inventory: nextInventory,
+          last_updated: new Date().toISOString(),
+        }));
+      }
+
+      if (!error && data && data.length > 0) {
+        setStats((prev) => ({ ...prev, inventory: nextInventory }));
+        console.log('✅ SAVE SUCCESS', {
+          shards: p.b,
+          lifetime: p.ltt,
+        });
+        tryPayReferrerForLevel1(playerId, p.ltt).catch((e) =>
           console.warn('referral L1 check', e?.message || e),
         );
+        return;
       }
-    }, 800); // Slightly faster save
+
+      if (error) {
+        console.error('🚨 SUPABASE REJECTION:', error);
+        const now = Date.now();
+        // Throttle popup so rapid taps do not spam
+        if (now - saveFailNotifiedRef.current > 15000) {
+          saveFailNotifiedRef.current = now;
+          notify(
+            `Cloud save failed — progress may not sync.\n${error.message || error.code || 'Unknown error'}\n\nIf you see PAYWALL_LOCKED, run the open-farm SQL in Supabase (see migrations).`,
+            { success: false, title: 'Save failed' },
+          );
+        }
+      } else if (!data || data.length === 0) {
+        console.error('Save returned no rows for', playerId);
+      }
+    }, 500);
   };
 
   const handleTap = (e) => {
@@ -1834,33 +1895,41 @@ const GiftTapGame = () => {
           // 1. Update your personal balance (Seamless Sync)
           if (payload.new[DB_PLAYER_ID] === playerId) {
             
-            // 🚨 THE SMART GUARD 🚨
-            // We check the incoming taps against the live React state
-            setLifetimeTaps((prevTaps) => {
-              const incomingTaps = Number(payload.new.lifetime_taps);
+            // Sync when another device is ahead (shards OR lifetime / farm taps)
+            const incomingTaps = Number(payload.new.lifetime_taps) || 0;
+            const inv = payload.new.inventory || {};
+            const farmLife = Number(inv.farm_lifetime_taps) || 0;
+            const bestIncomingLife = Math.max(incomingTaps, farmLife);
+            const incomingShards = Number(payload.new.shard_balance) || 0;
 
-              // If the database has MORE taps, you played on another device.
-              // We allow the sync to overwrite the screen.
-              if (incomingTaps > prevTaps) {
-                setBalance(Number(payload.new.shard_balance));
+            setLifetimeTaps((prevTaps) => {
+              const prevLife = Number(prevTaps) || 0;
+              setBalance((prevBal) => {
+                const localBal = Number(prevBal) || 0;
+                // Only pull remote if they are clearly ahead (avoid wiping local unsent taps)
+                const remoteAhead =
+                  incomingShards > localBal + 0.001 || bestIncomingLife > prevLife + 0.001;
+                if (!remoteAhead) return prevBal;
+
                 setEnergy(Number(payload.new.last_energy));
-                setTapPower(payload.new.tap_power);
-                setMaxDailyLimit(payload.new.max_daily_limit);
-                setSeasonShards(Number(payload.new.season_shards));
-                // 🚨 THE FIX: Tell the secondary device to update its Daily Limit Bar!
-                setDailyTaps(Number(payload.new.daily_taps));
-                setStats({
-                  inventory: payload.new.inventory || {},
+                if (payload.new.tap_power != null) setTapPower(payload.new.tap_power);
+                if (payload.new.max_daily_limit != null) setMaxDailyLimit(payload.new.max_daily_limit);
+                setSeasonShards(Number(payload.new.season_shards) || 0);
+                setDailyTaps(Number(payload.new.daily_taps) || 0);
+                setStats((prev) => ({
+                  ...prev,
+                  inventory: inv,
                   frenzy_expires: payload.new.frenzy_expires,
                   efficiency_expires: payload.new.efficiency_expires,
-                  energy_boost_expires: payload.new.energy_boost_expires
-                });
-                return incomingTaps; // Update local taps to match DB
-              }
-
-              // If incoming taps are the same (like when the Wallet saves),
-              // we IGNORE the game stats so your recovering energy isn't reset.
-              return prevTaps; 
+                  energy_boost_expires: payload.new.energy_boost_expires,
+                }));
+                if (Number(inv.wall_fee_wall) === (payload.new.max_unlocked_level || 4)) {
+                  setWallFeeProgress(Number(inv.wall_fee_progress) || 0);
+                }
+                optimisticTaps.current = Math.max(optimisticTaps.current, bestIncomingLife);
+                return incomingShards;
+              });
+              return bestIncomingLife > prevLife ? bestIncomingLife : prevLife;
             });
           }
 
@@ -2662,7 +2731,10 @@ const GiftTapGame = () => {
                   </div>
                   {progress > 0 && (
                     <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6 }}>
-                      <span>Banked progress</span><span style={{ color: '#60a5fa' }}>{progress.toLocaleString()}</span>
+                      <span title="Old wall-fee bank from before open-farm — counts toward climb cost">
+                        Old wall bank
+                      </span>
+                      <span style={{ color: '#60a5fa' }}>{progress.toLocaleString()}</span>
                     </div>
                   )}
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6 }}>
