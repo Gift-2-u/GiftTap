@@ -11,7 +11,10 @@ import {
   quoteShardSwap,
   inventoryAfterSwap,
   inventoryAfterUnlockBurn,
+  inventoryAfterDurabilityTopUp,
   getDailySwapUsed,
+  getSwapDurability,
+  durabilityRemainingShards,
 } from './shardSwap';
 import { supabase } from './supabaseClient';
 import { DB_PLAYER_ID, getPlayerId } from './playerIdentity';
@@ -1031,48 +1034,38 @@ export default function GameWalletActionModals({
               </div>
             </div>
 
-            <div
-              style={{
-                background:
-                  swapAccess.tier === 'locksmith'
-                    ? 'rgba(153,69,255,0.15)'
-                    : swapAccess.allowed
-                      ? 'rgba(74,222,128,0.1)'
-                      : 'rgba(248,113,113,0.1)',
-                border: `1px solid ${
-                  swapAccess.tier === 'locksmith'
-                    ? '#9945FF'
-                    : swapAccess.allowed
-                      ? '#4ade80'
-                      : '#f87171'
-                }`,
-                borderRadius: 12,
-                padding: '10px 12px',
-                marginBottom: 12,
-                fontSize: 12,
-                color: '#ccc',
-                textAlign: 'left',
-                lineHeight: 1.45,
-              }}
-            >
-              <div style={{ fontWeight: 'bold', color: '#fff', marginBottom: 4 }}>
-                Tier: {swapAccess.label}
-                {hasLocksmithNft ? ' 🔑' : ''}
+            {swapAccess.allowed && (
+              <div
+                style={{
+                  background:
+                    swapAccess.tier === 'locksmith'
+                      ? 'rgba(153,69,255,0.15)'
+                      : 'rgba(74,222,128,0.1)',
+                  border: `1px solid ${
+                    swapAccess.tier === 'locksmith' ? '#9945FF' : '#4ade80'
+                  }`,
+                  borderRadius: 12,
+                  padding: '10px 12px',
+                  marginBottom: 12,
+                  fontSize: 12,
+                  color: '#ccc',
+                  textAlign: 'left',
+                  lineHeight: 1.45,
+                }}
+              >
+                <div style={{ fontWeight: 'bold', color: '#fff', marginBottom: 4 }}>
+                  {swapAccess.tier === 'locksmith' ? 'GiftLocksmith' : 'Swap active'}
+                  {hasLocksmithNft ? ' 🔑' : ''}
+                </div>
+                Fee {(swapAccess.feeBps / 100).toFixed(1)}% in GFT · Min{' '}
+                {swapAccess.minShards.toLocaleString()} shards
+                <br />
+                Today: {getDailySwapUsed(inventory).toLocaleString()} /{' '}
+                {swapAccess.dailyCapShards.toLocaleString()} shards
+                <br />
+                Rate: {SHARD_SWAP_CONFIG.shardsPerGft.toLocaleString()} shards → 1 GFT (provisional)
               </div>
-              {swapAccess.allowed ? (
-                <>
-                  Fee {(swapAccess.feeBps / 100).toFixed(1)}% in GFT · Min{' '}
-                  {swapAccess.minShards.toLocaleString()} shards
-                  <br />
-                  Today: {getDailySwapUsed(inventory).toLocaleString()} /{' '}
-                  {swapAccess.dailyCapShards.toLocaleString()} shards
-                  <br />
-                  Rate: {SHARD_SWAP_CONFIG.shardsPerGft.toLocaleString()} shards → 1 GFT (provisional)
-                </>
-              ) : (
-                <span>{swapAccess.reason}</span>
-              )}
-            </div>
+            )}
 
             {shardQuote.ok && (
               <p style={{ fontSize: 11, color: '#888', marginTop: 8 }}>
@@ -1081,6 +1074,20 @@ export default function GameWalletActionModals({
             )}
             {!shardQuote.ok && shardAmt && (
               <p style={{ fontSize: 11, color: '#f87171', marginTop: 8 }}>{shardQuote.error}</p>
+            )}
+
+            {(swapAccess.tier === 'free' || swapAccess.tier === 'empty' || (!!inventory?.swap_unlocked && !hasLocksmithNft)) && (
+              <div style={{ marginTop: 10, textAlign: 'left', fontSize: 11, color: '#fbbf24' }}>
+                Badge {getSwapDurability(inventory).toFixed(1)}% · ~
+                {durabilityRemainingShards(inventory).toLocaleString()} shards on charge
+                <div style={{ marginTop: 4, height: 6, background: '#333', borderRadius: 4, overflow: 'hidden' }}>
+                  <div style={{
+                    width: `${Math.min(100, getSwapDurability(inventory))}%`,
+                    height: '100%',
+                    background: '#fbbf24',
+                  }} />
+                </div>
+              </div>
             )}
 
             <p
@@ -1092,7 +1099,7 @@ export default function GameWalletActionModals({
                 lineHeight: 1.4,
               }}
             >
-              GFT credit on your account. Free path: Level 10+ AND shard license. GiftLocksmith skips both.
+              Free path: L5 + Swap Badge (durability % drains by volume, top up with GFT). Locksmith permanent.
             </p>
 
             {!swapAccess.allowed && (
@@ -1136,7 +1143,7 @@ export default function GameWalletActionModals({
                     setStatus({
                       show: true,
                       loading: false,
-                      message: '✅ Free swap unlocked',
+                      message: '✅ Swap Badge at 100% durability',
                       success: true,
                       txid: null,
                     });
@@ -1167,7 +1174,7 @@ export default function GameWalletActionModals({
               >
                 {currentLevel < SHARD_SWAP_CONFIG.freeUnlockMinLevel
                   ? `Need Level ${SHARD_SWAP_CONFIG.freeUnlockMinLevel} first`
-                  : `Pay free license (${SHARD_SWAP_CONFIG.freeUnlockBurnShards.toLocaleString()} shards) · L${SHARD_SWAP_CONFIG.freeUnlockMinLevel}+`}
+                  : `Buy Swap Badge (${SHARD_SWAP_CONFIG.freeUnlockBurnShards.toLocaleString()} shards) · L${SHARD_SWAP_CONFIG.freeUnlockMinLevel}+`}
               </button>
             )}
 
@@ -1204,7 +1211,9 @@ export default function GameWalletActionModals({
                   const newShardBal = Math.round((balShards - amt) * 1000) / 1000;
                   const newGft =
                     Math.round((balGft + quote.gftOut) * 1e6) / 1e6;
-                  const nextInv = inventoryAfterSwap(inventory, amt, quote.feeGft);
+                  const nextInv = inventoryAfterSwap(inventory, amt, quote.feeGft, {
+                    isFreeTier: access.tier === 'free',
+                  });
                   const { error } = await supabase
                     .from('players')
                     .update({

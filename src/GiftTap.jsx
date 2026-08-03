@@ -44,7 +44,15 @@ import {
   quoteShardSwap,
   inventoryAfterSwap,
   inventoryAfterUnlockBurn,
+  inventoryAfterDurabilityTopUp,
+  inventoryAfterBadgeLevelUp,
   getDailySwapUsed,
+  getSwapDurability,
+  getSwapBadgeLevel,
+  durabilityRemainingShards,
+  durabilityFullVolumeForLevel,
+  badgeLevelUpCostGft,
+  hasSwapLicense,
 } from './shardSwap';
 
 const TOKEN_MINTS = {
@@ -2278,7 +2286,7 @@ const GiftTapGame = () => {
     stats.inventory,
   );
 
-  /** One-time free unlock: burn shards for swap license (also requires Level 10+) */
+  /** Free unlock: burn shards for Swap Badge (also requires Level 5+) */
   const buySwapLicense = async () => {
     const cost = SHARD_SWAP_CONFIG.freeUnlockBurnShards;
     if (currentLevel < SHARD_SWAP_CONFIG.freeUnlockMinLevel) {
@@ -2292,7 +2300,12 @@ const GiftTapGame = () => {
       return;
     }
     if (stats.inventory?.swap_unlocked || stats.inventory?.swap_unlock_burned) {
-      notify('Swap license already paid. Need Level 10+ if still locked.');
+      const d = getSwapDurability(stats.inventory);
+      if (d <= 0) {
+        notify('Swap Badge already owned but at 0% — top it up with GFT credit below.');
+      } else {
+        notify('Swap Badge already owned. Need Level 5+ if still locked, or top up durability with GFT.');
+      }
       return;
     }
     setShardSwapBusy(true);
@@ -2310,7 +2323,7 @@ const GiftTapGame = () => {
       if (error) throw error;
       setBalance(newBal);
       setStats((s) => ({ ...s, inventory: nextInv }));
-      notify('✅ Free swap unlocked! Fees are higher than GiftLocksmith holders.');
+      notify('✅ Swap Badge charged to 100%! Free path: 10% fee, daily cap, durability drains by volume. Top up with GFT when low.');
     } catch (e) {
       console.error(e);
       notify(e?.message || 'Failed to unlock swap');
@@ -2348,7 +2361,9 @@ const GiftTapGame = () => {
         Math.round(
           ((Number(balances.GFT) || 0) + quote.gftOut) * 1e6,
         ) / 1e6;
-      const nextInv = inventoryAfterSwap(stats.inventory, amt, quote.feeGft);
+      const nextInv = inventoryAfterSwap(stats.inventory, amt, quote.feeGft, {
+        isFreeTier: access.tier === 'free',
+      });
 
       const { error } = await supabase
         .from('players')
@@ -2365,13 +2380,98 @@ const GiftTapGame = () => {
       setBalances((b) => ({ ...b, GFT: newGft, GFTshards: newShardBal }));
       setStats((s) => ({ ...s, inventory: nextInv }));
       setShardSwapAmount('');
+      const durMsg =
+        access.tier === 'free' && quote.durabilityAfter != null
+          ? ` Badge ${quote.durabilityAfter.toFixed(1)}% left.`
+          : '';
       notify(
         `✅ Swapped ${amt.toLocaleString()} GFTshards → ${quote.gftOut} GFT ` +
-          `(${access.label}). Fee ${quote.feeGft} GFT (${(access.feeBps / 100).toFixed(1)}%) retained by platform.`,
+          `(${access.label}). Fee ${quote.feeGft} GFT (${(access.feeBps / 100).toFixed(1)}%).` +
+          durMsg,
       );
     } catch (e) {
       console.error(e);
       notify(e?.message || 'Shard swap failed');
+    } finally {
+      setShardSwapBusy(false);
+    }
+  };
+
+
+  /** Free Swap Badge: spend GFT credit to restore durability % (no browser prompt) */
+  const topUpSwapBadge = async (gftAmtIn) => {
+    const gftBal = Number(balances.GFT) || 0;
+    const gftAmt = Number(gftAmtIn);
+    if (!Number.isFinite(gftAmt) || gftAmt < SHARD_SWAP_CONFIG.durabilityTopUpMinGft) {
+      notify(`Min top-up is ${SHARD_SWAP_CONFIG.durabilityTopUpMinGft} GFT.`);
+      return;
+    }
+    if (gftBal < gftAmt) {
+      notify('Not enough GFT credit. Mine/swap shards → GFT first, or mint Locksmith.');
+      return;
+    }
+    const result = inventoryAfterDurabilityTopUp(stats.inventory, gftAmt);
+    if (result.error) {
+      notify(result.error);
+      return;
+    }
+    setShardSwapBusy(true);
+    try {
+      const newGft = Math.round((gftBal - result.gftSpent) * 1e6) / 1e6;
+      const { error } = await supabase
+        .from('players')
+        .update({
+          gft_token_balance: newGft,
+          inventory: result.inventory,
+          last_updated: new Date().toISOString(),
+        })
+        .eq(DB_PLAYER_ID, playerId);
+      if (error) throw error;
+      setBalances((b) => ({ ...b, GFT: newGft }));
+      setStats((s) => ({ ...s, inventory: result.inventory }));
+      notify(
+        `✅ Badge +${result.durabilityAdded}% → ${result.newDurability.toFixed(1)}% (spent ${result.gftSpent} GFT).`,
+        { success: true },
+      );
+    } catch (e) {
+      notify(e?.message || 'Top-up failed');
+    } finally {
+      setShardSwapBusy(false);
+    }
+  };
+
+  /** Raise Swap Badge level with GFT (more shards per durability %) */
+  const levelUpSwapBadge = async () => {
+    const gftBal = Number(balances.GFT) || 0;
+    const result = inventoryAfterBadgeLevelUp(stats.inventory);
+    if (result.error) {
+      notify(result.error);
+      return;
+    }
+    if (gftBal < result.gftCost) {
+      notify(`Need ${result.gftCost} GFT credit to level badge to Lv${result.newLevel}.`);
+      return;
+    }
+    setShardSwapBusy(true);
+    try {
+      const newGft = Math.round((gftBal - result.gftCost) * 1e6) / 1e6;
+      const { error } = await supabase
+        .from('players')
+        .update({
+          gft_token_balance: newGft,
+          inventory: result.inventory,
+          last_updated: new Date().toISOString(),
+        })
+        .eq(DB_PLAYER_ID, playerId);
+      if (error) throw error;
+      setBalances((b) => ({ ...b, GFT: newGft }));
+      setStats((s) => ({ ...s, inventory: result.inventory }));
+      notify(
+        `✅ Swap Badge Lv${result.previousLevel} → Lv${result.newLevel}. Full charge now lasts ~${result.fullVolumeAfter.toLocaleString()} shards volume.`,
+        { success: true },
+      );
+    } catch (e) {
+      notify(e?.message || 'Level up failed');
     } finally {
       setShardSwapBusy(false);
     }
@@ -2906,7 +3006,6 @@ const GiftTapGame = () => {
                           <span style={{ color: '#ffd700', background: '#333', padding: '4px 8px', borderRadius: '8px', border: '1px solid #555', fontSize: '11px', fontWeight: 'bold', whiteSpace: 'nowrap' }}>
                             Lvl {currentLevel}
                           </span>
-                          <HelpTip tipKey="level" size={15} onOpenPlaybook={() => setIsWhitepaperOpen(true)} />
                         </span>
                         {isAtAscensionWall(currentLevel, maxUnlockedLevel, lifetimeTaps) && ASCENSION_WALLS[maxUnlockedLevel] ? (
                           <>
@@ -2958,7 +3057,6 @@ const GiftTapGame = () => {
                               {' / '}
                               {ASCENSION_WALLS[maxUnlockedLevel].shardCost.toLocaleString()}
                             </button>
-                            <HelpTip tipKey="climb" size={15} onOpenPlaybook={() => setIsWhitepaperOpen(true)} />
                           </>
                         ) : (
                           <span style={{ color: '#888', fontSize: '10px', whiteSpace: 'nowrap', fontWeight: 'bold', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
@@ -3007,7 +3105,7 @@ const GiftTapGame = () => {
                       </h1>
                       <span style={{ color: '#ffd700', fontSize: '16px', fontWeight: 'bold', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                         GFTshards
-                        <HelpTip tipKey="shards" size={16} onOpenPlaybook={() => setIsWhitepaperOpen(true)} />
+                        <HelpTip tipKey="level_shards" size={16} onOpenPlaybook={() => setIsWhitepaperOpen(true)} />
                       </span>
                     </div>
 
@@ -3089,7 +3187,7 @@ const GiftTapGame = () => {
                      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
                        <p style={{ ...styles.energy, margin: '0', fontSize: '12px', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: 5, justifyContent: 'center' }}>
                          ⚡ {energy} / 500
-                         <HelpTip tipKey="energy" size={14} onOpenPlaybook={() => setIsWhitepaperOpen(true)} />
+                         <HelpTip tipKey="energy_daily" size={14} onOpenPlaybook={() => setIsWhitepaperOpen(true)} />
                        </p>
                      </div>
                      
@@ -3104,7 +3202,6 @@ const GiftTapGame = () => {
                      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
                      <p style={{ color: '#888', fontSize: '10px', margin: '0', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: 4, justifyContent: 'center' }}>
                        Daily Limit: {dailyTaps}/{dynamicMaxLimit}
-                       <HelpTip tipKey="daily_limit" size={13} onOpenPlaybook={() => setIsWhitepaperOpen(true)} />
                      </p>
                      </div>
                    </div>
@@ -3727,33 +3824,147 @@ const GiftTapGame = () => {
                   <button onClick={() => { setIsShardSwapOpen(false); setIsModalOpen(true); }} style={{ background: 'none', border: 'none', color: '#888', fontSize: '20px', cursor: 'pointer', padding: 0 }}>✕</button>
                 </div>
 
-                <div style={{
-                  background: swapAccess.tier === 'locksmith' ? 'rgba(153,69,255,0.15)' : swapAccess.allowed ? 'rgba(74,222,128,0.1)' : 'rgba(248,113,113,0.1)',
-                  border: `1px solid ${swapAccess.tier === 'locksmith' ? '#9945FF' : swapAccess.allowed ? '#4ade80' : '#f87171'}`,
-                  borderRadius: 12,
-                  padding: '10px 12px',
-                  marginBottom: 14,
-                  fontSize: 12,
-                  color: '#ccc',
-                  textAlign: 'left',
-                  lineHeight: 1.45,
-                }}>
-                  <div style={{ fontWeight: 'bold', color: '#fff', marginBottom: 4 }}>
-                    Tier: {swapAccess.label}
-                    {hasLocksmithNft ? ' 🔑' : ''}
+                {/* Fee/rate only when swap is open — locked free path uses Swap Badge card below */}
+                {swapAccess.allowed && (
+                  <div style={{
+                    background: swapAccess.tier === 'locksmith' ? 'rgba(153,69,255,0.15)' : 'rgba(74,222,128,0.1)',
+                    border: `1px solid ${swapAccess.tier === 'locksmith' ? '#9945FF' : '#4ade80'}`,
+                    borderRadius: 12,
+                    padding: '10px 12px',
+                    marginBottom: 14,
+                    fontSize: 12,
+                    color: '#ccc',
+                    textAlign: 'left',
+                    lineHeight: 1.45,
+                  }}>
+                    <div style={{ fontWeight: 'bold', color: '#fff', marginBottom: 4 }}>
+                      {swapAccess.tier === 'locksmith' ? 'GiftLocksmith' : 'Swap active'}
+                      {hasLocksmithNft ? ' 🔑' : ''}
+                    </div>
+                    Fee {(swapAccess.feeBps / 100).toFixed(1)}% in GFT · Min {swapAccess.minShards.toLocaleString()} shards
+                    <br />
+                    Today: {getDailySwapUsed(stats.inventory).toLocaleString()} / {swapAccess.dailyCapShards.toLocaleString()} shards
+                    <br />
+                    Rate: {SHARD_SWAP_CONFIG.shardsPerGft.toLocaleString()} shards → 1 GFT (provisional until launch)
                   </div>
-                  {swapAccess.allowed ? (
-                    <>
-                      Fee {(swapAccess.feeBps / 100).toFixed(1)}% in GFT · Min {swapAccess.minShards.toLocaleString()} shards
-                      <br />
-                      Today: {getDailySwapUsed(stats.inventory).toLocaleString()} / {swapAccess.dailyCapShards.toLocaleString()} shards
-                      <br />
-                      Rate: {SHARD_SWAP_CONFIG.shardsPerGft.toLocaleString()} shards → 1 GFT (provisional until launch)
-                    </>
-                  ) : (
-                    <span>{swapAccess.reason}</span>
-                  )}
-                </div>
+                )}
+
+                {/* Swap Badge — always visible for free path (not Locksmith) */}
+                {!hasLocksmithNft && (
+                  <div style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 10,
+                    background: 'linear-gradient(145deg, #1a1520 0%, #1c1e22 100%)',
+                    borderRadius: 14,
+                    padding: '12px',
+                    marginBottom: 12,
+                    border: '1px solid #fbbf2488',
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                      <img
+                        src="/shop/swap-badge.png"
+                        alt="Swap Badge"
+                        width={56}
+                        height={56}
+                        style={{ borderRadius: 12, objectFit: 'cover', background: '#0f0f12', border: '1px solid #fbbf2444' }}
+                      />
+                      <div style={{ flex: 1, textAlign: 'left', fontSize: 12, color: '#ccc', minWidth: 0 }}>
+                        <div style={{ fontWeight: 'bold', color: '#fbbf24', fontSize: 13 }}>
+                          Swap Badge {hasSwapLicense(stats.inventory) ? `· Lv${getSwapBadgeLevel(stats.inventory)}` : '· locked'}
+                        </div>
+                        {hasSwapLicense(stats.inventory) ? (
+                          <>
+                            <div>
+                              Charge {getSwapDurability(stats.inventory).toFixed(1)}% · ~
+                              {durabilityRemainingShards(stats.inventory).toLocaleString()} shards left
+                            </div>
+                            <div style={{ fontSize: 10, color: '#888', marginTop: 2 }}>
+                              Full charge ≈ {durabilityFullVolumeForLevel(getSwapBadgeLevel(stats.inventory)).toLocaleString()} shards volume · daily cap {SHARD_SWAP_CONFIG.free.dailyCapShards.toLocaleString()}
+                            </div>
+                            <div style={{ marginTop: 6, height: 6, background: '#333', borderRadius: 4, overflow: 'hidden' }}>
+                              <div style={{
+                                width: `${Math.min(100, getSwapDurability(stats.inventory))}%`,
+                                height: '100%',
+                                background: getSwapDurability(stats.inventory) > 20
+                                  ? 'linear-gradient(90deg,#fbbf24,#f59e0b)'
+                                  : '#f87171',
+                              }} />
+                            </div>
+                          </>
+                        ) : (
+                          <div style={{ fontSize: 11, color: '#aaa', lineHeight: 1.4, marginTop: 2 }}>
+                            Free path badge (same spirit as Locksmith NFT). Unlock at L{SHARD_SWAP_CONFIG.freeUnlockMinLevel}+ for {SHARD_SWAP_CONFIG.freeUnlockBurnShards.toLocaleString()} shards. Level up with GFT so each % lasts longer.
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    {hasSwapLicense(stats.inventory) && (
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                        {[5, 10, 25].map((g) => (
+                          <button
+                            key={g}
+                            type="button"
+                            disabled={
+                              shardSwapBusy ||
+                              getSwapDurability(stats.inventory) >= 100 ||
+                              (Number(balances.GFT) || 0) < g
+                            }
+                            onClick={() => topUpSwapBadge(g)}
+                            style={{
+                              flex: '1 1 auto',
+                              background: '#2a2d34',
+                              color: '#fbbf24',
+                              border: '1px solid #fbbf24',
+                              borderRadius: 12,
+                              padding: '6px 8px',
+                              fontWeight: 'bold',
+                              fontSize: 10,
+                              cursor: 'pointer',
+                              opacity:
+                                getSwapDurability(stats.inventory) >= 100 ||
+                                (Number(balances.GFT) || 0) < g
+                                  ? 0.4
+                                  : 1,
+                            }}
+                          >
+                            Charge +{g * SHARD_SWAP_CONFIG.durabilityPercentPerGft}% · {g} GFT
+                          </button>
+                        ))}
+                        {badgeLevelUpCostGft(getSwapBadgeLevel(stats.inventory)) != null && (
+                          <button
+                            type="button"
+                            disabled={
+                              shardSwapBusy ||
+                              (Number(balances.GFT) || 0) <
+                                badgeLevelUpCostGft(getSwapBadgeLevel(stats.inventory))
+                            }
+                            onClick={levelUpSwapBadge}
+                            style={{
+                              width: '100%',
+                              background: 'rgba(153,69,255,0.2)',
+                              color: '#c4b5fd',
+                              border: '1px solid #9945FF',
+                              borderRadius: 12,
+                              padding: '8px',
+                              fontWeight: 'bold',
+                              fontSize: 11,
+                              cursor: 'pointer',
+                              marginTop: 2,
+                            }}
+                          >
+                            Level badge → Lv{getSwapBadgeLevel(stats.inventory) + 1} ·{' '}
+                            {badgeLevelUpCostGft(getSwapBadgeLevel(stats.inventory))} GFT
+                            {' '}(more shards per % drain)
+                          </button>
+                        )}
+                      </div>
+                    )}
+                    <p style={{ margin: 0, fontSize: 10, color: '#666', lineHeight: 1.35, textAlign: 'left' }}>
+                      In-game Swap Badge for free path (not an NFT yet). GiftLocksmith is the permanent NFT. On-chain mint + marketplace sell planned later.
+                    </p>
+                  </div>
+                )}
 
                 {/* You Pay Section */}
                 <div style={{ background: '#1c1e22', borderRadius: '16px', padding: '15px', textAlign: 'left', marginBottom: '5px' }}>
@@ -3810,7 +4021,7 @@ const GiftTapGame = () => {
                 </div>
 
                 <p style={{ fontSize: '11px', color: '#666', marginTop: '14px', textAlign: 'center', lineHeight: 1.4 }}>
-                  GFT is credited to your account balance. On-chain $GFT mint can be linked later. Locksmith holders get lower fees and higher daily caps.
+                  GFT is credited to your account. Free Swap Badge uses durability % (volume drain) + daily cap. GiftLocksmith is permanent with lower fees.
                 </p>
 
                 {!swapAccess.allowed && (
@@ -3853,8 +4064,8 @@ const GiftTapGame = () => {
                       : currentLevel < SHARD_SWAP_CONFIG.freeUnlockMinLevel
                         ? `Need Level ${SHARD_SWAP_CONFIG.freeUnlockMinLevel} first (you: ${currentLevel})`
                         : stats.inventory?.swap_unlock_burned || stats.inventory?.swap_unlocked
-                          ? 'License paid — need Level 10+'
-                          : `Pay free license (${SHARD_SWAP_CONFIG.freeUnlockBurnShards.toLocaleString()} shards) · L${SHARD_SWAP_CONFIG.freeUnlockMinLevel}+`}
+                          ? 'Badge owned — need Level 5+ or top up'
+                          : `Get Swap Badge (${SHARD_SWAP_CONFIG.freeUnlockBurnShards.toLocaleString()} shards) · L${SHARD_SWAP_CONFIG.freeUnlockMinLevel}+`}
                   </button>
                 )}
 

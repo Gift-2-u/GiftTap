@@ -1,16 +1,16 @@
 /**
  * GFTshards → GFT credit swap rules.
  *
- * Free path: Level 10+ OR one-time shard burn license.
- * Locksmith: instant unlock + better fees/caps (NFT ~Wave 1 mint price).
+ * Free path: Level 5+ AND Swap Badge. Badge has:
+ *  - durability 0–100% (drains by swap volume)
+ *  - badge level 1–10 (higher level = more shards per % — harder to drain)
+ *  - top-up charge with GFT; level-up with GFT
+ *  - daily shard cap
  *
- * Fee model: convert full shards → GFT at rate, then take fee in GFT
- * (user receives net GFT; fee is retained by platform / not credited).
- *
- * Rate is provisional until $GFT launch — set via VITE_SHARDS_PER_GFT or default.
+ * GiftLocksmith: permanent, no durability, better fees/caps.
+ * Future: mint badge as on-chain NFT for marketplace sales.
  */
 
-/** Provisional until token launch (override with VITE_SHARDS_PER_GFT). */
 const DEFAULT_SHARDS_PER_GFT = 1000;
 
 function resolveShardsPerGft() {
@@ -22,49 +22,103 @@ function resolveShardsPerGft() {
 }
 
 export const SHARD_SWAP_CONFIG = {
-  /**
-   * Base conversion: shards needed for 1 GFT (before fee).
-   * Placeholder until official launch rate is set.
-   */
   get shardsPerGft() {
     return resolveShardsPerGft();
   },
 
-  /** Rate is not final until $GFT launch */
   rateProvisional: true,
 
   free: {
-    feeBps: 1000, // 10% of GFT out
+    feeBps: 1000, // 10%
     minShards: 5000,
-    /** Higher caps — shards are cheap in UX terms */
-    dailyCapShards: 150_000,
+    dailyCapShards: 50_000,
   },
   locksmith: {
-    feeBps: 400, // 4% of GFT out
+    feeBps: 400, // 4%
     minShards: 500,
-    /** Paid ~0.25 SOL; allow meaningful daily volume */
     dailyCapShards: 1_000_000,
   },
 
-  /**
-   * Free unlock = Level 10+ AND one-time GFTshard license burn.
-   * (Both required — not either/or.) GiftLocksmith skips this entirely.
-   */
-  freeUnlockMinLevel: 10,
+  freeUnlockMinLevel: 5,
   freeUnlockBurnShards: 25_000,
+
+  /** Durability % (0–100) */
+  durabilityMaxPercent: 100,
+  /**
+   * At badge level 1: this many shards swapped = 100% drain.
+   * At level L: volume budget = this * L (higher level lasts longer).
+   */
+  durabilityFullVolumeShards: 200_000,
+
+  /** 1 GFT → +this many durability % points */
+  durabilityPercentPerGft: 2,
+  durabilityTopUpMinGft: 1,
+
+  /** Badge power level (not player character level) */
+  badgeMaxLevel: 10,
+  /** GFT to go from level L → L+1 = L * badgeLevelUpGftPerStep */
+  badgeLevelUpGftPerStep: 10,
 };
 
 function todayUtc() {
   return new Date().toISOString().split('T')[0];
 }
 
-/**
- * @param {object} p
- * @param {number} p.currentLevel
- * @param {number} p.maxUnlockedLevel
- * @param {object} p.inventory
- * @param {boolean} p.hasLocksmithNft
- */
+function round6(n) {
+  return Math.round(Number(n) * 1e6) / 1e6;
+}
+
+export function hasSwapLicense(inventory = {}) {
+  const inv = inventory || {};
+  return !!(inv.swap_unlocked || inv.swap_unlock_burned);
+}
+
+/** Badge power level 0 = none, 1–10 if owned */
+export function getSwapBadgeLevel(inventory = {}) {
+  const inv = inventory || {};
+  if (!hasSwapLicense(inv)) return 0;
+  const l = Number(inv.swap_badge_level);
+  if (!Number.isFinite(l) || l < 1) return 1; // legacy license = level 1
+  return Math.min(SHARD_SWAP_CONFIG.badgeMaxLevel, Math.floor(l));
+}
+
+/** Full volume (shards) covered by 100% durability at this badge level */
+export function durabilityFullVolumeForLevel(badgeLevel) {
+  const lvl = Math.max(1, Number(badgeLevel) || 1);
+  return SHARD_SWAP_CONFIG.durabilityFullVolumeShards * lvl;
+}
+
+/** GFT cost to upgrade from current badge level → next */
+export function badgeLevelUpCostGft(currentBadgeLevel) {
+  const lvl = Math.max(1, Number(currentBadgeLevel) || 1);
+  if (lvl >= SHARD_SWAP_CONFIG.badgeMaxLevel) return null;
+  return lvl * SHARD_SWAP_CONFIG.badgeLevelUpGftPerStep;
+}
+
+export function getSwapDurability(inventory = {}) {
+  const inv = inventory || {};
+  if (!hasSwapLicense(inv)) return 0;
+  if (inv.swap_durability === undefined || inv.swap_durability === null) {
+    return SHARD_SWAP_CONFIG.durabilityMaxPercent;
+  }
+  const d = Number(inv.swap_durability);
+  if (!Number.isFinite(d)) return 0;
+  return Math.max(0, Math.min(SHARD_SWAP_CONFIG.durabilityMaxPercent, d));
+}
+
+export function durabilityRemainingShards(inventory = {}) {
+  const pct = getSwapDurability(inventory);
+  const full = durabilityFullVolumeForLevel(getSwapBadgeLevel(inventory));
+  return Math.floor((pct / SHARD_SWAP_CONFIG.durabilityMaxPercent) * full);
+}
+
+/** Durability % drained by swapping this many shards (uses badge level). */
+export function durabilityDrainPercent(shardsSwapped, inventory = {}) {
+  const full = durabilityFullVolumeForLevel(getSwapBadgeLevel(inventory));
+  if (!full || !Number.isFinite(shardsSwapped) || shardsSwapped <= 0) return 0;
+  return round6((Number(shardsSwapped) / full) * SHARD_SWAP_CONFIG.durabilityMaxPercent);
+}
+
 export function getSwapAccess({
   currentLevel = 0,
   maxUnlockedLevel = 4,
@@ -73,8 +127,9 @@ export function getSwapAccess({
 }) {
   const inv = inventory || {};
   const levelOk = Number(currentLevel) >= SHARD_SWAP_CONFIG.freeUnlockMinLevel;
-  const licensePaid = !!(inv.swap_unlocked || inv.swap_unlock_burned);
-  const freeUnlocked = levelOk && licensePaid;
+  const licensePaid = hasSwapLicense(inv);
+  const durability = getSwapDurability(inv);
+  const badgeLevel = getSwapBadgeLevel(inv);
 
   if (hasLocksmithNft) {
     return {
@@ -82,17 +137,41 @@ export function getSwapAccess({
       tier: 'locksmith',
       label: 'GiftLocksmith',
       reason: null,
+      durability: null,
+      durabilityRemainingShards: null,
+      badgeLevel: null,
       ...SHARD_SWAP_CONFIG.locksmith,
     };
   }
 
-  if (freeUnlocked) {
+  if (levelOk && licensePaid && durability > 0) {
     return {
       allowed: true,
       tier: 'free',
-      label: 'Free',
+      label: `Swap Badge · Lv${badgeLevel}`,
       reason: null,
+      durability,
+      durabilityRemainingShards: durabilityRemainingShards(inv),
+      badgeLevel,
       ...SHARD_SWAP_CONFIG.free,
+    };
+  }
+
+  if (levelOk && licensePaid && durability <= 0) {
+    return {
+      allowed: false,
+      tier: 'empty',
+      label: `Swap Badge · Lv${badgeLevel} (empty)`,
+      levelOk: true,
+      licensePaid: true,
+      durability: 0,
+      durabilityRemainingShards: 0,
+      badgeLevel,
+      reason:
+        'Your Swap Badge is at 0% charge. Top it up with GFT, level it up for longer life, or mint GiftLocksmith for permanent access.',
+      feeBps: SHARD_SWAP_CONFIG.free.feeBps,
+      minShards: SHARD_SWAP_CONFIG.free.minShards,
+      dailyCapShards: SHARD_SWAP_CONFIG.free.dailyCapShards,
     };
   }
 
@@ -102,21 +181,24 @@ export function getSwapAccess({
   }
   if (!licensePaid) {
     missing.push(
-      `pay the free license (${SHARD_SWAP_CONFIG.freeUnlockBurnShards.toLocaleString()} GFTshards once)`,
+      `get Swap Badge (${SHARD_SWAP_CONFIG.freeUnlockBurnShards.toLocaleString()} GFTshards)`,
     );
   }
 
   return {
     allowed: false,
     tier: 'locked',
-    label: 'Locked',
+    label: 'Swap Badge locked',
     levelOk,
     licensePaid,
+    durability: licensePaid ? durability : 0,
+    durabilityRemainingShards: licensePaid ? durabilityRemainingShards(inv) : 0,
+    badgeLevel: licensePaid ? badgeLevel : 0,
     reason:
-      `Free Shard Swap needs Level ${SHARD_SWAP_CONFIG.freeUnlockMinLevel}+ AND ` +
-      `${SHARD_SWAP_CONFIG.freeUnlockBurnShards.toLocaleString()} GFTshards (license). ` +
+      `Free Swap Badge needs Level ${SHARD_SWAP_CONFIG.freeUnlockMinLevel}+ AND ` +
+      `${SHARD_SWAP_CONFIG.freeUnlockBurnShards.toLocaleString()} GFTshards. ` +
       `Still needed: ${missing.join(' + ')}. ` +
-      `GiftLocksmith NFT unlocks instantly with lower fees and a higher daily cap.`,
+      `Charge drains by swap volume; higher key level lasts longer. GiftLocksmith is permanent.`,
     feeBps: SHARD_SWAP_CONFIG.free.feeBps,
     minShards: SHARD_SWAP_CONFIG.free.minShards,
     dailyCapShards: SHARD_SWAP_CONFIG.free.dailyCapShards,
@@ -129,24 +211,6 @@ export function getDailySwapUsed(inventory = {}) {
   return Number(inv.swap_daily_used) || 0;
 }
 
-/**
- * Quote: swap all input shards → GFT, then take fee in GFT.
- *
- * gftGross = shards / rate
- * feeGft   = gftGross * feeBps / 10000
- * gftOut   = gftGross - feeGft  (user credit)
- *
- * @returns {{
- *   ok: boolean,
- *   error?: string,
- *   gftGross?: number,
- *   gftOut?: number,
- *   feeGft?: number,
- *   feeShardsEquiv?: number,
- *   feeBps?: number,
- *   rate?: number,
- * }}
- */
 export function quoteShardSwap(amountShards, access, inventory = {}) {
   const amt = Number(amountShards);
   const rate = resolveShardsPerGft();
@@ -165,25 +229,39 @@ export function quoteShardSwap(amountShards, access, inventory = {}) {
   }
 
   const used = getDailySwapUsed(inventory);
-  const remaining = access.dailyCapShards - used;
-  if (remaining <= 0) {
+  const remainingDaily = access.dailyCapShards - used;
+  if (remainingDaily <= 0) {
     return {
       ok: false,
       error: `Daily swap cap reached (${access.dailyCapShards.toLocaleString()} shards). Resets UTC midnight.`,
     };
   }
-  if (amt > remaining) {
+  if (amt > remainingDaily) {
     return {
       ok: false,
-      error: `Only ${remaining.toLocaleString()} shards left on today's cap`,
+      error: `Only ${remainingDaily.toLocaleString()} shards left on today's cap`,
     };
   }
 
-  // Full conversion first, fee in GFT
+  if (access.tier === 'free') {
+    const remVol = durabilityRemainingShards(inventory);
+    if (remVol <= 0) {
+      return { ok: false, error: 'Swap Badge at 0% — top up with GFT' };
+    }
+    if (amt > remVol) {
+      return {
+        ok: false,
+        error: `Badge charge only covers ${remVol.toLocaleString()} more shards (${getSwapDurability(inventory).toFixed(1)}% · Lv${getSwapBadgeLevel(inventory)})`,
+      };
+    }
+  }
+
   const gftGross = amt / rate;
-  const feeGft = Math.round(gftGross * (access.feeBps / 10000) * 1e6) / 1e6;
-  const gftOut = Math.round((gftGross - feeGft) * 1e6) / 1e6;
+  const feeGft = round6(gftGross * (access.feeBps / 10000));
+  const gftOut = round6(gftGross - feeGft);
   const feeShardsEquiv = Math.round(feeGft * rate);
+  const drainPct =
+    access.tier === 'free' ? durabilityDrainPercent(amt, inventory) : 0;
 
   if (gftOut <= 0) {
     return { ok: false, error: 'Amount too small after fee' };
@@ -191,16 +269,26 @@ export function quoteShardSwap(amountShards, access, inventory = {}) {
 
   return {
     ok: true,
-    gftGross: Math.round(gftGross * 1e6) / 1e6,
+    gftGross: round6(gftGross),
     gftOut,
     feeGft,
     feeShardsEquiv,
     feeBps: access.feeBps,
     rate,
+    drainPct,
+    durabilityAfter:
+      access.tier === 'free'
+        ? Math.max(0, round6(getSwapDurability(inventory) - drainPct))
+        : null,
   };
 }
 
-export function inventoryAfterSwap(inventory = {}, shardsSwapped, feeGft = 0) {
+export function inventoryAfterSwap(
+  inventory = {},
+  shardsSwapped,
+  feeGft = 0,
+  { isFreeTier = false } = {},
+) {
   const inv = { ...(inventory || {}) };
   const day = todayUtc();
   if (inv.swap_daily_date !== day) {
@@ -209,9 +297,15 @@ export function inventoryAfterSwap(inventory = {}, shardsSwapped, feeGft = 0) {
   }
   inv.swap_daily_used = (Number(inv.swap_daily_used) || 0) + Number(shardsSwapped);
   inv.swap_unlocked = true;
-  // Accumulate platform fees (GFT) for ops / later treasury settlement
-  inv.platform_gft_fees =
-    Math.round(((Number(inv.platform_gft_fees) || 0) + Number(feeGft)) * 1e6) / 1e6;
+  if (!inv.swap_badge_level) inv.swap_badge_level = 1;
+  inv.platform_gft_fees = round6((Number(inv.platform_gft_fees) || 0) + Number(feeGft));
+
+  if (isFreeTier) {
+    const before = getSwapDurability(inv);
+    const drain = durabilityDrainPercent(shardsSwapped, inv);
+    inv.swap_durability = Math.max(0, round6(before - drain));
+  }
+
   return inv;
 }
 
@@ -220,5 +314,79 @@ export function inventoryAfterUnlockBurn(inventory = {}) {
     ...(inventory || {}),
     swap_unlocked: true,
     swap_unlock_burned: true,
+    swap_durability: SHARD_SWAP_CONFIG.durabilityMaxPercent,
+    swap_badge_level: 1,
   };
+}
+
+export function inventoryAfterDurabilityTopUp(inventory = {}, gftAmount) {
+  const gft = Number(gftAmount);
+  if (!Number.isFinite(gft) || gft < SHARD_SWAP_CONFIG.durabilityTopUpMinGft) {
+    return {
+      error: `Min top-up is ${SHARD_SWAP_CONFIG.durabilityTopUpMinGft} GFT`,
+    };
+  }
+  if (!hasSwapLicense(inventory)) {
+    return { error: 'Get the free Swap Badge first (Level 5+ + shards).' };
+  }
+  const before = getSwapDurability(inventory);
+  if (before >= SHARD_SWAP_CONFIG.durabilityMaxPercent) {
+    return { error: 'Badge already at 100% charge.' };
+  }
+  const added = round6(gft * SHARD_SWAP_CONFIG.durabilityPercentPerGft);
+  const after = Math.min(
+    SHARD_SWAP_CONFIG.durabilityMaxPercent,
+    round6(before + added),
+  );
+  const actualAdded = round6(after - before);
+  const gftSpent =
+    SHARD_SWAP_CONFIG.durabilityPercentPerGft > 0
+      ? round6(actualAdded / SHARD_SWAP_CONFIG.durabilityPercentPerGft)
+      : gft;
+
+  return {
+    inventory: {
+      ...(inventory || {}),
+      swap_unlocked: true,
+      swap_badge_level: getSwapBadgeLevel(inventory) || 1,
+      swap_durability: after,
+    },
+    durabilityAdded: actualAdded,
+    gftSpent,
+    newDurability: after,
+  };
+}
+
+/**
+ * Spend GFT to raise Swap Badge level (more volume per durability %).
+ */
+export function inventoryAfterBadgeLevelUp(inventory = {}) {
+  if (!hasSwapLicense(inventory)) {
+    return { error: 'Get the free Swap Badge first.' };
+  }
+  const level = getSwapBadgeLevel(inventory);
+  const cost = badgeLevelUpCostGft(level);
+  if (cost == null) {
+    return { error: `Swap Badge already max level (${SHARD_SWAP_CONFIG.badgeMaxLevel}).` };
+  }
+  return {
+    inventory: {
+      ...(inventory || {}),
+      swap_unlocked: true,
+      swap_badge_level: level + 1,
+      swap_durability:
+        invDurabilityOrFull(inventory),
+    },
+    gftCost: cost,
+    newLevel: level + 1,
+    previousLevel: level,
+    fullVolumeAfter: durabilityFullVolumeForLevel(level + 1),
+  };
+}
+
+function invDurabilityOrFull(inventory) {
+  if (inventory?.swap_durability === undefined || inventory?.swap_durability === null) {
+    return SHARD_SWAP_CONFIG.durabilityMaxPercent;
+  }
+  return getSwapDurability(inventory);
 }

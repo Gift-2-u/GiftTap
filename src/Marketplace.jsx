@@ -260,7 +260,7 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
       boost: 'Unlocks Shard Swap (GFTshards → GFT) with better fees',
       /** Bullet benefits shown on card */
       perks: [
-        'Unlocks Shard Swap immediately (skip Level 10 + GFTshard license)',
+        'Unlocks Shard Swap immediately (skip Level 5 + Swap Badge)',
         '4% fee in GFT vs 10% free path',
         'Higher daily swap cap',
         'Vault better APY (coming soon)',
@@ -994,7 +994,7 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
                     Unlocks Shard Swap (GFTshards → GFT)
                   </span>
                   <span style={{ fontSize: 11, color: '#888', display: 'block', marginTop: 6, lineHeight: 1.4 }}>
-                    Instant access (skip Level 10 + GFTshard license) · 4% fee vs 10% free · higher daily cap · Wave 1 · max{' '}
+                    Instant access (skip Level 5 + Swap Badge) · 4% fee vs 10% free · higher daily cap · Wave 1 · max{' '}
                     {LOCKSMITH_WAVE1.maxPerWallet}/wallet
                   </span>
                 </>

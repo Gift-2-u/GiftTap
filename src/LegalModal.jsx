@@ -26,7 +26,7 @@ The Service is provided for entertainment and experimental software purposes. No
 3A. NFTs (including GiftLocksmith / Gift2u Elves)
 • NFTs are optional digital assets minted on Solana (e.g. Metaplex Core). They may unlock or improve in-game features such as Shard Swap access, lower swap fees, higher daily caps, or future vault benefits.
 • Free players may earn GFTshards by tapping at any unlocked level without paying a wall fee. Ascension walls are optional upgrades for higher multipliers and tiers — not a closed gate to earning.
-• Free players may still access Shard Swap by meeting progression requirements (e.g. Level 10+) and paying any in-app GFTshard license we require, typically with less favorable fees/caps than NFT holders.
+• Free players may still access Shard Swap by meeting progression requirements (e.g. Level 5+) and obtaining any in-app Swap Badge / license we require (which may consume durability or fees), typically with less favorable fees/caps than NFT holders.
 • Holding an NFT is not a guarantee of profit, airdrop size, or secondary-market value. Supply waves, mint prices, and utilities may be adjusted for security, fairness, or operations.
 
 3B. Shard Swap

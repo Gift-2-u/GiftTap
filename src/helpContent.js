@@ -11,6 +11,23 @@ export const HELP_TIPS = {
       'Level rises with lifetime taps and can raise your mining power. Walls (Climb / Level up) are optional — you can stay on a level and keep mining forever.\n\n' +
       'Shop boosts and the GiftLocksmith NFT are optional power-ups. Full details: Menu → Game Guide.',
   },
+  /** Level + GFTshards (one ? on home) */
+  level_shards: {
+    title: 'Level & GFTshards',
+    body:
+      'Level comes from lifetime taps and can raise permanent mining power (more shards per tap).\n\n' +
+      'GFTshards are what you mine by tapping. Spend them in the Shop, on climb fees, and on Swap Badge / swaps.\n\n' +
+      'Optional Climb walls unlock higher levels and multipliers — you can stay and keep mining without climbing.\n\n' +
+      'GFTshards are not money and not a promise of profit. Full details: Menu → Game Guide.',
+  },
+  /** Energy + Daily Limit (one ? on home) */
+  energy_daily: {
+    title: 'Energy & Daily Limit',
+    body:
+      'Energy: each tap costs Energy (usually 1). Your pool recharges over time (about 1 every 3 seconds, up to the pool max). Shop items and Free Energy ads can help.\n\n' +
+      'Daily Limit: max taps for the UTC day. The bar under Energy shows progress. When full, wait for reset or use a boost.\n\n' +
+      'Full details: Menu → Game Guide.',
+  },
   level: {
     title: 'Level & taps',
     body:
@@ -56,16 +73,24 @@ export const HELP_TIPS = {
   swap: {
     title: 'Shard Swap',
     body:
-      'Convert GFTshards → GFT credit in Wallet → Shard.\n\n' +
-      'Free path: Level 10+ AND a one-time shard license (higher fee).\n' +
+      'Convert GFTshards to GFT credit in Wallet then Shard.\n\n' +
+      'Free path: Level 5+ AND Swap Badge (durability drains by volume; top up and level up with GFT).\n' +
       'GiftLocksmith NFT: unlock immediately with a lower fee and higher daily cap.\n\n' +
       'Rates and caps can change. Not financial advice.',
+  },
+  swap_badge: {
+    title: 'Swap Badge (free)',
+    body:
+      'Free players unlock a Swap Badge at Level 5+ for 25,000 GFTshards (Wallet then Shard).\n\n' +
+      'Charge 0-100 percent: drains by swap volume. Higher badge level means more shards per 1 percent so the charge lasts longer. Level up with GFT. Top up charge with GFT (1 GFT gives +2 percent). Daily cap 50,000 shards.\n\n' +
+      'GiftLocksmith is the permanent on-chain NFT. On-chain mint and marketplace for free badges is planned later.\n\n' +
+      'Not an investment product.',
   },
   locksmith: {
     title: 'GiftLocksmith NFT',
     body:
-      'Optional on-chain NFT in Shop → NFTs.\n\n' +
-      'Unlocks Shard Swap right away (no L10 + license grind), better swap fees, higher caps, and vault access on the main site.\n\n' +
+      'Optional on-chain NFT in Shop then NFTs.\n\n' +
+      'Unlocks Shard Swap right away (no L5 + Swap Badge grind), better swap fees, higher caps, and vault access on the main site.\n\n' +
       'You can still play and mine without it.',
   },
 };
