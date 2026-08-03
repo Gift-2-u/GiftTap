@@ -408,6 +408,8 @@ const GiftTapGame = () => {
     message: '',
     loading: false,
     success: null,
+    title: undefined,
+    confirm: null,
   });
   const notify = useCallback((message, opts = {}) => {
     const msg = String(message ?? '');
@@ -426,6 +428,25 @@ const GiftTapGame = () => {
       loading: !!opts.loading,
       success: opts.success !== undefined ? opts.success : looksOk ? true : looksError ? false : null,
       title: opts.title,
+      confirm: null,
+    });
+  }, []);
+  /** In-app confirm — replaces browser confirm() gift2u.fun says… */
+  const confirmNotice = useCallback((message, opts = {}) => {
+    return new Promise((resolve) => {
+      setAppNotice({
+        show: true,
+        message: String(message ?? ''),
+        loading: false,
+        success: null,
+        title: opts.title || 'Confirm',
+        confirm: {
+          confirmLabel: opts.confirmLabel || 'Confirm',
+          cancelLabel: opts.cancelLabel || 'Cancel',
+          confirmDanger: !!opts.confirmDanger,
+          resolve,
+        },
+      });
     });
   }, []);
   const [currentLevel, setCurrentLevel] = useState(0);
@@ -1257,8 +1278,17 @@ const GiftTapGame = () => {
     setHasAccess(true);
   };
 
-  const handleLogout = () => {
-    if (!confirm('Log out on this device? You can log back in with username + password on any device (after you set a password).')) return;
+  const handleLogout = async () => {
+    const ok = await confirmNotice(
+      'Log out on this device?\n\nYou can log back in anytime with your username + password.',
+      {
+        title: 'Log out?',
+        confirmLabel: 'Log out',
+        cancelLabel: 'Stay logged in',
+        confirmDanger: true,
+      },
+    );
+    if (!ok) return;
     clearSession();
     setPlayer({ id: '', username: '', first_name: '' });
     setIsAuthed(false);
@@ -2527,7 +2557,23 @@ const GiftTapGame = () => {
         loading={appNotice.loading}
         success={appNotice.success}
         title={appNotice.title}
-        onClose={() => setAppNotice((n) => ({ ...n, show: false }))}
+        confirmLabel={appNotice.confirm?.confirmLabel}
+        cancelLabel={appNotice.confirm?.cancelLabel}
+        confirmDanger={!!appNotice.confirm?.confirmDanger}
+        onConfirm={
+          appNotice.confirm
+            ? () => {
+                const resolve = appNotice.confirm.resolve;
+                setAppNotice((n) => ({ ...n, show: false, confirm: null }));
+                if (resolve) resolve(true);
+              }
+            : undefined
+        }
+        onClose={() => {
+          const resolve = appNotice.confirm?.resolve;
+          setAppNotice((n) => ({ ...n, show: false, confirm: null }));
+          if (resolve) resolve(false);
+        }}
       />
       {/* Public launch: no BetaGate / invite codes */}
         <div style={{ ...styles.container, flexDirection: 'column', height: '100%', width: '100%', overflow: 'hidden' }}>

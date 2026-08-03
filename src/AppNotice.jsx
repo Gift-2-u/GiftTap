@@ -1,7 +1,7 @@
 import React from 'react';
 
 /**
- * In-app notice modal — replaces browser alert() ("gift2u.fun says…").
+ * In-app notice modal — replaces browser alert() / confirm() ("gift2u.fun says…").
  *
  * @param {boolean} show
  * @param {string} message
@@ -9,6 +9,10 @@ import React from 'react';
  * @param {boolean|null} [success] true=ok, false=error, null=neutral
  * @param {() => void} onClose
  * @param {string} [title]
+ * @param {() => void} [onConfirm] — if set, shows Cancel + Confirm (replaces native confirm())
+ * @param {string} [confirmLabel]
+ * @param {string} [cancelLabel]
+ * @param {boolean} [confirmDanger] — red confirm button (e.g. log out)
  */
 export default function AppNotice({
   show,
@@ -17,12 +21,19 @@ export default function AppNotice({
   success = null,
   onClose,
   title,
+  onConfirm,
+  confirmLabel = 'Confirm',
+  cancelLabel = 'Cancel',
+  confirmDanger = false,
 }) {
   if (!show) return null;
 
-  const border =
-    loading
-      ? '2px solid #3b82f6'
+  const isConfirm = typeof onConfirm === 'function' && !loading;
+
+  const border = loading
+    ? '2px solid #3b82f6'
+    : confirmDanger
+      ? '2px solid #f87171'
       : success === true
         ? '2px solid #4ade80'
         : success === false
@@ -33,11 +44,25 @@ export default function AppNotice({
     title ||
     (loading
       ? 'Processing…'
+      : isConfirm
+        ? 'Confirm'
+        : success === true
+          ? 'Done'
+          : success === false
+            ? 'Notice'
+            : 'Gift Tap');
+
+  const icon = loading
+    ? '⚙️ '
+    : isConfirm
+      ? confirmDanger
+        ? '🚪 '
+        : '❓ '
       : success === true
-        ? 'Done'
+        ? '✅ '
         : success === false
-          ? 'Notice'
-          : 'Gift Tap');
+          ? '⚠️ '
+          : 'ℹ️ ';
 
   return (
     <div
@@ -75,7 +100,7 @@ export default function AppNotice({
         onClick={(e) => e.stopPropagation()}
       >
         <h3 style={{ color: '#fff', marginTop: 0, marginBottom: '15px', fontSize: 18 }}>
-          {loading ? '⚙️ ' : success === true ? '✅ ' : success === false ? '⚠️ ' : 'ℹ️ '}
+          {icon}
           {heading}
         </h3>
         <p
@@ -90,7 +115,7 @@ export default function AppNotice({
         >
           {message}
         </p>
-        {!loading && (
+        {!loading && !isConfirm && (
           <button
             type="button"
             onClick={onClose}
@@ -107,6 +132,46 @@ export default function AppNotice({
           >
             OK
           </button>
+        )}
+        {!loading && isConfirm && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <button
+              type="button"
+              onClick={() => {
+                onConfirm();
+              }}
+              style={{
+                width: '100%',
+                background: confirmDanger ? 'rgba(248,113,113,0.15)' : '#ffd700',
+                color: confirmDanger ? '#f87171' : '#000',
+                border: confirmDanger ? '1px solid #f87171' : 'none',
+                padding: '14px',
+                borderRadius: '30px',
+                cursor: 'pointer',
+                fontWeight: 'bold',
+                fontSize: 15,
+              }}
+            >
+              {confirmLabel}
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              style={{
+                width: '100%',
+                background: 'transparent',
+                color: '#888',
+                border: '1px solid #555',
+                padding: '14px',
+                borderRadius: '30px',
+                cursor: 'pointer',
+                fontWeight: 'bold',
+                fontSize: 14,
+              }}
+            >
+              {cancelLabel}
+            </button>
+          </div>
         )}
       </div>
     </div>
