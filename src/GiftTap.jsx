@@ -38,6 +38,7 @@ import {
 // DB_PLAYER_ID === 'telegram_id' (legacy Supabase column — still the player primary key)
 
 import { hasLocksmith } from './locksmith';
+import WalletNftSection from './WalletNftSection';
 import {
   SHARD_SWAP_CONFIG,
   getSwapAccess,
@@ -3465,6 +3466,15 @@ const GiftTapGame = () => {
                         currency={displayCurrency}
                         rates={fiatRates}
                         style={{ marginBottom: '14px' }}
+                      />
+                      <WalletNftSection
+                        walletAddress={playerWallet}
+                        refreshKey={isModalOpen ? 1 : 0}
+                        onOpenShopNfts={() => {
+                          setIsModalOpen(false);
+                          setShowSettings(false);
+                          setCurrentPage('shop');
+                        }}
                       />
                       <div style={styles.actionRow}>
                         <button style={styles.actionBtn} onClick={() => setIsReceiveOpen(true)}>Receive</button>

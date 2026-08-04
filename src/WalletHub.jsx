@@ -16,6 +16,7 @@ import {
 } from './playerIdentity';
 import AuthScreen from './AuthScreen';
 import { keypairFromMnemonic } from './solanaWallet';
+import WalletNftSection from './WalletNftSection';
 import TokenBalanceList from './TokenBalanceList';
 import { fetchFiatRates } from './fiatPrices';
 import GameWalletActionModals from './GameWalletActionModals';
@@ -753,6 +754,11 @@ export function GameWalletPanel({ onClose }) {
             currency={displayCurrency}
             rates={fiatRates}
             style={{ marginBottom: '12px' }}
+          />
+
+          <WalletNftSection
+            walletAddress={address}
+            refreshKey={sessionTick}
           />
 
           {/* Same actions as in-game — all stay on the main site */}

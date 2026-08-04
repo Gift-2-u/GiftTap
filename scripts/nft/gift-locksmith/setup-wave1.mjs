@@ -120,7 +120,7 @@ async function main() {
       name: 'Gift2u Elves',
       symbol: 'ELVES',
       description:
-        'Gift2u Elves — Gen 1 utility classes for Gift Tap. GiftLocksmith unlocks better GFTshard → $GFT swap terms and vault APY. Max 5000 Locksmiths across 3 waves.',
+        'Gift2u Elves — Gen 1 utility classes for Gift Tap. GiftLocksmith unlocks better G2Ushard → $G2U swap terms and vault APY. Max 5000 Locksmiths across 3 waves.',
       image: imageUri,
       external_url: 'https://gift2u.fun',
       properties: {
@@ -139,7 +139,7 @@ async function main() {
       name: 'GiftLocksmith',
       symbol: 'Locksmith',
       description:
-        'GiftLocksmith unlocks the GFTshard → $GFT swap and access to the Gift2u vault for improved APY. Gift2u Elves Gen 1 — Wave 1 of 3 (max 5000).',
+        'GiftLocksmith unlocks the G2Ushard → $G2U swap and access to the Gift2u vault for improved APY. Gift2u Elves Gen 1 — Wave 1 of 3 (max 5000).',
       image: imageUri,
       external_url: 'https://gift2u.fun',
       attributes: [
@@ -148,7 +148,7 @@ async function main() {
         { trait_type: 'Generation', value: 'Gen 1' },
         { trait_type: 'Rarity', value: 'Rare' },
         { trait_type: 'Wave', value: '1' },
-        { trait_type: 'Utility', value: 'GFTshard Swap + Vault APY' },
+        { trait_type: 'Utility', value: 'G2Ushard Swap + Vault APY' },
         { trait_type: 'Type', value: 'Utility' },
         { trait_type: 'Max Supply', value: '5000' },
       ],

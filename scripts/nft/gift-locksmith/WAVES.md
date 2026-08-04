@@ -2,7 +2,7 @@
 
 **Standard:** Metaplex **Core**  
 **Collection:** Gift2u Elves · Gen 1 · Rare · max **5000**  
-**Utility:** same every mint (better GFTshard→$GFT swap terms + vault APY)
+**Utility:** same every mint (better G2Ushard→$G2U swap terms + vault APY)
 
 ---
 
