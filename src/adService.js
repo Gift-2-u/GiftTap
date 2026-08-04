@@ -1,12 +1,14 @@
 // ==========================================
 // AD NETWORKS — Gift Tap Free Energy
 //
-// Primary: Monetag Direct link — Positive tag 11270717
-// Fallback: Adsterra smartlink
+// Monetag Direct link — Positive tag 11270717
 //
 // Direct links have NO completion callback.
-// We require engagement (tab opens + user leaves Gift Tap)
+// We require engagement (user leaves Gift Tap for the ad)
 // so blocked/"security" pages do NOT grant free energy.
+//
+// One network per tap only — a second window.open after the
+// first attempt loses the user gesture and looks "popup blocked".
 // ==========================================
 
 /** UI countdown while ad tab is open (not a free auto-reward). */
@@ -23,45 +25,60 @@ const MONETAG_DIRECT_LINK =
     import.meta.env.VITE_MONETAG_DIRECT_LINK) ||
   `https://omg10.com/4/${MONETAG_ZONE_ID}`;
 
-/** Adsterra Smartlink (fallback) */
-const ADSTERRA_SMARTLINK =
-  'https://www.effectivecpmnetwork.com/bdacmkhj?key=7e3996662a009f6b36c14bdf3d76d8ed';
-
 const isPlaceholder = (url) =>
   !url ||
   url.includes('YOUR_') ||
   url.includes('XXXX') ||
   url.trim() === '';
 
+/**
+ * Open ad in a new tab during the user gesture.
+ *
+ * IMPORTANT: do NOT pass "noopener" / "noreferrer" as window features —
+ * modern browsers then always return null from window.open, which made
+ * Free Energy falsely report "popup blocked".
+ */
 const openAdTab = (url) => {
   let win = null;
   try {
-    win = window.open(url, '_blank', 'noopener,noreferrer');
+    // No feature string → real Window handle when the tab opens
+    win = window.open(url, '_blank');
   } catch {
     /* ignore */
   }
-  if (!win) {
+
+  if (win) {
     try {
-      const a = document.createElement('a');
-      a.href = url;
-      a.target = '_blank';
-      a.rel = 'noopener noreferrer';
-      a.style.display = 'none';
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
+      // Drop reverse access without losing the handle
+      win.opener = null;
     } catch {
       /* ignore */
     }
+    return win;
   }
-  return win;
+
+  // Mobile / strict browsers: open() may return null even when a tab opened
+  try {
+    const a = document.createElement('a');
+    a.href = url;
+    a.target = '_blank';
+    a.rel = 'noopener noreferrer';
+    a.style.display = 'none';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  } catch {
+    /* ignore */
+  }
+
+  return null;
 };
 
 /**
- * Direct / smartlink with engagement gate.
- * - Popup must open
- * - User must leave Gift Tap for most of the wait
- * - Early-closed / blocked tabs fail → no energy
+ * Monetag direct link with engagement gate.
+ * - Prefer a real window handle when available
+ * - Null handle is OK (common on mobile) if user leaves Gift Tap
+ * - Must leave Gift Tap for most of the wait → no free energy on blocked ads
  *
  * @param {string} url
  * @param {string} networkName
@@ -82,14 +99,6 @@ const playEngagedLink = (url, networkName, options = {}) => {
     }
 
     const win = openAdTab(url);
-    if (!win) {
-      reject(
-        new Error(
-          `${networkName}: popup blocked. Allow popups for Gift2U and try again.`,
-        ),
-      );
-      return;
-    }
 
     const minMs = AD_MIN_WATCH_SECONDS * 1000;
     const started = Date.now();
@@ -103,7 +112,11 @@ const playEngagedLink = (url, networkName, options = {}) => {
     // Must actually switch away to the ad for most of the timer
     const MIN_HIDDEN_MS = Math.floor(minMs * 0.6);
 
-    console.log(`📺 ${networkName}: opened direct link`, url);
+    console.log(
+      `📺 ${networkName}: opened ad`,
+      win ? '(window handle)' : '(no handle — wait for you to open/switch to the ad tab)',
+      url,
+    );
 
     const reportTick = () => {
       if (!onTick) return;
@@ -175,16 +188,19 @@ const playEngagedLink = (url, networkName, options = {}) => {
       reportTick();
       const elapsed = Date.now() - started;
 
-      try {
-        if (win.closed && leftPageMs < 2000 && elapsed < 5000) {
-          finish(
-            false,
-            `${networkName}: ad closed or blocked before it could load.`,
-          );
-          return;
+      // Only trust win.closed when we have a handle
+      if (win) {
+        try {
+          if (win.closed && leftPageMs < 2000 && elapsed < 5000) {
+            finish(
+              false,
+              `${networkName}: ad closed or blocked before it could load.`,
+            );
+            return;
+          }
+        } catch {
+          /* cross-origin after redirect */
         }
-      } catch {
-        /* cross-origin after redirect */
       }
 
       if (elapsed >= minMs) {
@@ -195,7 +211,7 @@ const playEngagedLink = (url, networkName, options = {}) => {
         } else {
           finish(
             false,
-            `${networkName}: open the ad tab and stay on it until the timer ends. Blocked ads do not give energy.`,
+            `${networkName}: switch to the ad tab and stay there until the timer ends. If no tab opened, allow popups for this site and try again.`,
           );
         }
       }
@@ -213,47 +229,36 @@ const playEngagedLink = (url, networkName, options = {}) => {
       if (!settled) {
         finish(
           false,
-          `${networkName}: timed out. Ad may be blocked by security software.`,
+          `${networkName}: timed out. Stay on the ad tab until the countdown finishes.`,
         );
       }
     }, minMs + 20000);
   });
 };
 
-const playMonetag = (opts) =>
-  playEngagedLink(MONETAG_DIRECT_LINK, 'Monetag', opts);
-const playAdsterra = (opts) =>
-  playEngagedLink(ADSTERRA_SMARTLINK, 'Adsterra', opts);
-
 /**
- * Free Energy waterfall: Monetag Positive tag (11270717) → Adsterra.
- * No pure timer rewards — blocked ads do not grant energy.
+ * Free Energy: Monetag Positive tag only (one open per tap).
  * @param {{ onTick?: (secondsLeft: number) => void }} [options]
  */
 export const showRewardedAdWaterfall = async (options = {}) => {
   console.log(
-    `🌊 Ad waterfall: Monetag zone ${MONETAG_ZONE_ID} → Adsterra (engaged only)`,
+    `🌊 Free Energy: Monetag zone ${MONETAG_ZONE_ID} (engaged only, single open)`,
   );
 
-  const steps = [
-    { name: 'Monetag', play: playMonetag },
-    { name: 'Adsterra', play: playAdsterra },
-  ];
-
-  let lastError =
-    'No ads available. If security software blocks ads, Free Energy cannot run.';
-
-  for (const step of steps) {
-    try {
-      console.log(`▶️ ${step.name}…`);
-      if (options.onTick) options.onTick(AD_MIN_WATCH_SECONDS);
-      const result = await step.play(options);
-      return { success: true, network: result.network };
-    } catch (err) {
-      lastError = err?.message || String(err);
-      console.log(`⚠️ ${step.name} failed:`, lastError);
-    }
+  try {
+    if (options.onTick) options.onTick(AD_MIN_WATCH_SECONDS);
+    const result = await playEngagedLink(
+      MONETAG_DIRECT_LINK,
+      'Monetag',
+      options,
+    );
+    return { success: true, network: result.network };
+  } catch (err) {
+    const lastError = err?.message || String(err);
+    console.log('⚠️ Monetag failed:', lastError);
+    return {
+      success: false,
+      error: lastError,
+    };
   }
-
-  return { success: false, error: lastError };
 };
