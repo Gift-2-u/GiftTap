@@ -518,23 +518,17 @@ const GiftTapGame = () => {
 
     setIsWatchingAd(true);
     setAdSecondsLeft(AD_MIN_WATCH_SECONDS);
-    const adStartTime = Date.now();
 
     try {
+      // Monetag SDK (or engaged fallback) — reward ONLY if network confirms success.
+      // Blocked / security-filtered ads must NOT grant free energy (Monetag $0 case).
       const result = await showRewardedAdWaterfall({
         onTick: (secondsLeft) => setAdSecondsLeft(secondsLeft),
+        ymid: playerId ? `player_${playerId}_${Date.now()}` : undefined,
       });
-      const elapsed = (Date.now() - adStartTime) / 1000;
 
-      // Safety net: if the player truly waited the full delay, always grant
-      // even if the ad helper returned a flaky failure (old early-close bugs).
-      const waitedLongEnough = elapsed >= AD_MIN_WATCH_SECONDS - 0.5;
-      const adOk = (result && result.success) || waitedLongEnough;
-
-      if (adOk) {
-        console.log(
-          `Ad OK via ${result?.network || 'timer'} after ${elapsed.toFixed(1)}s`,
-        );
+      if (result && result.success) {
+        console.log(`Ad OK via ${result.network}`);
 
         const newMaxLimit = maxDailyLimit + 100;
         const newAdsCount = dailyAdsWatched + 1;
@@ -575,51 +569,15 @@ const GiftTapGame = () => {
       } else {
         notify(
           result?.error ||
-            "⚠️ Keep Gift Tap open and wait until the countdown hits 0 for +100 energy.",
+            "⚠️ No rewarded ad available (blocked or empty). Energy was not granted.",
         );
       }
     } catch (err) {
       console.error("Ad Error:", err);
-      // If they still waited long enough, grant despite thrown errors
-      const elapsed = (Date.now() - adStartTime) / 1000;
-      if (elapsed >= AD_MIN_WATCH_SECONDS - 0.5) {
-        try {
-          const newMaxLimit = maxDailyLimit + 100;
-          const newAdsCount = dailyAdsWatched + 1;
-          const today = new Date().toISOString().split('T')[0];
-          const nowUtc = new Date();
-          const midnightUtcTonight = new Date(Date.UTC(
-            nowUtc.getUTCFullYear(),
-            nowUtc.getUTCMonth(),
-            nowUtc.getUTCDate(),
-            23, 59, 59, 999,
-          ));
-          const dbUpdates = {
-            max_daily_limit: newMaxLimit,
-            daily_ads_watched: newAdsCount,
-            last_ad_date: today,
-            limit_boost_amount: stats.limit_boost_amount,
-            limit_boost_expires: stats.limit_boost_expires,
-            ad_energy_boost: (stats.ad_energy_boost || 0) + 100,
-            ad_energy_expires: midnightUtcTonight.toISOString(),
-            last_updated: new Date().toISOString(),
-          };
-          const { error } = await supabase
-            .from('players')
-            .update(dbUpdates)
-            .eq(DB_PLAYER_ID, playerId);
-          if (error) throw error;
-          setMaxDailyLimit(newMaxLimit);
-          setDailyAdsWatched(newAdsCount);
-          if (setStats) setStats({ ...stats, ...dbUpdates });
-          setIsAdModalOpen(false);
-          notify("✅ +100 Energy Capacity added. Thanks for watching!");
-          return;
-        } catch (e2) {
-          console.error("Reward grant failed:", e2);
-        }
-      }
-      notify(err?.message || "No ads available. Please try again later.");
+      notify(
+        err?.message ||
+          "No ads available. If security software blocks ads, Free Energy cannot run.",
+      );
     } finally {
       setIsWatchingAd(false);
       setAdSecondsLeft(null);
@@ -4253,12 +4211,12 @@ const GiftTapGame = () => {
                       {adSecondsLeft}
                     </div>
                     <p style={{ color: '#888', fontSize: '12px', marginBottom: '8px' }}>
-                      {adSecondsLeft > 0 ? 'Come back when the timer ends…' : 'Finishing…'}
+                      {adSecondsLeft > 0 ? 'Finish the ad — reward unlocks only when it completes…' : 'Finishing…'}
                     </p>
                   </>
                 ) : (
                   <p style={{ color: '#ccc', fontSize: '14px', marginBottom: '20px', lineHeight: '1.5' }}>
-                    Want to tap more? Open a short ad and wait for our timer ({AD_MIN_WATCH_SECONDS}s) to expand your Daily Energy Limit by +100 for today!
+                    Want to tap more? Watch a short rewarded ad to expand your Daily Energy Limit by +100 for today. Energy is only granted when the ad network confirms the view (blocked ads do not count).
                     <br /><br />
                     <span style={{ fontSize: '12px', color: '#888' }}>
                       (Max 10 ads per day. You have watched {dailyAdsWatched}/10)

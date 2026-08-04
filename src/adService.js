@@ -1,23 +1,31 @@
 // ==========================================
-// AD NETWORKS — Gift Tap rewarded energy
-// Waterfall: Adsterra Smartlink → Monetag
+// AD NETWORKS — Gift Tap Free Energy
 //
-// Smartlinks have NO completion callback.
-// We ONLY use wall-clock time (Date.now).
-// We do NOT fail on window.closed — mobile/Adsterra
-// redirects make that signal unreliable and were
-// blocking +100 energy even after a full wait.
+// Primary: Monetag Direct link — Positive tag 11270717
+// Fallback: Adsterra smartlink
+//
+// Direct links have NO completion callback.
+// We require engagement (tab opens + user leaves Gift Tap)
+// so blocked/"security" pages do NOT grant free energy.
 // ==========================================
 
-/** Seconds the player must wait before +100 energy. */
+/** UI countdown while ad tab is open (not a free auto-reward). */
 export const AD_MIN_WATCH_SECONDS = 15;
 
-/** Adsterra Smartlink */
+/**
+ * Monetag "Positive tag" Direct link zone.
+ * Override URL with VITE_MONETAG_DIRECT_LINK if dashboard "Get tag" differs.
+ */
+const MONETAG_ZONE_ID = 11270717;
+const MONETAG_DIRECT_LINK =
+  (typeof import.meta !== 'undefined' &&
+    import.meta.env &&
+    import.meta.env.VITE_MONETAG_DIRECT_LINK) ||
+  `https://omg10.com/4/${MONETAG_ZONE_ID}`;
+
+/** Adsterra Smartlink (fallback) */
 const ADSTERRA_SMARTLINK =
   'https://www.effectivecpmnetwork.com/bdacmkhj?key=7e3996662a009f6b36c14bdf3d76d8ed';
-
-/** Monetag direct link (fallback) */
-const MONETAG_DIRECT_LINK = 'https://omg10.com/4/11263036';
 
 const isPlaceholder = (url) =>
   !url ||
@@ -25,10 +33,6 @@ const isPlaceholder = (url) =>
   url.includes('XXXX') ||
   url.trim() === '';
 
-/**
- * Open ad tab using user gesture. Prefer window.open; fall back to <a click>
- * (better on some mobile browsers). Null handle is OK — timer still runs.
- */
 const openAdTab = (url) => {
   let win = null;
   try {
@@ -36,9 +40,6 @@ const openAdTab = (url) => {
   } catch {
     /* ignore */
   }
-
-  // window.open often returns null on mobile even when a tab opened,
-  // or returns a handle that immediately looks "closed" after redirect.
   if (!win) {
     try {
       const a = document.createElement('a');
@@ -53,17 +54,21 @@ const openAdTab = (url) => {
       /* ignore */
     }
   }
-
   return win;
 };
 
 /**
+ * Direct / smartlink with engagement gate.
+ * - Popup must open
+ * - User must leave Gift Tap for most of the wait
+ * - Early-closed / blocked tabs fail → no energy
+ *
  * @param {string} url
  * @param {string} networkName
  * @param {{ onTick?: (secondsLeft: number) => void }} [options]
  * @returns {Promise<{ network: string }>}
  */
-const playDirectLink = (url, networkName, options = {}) => {
+const playEngagedLink = (url, networkName, options = {}) => {
   const { onTick } = options;
 
   return new Promise((resolve, reject) => {
@@ -77,17 +82,28 @@ const playDirectLink = (url, networkName, options = {}) => {
     }
 
     const win = openAdTab(url);
+    if (!win) {
+      reject(
+        new Error(
+          `${networkName}: popup blocked. Allow popups for Gift2U and try again.`,
+        ),
+      );
+      return;
+    }
+
     const minMs = AD_MIN_WATCH_SECONDS * 1000;
     const started = Date.now();
     let settled = false;
+    let leftPageMs = 0;
+    let lastHiddenAt = null;
     let lastReported = AD_MIN_WATCH_SECONDS + 1;
     let pollId = null;
     let safetyId = null;
 
-    console.log(
-      `📺 ${networkName}: opened ad`,
-      win ? '(window handle)' : '(no handle — countdown still runs in Gift Tap)',
-    );
+    // Must actually switch away to the ad for most of the timer
+    const MIN_HIDDEN_MS = Math.floor(minMs * 0.6);
+
+    console.log(`📺 ${networkName}: opened direct link`, url);
 
     const reportTick = () => {
       if (!onTick) return;
@@ -98,7 +114,7 @@ const playDirectLink = (url, networkName, options = {}) => {
         try {
           onTick(left);
         } catch {
-          /* ignore UI */
+          /* ignore */
         }
       }
     };
@@ -125,9 +141,7 @@ const playDirectLink = (url, networkName, options = {}) => {
         }
       }
       if (ok) {
-        console.log(
-          `✅ ${networkName}: ${AD_MIN_WATCH_SECONDS}s wall-clock done — reward OK`,
-        );
+        console.log(`✅ ${networkName}: engaged watch complete`);
         try {
           if (win && !win.closed) win.close();
         } catch {
@@ -140,70 +154,104 @@ const playDirectLink = (url, networkName, options = {}) => {
       }
     };
 
-    /** Only success path checks time — never reject on win.closed */
-    const checkSuccess = () => {
-      if (settled) return;
-      reportTick();
-      if (Date.now() - started >= minMs) {
-        finish(true);
+    const accumulateHidden = () => {
+      if (lastHiddenAt != null) {
+        leftPageMs += Date.now() - lastHiddenAt;
+        lastHiddenAt = null;
       }
     };
 
-    // When user returns to Gift Tap, re-check (mobile throttles timers in bg)
     const onVisibility = () => {
-      if (document.visibilityState === 'visible') {
-        checkSuccess();
+      if (document.visibilityState === 'hidden') {
+        lastHiddenAt = Date.now();
+      } else if (document.visibilityState === 'visible') {
+        accumulateHidden();
+        checkDone();
+      }
+    };
+
+    const checkDone = () => {
+      if (settled) return;
+      reportTick();
+      const elapsed = Date.now() - started;
+
+      try {
+        if (win.closed && leftPageMs < 2000 && elapsed < 5000) {
+          finish(
+            false,
+            `${networkName}: ad closed or blocked before it could load.`,
+          );
+          return;
+        }
+      } catch {
+        /* cross-origin after redirect */
+      }
+
+      if (elapsed >= minMs) {
+        const hiddenTotal =
+          leftPageMs + (lastHiddenAt != null ? Date.now() - lastHiddenAt : 0);
+        if (hiddenTotal >= MIN_HIDDEN_MS) {
+          finish(true);
+        } else {
+          finish(
+            false,
+            `${networkName}: open the ad tab and stay on it until the timer ends. Blocked ads do not give energy.`,
+          );
+        }
       }
     };
 
     reportTick();
     document.addEventListener('visibilitychange', onVisibility);
+    if (document.visibilityState === 'hidden') lastHiddenAt = Date.now();
 
-    // Poll while Gift Tap is active; also works when bg timers are throttled
-    // because Date.now() is wall clock and visibilitychange rechecks.
-    pollId = setInterval(checkSuccess, 250);
-
-    // Absolute safety net (never hang the UI)
+    pollId = setInterval(checkDone, 250);
     safetyId = setTimeout(() => {
       if (settled) return;
-      if (Date.now() - started >= minMs) finish(true);
-      else
+      accumulateHidden();
+      checkDone();
+      if (!settled) {
         finish(
           false,
-          'Ad timed out. Keep Gift Tap open and wait until the countdown hits 0.',
+          `${networkName}: timed out. Ad may be blocked by security software.`,
         );
-    }, minMs + 30000);
+      }
+    }, minMs + 20000);
   });
 };
 
-const playAdsterra = (opts) =>
-  playDirectLink(ADSTERRA_SMARTLINK, 'Adsterra', opts);
 const playMonetag = (opts) =>
-  playDirectLink(MONETAG_DIRECT_LINK, 'Monetag', opts);
+  playEngagedLink(MONETAG_DIRECT_LINK, 'Monetag', opts);
+const playAdsterra = (opts) =>
+  playEngagedLink(ADSTERRA_SMARTLINK, 'Adsterra', opts);
 
 /**
+ * Free Energy waterfall: Monetag Positive tag (11270717) → Adsterra.
+ * No pure timer rewards — blocked ads do not grant energy.
  * @param {{ onTick?: (secondsLeft: number) => void }} [options]
  */
 export const showRewardedAdWaterfall = async (options = {}) => {
-  console.log('🌊 Ad waterfall: Adsterra → Monetag (timer-only rewards)');
+  console.log(
+    `🌊 Ad waterfall: Monetag zone ${MONETAG_ZONE_ID} → Adsterra (engaged only)`,
+  );
 
   const steps = [
-    { name: 'Adsterra', play: playAdsterra },
     { name: 'Monetag', play: playMonetag },
+    { name: 'Adsterra', play: playAdsterra },
   ];
 
-  let lastError = 'No ads currently available.';
+  let lastError =
+    'No ads available. If security software blocks ads, Free Energy cannot run.';
 
   for (const step of steps) {
     try {
-      console.log(`▶️ ${step.name}...`);
+      console.log(`▶️ ${step.name}…`);
       if (options.onTick) options.onTick(AD_MIN_WATCH_SECONDS);
-      await step.play(options);
-      return { success: true, network: step.name };
+      const result = await step.play(options);
+      return { success: true, network: result.network };
     } catch (err) {
       lastError = err?.message || String(err);
       console.log(`⚠️ ${step.name} failed:`, lastError);
-      // Always try next network (including after popup issues)
     }
   }
 
