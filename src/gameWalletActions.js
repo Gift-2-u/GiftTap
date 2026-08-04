@@ -28,12 +28,12 @@ export const TREASURY = new PublicKey('8G7uEcPS6dwA5wW9bGoqi98EzBunF8trjbbFJkgkv
 export const TOKEN_MINTS = {
   SOL: 'So11111111111111111111111111111111111111112',
   USDC: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
-  GFT: 'YOUR_GFT_MINT_ADDRESS_HERE',
+  G2U: 'YOUR_G2U_MINT_ADDRESS_HERE',
 };
 
 export const TREASURY_TOKEN_ACCOUNTS = {
   USDC: 'H5nSSix2Q4xrSPJCn8f4tY2FNDRazeUot1MNcgATYKEq',
-  GFT: 'Paste_Your_GFT_Token_Account_Here',
+  G2U: 'Paste_Your_G2U_Token_Account_Here',
   SOL: 'GwEPP1njWswga8JoCnQ7AyvJJeqxkx8GzW5o5HFsN1F1',
 };
 
@@ -118,7 +118,7 @@ export async function sendSolFromGameWallet({ toAddress, amountSol }) {
   return { signature: sig, publicKey: keypair.publicKey.toBase58() };
 }
 
-/** Jupiter swap from game wallet (SOL / USDC / GFT). */
+/** Jupiter swap from game wallet (SOL / USDC / G2U). */
 export async function swapFromGameWallet({ fromToken, toToken, amount }) {
   const amt = parseFloat(amount);
   if (!amt || amt <= 0) throw new Error('Enter an amount to swap.');

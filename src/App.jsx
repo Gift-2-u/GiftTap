@@ -23,6 +23,7 @@ import { Toaster, toast } from 'react-hot-toast';
 import DailyGiftBox from './DailyGiftBox';
 import WalletHub from './WalletHub';
 import VaultPage from './VaultPage';
+import LegalPage from './LegalPage';
 import { getPlayerId, isLoggedIn } from './playerIdentity';
 import idl from "../target/idl/gift_staking.json";
 import '@solana/wallet-adapter-react-ui/styles.css';
@@ -95,11 +96,16 @@ export default function App() {
                     </Suspense>
                   }
                 />
-                {/* On-chain GFT staking (Solana Playground program) */}
+                {/* On-chain G2U staking (Solana Playground program) */}
                 <Route path="/stake" element={<StakingPage />} />
-                {/* Off-chain GFT credit vault — GiftLocksmith NFT holders */}
+                {/* Off-chain G2U credit vault — GiftLocksmith NFT holders */}
                 <Route path="/vault" element={<VaultPage />} />
+                <Route path="/terms" element={<LegalPage kind="terms" />} />
+                <Route path="/privacy" element={<LegalPage kind="privacy" />} />
+                <Route path="/legal/terms" element={<LegalPage kind="terms" />} />
+                <Route path="/legal/privacy" element={<LegalPage kind="privacy" />} />
               </Routes>
+              <SiteFooter />
             </div>
           </Router>
         </WalletModalProvider>
@@ -107,6 +113,33 @@ export default function App() {
     </ConnectionProvider>
   );
 }
+
+
+const SiteFooter = () => {
+  const location = useLocation();
+  if (location.pathname.startsWith('/play')) return null;
+  return (
+    <footer className="w-full border-t border-white/10 bg-slate-950/80 mt-auto">
+      <div className="max-w-4xl mx-auto px-4 py-6 flex flex-col sm:flex-row flex-wrap items-center justify-center gap-x-6 gap-y-2 text-sm text-slate-400">
+        <Link to="/terms" className="hover:text-purple-300 font-semibold">
+          Terms of Use
+        </Link>
+        <Link to="/privacy" className="hover:text-purple-300 font-semibold">
+          Privacy Policy
+        </Link>
+        <Link to="/play" className="hover:text-yellow-300 font-semibold">
+          Play Gift Tap
+        </Link>
+        <a
+          href="https://gift2u.fun"
+          className="hover:text-slate-200"
+        >
+          gift2u.fun
+        </a>
+      </div>
+    </footer>
+  );
+};
 
 const Navigation = () => {
   const location = useLocation();
@@ -511,11 +544,11 @@ const StakingPage = () => {
 
   const handleClaimRewards = () => {
     if (pendingRewards <= 0) {
-      return toast.error('No pending rewards yet. Stake GFT to start earning.');
+      return toast.error('No pending rewards yet. Stake G2U to start earning.');
     }
     // On-chain program auto-compounds into principal — no separate claim ix
     toast.success(
-      `~${pendingRewards.toLocaleString(undefined, { maximumFractionDigits: 6 })} GFT already compounding into your staked balance.`,
+      `~${pendingRewards.toLocaleString(undefined, { maximumFractionDigits: 6 })} G2U already compounding into your staked balance.`,
     );
   };
 
@@ -540,10 +573,10 @@ const StakingPage = () => {
             Gift2u · Main site
           </p>
           <h1 className="text-3xl sm:text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-yellow-300">
-            GFT Staking
+            G2U Staking
           </h1>
           <p className="text-sm text-slate-400 leading-relaxed">
-            Stake on-chain GFT for yield. All GFT holders earn{' '}
+            Stake on-chain G2U for yield. All G2U holders earn{' '}
             <span className="text-yellow-400 font-bold">{apy}% APY</span>
             . Deposit from your Solana wallet token balance.
           </p>
@@ -578,7 +611,7 @@ const StakingPage = () => {
           {!isConnected && (
             <div className="mt-4 space-y-3">
               <p className="text-sm text-slate-300">
-                Connect a Solana wallet that holds GFT to deposit into on-chain staking.
+                Connect a Solana wallet that holds G2U to deposit into on-chain staking.
               </p>
               <button
                 type="button"
@@ -594,7 +627,7 @@ const StakingPage = () => {
         {/* Stats — identical labels/order to Vault */}
         <div className="grid grid-cols-2 gap-3">
           <div className={card}>
-            <p className="text-xs text-slate-500">Liquid GFT</p>
+            <p className="text-xs text-slate-500">Liquid G2U</p>
             <p className="text-2xl font-black text-sky-300 mt-1">
               {liquidGft.toLocaleString(undefined, { maximumFractionDigits: 4 })}
             </p>
@@ -620,7 +653,7 @@ const StakingPage = () => {
         {/* Actions — Deposit / Withdraw / Claim like Vault */}
         <div className={card + ' space-y-4'}>
           <label className="block text-xs font-bold text-slate-400 uppercase">
-            Amount (GFT)
+            Amount (G2U)
           </label>
           <input
             type="number"
@@ -681,7 +714,7 @@ const StakingPage = () => {
             onClick={handleClaimRewards}
             className="w-full rounded-xl border border-emerald-500/50 text-emerald-300 font-bold py-3 disabled:opacity-40"
           >
-            Claim rewards → liquid GFT
+            Claim rewards → liquid G2U
           </button>
           <p className="text-[11px] text-slate-500 text-center leading-relaxed">
             Pending rewards auto-compound into <span className="text-slate-400">Staked</span> on-chain.
@@ -696,7 +729,7 @@ const StakingPage = () => {
           </Link>
         </p>
         <p className="text-center text-xs text-slate-500 leading-relaxed px-2">
-          On-chain SPL GFT · TVL {(tvl || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })} GFT
+          On-chain SPL G2U · TVL {(tvl || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })} G2U
           in protocol. Confirm txs in your wallet. Rates may change — see Terms.
         </p>
       </div>
@@ -719,14 +752,14 @@ const HomePage = () => {
       
       <div className="mt-10 flex flex-col sm:flex-row gap-4 items-center justify-center">
         <Link to="/stake" className="bg-purple-600 hover:bg-purple-700 px-10 py-4 rounded-full font-black text-lg inline-block">
-          STAKE GFT
+          STAKE G2U
         </Link>
         <Link to="/vault" className="bg-slate-700 hover:bg-slate-600 border border-yellow-500/40 px-10 py-4 rounded-full font-black text-lg inline-block">
           LOCKSMITH VAULT
         </Link>
       </div>
       <p className="mt-4 text-sm text-slate-400 max-w-md">
-        <span className="text-purple-300 font-bold">Stake</span> = on-chain GFT for all holders ·{" "}
+        <span className="text-purple-300 font-bold">Stake</span> = on-chain G2U for all holders ·{" "}
         <span className="text-yellow-300 font-bold">Vault</span> = credit yield for GiftLocksmith NFTs
       </p>
     </main>

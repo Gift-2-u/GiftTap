@@ -10,8 +10,8 @@ const WhitepaperModal = ({ isWhitepaperOpen, setIsWhitepaperOpen, onClose }) => 
   const PLAYBOOK = [
     {
       id: 1,
-      title: "1. GFTshards",
-      content: "GFTshards are the core in-game currency of Gift Tap. Tap the gift to extract Shards.\n\nAll new players begin at Level 0 with 1 Shard per tap (before multipliers). Shards climb the leaderboard, pay shop items and ascension walls, and can be converted through Shard Swap into GFT credit (and later on-chain $GFT when linked).\n\nGFTshards are not money and not a promise of profit. See Terms of Use."
+      title: "1. G2Ushards",
+      content: "G2Ushards are the core in-game currency of Gift Tap. Tap the gift to extract Shards.\n\nAll new players begin at Level 0 with 1 Shard per tap (before multipliers). Shards climb the leaderboard, pay shop items and ascension walls, and can be converted through Shard Swap into G2U credit (and later on-chain $G2U when linked).\n\nG2Ushards are not money and not a promise of profit. See Terms of Use."
     },
     {
       id: 2,
@@ -21,37 +21,37 @@ const WhitepaperModal = ({ isWhitepaperOpen, setIsWhitepaperOpen, onClose }) => 
     {
       id: 3,
       title: "3. Levels & Ascension Walls",
-      content: "Level rises with lifetime taps. Higher tiers raise permanent tap multipliers:\n\n• Levels 0–4: 1.00x (10,000 taps per level)\n• Levels 5–9: 1.15x (15,000 taps per level)\n• Levels 10–19: 1.30x (25,000 taps per level)\n• Levels 20–29: 1.50x (50,000 taps per level)\n• Levels 30–49: 1.75x (100,000 taps per level)\n• Level 50: 2.00x\n\nAscension walls (pay Shards and/or SOL to unlock the next tier):\n• Wall L4 → L5: 15,000 Shards or 0.025 SOL\n• Wall L9 → L10: 30,000 Shards or 0.05 SOL\n• Wall L19 → L20: 75,000 Shards or 0.10 SOL\n• Wall L29 → L30: 150,000 Shards or 0.20 SOL\n• Wall L49 → L50: 500,000 Shards or 0.75 SOL\n\nWalls are OPTIONAL power-ups: you can stay and play on any Level and keep earning spendable GFTshards forever. Climbing costs Shards or SOL and unlocks higher multipliers and the next tier. You are never forced to pay to keep mining. SOL skips the shard grind for the climb fee."
+      content: "Level rises with lifetime taps. Higher tiers raise permanent tap multipliers:\n\n• Levels 0–4: 1.00x (10,000 taps per level)\n• Levels 5–9: 1.15x (15,000 taps per level)\n• Levels 10–19: 1.30x (25,000 taps per level)\n• Levels 20–29: 1.50x (50,000 taps per level)\n• Levels 30–49: 1.75x (100,000 taps per level)\n• Level 50: 2.00x\n\nAscension walls (pay Shards and/or SOL to unlock the next tier):\n• Wall L4 → L5: 15,000 Shards or 0.025 SOL\n• Wall L9 → L10: 30,000 Shards or 0.05 SOL\n• Wall L19 → L20: 75,000 Shards or 0.10 SOL\n• Wall L29 → L30: 150,000 Shards or 0.20 SOL\n• Wall L49 → L50: 500,000 Shards or 0.75 SOL\n\nWalls are OPTIONAL power-ups: you can stay and play on any Level and keep earning spendable G2Ushards forever. Climbing costs Shards or SOL and unlocks higher multipliers and the next tier. You are never forced to pay to keep mining. SOL skips the shard grind for the climb fee."
     },
     {
       id: 4,
       title: "4. Gift2u Elves NFTs",
-      content: "NFTs are sold in the shop under the separate NFTs tab — not mixed with temporary SOL boosts.\n\nCollection: Gift2u Elves (Metaplex Core on Solana mainnet).\n\nGiftLocksmith (Gen 1 · Rare · Wave 1 of 3, max 5,000 planned):\n• Mint price Wave 1: 0.25 SOL (later waves may cost more).\n• Max 5 mints per wallet on Wave 1.\n• Permanent on-chain NFT in your game wallet.\n\nWhat GiftLocksmith unlocks:\n• Shard Swap (GFTshards → GFT) immediately — no Level 5 + Swap Badge wait.\n• Better swap terms: 4% fee in GFT (free path is 10%).\n• Higher daily swap cap than free players.\n• Planned vault / better APY access on Gift2u (when vault launches).\n\nFree players unlock Shard Swap with Level 5+ AND a Swap Badge (25k shards; durability drains by volume, top up with GFT) — higher fees and lower daily caps than NFT holders. The NFT is an advantage, not the only way to play or ever swap.\n\nFuture Elf classes (e.g. production / luck / energy) may stack later. GiftLocksmith is the first utility class: swap access and better cash-out terms.\n\nNFTs are digital assets. Prices can go to zero. No ROI or profit is promised."
+      content: "NFTs are sold in the shop under the separate NFTs tab — not mixed with temporary SOL boosts.\n\nCollection: Gift2u Elves (Metaplex Core on Solana mainnet).\n\nGiftLocksmith (Gen 1 · Rare · Wave 1 of 3, max 5,000 planned):\n• Mint price Wave 1: 0.25 SOL (later waves may cost more).\n• Max 5 mints per wallet on Wave 1.\n• Permanent on-chain NFT in your game wallet.\n\nWhat GiftLocksmith unlocks:\n• Shard Swap (G2Ushards → G2U) immediately — no Level 5 + Swap Badge wait.\n• Better swap terms: 4% fee in G2U (free path is 10%).\n• Higher daily swap cap than free players.\n• Planned vault / better APY access on Gift2u (when vault launches).\n\nFree players unlock Shard Swap with Level 5+ AND a Swap Badge (25k shards; durability drains by volume, top up with G2U) — higher fees and lower daily caps than NFT holders. The NFT is an advantage, not the only way to play or ever swap.\n\nFuture Elf classes (e.g. production / luck / energy) may stack later. GiftLocksmith is the first utility class: swap access and better cash-out terms.\n\nNFTs are digital assets. Prices can go to zero. No ROI or profit is promised."
     },
     {
       id: 5,
       title: "5. Shop: Shards, Boosts & NFTs",
-      content: "Gift Shop has four areas:\n\n• Shards — temporary boosts paid with GFTshards (Frenzy, Battery, Refill, Heavy Hands).\n• Boosts — temporary SOL boosts (bots, contracts, power multipliers). These are NOT NFTs.\n• NFTs — on-chain mints (GiftLocksmith Wave 1). Permanent utility.\n• Pack (Backpack) — activate temporary items you own. On-chain NFTs live in your wallet, not the backpack.\n\nThe core game stays free-to-play. Purchases are optional."
+      content: "Gift Shop has four areas:\n\n• Shards — temporary boosts paid with G2Ushards (Frenzy, Battery, Refill, Heavy Hands).\n• Boosts — temporary SOL boosts (bots, contracts, power multipliers). These are NOT NFTs.\n• NFTs — on-chain mints (GiftLocksmith Wave 1). Permanent utility.\n• Pack (Backpack) — activate temporary items you own. On-chain NFTs live in your wallet, not the backpack.\n\nThe core game stays free-to-play. Purchases are optional."
     },
     {
       id: 6,
-      title: "6. Shard Swap (GFTshards → GFT)",
-      content: "Open Wallet → Shard to convert GFTshards into GFT credit on your account.\n\nHow conversion works:\n• All input shards convert at the current rate (provisional until official $GFT launch — rate may change).\n• Platform fee is taken in GFT (not by cutting shards first): free path 10%, GiftLocksmith 4%.\n• You receive net GFT credit. Fee GFT is retained by the platform.\n\nUnlock paths:\n• Free: Level 5+ AND Swap Badge / GFTshard license (both required — see in-app cost).\n• GiftLocksmith NFT: instant unlock + better fee + higher daily cap (skips Level 5 + badge).\n\nDaily caps and minimum swap sizes apply (see in-app swap screen). Caps reset at UTC midnight.\n\nGFT credit is account balance until an on-chain $GFT mint and withdrawal path are fully linked. Not an investment; no promise of market value."
+      title: "6. Shard Swap (G2Ushards → G2U)",
+      content: "Open Wallet → Shard to convert G2Ushards into G2U credit on your account.\n\nHow conversion works:\n• All input shards convert at the current rate (provisional until official $G2U launch — rate may change).\n• Platform fee is taken in G2U (not by cutting shards first): free path 10%, GiftLocksmith 4%.\n• You receive net G2U credit. Fee G2U is retained by the platform.\n\nUnlock paths:\n• Free: Level 5+ AND Swap Badge / Swap Badge (both required — see in-app cost).\n• GiftLocksmith NFT: instant unlock + better fee + higher daily cap (skips Level 5 + badge).\n\nDaily caps and minimum swap sizes apply (see in-app swap screen). Caps reset at UTC midnight.\n\nG2U credit is account balance until an on-chain $G2U mint and withdrawal path are fully linked. Not an investment; no promise of market value."
     },
     {
       id: 7,
-      title: "7. Wallet, $GFT & Disclaimers",
-      content: "A Solana wallet is created for you in Gift Tap. You own the keys. Save your 12-word phrase in Menu — we cannot restore lost keys.\n\nPurchases (boosts, NFTs, ascension SOL) use your game wallet on mainnet. Network fees apply.\n\nIMPORTANT — NOT AN INVESTMENT:\n• GFTshards and $GFT are not investment products. No promise of profit, yield, or price.\n• Crypto is volatile. Gift2u is not responsible for price changes of $GFT, SOL, NFTs, or any asset.\n• This is not financial advice. See Terms of Use in the Menu.\n\nComing from Telegram? Use Restore with your 12-word phrase."
+      title: "7. Wallet, $G2U & Disclaimers",
+      content: "A Solana wallet is created for you in Gift Tap. You own the keys. Save your 12-word phrase in Menu — we cannot restore lost keys.\n\nPurchases (boosts, NFTs, ascension SOL) use your game wallet on mainnet. Network fees apply.\n\nIMPORTANT — NOT AN INVESTMENT:\n• G2Ushards and $G2U are not investment products. No promise of profit, yield, or price.\n• Crypto is volatile. Gift2u is not responsible for price changes of $G2U, SOL, NFTs, or any asset.\n• This is not financial advice. See Terms of Use in the Menu.\n\nComing from Telegram? Use Restore with your 12-word phrase."
     },
     {
       id: 8,
       title: "8. Referrals (Invite Friends)",
-      content: "Grow the Gift Tap community with invite links from the Friends tab.\n\nJoiner bonus:\n• New players who join with your link receive +500 GFTshards when they start.\n\nReferrer bonuses (you earn these — not paid on mere join):\n• +1,000 GFTshards when your friend reaches Level 1 (10,000 lifetime taps).\n• +3,000 GFTshards when your friend clears the first Ascension Wall (Level 4 → Level 5), by paying the wall fee in Shards or SOL.\n\nEach milestone is paid once per invited friend. Mining fake accounts is banned under the Code of Conduct."
+      content: "Grow the Gift Tap community with invite links from the Friends tab.\n\nJoiner bonus:\n• New players who join with your link receive +500 G2Ushards when they start.\n\nReferrer bonuses (you earn these — not paid on mere join):\n• +1,000 G2Ushards when your friend reaches Level 1 (10,000 lifetime taps).\n• +3,000 G2Ushards when your friend clears the first Ascension Wall (Level 4 → Level 5), by paying the wall fee in Shards or SOL.\n\nEach milestone is paid once per invited friend. Mining fake accounts is banned under the Code of Conduct."
     },
     {
       id: 9,
       title: "9. Code of Conduct",
-      content: "No auto-clickers, scripts, multi-account mining, or abuse of swap/referral systems.\n\nFlagged accounts may be locked and lose GFTshard-to-GFT swap eligibility and other rewards. Play fair."
+      content: "No auto-clickers, scripts, multi-account mining, or abuse of swap/referral systems.\n\nFlagged accounts may be locked and lose G2Ushard-to-G2U swap eligibility and other rewards. Play fair."
     }
   ];
 

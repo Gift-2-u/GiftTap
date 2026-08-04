@@ -4,8 +4,8 @@ import { formatFiat, valuePortfolio } from './fiatPrices';
 const TOKEN_META = {
   sol: { label: 'SOL', decimals: 4 },
   usdc: { label: 'USDC', decimals: 2 },
-  GFT: { label: 'GFT', decimals: 4 },
-  GFTshards: { label: 'GFTshards', decimals: 0 },
+  G2U: { label: 'G2U', decimals: 4 },
+  G2Ushards: { label: 'G2Ushards', decimals: 0 },
 };
 
 /**
@@ -18,7 +18,7 @@ export default function TokenBalanceList({
   style = {},
 }) {
   const portfolio = valuePortfolio(balances, currency, rates);
-  const order = ['sol', 'usdc', 'GFT', 'GFTshards'];
+  const order = ['sol', 'usdc', 'G2U', 'G2Ushards'];
 
   return (
     <div style={{ width: '100%', textAlign: 'left', ...style }}>
@@ -58,7 +58,7 @@ export default function TokenBalanceList({
         </div>
         {portfolio.hasUnpriced ? (
           <div style={{ color: '#555', fontSize: '9px', marginTop: '6px', lineHeight: 1.3 }}>
-            GFT &amp; shards not in total (no market price yet).
+            G2U &amp; shards not in total (no market price yet).
           </div>
         ) : portfolio.total == null ? (
           <div style={{ color: '#555', fontSize: '9px', marginTop: '6px' }}>
@@ -96,7 +96,7 @@ export default function TokenBalanceList({
                 <div style={{ color: '#888', fontSize: '11px', marginTop: '2px' }}>
                   {line.priced && line.fiat != null
                     ? formatFiat(line.fiat, currency)
-                    : key === 'GFT' || key === 'GFTshards'
+                    : key === 'G2U' || key === 'G2Ushards'
                       ? 'No market price yet'
                       : '—'}
                 </div>

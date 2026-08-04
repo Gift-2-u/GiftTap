@@ -23,8 +23,8 @@ import AppNotice from './AppNotice';
 
 /** Tokens shown on Solana tab — same set as the game wallet (shards are off-chain only). */
 const USDC_MINT = new PublicKey('EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v');
-/** GFT mint used by staking / site (config). */
-const GFT_MINT = MINT_ADDRESS;
+/** G2U mint used by staking / site (config). */
+const G2U_MINT = MINT_ADDRESS;
 
 const tabBtn = (active) => ({
   flex: 1,
@@ -63,8 +63,8 @@ export function SolanaWalletPanel({ note, onClose }) {
   const [balances, setBalances] = useState({
     sol: 0,
     usdc: 0,
-    GFT: 0,
-    GFTshards: 0,
+    G2U: 0,
+    G2Ushards: 0,
   });
   const [balLoading, setBalLoading] = useState(false);
   const [balError, setBalError] = useState('');
@@ -257,16 +257,16 @@ export function SolanaWalletPanel({ note, onClose }) {
           return 0;
         }
       };
-      const [solLamports, usdc, gft] = await Promise.all([
+      const [solLamports, usdc, g2u] = await Promise.all([
         conn.getBalance(owner, 'confirmed'),
         readSpl(USDC_MINT),
-        readSpl(GFT_MINT),
+        readSpl(G2U_MINT),
       ]);
       setBalances({
         sol: solLamports / LAMPORTS_PER_SOL,
         usdc,
-        GFT: gft,
-        GFTshards: 0,
+        G2U: g2u,
+        G2Ushards: 0,
       });
     } catch (e) {
       console.error('Solana balance fetch failed', e);
@@ -284,7 +284,7 @@ export function SolanaWalletPanel({ note, onClose }) {
 
   useEffect(() => {
     if (!connected || !publicKey) {
-      setBalances({ sol: 0, usdc: 0, GFT: 0, GFTshards: 0 });
+      setBalances({ sol: 0, usdc: 0, G2U: 0, G2Ushards: 0 });
       return;
     }
     loadBalances();
@@ -447,7 +447,7 @@ export function SolanaWalletPanel({ note, onClose }) {
             style={{ marginBottom: '10px' }}
           />
           <p style={{ color: '#555', fontSize: '10px', margin: '0 0 10px', lineHeight: 1.4 }}>
-            SOL, USDC, GFT on-chain. GFTshards are game-only.
+            SOL, USDC, G2U on-chain. G2Ushards are game-only.
             {balLoading ? ' · Refreshing…' : ''}
           </p>
           {balError ? (
@@ -717,7 +717,7 @@ export function GameWalletPanel({ onClose }) {
       ? liveSol
       : Number(row?.sol_balance) || 0;
   const shards = Number(row?.shard_balance) || 0;
-  const gft = Number(row?.gft_token_balance) || 0;
+  const g2u = Number(row?.gft_token_balance) || 0;
   const usdc = Number(row?.usdc_balance) || 0;
   const uname = row?.username || profile.username || 'Player';
 
@@ -747,8 +747,8 @@ export function GameWalletPanel({ onClose }) {
             balances={{
               sol: solDisplay,
               usdc,
-              GFT: gft,
-              GFTshards: shards,
+              G2U: g2u,
+              G2Ushards: shards,
             }}
             currency={displayCurrency}
             rates={fiatRates}
@@ -810,8 +810,8 @@ export function GameWalletPanel({ onClose }) {
         balances={{
           sol: solDisplay,
           usdc,
-          GFT: gft,
-          GFTshards: shards,
+          G2U: g2u,
+          G2Ushards: shards,
         }}
         inventory={row?.inventory || {}}
         maxUnlockedLevel={Number(row?.max_unlocked_level) || 4}

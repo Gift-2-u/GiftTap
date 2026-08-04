@@ -58,7 +58,7 @@ import {
 const TOKEN_MINTS = {
   SOL: "So11111111111111111111111111111111111111112",
   USDC: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
-  GFT: "YOUR_GFT_MINT_ADDRESS_HERE" // <-- Replace with real GFT mint
+  G2U: "YOUR_G2U_MINT_ADDRESS_HERE" // <-- Replace with real G2U mint
 };
 
 // --- 1. CLOUD STORAGE HELPERS ---
@@ -143,7 +143,7 @@ export const ASCENSION_WALLS = {
 
 /**
  * True when player has maxed their *unlocked* tier and may optionally climb the wall.
- * They can still earn GFTshards forever at this level — wall is perks only (STEPN-style).
+ * They can still earn G2Ushards forever at this level — wall is perks only (STEPN-style).
  */
 export const isAtAscensionWall = (currentLevel, maxUnlockedLevel, lifetimeTaps) => {
   if (!ASCENSION_WALLS[maxUnlockedLevel]) return false;
@@ -372,7 +372,7 @@ const GiftTapGame = () => {
   const [topLeader, setTopLeader] = useState({ name: '...', score: 0 });
   const [leaderboard, setLeaderboard] = useState([]); // Fixed: Added missing state
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [balances, setBalances] = useState({ sol: 0, GFT: 0, GFTshards: 0, usdc: 0 });
+  const [balances, setBalances] = useState({ sol: 0, G2U: 0, G2Ushards: 0, usdc: 0 });
   // Leaderboard page tab: always open on Season when navigating to Ranks
   const [leaderboardType, setLeaderboardType] = useState('Season');
   const [leaderboardLoading, setLeaderboardLoading] = useState(false);
@@ -492,7 +492,7 @@ const GiftTapGame = () => {
   const [isWhitepaperOpen, setIsWhitepaperOpen] = useState(false);
   const [legalKind, setLegalKind] = useState(null); // 'terms' | 'privacy' | null
   const [swapFromToken, setSwapFromToken] = useState('SOL');
-  const [swapToToken, setSwapToToken] = useState('GFT');
+  const [swapToToken, setSwapToToken] = useState('G2U');
   const [isShardSwapOpen, setIsShardSwapOpen] = useState(false);
   const [shardSwapAmount, setShardSwapAmount] = useState('');
   const [hasLocksmithNft, setHasLocksmithNft] = useState(false);
@@ -629,7 +629,7 @@ const GiftTapGame = () => {
   const getSwapBalance = (token) => {
     if (token === 'SOL') return balances.sol?.toFixed(4) || '0.0000';
     if (token === 'USDC') return balances.usdc?.toFixed(2) || '0.00'; // Adjust if your USDC state name is different
-    if (token === 'GFT') return balances.GFT?.toLocaleString() || '0.00';
+    if (token === 'G2U') return balances.G2U?.toLocaleString() || '0.00';
     return '0.00';
   };
 
@@ -817,8 +817,8 @@ const GiftTapGame = () => {
         
         setBalances({ 
           sol: playerRow.sol_balance || 0, 
-          GFT: playerRow.gft_token_balance || 0, 
-          GFTshards: Number(playerRow.shard_balance) || 0, 
+          G2U: playerRow.gft_token_balance || 0, 
+          G2Ushards: Number(playerRow.shard_balance) || 0, 
           usdc: playerRow.usdc_balance || 0 
         });
         setBalance(Number(playerRow.shard_balance));
@@ -2006,8 +2006,8 @@ const GiftTapGame = () => {
 
       setBalances({
         sol: realSol,
-        GFT: 0,
-        GFTshards: balance, // Pulls from your 'balance' state
+        G2U: 0,
+        G2Ushards: balance, // Pulls from your 'balance' state
         usdc: realUsdc,
       });
 
@@ -2296,15 +2296,15 @@ const GiftTapGame = () => {
       return;
     }
     if (balance < cost) {
-      notify(`Need ${cost.toLocaleString()} GFTshards to buy the free swap license.`);
+      notify(`Need ${cost.toLocaleString()} G2Ushards to buy the free swap license.`);
       return;
     }
     if (stats.inventory?.swap_unlocked || stats.inventory?.swap_unlock_burned) {
       const d = getSwapDurability(stats.inventory);
       if (d <= 0) {
-        notify('Swap Badge already owned but at 0% — top it up with GFT credit below.');
+        notify('Swap Badge already owned but at 0% — top it up with G2U credit below.');
       } else {
-        notify('Swap Badge already owned. Need Level 5+ if still locked, or top up durability with GFT.');
+        notify('Swap Badge already owned. Need Level 5+ if still locked, or top up durability with G2U.');
       }
       return;
     }
@@ -2323,7 +2323,7 @@ const GiftTapGame = () => {
       if (error) throw error;
       setBalance(newBal);
       setStats((s) => ({ ...s, inventory: nextInv }));
-      notify('✅ Swap Badge charged to 100%! Free path: 10% fee, daily cap, durability drains by volume. Top up with GFT when low.');
+      notify('✅ Swap Badge charged to 100%! Free path: 10% fee, daily cap, durability drains by volume. Top up with G2U when low.');
     } catch (e) {
       console.error(e);
       notify(e?.message || 'Failed to unlock swap');
@@ -2333,7 +2333,7 @@ const GiftTapGame = () => {
   };
 
   /**
-   * GFTshards → GFT credit (off-chain gft_token_balance until on-chain mint).
+   * G2Ushards → G2U credit (off-chain gft_token_balance until on-chain mint).
    * Free vs Locksmith tiers from getSwapAccess.
    */
   const executeShardSwap = async () => {
@@ -2350,7 +2350,7 @@ const GiftTapGame = () => {
     }
     const amt = Number(shardSwapAmount);
     if (balance < amt) {
-      notify('Not enough GFTshards.');
+      notify('Not enough G2Ushards.');
       return;
     }
 
@@ -2359,7 +2359,7 @@ const GiftTapGame = () => {
       const newShardBal = Math.round((balance - amt) * 1000) / 1000;
       const newGft =
         Math.round(
-          ((Number(balances.GFT) || 0) + quote.gftOut) * 1e6,
+          ((Number(balances.G2U) || 0) + quote.gftOut) * 1e6,
         ) / 1e6;
       const nextInv = inventoryAfterSwap(stats.inventory, amt, quote.feeGft, {
         isFreeTier: access.tier === 'free',
@@ -2377,7 +2377,7 @@ const GiftTapGame = () => {
       if (error) throw error;
 
       setBalance(newShardBal);
-      setBalances((b) => ({ ...b, GFT: newGft, GFTshards: newShardBal }));
+      setBalances((b) => ({ ...b, G2U: newGft, G2Ushards: newShardBal }));
       setStats((s) => ({ ...s, inventory: nextInv }));
       setShardSwapAmount('');
       const durMsg =
@@ -2385,8 +2385,8 @@ const GiftTapGame = () => {
           ? ` Badge ${quote.durabilityAfter.toFixed(1)}% left.`
           : '';
       notify(
-        `✅ Swapped ${amt.toLocaleString()} GFTshards → ${quote.gftOut} GFT ` +
-          `(${access.label}). Fee ${quote.feeGft} GFT (${(access.feeBps / 100).toFixed(1)}%).` +
+        `✅ Swapped ${amt.toLocaleString()} G2Ushards → ${quote.gftOut} G2U ` +
+          `(${access.label}). Fee ${quote.feeGft} G2U (${(access.feeBps / 100).toFixed(1)}%).` +
           durMsg,
       );
     } catch (e) {
@@ -2398,16 +2398,16 @@ const GiftTapGame = () => {
   };
 
 
-  /** Free Swap Badge: spend GFT credit to restore durability % (no browser prompt) */
+  /** Free Swap Badge: spend G2U credit to restore durability % (no browser prompt) */
   const topUpSwapBadge = async (gftAmtIn) => {
-    const gftBal = Number(balances.GFT) || 0;
+    const gftBal = Number(balances.G2U) || 0;
     const gftAmt = Number(gftAmtIn);
     if (!Number.isFinite(gftAmt) || gftAmt < SHARD_SWAP_CONFIG.durabilityTopUpMinGft) {
-      notify(`Min top-up is ${SHARD_SWAP_CONFIG.durabilityTopUpMinGft} GFT.`);
+      notify(`Min top-up is ${SHARD_SWAP_CONFIG.durabilityTopUpMinGft} G2U.`);
       return;
     }
     if (gftBal < gftAmt) {
-      notify('Not enough GFT credit. Mine/swap shards → GFT first, or mint Locksmith.');
+      notify('Not enough G2U credit. Mine/swap shards → G2U first, or mint Locksmith.');
       return;
     }
     const result = inventoryAfterDurabilityTopUp(stats.inventory, gftAmt);
@@ -2427,10 +2427,10 @@ const GiftTapGame = () => {
         })
         .eq(DB_PLAYER_ID, playerId);
       if (error) throw error;
-      setBalances((b) => ({ ...b, GFT: newGft }));
+      setBalances((b) => ({ ...b, G2U: newGft }));
       setStats((s) => ({ ...s, inventory: result.inventory }));
       notify(
-        `✅ Badge +${result.durabilityAdded}% → ${result.newDurability.toFixed(1)}% (spent ${result.gftSpent} GFT).`,
+        `✅ Badge +${result.durabilityAdded}% → ${result.newDurability.toFixed(1)}% (spent ${result.gftSpent} G2U).`,
         { success: true },
       );
     } catch (e) {
@@ -2440,16 +2440,16 @@ const GiftTapGame = () => {
     }
   };
 
-  /** Raise Swap Badge level with GFT (more shards per durability %) */
+  /** Raise Swap Badge level with G2U (more shards per durability %) */
   const levelUpSwapBadge = async () => {
-    const gftBal = Number(balances.GFT) || 0;
+    const gftBal = Number(balances.G2U) || 0;
     const result = inventoryAfterBadgeLevelUp(stats.inventory);
     if (result.error) {
       notify(result.error);
       return;
     }
     if (gftBal < result.gftCost) {
-      notify(`Need ${result.gftCost} GFT credit to level badge to Lv${result.newLevel}.`);
+      notify(`Need ${result.gftCost} G2U credit to level badge to Lv${result.newLevel}.`);
       return;
     }
     setShardSwapBusy(true);
@@ -2464,7 +2464,7 @@ const GiftTapGame = () => {
         })
         .eq(DB_PLAYER_ID, playerId);
       if (error) throw error;
-      setBalances((b) => ({ ...b, GFT: newGft }));
+      setBalances((b) => ({ ...b, G2U: newGft }));
       setStats((s) => ({ ...s, inventory: result.inventory }));
       notify(
         `✅ Swap Badge Lv${result.previousLevel} → Lv${result.newLevel}. Full charge now lasts ~${result.fullVolumeAfter.toLocaleString()} shards volume.`,
@@ -2518,7 +2518,7 @@ const GiftTapGame = () => {
       // 5. FETCH ASSEMBLED TRANSACTION
       const TREASURY_TOKEN_ACCOUNTS = {
         'USDC': 'H5nSSix2Q4xrSPJCn8f4tY2FNDRazeUot1MNcgATYKEq',
-        'GFT': 'Paste_Your_GFT_Token_Account_Here',
+        'G2U': 'Paste_Your_G2U_Token_Account_Here',
         'SOL': 'GwEPP1njWswga8JoCnQ7AyvJJeqxkx8GzW5o5HFsN1F1' 
       };
 
@@ -2804,7 +2804,7 @@ const GiftTapGame = () => {
                   <HelpTip tipKey="climb" size={18} onOpenPlaybook={() => setIsWhitepaperOpen(true)} />
                 </h2>
                 <p style={{ color: '#ddd', fontSize: '13px', lineHeight: 1.45 }}>
-                  You can <strong style={{ color: '#4ade80' }}>keep mining GFTshards</strong> at Level{' '}
+                  You can <strong style={{ color: '#4ade80' }}>keep mining G2Ushards</strong> at Level{' '}
                   {maxUnlockedLevel} forever. Climb only if you want higher power (
                   <strong>{getLevelMultiplier(wall.targetLevel)}x</strong> at L{wall.targetLevel}).
                 </p>
@@ -2826,7 +2826,7 @@ const GiftTapGame = () => {
                     <div style={{ width: `${pct}%`, height: '100%', background: ready ? '#4ade80' : '#a855f7' }} />
                   </div>
                   <p style={{ margin: '10px 0 0', fontSize: 11, color: '#888', lineHeight: 1.4 }}>
-                    Every tap still earns <strong style={{ color: '#4ade80' }}>spendable GFTshards</strong>.
+                    Every tap still earns <strong style={{ color: '#4ade80' }}>spendable G2Ushards</strong>.
                     Wall = bonus multipliers & higher tiers — never a closed gate.
                   </p>
                 </div>
@@ -2954,12 +2954,12 @@ const GiftTapGame = () => {
                 style={{ ...styles.walletBtnPremium, outline: 'none', WebkitTapHighlightColor: 'transparent' }}
                 title={playerWallet ? `${playerWallet.slice(0, 4)}…${playerWallet.slice(-4)} — open wallet` : 'Open wallet'}
               >
-                {/* GFT + SOL only — GFTshards shown large in center HUD */}
+                {/* G2U + SOL only — G2Ushards shown large in center HUD */}
                 <span style={{ ...styles.walletChip, opacity: 0.95 }}>
-                  {/* Blue gift = GFT token / credit logo */}
-                  <img src="/Gift2u_logo.png" alt="GFT" style={styles.walletChipIcon} />
+                  {/* Blue gift = G2U token / credit logo */}
+                  <img src="/Gift2u_logo.png" alt="G2U" style={styles.walletChipIcon} />
                   <span style={{ color: '#7dd3fc' }}>
-                    {Number(balances.GFT || 0).toLocaleString(undefined, {
+                    {Number(balances.G2U || 0).toLocaleString(undefined, {
                       maximumFractionDigits: 2,
                     })}
                   </span>
@@ -3086,10 +3086,10 @@ const GiftTapGame = () => {
 
                     </div>
 
-                    {/* THE MAIN EVENT: Balance + GFTshard logo */}
+                    {/* THE MAIN EVENT: Balance + G2Ushard logo */}
                     <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: '10px' }}>
                       <img
-                        src="/shop/GFTshard.png"
+                        src="/shop/G2Ushard.png"
                         alt=""
                         width={52}
                         height={52}
@@ -3104,7 +3104,7 @@ const GiftTapGame = () => {
                         {balance.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                       </h1>
                       <span style={{ color: '#ffd700', fontSize: '16px', fontWeight: 'bold', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                        GFTshards
+                        G2Ushards
                         <HelpTip tipKey="level_shards" size={16} onOpenPlaybook={() => setIsWhitepaperOpen(true)} />
                       </span>
                     </div>
@@ -3559,7 +3559,7 @@ const GiftTapGame = () => {
                 </div>
 
                 <p style={{ fontSize: '10px', color: '#666', marginTop: '15px' }}>
-                  Only send Solana (SOL) or SPL tokens (like GFT) to this address.
+                  Only send Solana (SOL) or SPL tokens (like G2U) to this address.
                 </p>
               </div>
             </div>
@@ -3685,7 +3685,7 @@ const GiftTapGame = () => {
                     >
                       <option value="SOL">SOL</option>
                       <option value="USDC">USDC</option>
-                      <option value="GFT">GFT</option>
+                      <option value="G2U">G2U</option>
                     </select>
                   </div>
                 </div>
@@ -3729,7 +3729,7 @@ const GiftTapGame = () => {
                     >
                       <option value="SOL">SOL</option>
                       <option value="USDC">USDC</option>
-                      <option value="GFT">GFT</option>
+                      <option value="G2U">G2U</option>
                     </select>
                   </div>
                 </div>
@@ -3841,11 +3841,11 @@ const GiftTapGame = () => {
                       {swapAccess.tier === 'locksmith' ? 'GiftLocksmith' : 'Swap active'}
                       {hasLocksmithNft ? ' 🔑' : ''}
                     </div>
-                    Fee {(swapAccess.feeBps / 100).toFixed(1)}% in GFT · Min {swapAccess.minShards.toLocaleString()} shards
+                    Fee {(swapAccess.feeBps / 100).toFixed(1)}% in G2U · Min {swapAccess.minShards.toLocaleString()} shards
                     <br />
                     Today: {getDailySwapUsed(stats.inventory).toLocaleString()} / {swapAccess.dailyCapShards.toLocaleString()} shards
                     <br />
-                    Rate: {SHARD_SWAP_CONFIG.shardsPerGft.toLocaleString()} shards → 1 GFT (provisional until launch)
+                    Rate: {SHARD_SWAP_CONFIG.shardsPerGft.toLocaleString()} shards → 1 G2U (provisional until launch)
                   </div>
                 )}
 
@@ -3894,7 +3894,7 @@ const GiftTapGame = () => {
                           </>
                         ) : (
                           <div style={{ fontSize: 11, color: '#aaa', lineHeight: 1.4, marginTop: 2 }}>
-                            Free path badge (same spirit as Locksmith NFT). Unlock at L{SHARD_SWAP_CONFIG.freeUnlockMinLevel}+ for {SHARD_SWAP_CONFIG.freeUnlockBurnShards.toLocaleString()} shards. Level up with GFT so each % lasts longer.
+                            Free path badge (same spirit as Locksmith NFT). Unlock at L{SHARD_SWAP_CONFIG.freeUnlockMinLevel}+ for {SHARD_SWAP_CONFIG.freeUnlockBurnShards.toLocaleString()} shards. Level up with G2U so each % lasts longer.
                           </div>
                         )}
                       </div>
@@ -3908,7 +3908,7 @@ const GiftTapGame = () => {
                             disabled={
                               shardSwapBusy ||
                               getSwapDurability(stats.inventory) >= 100 ||
-                              (Number(balances.GFT) || 0) < g
+                              (Number(balances.G2U) || 0) < g
                             }
                             onClick={() => topUpSwapBadge(g)}
                             style={{
@@ -3923,12 +3923,12 @@ const GiftTapGame = () => {
                               cursor: 'pointer',
                               opacity:
                                 getSwapDurability(stats.inventory) >= 100 ||
-                                (Number(balances.GFT) || 0) < g
+                                (Number(balances.G2U) || 0) < g
                                   ? 0.4
                                   : 1,
                             }}
                           >
-                            Charge +{g * SHARD_SWAP_CONFIG.durabilityPercentPerGft}% · {g} GFT
+                            Charge +{g * SHARD_SWAP_CONFIG.durabilityPercentPerGft}% · {g} G2U
                           </button>
                         ))}
                         {badgeLevelUpCostGft(getSwapBadgeLevel(stats.inventory)) != null && (
@@ -3936,7 +3936,7 @@ const GiftTapGame = () => {
                             type="button"
                             disabled={
                               shardSwapBusy ||
-                              (Number(balances.GFT) || 0) <
+                              (Number(balances.G2U) || 0) <
                                 badgeLevelUpCostGft(getSwapBadgeLevel(stats.inventory))
                             }
                             onClick={levelUpSwapBadge}
@@ -3954,7 +3954,7 @@ const GiftTapGame = () => {
                             }}
                           >
                             Level badge → Lv{getSwapBadgeLevel(stats.inventory) + 1} ·{' '}
-                            {badgeLevelUpCostGft(getSwapBadgeLevel(stats.inventory))} GFT
+                            {badgeLevelUpCostGft(getSwapBadgeLevel(stats.inventory))} G2U
                             {' '}(more shards per % drain)
                           </button>
                         )}
@@ -3982,7 +3982,7 @@ const GiftTapGame = () => {
                       style={{ background: 'none', border: 'none', color: '#fff', fontSize: '24px', width: '60%', outline: 'none' }}
                     />
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#fff', fontWeight: 'bold' }}>
-                      <span>GFTshards</span>
+                      <span>G2Ushards</span>
                     </div>
                   </div>
                 </div>
@@ -3995,8 +3995,8 @@ const GiftTapGame = () => {
 
                 <div style={{ background: '#1c1e22', borderRadius: '16px', padding: '15px', textAlign: 'left', marginTop: '5px' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', color: '#888', fontSize: '12px' }}>
-                    <span>You receive (GFT credit)</span>
-                    <span>Balance: {getSwapBalance('GFT')}</span>
+                    <span>You receive (G2U credit)</span>
+                    <span>Balance: {getSwapBalance('G2U')}</span>
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '10px' }}>
                     <input 
@@ -4007,12 +4007,12 @@ const GiftTapGame = () => {
                       style={{ background: 'none', border: 'none', color: '#fff', fontSize: '24px', width: '60%', outline: 'none' }}
                     />
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#fff', fontWeight: 'bold' }}>
-                      <span>GFT</span>
+                      <span>G2U</span>
                     </div>
                   </div>
                   {shardQuote.ok && (
                     <p style={{ margin: '8px 0 0', fontSize: 11, color: '#888' }}>
-                      Gross {shardQuote.gftGross} GFT · fee {shardQuote.feeGft} GFT · you get {shardQuote.gftOut} GFT
+                      Gross {shardQuote.gftGross} G2U · fee {shardQuote.feeGft} G2U · you get {shardQuote.gftOut} G2U
                     </p>
                   )}
                   {!shardQuote.ok && shardSwapAmount && (
@@ -4021,7 +4021,7 @@ const GiftTapGame = () => {
                 </div>
 
                 <p style={{ fontSize: '11px', color: '#666', marginTop: '14px', textAlign: 'center', lineHeight: 1.4 }}>
-                  GFT is credited to your account. Free Swap Badge uses durability % (volume drain) + daily cap. GiftLocksmith is permanent with lower fees.
+                  G2U is credited to your account. Free Swap Badge uses durability % (volume drain) + daily cap. GiftLocksmith is permanent with lower fees.
                 </p>
 
                 {!swapAccess.allowed && (
@@ -4090,7 +4090,7 @@ const GiftTapGame = () => {
                     ? 'Swapping…'
                     : !swapAccess.allowed
                       ? 'Swap locked'
-                      : 'Swap GFTshards → GFT'}
+                      : 'Swap G2Ushards → G2U'}
                 </button>
               </div>
             </div>

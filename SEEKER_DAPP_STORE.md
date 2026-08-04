@@ -188,3 +188,13 @@ Until then, ignore `seeker/` for publishing.
 | Manifest 404 | Deploy site; check `/manifest.webmanifest` |
 | TWA shows URL bar | Fix `assetlinks.json` fingerprint + package name |
 | Lost keystore | Cannot update same app; treat as new package (bad) |
+
+## Store listing legal URLs (required)
+
+Paste these in the Publisher Portal (Privacy Policy + Terms):
+
+- **Terms of Use:** https://gift2u.fun/terms  
+- **Privacy Policy:** https://gift2u.fun/privacy  
+
+Also linked in the site footer on every main-site page (not only in-app modals).
+

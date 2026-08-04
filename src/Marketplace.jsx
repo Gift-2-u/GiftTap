@@ -13,7 +13,7 @@ function ShopItemIcon({ item, size = 52, variant = 'row' }) {
   const to = item.iconTo || '#111';
   const ring = item.iconRing || 'rgba(255,255,255,0.12)';
   const isWide = variant === 'card';
-  // Custom PNGs (e.g. GFTshard) need more room than line glyphs to read clearly
+  // Custom PNGs (e.g. G2Ushard) need more room than line glyphs to read clearly
   const glyphSize = item.iconUrl
     ? isWide
       ? 64
@@ -212,7 +212,7 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
       duration: 'Instant',
       price: 0.05,
       currency: 'SOL',
-      iconUrl: '/shop/GFTshard.png',
+      iconUrl: '/shop/G2Ushard.png',
       iconFrom: '#2a2030',
       iconTo: '#121018',
       iconRing: 'rgba(251,191,36,0.5)',
@@ -257,11 +257,11 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
       rarity: 'Rare',
       collection: 'Gift2u Elves',
       /** Short line under name */
-      boost: 'Unlocks Shard Swap (GFTshards → GFT) with better fees',
+      boost: 'Unlocks Shard Swap (G2Ushards → G2U) with better fees',
       /** Bullet benefits shown on card */
       perks: [
         'Unlocks Shard Swap immediately (skip Level 5 + Swap Badge)',
-        '4% fee in GFT vs 10% free path',
+        '4% fee in G2U vs 10% free path',
         'Higher daily swap cap',
         'Vault better APY (coming soon)',
       ],
@@ -671,13 +671,13 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
           }}
         >
           <img
-            src="/shop/GFTshard.png"
+            src="/shop/G2Ushard.png"
             alt=""
             width={36}
             height={36}
             style={{ display: 'block', objectFit: 'contain', flexShrink: 0 }}
           />
-          <span style={{ fontSize: 15 }}>{balance.toLocaleString()} GFTshards</span>
+          <span style={{ fontSize: 15 }}>{balance.toLocaleString()} G2Ushards</span>
         </div>
       </div>
 
@@ -991,7 +991,7 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
                   <strong style={{ color: '#14F195' }}>{itemToBuy.price} SOL</strong>?
                   <br />
                   <span style={{ fontSize: 12, color: '#14F195', fontWeight: 'bold', display: 'block', marginTop: 10 }}>
-                    Unlocks Shard Swap (GFTshards → GFT)
+                    Unlocks Shard Swap (G2Ushards → G2U)
                   </span>
                   <span style={{ fontSize: 11, color: '#888', display: 'block', marginTop: 6, lineHeight: 1.4 }}>
                     Instant access (skip Level 5 + Swap Badge) · 4% fee vs 10% free · higher daily cap · Wave 1 · max{' '}

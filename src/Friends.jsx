@@ -48,7 +48,7 @@ const Friends = ({ player, tgUser }) => {
     else setIsLoading(false);
   }, [fetchFriends, user?.id]);
 
-  const shareText = `🎁 I'm grinding levels in Gift Tap! Join with my link and get ${JOINER_REWARD} free GFTshards. I earn bonuses when you hit Level 1 and pass the Level 5 wall!\n\n${inviteLink}`;
+  const shareText = `🎁 I'm grinding levels in Gift Tap! Join with my link and get ${JOINER_REWARD} free G2Ushards. I earn bonuses when you hit Level 1 and pass the Level 5 wall!\n\n${inviteLink}`;
 
   const handleInvite = async () => {
     try {

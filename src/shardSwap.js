@@ -1,24 +1,25 @@
 /**
- * GFTshards → GFT credit swap rules.
+ * G2Ushards → G2U credit swap rules.
  *
  * Free path: Level 5+ AND Swap Badge. Badge has:
  *  - durability 0–100% (drains by swap volume)
  *  - badge level 1–10 (higher level = more shards per % — harder to drain)
- *  - top-up charge with GFT; level-up with GFT
+ *  - top-up charge with G2U; level-up with G2U
  *  - daily shard cap
  *
  * GiftLocksmith: permanent, no durability, better fees/caps.
  * Future: mint badge as on-chain NFT for marketplace sales.
  */
 
-const DEFAULT_SHARDS_PER_GFT = 1000;
+const DEFAULT_SHARDS_PER_G2U = 1000;
 
 function resolveShardsPerGft() {
   const fromEnv = Number(
-    typeof import.meta !== 'undefined' && import.meta.env?.VITE_SHARDS_PER_GFT,
+    typeof import.meta !== 'undefined' &&
+      (import.meta.env?.VITE_SHARDS_PER_G2U || import.meta.env?.VITE_SHARDS_PER_GFT),
   );
   if (Number.isFinite(fromEnv) && fromEnv > 0) return fromEnv;
-  return DEFAULT_SHARDS_PER_GFT;
+  return DEFAULT_SHARDS_PER_G2U;
 }
 
 export const SHARD_SWAP_CONFIG = {
@@ -50,13 +51,13 @@ export const SHARD_SWAP_CONFIG = {
    */
   durabilityFullVolumeShards: 200_000,
 
-  /** 1 GFT → +this many durability % points */
+  /** 1 G2U → +this many durability % points */
   durabilityPercentPerGft: 2,
   durabilityTopUpMinGft: 1,
 
   /** Badge power level (not player character level) */
   badgeMaxLevel: 10,
-  /** GFT to go from level L → L+1 = L * badgeLevelUpGftPerStep */
+  /** G2U to go from level L → L+1 = L * badgeLevelUpGftPerStep */
   badgeLevelUpGftPerStep: 10,
 };
 
@@ -88,7 +89,7 @@ export function durabilityFullVolumeForLevel(badgeLevel) {
   return SHARD_SWAP_CONFIG.durabilityFullVolumeShards * lvl;
 }
 
-/** GFT cost to upgrade from current badge level → next */
+/** G2U cost to upgrade from current badge level → next */
 export function badgeLevelUpCostGft(currentBadgeLevel) {
   const lvl = Math.max(1, Number(currentBadgeLevel) || 1);
   if (lvl >= SHARD_SWAP_CONFIG.badgeMaxLevel) return null;
@@ -168,7 +169,7 @@ export function getSwapAccess({
       durabilityRemainingShards: 0,
       badgeLevel,
       reason:
-        'Your Swap Badge is at 0% charge. Top it up with GFT, level it up for longer life, or mint GiftLocksmith for permanent access.',
+        'Your Swap Badge is at 0% charge. Top it up with G2U, level it up for longer life, or mint GiftLocksmith for permanent access.',
       feeBps: SHARD_SWAP_CONFIG.free.feeBps,
       minShards: SHARD_SWAP_CONFIG.free.minShards,
       dailyCapShards: SHARD_SWAP_CONFIG.free.dailyCapShards,
@@ -181,7 +182,7 @@ export function getSwapAccess({
   }
   if (!licensePaid) {
     missing.push(
-      `get Swap Badge (${SHARD_SWAP_CONFIG.freeUnlockBurnShards.toLocaleString()} GFTshards)`,
+      `get Swap Badge (${SHARD_SWAP_CONFIG.freeUnlockBurnShards.toLocaleString()} G2Ushards)`,
     );
   }
 
@@ -196,7 +197,7 @@ export function getSwapAccess({
     badgeLevel: licensePaid ? badgeLevel : 0,
     reason:
       `Free Swap Badge needs Level ${SHARD_SWAP_CONFIG.freeUnlockMinLevel}+ AND ` +
-      `${SHARD_SWAP_CONFIG.freeUnlockBurnShards.toLocaleString()} GFTshards. ` +
+      `${SHARD_SWAP_CONFIG.freeUnlockBurnShards.toLocaleString()} G2Ushards. ` +
       `Still needed: ${missing.join(' + ')}. ` +
       `Charge drains by swap volume; higher key level lasts longer. GiftLocksmith is permanent.`,
     feeBps: SHARD_SWAP_CONFIG.free.feeBps,
@@ -224,7 +225,7 @@ export function quoteShardSwap(amountShards, access, inventory = {}) {
   if (amt < access.minShards) {
     return {
       ok: false,
-      error: `Minimum ${access.minShards.toLocaleString()} GFTshards (${access.label})`,
+      error: `Minimum ${access.minShards.toLocaleString()} G2Ushards (${access.label})`,
     };
   }
 
@@ -246,7 +247,7 @@ export function quoteShardSwap(amountShards, access, inventory = {}) {
   if (access.tier === 'free') {
     const remVol = durabilityRemainingShards(inventory);
     if (remVol <= 0) {
-      return { ok: false, error: 'Swap Badge at 0% — top up with GFT' };
+      return { ok: false, error: 'Swap Badge at 0% — top up with G2U' };
     }
     if (amt > remVol) {
       return {
@@ -320,10 +321,10 @@ export function inventoryAfterUnlockBurn(inventory = {}) {
 }
 
 export function inventoryAfterDurabilityTopUp(inventory = {}, gftAmount) {
-  const gft = Number(gftAmount);
-  if (!Number.isFinite(gft) || gft < SHARD_SWAP_CONFIG.durabilityTopUpMinGft) {
+  const g2u = Number(gftAmount);
+  if (!Number.isFinite(g2u) || g2u < SHARD_SWAP_CONFIG.durabilityTopUpMinGft) {
     return {
-      error: `Min top-up is ${SHARD_SWAP_CONFIG.durabilityTopUpMinGft} GFT`,
+      error: `Min top-up is ${SHARD_SWAP_CONFIG.durabilityTopUpMinGft} G2U`,
     };
   }
   if (!hasSwapLicense(inventory)) {
@@ -333,7 +334,7 @@ export function inventoryAfterDurabilityTopUp(inventory = {}, gftAmount) {
   if (before >= SHARD_SWAP_CONFIG.durabilityMaxPercent) {
     return { error: 'Badge already at 100% charge.' };
   }
-  const added = round6(gft * SHARD_SWAP_CONFIG.durabilityPercentPerGft);
+  const added = round6(g2u * SHARD_SWAP_CONFIG.durabilityPercentPerGft);
   const after = Math.min(
     SHARD_SWAP_CONFIG.durabilityMaxPercent,
     round6(before + added),
@@ -342,7 +343,7 @@ export function inventoryAfterDurabilityTopUp(inventory = {}, gftAmount) {
   const gftSpent =
     SHARD_SWAP_CONFIG.durabilityPercentPerGft > 0
       ? round6(actualAdded / SHARD_SWAP_CONFIG.durabilityPercentPerGft)
-      : gft;
+      : g2u;
 
   return {
     inventory: {
@@ -358,7 +359,7 @@ export function inventoryAfterDurabilityTopUp(inventory = {}, gftAmount) {
 }
 
 /**
- * Spend GFT to raise Swap Badge level (more volume per durability %).
+ * Spend G2U to raise Swap Badge level (more volume per durability %).
  */
 export function inventoryAfterBadgeLevelUp(inventory = {}) {
   if (!hasSwapLicense(inventory)) {

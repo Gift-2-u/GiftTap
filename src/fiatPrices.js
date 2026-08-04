@@ -1,6 +1,6 @@
 /**
  * Fiat pricing helpers for game wallet (CoinGecko).
- * SOL + USDC have live prices; GFT / GFTshards stay unpriced until token market exists.
+ * SOL + USDC have live prices; G2U / G2Ushards stay unpriced until token market exists.
  */
 
 export const FIAT_CURRENCIES = [
@@ -50,22 +50,22 @@ export function formatFiat(amount, currency = 'USD') {
 }
 
 /**
- * @param {object} bal - { sol, GFT, GFTshards, usdc } amounts
+ * @param {object} bal - { sol, G2U, G2Ushards, usdc } amounts
  * @param {string} currency - e.g. USD
  * @param {{ sol?: Record<string,number>, usdc?: Record<string,number> }} rates
  */
 export function valuePortfolio(bal, currency, rates) {
   const solAmt = Number(bal?.sol ?? bal?.SOL ?? 0) || 0;
   const usdcAmt = Number(bal?.usdc ?? bal?.USDC ?? 0) || 0;
-  const gftAmt = Number(bal?.GFT ?? bal?.gft ?? 0) || 0;
-  const shardsAmt = Number(bal?.GFTshards ?? bal?.shard_balance ?? 0) || 0;
+  const gftAmt = Number(bal?.G2U ?? bal?.g2u ?? 0) || 0;
+  const shardsAmt = Number(bal?.G2Ushards ?? bal?.shard_balance ?? 0) || 0;
 
   const solPrice = rates?.sol?.[currency] ?? null;
   const usdcPrice = rates?.usdc?.[currency] ?? (currency === 'USD' ? 1 : null);
 
   const solFiat = solPrice != null ? solAmt * solPrice : null;
   const usdcFiat = usdcPrice != null ? usdcAmt * usdcPrice : null;
-  // No liquid market for in-game shards / pre-launch GFT
+  // No liquid market for in-game shards / pre-launch G2U
   const gftFiat = null;
   const shardsFiat = null;
 
@@ -77,8 +77,8 @@ export function valuePortfolio(bal, currency, rates) {
     lines: {
       sol: { amount: solAmt, fiat: solFiat, priced: solPrice != null },
       usdc: { amount: usdcAmt, fiat: usdcFiat, priced: usdcPrice != null },
-      GFT: { amount: gftAmt, fiat: gftFiat, priced: false },
-      GFTshards: { amount: shardsAmt, fiat: shardsFiat, priced: false },
+      G2U: { amount: gftAmt, fiat: gftFiat, priced: false },
+      G2Ushards: { amount: shardsAmt, fiat: shardsFiat, priced: false },
     },
     total,
     hasUnpriced,

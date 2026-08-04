@@ -21,8 +21,8 @@ import AppNotice from './AppNotice';
 import WalletHub from './WalletHub';
 
 /**
- * Main-site GFT Vault (gift2u.fun/vault).
- * Yield for GiftLocksmith holders on GFT credit (game account).
+ * Main-site G2U Vault (gift2u.fun/vault).
+ * Yield for GiftLocksmith holders on G2U credit (game account).
  */
 export default function VaultPage() {
   const playerId = getPlayerId();
@@ -116,11 +116,11 @@ export default function VaultPage() {
       return;
     }
     if (!Number.isFinite(amt) || amt < VAULT_CONFIG.minDeposit) {
-      notify(`Minimum deposit is ${VAULT_CONFIG.minDeposit} GFT.`, false);
+      notify(`Minimum deposit is ${VAULT_CONFIG.minDeposit} G2U.`, false);
       return;
     }
     if (amt > gftLiquid) {
-      notify('Not enough GFT credit. Swap GFTshards → GFT in the game wallet first.', false);
+      notify('Not enough G2U credit. Swap G2Ushards → G2U in the game wallet first.', false);
       return;
     }
     setBusy(true);
@@ -134,7 +134,7 @@ export default function VaultPage() {
       setInventory(nextInv);
       setGftLiquid(nextLiquid);
       setAmount('');
-      notify(`Deposited ${amt} GFT into the vault.`, true);
+      notify(`Deposited ${amt} G2U into the vault.`, true);
     } catch (e) {
       notify(e?.message || 'Deposit failed', false);
     } finally {
@@ -167,7 +167,7 @@ export default function VaultPage() {
       setInventory(nextInv);
       setGftLiquid(nextLiquid);
       setAmount('');
-      notify(`Withdrew ${withdrawn} GFT to your balance.`, true);
+      notify(`Withdrew ${withdrawn} G2U to your balance.`, true);
     } catch (e) {
       notify(e?.message || 'Withdraw failed', false);
     } finally {
@@ -193,7 +193,7 @@ export default function VaultPage() {
       });
       setInventory(nextInv);
       setGftLiquid(nextLiquid);
-      notify(`Claimed ${claimed} GFT rewards.`, true);
+      notify(`Claimed ${claimed} G2U rewards.`, true);
     } catch (e) {
       notify(e?.message || 'Claim failed', false);
     } finally {
@@ -229,14 +229,14 @@ export default function VaultPage() {
             Gift2u · Main site
           </p>
           <h1 className="text-3xl sm:text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-yellow-300">
-            GFT Vault
+            G2U Vault
           </h1>
           <p className="text-sm text-slate-400 leading-relaxed">
-            Stake GFT credit for yield. GiftLocksmith holders earn{' '}
+            Stake G2U credit for yield. GiftLocksmith holders earn{' '}
             <span className="text-yellow-400 font-bold">
               {VAULT_CONFIG.locksmithApyPercent}% APY
             </span>
-            . Deposit from your game wallet GFT balance (swap shards in Play first).
+            . Deposit from your game wallet G2U balance (swap shards in Play first).
           </p>
         </div>
 
@@ -311,7 +311,7 @@ export default function VaultPage() {
             {/* Stats */}
             <div className="grid grid-cols-2 gap-3">
               <div className={card}>
-                <p className="text-xs text-slate-500">Liquid GFT</p>
+                <p className="text-xs text-slate-500">Liquid G2U</p>
                 <p className="text-2xl font-black text-sky-300 mt-1">
                   {gftLiquid.toLocaleString(undefined, { maximumFractionDigits: 4 })}
                 </p>
@@ -339,7 +339,7 @@ export default function VaultPage() {
             {/* Actions */}
             <div className={card + ' space-y-4'}>
               <label className="block text-xs font-bold text-slate-400 uppercase">
-                Amount (GFT)
+                Amount (G2U)
               </label>
               <input
                 type="number"
@@ -391,12 +391,12 @@ export default function VaultPage() {
                 onClick={handleClaim}
                 className="w-full rounded-xl border border-emerald-500/50 text-emerald-300 font-bold py-3 disabled:opacity-40"
               >
-                Claim rewards → liquid GFT
+                Claim rewards → liquid G2U
               </button>
             </div>
 
             <p className="text-center text-sm text-slate-400">
-              Looking for on-chain GFT staking?{" "}
+              Looking for on-chain G2U staking?{" "}
               <Link to="/stake" className="text-purple-400 font-bold hover:underline">
                 Open Stake →
               </Link>
@@ -406,7 +406,7 @@ export default function VaultPage() {
               <span className="text-slate-300">
                 {profile.username || 'Player'}
               </span>
-              . Vault uses app GFT credit (not on-chain SPL until token launch).
+              . Vault uses app G2U credit (not on-chain SPL until token launch).
               Rates and eligibility may change — see Terms.
             </p>
           </>

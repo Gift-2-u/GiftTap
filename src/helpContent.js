@@ -7,18 +7,18 @@ export const HELP_TIPS = {
   how_to_play: {
     title: 'How to play',
     body:
-      'Tap the gift to mine GFTshards. Each tap costs Energy and counts toward your Daily Limit.\n\n' +
+      'Tap the gift to mine G2Ushards. Each tap costs Energy and counts toward your Daily Limit.\n\n' +
       'Level rises with lifetime taps and can raise your mining power. Walls (Climb / Level up) are optional — you can stay on a level and keep mining forever.\n\n' +
       'Shop boosts and the GiftLocksmith NFT are optional power-ups. Full details: Menu → Game Guide.',
   },
-  /** Level + GFTshards (one ? on home) */
+  /** Level + G2Ushards (one ? on home) */
   level_shards: {
-    title: 'Level & GFTshards',
+    title: 'Level & G2Ushards',
     body:
       'Level comes from lifetime taps and can raise permanent mining power (more shards per tap).\n\n' +
-      'GFTshards are what you mine by tapping. Spend them in the Shop, on climb fees, and on Swap Badge / swaps.\n\n' +
+      'G2Ushards are what you mine by tapping. Spend them in the Shop, on climb fees, and on Swap Badge / swaps.\n\n' +
       'Optional Climb walls unlock higher levels and multipliers — you can stay and keep mining without climbing.\n\n' +
-      'GFTshards are not money and not a promise of profit. Full details: Menu → Game Guide.',
+      'G2Ushards are not money and not a promise of profit. Full details: Menu → Game Guide.',
   },
   /** Energy + Daily Limit (one ? on home) */
   energy_daily: {
@@ -39,15 +39,15 @@ export const HELP_TIPS = {
     title: 'Climb / Level up',
     body:
       'At some levels (4, 9, 19, 29, 49) you hit an optional wall.\n\n' +
-      '• Stay & mine: keep earning GFTshards at your current level forever.\n' +
+      '• Stay & mine: keep earning G2Ushards at your current level forever.\n' +
       '• Climb: pay a shard fee (or SOL) to unlock higher levels and a better multiplier.\n\n' +
       'Climb is never required to keep playing or mining.',
   },
   shards: {
-    title: 'GFTshards',
+    title: 'G2Ushards',
     body:
-      'GFTshards are the in-game mining currency you earn by tapping the gift.\n\n' +
-      'Use them in the Shop, for climb fees, tasks, and (when unlocked) Shard Swap into GFT credit.\n\n' +
+      'G2Ushards are the in-game mining currency you earn by tapping the gift.\n\n' +
+      'Use them in the Shop, for climb fees, tasks, and (when unlocked) Shard Swap into G2U credit.\n\n' +
       'They are not money and not a promise of profit. See Terms of Use.',
   },
   energy: {
@@ -73,16 +73,16 @@ export const HELP_TIPS = {
   swap: {
     title: 'Shard Swap',
     body:
-      'Convert GFTshards to GFT credit in Wallet then Shard.\n\n' +
-      'Free path: Level 5+ AND Swap Badge (durability drains by volume; top up and level up with GFT).\n' +
+      'Convert G2Ushards to G2U credit in Wallet then Shard.\n\n' +
+      'Free path: Level 5+ AND Swap Badge (durability drains by volume; top up and level up with G2U).\n' +
       'GiftLocksmith NFT: unlock immediately with a lower fee and higher daily cap.\n\n' +
       'Rates and caps can change. Not financial advice.',
   },
   swap_badge: {
     title: 'Swap Badge (free)',
     body:
-      'Free players unlock a Swap Badge at Level 5+ for 25,000 GFTshards (Wallet then Shard).\n\n' +
-      'Charge 0-100 percent: drains by swap volume. Higher badge level means more shards per 1 percent so the charge lasts longer. Level up with GFT. Top up charge with GFT (1 GFT gives +2 percent). Daily cap 50,000 shards.\n\n' +
+      'Free players unlock a Swap Badge at Level 5+ for 25,000 G2Ushards (Wallet then Shard).\n\n' +
+      'Charge 0-100 percent: drains by swap volume. Higher badge level means more shards per 1 percent so the charge lasts longer. Level up with G2U. Top up charge with G2U (1 G2U gives +2 percent). Daily cap 50,000 shards.\n\n' +
       'GiftLocksmith is the permanent on-chain NFT. On-chain mint and marketplace for free badges is planned later.\n\n' +
       'Not an investment product.',
   },

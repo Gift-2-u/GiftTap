@@ -1,5 +1,5 @@
 /**
- * Gift2u Vault — GFT credit staking with Locksmith APY boost.
+ * Gift2u Vault — G2U credit staking with Locksmith APY boost.
  * Principal stored on player inventory (vault_gft); rewards accrue off-chain
  * until claim moves them to gft_token_balance.
  */
@@ -49,7 +49,7 @@ export function readVaultState(inventory = {}) {
 
 /**
  * Crystallize rewards into claimable, return new inventory + amounts.
- * Rewards are NOT auto-added to principal (user claims to wallet GFT credit).
+ * Rewards are NOT auto-added to principal (user claims to wallet G2U credit).
  */
 export function crystallizeVault(inventory, hasLocksmithNft, nowMs = Date.now()) {
   const { principal, lastTs } = readVaultState(inventory);

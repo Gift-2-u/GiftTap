@@ -94,7 +94,7 @@ export default function GameWalletActionModals({
   const [toAddr, setToAddr] = useState('');
   const [amount, setAmount] = useState('');
   const [fromToken, setFromToken] = useState('SOL');
-  const [toToken, setToToken] = useState('GFT');
+  const [toToken, setToToken] = useState('G2U');
   const [outAmt, setOutAmt] = useState('');
   const [status, setStatus] = useState({
     show: false,
@@ -148,8 +148,8 @@ export default function GameWalletActionModals({
 
   const balSol = Number(balances.sol) || 0;
   const balUsdc = Number(balances.usdc) || 0;
-  const balGft = Number(balances.GFT) || 0;
-  const balShards = Number(balances.GFTshards) || 0;
+  const balGft = Number(balances.G2U) || 0;
+  const balShards = Number(balances.G2Ushards) || 0;
 
   const netReceiveAmount = useMemo(() => {
     const amt = Number(amount) || 0;
@@ -162,7 +162,7 @@ export default function GameWalletActionModals({
   const getSwapBalance = (token) => {
     if (token === 'SOL') return balSol.toFixed(4);
     if (token === 'USDC') return balUsdc.toFixed(2);
-    if (token === 'GFT') return balGft.toFixed(4);
+    if (token === 'G2U') return balGft.toFixed(4);
     return '0';
   };
 
@@ -173,7 +173,7 @@ export default function GameWalletActionModals({
     setOutAmt('');
     setShardAmt('');
     setFromToken('SOL');
-    setToToken('GFT');
+    setToToken('G2U');
     setStatus({ show: false, loading: false, message: '', success: null, txid: null });
   }, [action]);
 
@@ -383,7 +383,7 @@ export default function GameWalletActionModals({
             </div>
 
             <p style={{ fontSize: '10px', color: '#666', marginTop: '15px' }}>
-              Only send Solana (SOL) or SPL tokens (like GFT) to this address.
+              Only send Solana (SOL) or SPL tokens (like G2U) to this address.
             </p>
           </div>
         </div>
@@ -715,7 +715,7 @@ export default function GameWalletActionModals({
                 >
                   <option value="SOL">SOL</option>
                   <option value="USDC">USDC</option>
-                  <option value="GFT">GFT</option>
+                  <option value="G2U">G2U</option>
                 </select>
               </div>
             </div>
@@ -822,7 +822,7 @@ export default function GameWalletActionModals({
                 >
                   <option value="SOL">SOL</option>
                   <option value="USDC">USDC</option>
-                  <option value="GFT">GFT</option>
+                  <option value="G2U">G2U</option>
                 </select>
               </div>
             </div>
@@ -944,7 +944,7 @@ export default function GameWalletActionModals({
                     fontWeight: 'bold',
                   }}
                 >
-                  <span>GFTshards</span>
+                  <span>G2Ushards</span>
                 </div>
               </div>
             </div>
@@ -996,7 +996,7 @@ export default function GameWalletActionModals({
                 }}
               >
                 <span>You receive</span>
-                <span>Balance: {getSwapBalance('GFT')}</span>
+                <span>Balance: {getSwapBalance('G2U')}</span>
               </div>
               <div
                 style={{
@@ -1029,7 +1029,7 @@ export default function GameWalletActionModals({
                     fontWeight: 'bold',
                   }}
                 >
-                  <span>GFT</span>
+                  <span>G2U</span>
                 </div>
               </div>
             </div>
@@ -1057,19 +1057,19 @@ export default function GameWalletActionModals({
                   {swapAccess.tier === 'locksmith' ? 'GiftLocksmith' : 'Swap active'}
                   {hasLocksmithNft ? ' 🔑' : ''}
                 </div>
-                Fee {(swapAccess.feeBps / 100).toFixed(1)}% in GFT · Min{' '}
+                Fee {(swapAccess.feeBps / 100).toFixed(1)}% in G2U · Min{' '}
                 {swapAccess.minShards.toLocaleString()} shards
                 <br />
                 Today: {getDailySwapUsed(inventory).toLocaleString()} /{' '}
                 {swapAccess.dailyCapShards.toLocaleString()} shards
                 <br />
-                Rate: {SHARD_SWAP_CONFIG.shardsPerGft.toLocaleString()} shards → 1 GFT (provisional)
+                Rate: {SHARD_SWAP_CONFIG.shardsPerGft.toLocaleString()} shards → 1 G2U (provisional)
               </div>
             )}
 
             {shardQuote.ok && (
               <p style={{ fontSize: 11, color: '#888', marginTop: 8 }}>
-                Gross {shardQuote.gftGross} GFT · fee {shardQuote.feeGft} GFT · you get {shardQuote.gftOut} GFT
+                Gross {shardQuote.gftGross} G2U · fee {shardQuote.feeGft} G2U · you get {shardQuote.gftOut} G2U
               </p>
             )}
             {!shardQuote.ok && shardAmt && (
@@ -1099,7 +1099,7 @@ export default function GameWalletActionModals({
                 lineHeight: 1.4,
               }}
             >
-              Free path: L5 + Swap Badge (durability % drains by volume, top up with GFT). Locksmith permanent.
+              Free path: L5 + Swap Badge (durability % drains by volume, top up with G2U). Locksmith permanent.
             </p>
 
             {!swapAccess.allowed && (
@@ -1230,7 +1230,7 @@ export default function GameWalletActionModals({
                   setStatus({
                     show: true,
                     loading: false,
-                    message: `✅ ${quote.gftOut} GFT credited (fee ${quote.feeGft} GFT, ${access.label})`,
+                    message: `✅ ${quote.gftOut} G2U credited (fee ${quote.feeGft} G2U, ${access.label})`,
                     success: true,
                     txid: null,
                   });
@@ -1267,7 +1267,7 @@ export default function GameWalletActionModals({
                 ? 'Swapping…'
                 : !swapAccess.allowed
                   ? 'Swap locked'
-                  : 'Swap GFTshards → GFT'}
+                  : 'Swap G2Ushards → G2U'}
             </button>
           </div>
         </div>
