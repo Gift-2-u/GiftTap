@@ -16,6 +16,7 @@ import {
   getSwapDurability,
   durabilityRemainingShards,
 } from './shardSwap';
+import SwapBadgeCard from './SwapBadgeCard';
 import { supabase } from './supabaseClient';
 import { DB_PLAYER_ID, getPlayerId } from './playerIdentity';
 
@@ -75,9 +76,15 @@ const styles = {
 const darkPanel = {
   ...styles.modalContent,
   background: '#131517',
-  border: 'none',
+  border: '1px solid #333',
   width: '90%',
   maxWidth: '360px',
+  maxHeight: 'min(90dvh, 100%)',
+  overflowY: 'auto',
+  WebkitOverflowScrolling: 'touch',
+  overscrollBehavior: 'contain',
+  touchAction: 'pan-y',
+  boxSizing: 'border-box',
 };
 
 export default function GameWalletActionModals({
@@ -866,7 +873,16 @@ export default function GameWalletActionModals({
 
       {/* Shard Swap Pop-up — matches GiftTap */}
       {action === 'shard' ? (
-        <div style={styles.modalOverlay} onClick={closeIfIdle}>
+        <div
+          style={{
+            ...styles.modalOverlay,
+            padding:
+              'max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left))',
+            boxSizing: 'border-box',
+            overflow: 'hidden',
+          }}
+          onClick={closeIfIdle}
+        >
           <div style={darkPanel} onClick={(e) => e.stopPropagation()}>
             <div
               style={{
@@ -1077,16 +1093,21 @@ export default function GameWalletActionModals({
             )}
 
             {(swapAccess.tier === 'free' || swapAccess.tier === 'empty' || (!!inventory?.swap_unlocked && !hasLocksmithNft)) && (
-              <div style={{ marginTop: 10, textAlign: 'left', fontSize: 11, color: '#fbbf24' }}>
-                Badge {getSwapDurability(inventory).toFixed(1)}% · ~
-                {durabilityRemainingShards(inventory).toLocaleString()} shards on charge
-                <div style={{ marginTop: 4, height: 6, background: '#333', borderRadius: 4, overflow: 'hidden' }}>
-                  <div style={{
-                    width: `${Math.min(100, getSwapDurability(inventory))}%`,
-                    height: '100%',
-                    background: '#fbbf24',
-                  }} />
-                </div>
+              <div style={{ marginTop: 12, marginBottom: 4 }}>
+                <SwapBadgeCard
+                  inventory={inventory || {}}
+                  editionNumber={1}
+                  editionTotal={20000}
+                  compact
+                  onMint={() =>
+                    setStatus({
+                      show: true,
+                      loading: false,
+                      message: 'Mint opens later for Access Card Lv5+.',
+                      success: false,
+                    })
+                  }
+                />
               </div>
             )}
 
@@ -1099,7 +1120,7 @@ export default function GameWalletActionModals({
                 lineHeight: 1.4,
               }}
             >
-              Free path: L5 + Swap Badge (durability % drains by volume, top up with G2U). Locksmith permanent.
+              Free path: L5 + Swap Access Card (durability % drains by volume, top up with G2U). Locksmith permanent.
             </p>
 
             {!swapAccess.allowed && (
@@ -1174,7 +1195,7 @@ export default function GameWalletActionModals({
               >
                 {currentLevel < SHARD_SWAP_CONFIG.freeUnlockMinLevel
                   ? `Need Level ${SHARD_SWAP_CONFIG.freeUnlockMinLevel} first`
-                  : `Buy Swap Badge (${SHARD_SWAP_CONFIG.freeUnlockBurnShards.toLocaleString()} shards) · L${SHARD_SWAP_CONFIG.freeUnlockMinLevel}+`}
+                  : `Buy Access Card (${SHARD_SWAP_CONFIG.freeUnlockBurnShards.toLocaleString()} shards) · L${SHARD_SWAP_CONFIG.freeUnlockMinLevel}+`}
               </button>
             )}
 

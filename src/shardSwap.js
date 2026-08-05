@@ -1,14 +1,15 @@
 /**
  * G2Ushards → G2U credit swap rules.
  *
- * Free path: Level 5+ AND Swap Badge. Badge has:
+ * Free path: Swap Access Card in inventory.
+ *  - First unlock: Level 5+ AND burn shards (in-game purchase only).
+ *  - After unlock / transfer: access stays granted (no level requirement).
  *  - durability 0–100% (drains by swap volume)
- *  - badge level 1–10 (higher level = more shards per % — harder to drain)
- *  - top-up charge with G2U; level-up with G2U
+ *  - card level 1–10 (higher = more shards per % drain)
+ *  - level-up with G2U; planned mint at Lv5+ for marketplace resale
  *  - daily shard cap
  *
  * GiftLocksmith: permanent, no durability, better fees/caps.
- * Future: mint badge as on-chain NFT for marketplace sales.
  */
 
 const DEFAULT_SHARDS_PER_G2U = 1000;
@@ -42,6 +43,10 @@ export const SHARD_SWAP_CONFIG = {
 
   freeUnlockMinLevel: 5,
   freeUnlockBurnShards: 25_000,
+  /** Planned free Access Card series size (edition "n of TOTAL") */
+  freeAccessCardEditionTotal: 20_000,
+  /** Planned minimum card level before on-chain mint is allowed */
+  freeAccessCardMintMinLevel: 5,
 
   /** Durability % (0–100) */
   durabilityMaxPercent: 100,
@@ -145,11 +150,13 @@ export function getSwapAccess({
     };
   }
 
-  if (levelOk && licensePaid && durability > 0) {
+  // Once the Access Card is owned, access is permanent (no Level 5 check).
+  // Level 5 is only required to *buy* the first unlock in-game.
+  if (licensePaid && durability > 0) {
     return {
       allowed: true,
       tier: 'free',
-      label: `Swap Badge · Lv${badgeLevel}`,
+      label: `Access Card · Lv${badgeLevel}`,
       reason: null,
       durability,
       durabilityRemainingShards: durabilityRemainingShards(inv),
@@ -158,18 +165,18 @@ export function getSwapAccess({
     };
   }
 
-  if (levelOk && licensePaid && durability <= 0) {
+  if (licensePaid && durability <= 0) {
     return {
       allowed: false,
       tier: 'empty',
-      label: `Swap Badge · Lv${badgeLevel} (empty)`,
-      levelOk: true,
+      label: `Access Card · Lv${badgeLevel} (0% durability)`,
+      levelOk,
       licensePaid: true,
       durability: 0,
       durabilityRemainingShards: 0,
       badgeLevel,
       reason:
-        'Your Swap Badge is at 0% charge. Top it up with G2U, level it up for longer life, or mint GiftLocksmith for permanent access.',
+        'Access Card durability is 0%. Level up for a longer charge, wait for mint/top-up tools, or use GiftLocksmith for permanent access.',
       feeBps: SHARD_SWAP_CONFIG.free.feeBps,
       minShards: SHARD_SWAP_CONFIG.free.minShards,
       dailyCapShards: SHARD_SWAP_CONFIG.free.dailyCapShards,
@@ -182,24 +189,24 @@ export function getSwapAccess({
   }
   if (!licensePaid) {
     missing.push(
-      `get Swap Badge (${SHARD_SWAP_CONFIG.freeUnlockBurnShards.toLocaleString()} G2Ushards)`,
+      `get Access Card (${SHARD_SWAP_CONFIG.freeUnlockBurnShards.toLocaleString()} G2Ushards)`,
     );
   }
 
   return {
     allowed: false,
     tier: 'locked',
-    label: 'Swap Badge locked',
+    label: 'Access Card locked',
     levelOk,
     licensePaid,
-    durability: licensePaid ? durability : 0,
-    durabilityRemainingShards: licensePaid ? durabilityRemainingShards(inv) : 0,
-    badgeLevel: licensePaid ? badgeLevel : 0,
+    durability: 0,
+    durabilityRemainingShards: 0,
+    badgeLevel: 0,
     reason:
-      `Free Swap Badge needs Level ${SHARD_SWAP_CONFIG.freeUnlockMinLevel}+ AND ` +
+      `First unlock needs Level ${SHARD_SWAP_CONFIG.freeUnlockMinLevel}+ AND ` +
       `${SHARD_SWAP_CONFIG.freeUnlockBurnShards.toLocaleString()} G2Ushards. ` +
       `Still needed: ${missing.join(' + ')}. ` +
-      `Charge drains by swap volume; higher key level lasts longer. GiftLocksmith is permanent.`,
+      `After unlock, access stays granted (even below L5 — e.g. if bought from another player later).`,
     feeBps: SHARD_SWAP_CONFIG.free.feeBps,
     minShards: SHARD_SWAP_CONFIG.free.minShards,
     dailyCapShards: SHARD_SWAP_CONFIG.free.dailyCapShards,

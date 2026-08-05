@@ -39,6 +39,7 @@ import {
 
 import { hasLocksmith } from './locksmith';
 import WalletNftSection from './WalletNftSection';
+import SwapBadgeCard from './SwapBadgeCard';
 import {
   SHARD_SWAP_CONFIG,
   getSwapAccess,
@@ -473,6 +474,19 @@ const GiftTapGame = () => {
   const optimisticEnergy = useRef(500);
   const optimisticDaily = useRef(0);
   const pendingSaveRef = useRef(null);
+  /** True after shop/swap spend — next cloud save must write the lower balance, not Math.max with server */
+  const spendGuardRef = useRef(false);
+  /** Bumped on logout / account switch — invalidates in-flight debounced saves */
+  const saveGenerationRef = useRef(0);
+  /** Last progress loaded from server (admin edits / other devices update this) */
+  const serverProgressRef = useRef({
+    b: 0,
+    ltt: 0,
+    s: 0,
+    dt: 0,
+  });
+  /** Ignore our own save echo for a moment */
+  const lastLocalSaveAtRef = useRef(0);
   const saveFailNotifiedRef = useRef(0);
   const [decryptedPhrase, setDecryptedPhrase] = useState("");
   // Settings Menu State
@@ -741,6 +755,35 @@ const GiftTapGame = () => {
       return;
     }
     setIsLoading(true);
+    setIsDataLoaded(false);
+    // Drop previous account's in-memory progress before loading this one
+    // (same device: logout → login as someone else)
+    try {
+      if (window.saveTimeout) clearTimeout(window.saveTimeout);
+    } catch {
+      /* ignore */
+    }
+    window.saveTimeout = null;
+    pendingSaveRef.current = null;
+    spendGuardRef.current = false;
+    saveGenerationRef.current += 1;
+    optimisticTaps.current = 0;
+    optimisticBalance.current = 0;
+    optimisticSeason.current = 0;
+    optimisticEnergy.current = 500;
+    optimisticDaily.current = 0;
+    setBalance(0);
+    setSeasonShards(0);
+    setLifetimeTaps(0);
+    setDailyTaps(0);
+    setEnergy(500);
+    setStats({
+      frenzy_expires: null,
+      efficiency_expires: null,
+      energy_boost_expires: null,
+      inventory: {},
+    });
+    setBalances({ sol: 0, G2U: 0, G2Ushards: 0, usdc: 0 });
     try {
       const userId = playerId;
       const invisibleKey = vaultSaltFor(userId);
@@ -807,7 +850,14 @@ const GiftTapGame = () => {
         optimisticTaps.current = _lt;
         const _ss = Number(playerRow.season_shards) || 0;
         setSeasonShards(_ss);
-        optimisticSeason.current = _ss; 
+        optimisticSeason.current = _ss;
+        const _dtLoad = Number(playerRow.daily_taps) || 0;
+        serverProgressRef.current = {
+          b: Number(playerRow.shard_balance) || 0,
+          ltt: _lt,
+          s: _ss,
+          dt: _dtLoad,
+        }; 
         const loadedMax = playerRow.max_unlocked_level || 4;
         setMaxUnlockedLevel(loadedMax); 
         const _max = loadedMax;
@@ -1203,12 +1253,14 @@ const GiftTapGame = () => {
         (row.telegram_id ? `TG_${String(row.telegram_id).slice(-6)}` : '') ||
         `Player_${String(row[DB_PLAYER_ID]).replace(/-/g, '').slice(0, 8)}`;
 
+      resetGameProgressState();
       const profile = applyAuthSession({
         playerId: String(row[DB_PLAYER_ID]),
         username: restoredName,
       });
       setPlayer(profile);
       setIsAuthed(true);
+      setIsDataLoaded(false);
 
       // Persist display name if DB was empty / generic
       if (!row.username || String(row.username).trim() === '' || String(row.username).toLowerCase() === 'player') {
@@ -1257,10 +1309,13 @@ const GiftTapGame = () => {
 
   /** After Sign up / Log in from AuthScreen */
   const handleAuthenticated = async ({ playerId: pid, username: uname, isNew, mnemonic, walletAddress }) => {
+    // Wipe prior account UI/refs before binding the new session
+    resetGameProgressState();
     const profile = applyAuthSession({ playerId: pid, username: uname });
     setPlayer(profile);
     setIsAuthed(true);
     setIsLoading(true);
+    setIsDataLoaded(false);
     if (walletAddress) setPlayerWallet(walletAddress);
     // New accounts: wallet already created at signup — force backup once
     if (isNew && mnemonic) {
@@ -1271,6 +1326,59 @@ const GiftTapGame = () => {
     // Public launch — no invite / beta code required
     setHasAccess(true);
   };
+
+  /**
+   * Clear all in-memory progress so the next account on this device
+   * cannot inherit season/lifetime/shards/refs from the previous player.
+   */
+  const resetGameProgressState = useCallback(() => {
+    try {
+      if (window.saveTimeout) clearTimeout(window.saveTimeout);
+    } catch {
+      /* ignore */
+    }
+    window.saveTimeout = null;
+    pendingSaveRef.current = null;
+    spendGuardRef.current = false;
+    saveGenerationRef.current += 1;
+    serverProgressRef.current = { b: 0, ltt: 0, s: 0, dt: 0 };
+    lastLocalSaveAtRef.current = 0;
+
+    optimisticTaps.current = 0;
+    optimisticBalance.current = 0;
+    optimisticSeason.current = 0;
+    optimisticEnergy.current = 500;
+    optimisticDaily.current = 0;
+
+    setBalance(0);
+    setSeasonShards(0);
+    setLifetimeTaps(0);
+    setDailyTaps(0);
+    setEnergy(500);
+    setStreak(0);
+    setLastTapDate(new Date().toISOString().split('T')[0]);
+    setMaxDailyLimit(1000);
+    setMaxUnlockedLevel(4);
+    setCurrentLevel(0);
+    setWallSnoozedFor(null);
+    setTapPower(1);
+    setStats({
+      frenzy_expires: null,
+      efficiency_expires: null,
+      energy_boost_expires: null,
+      inventory: {},
+    });
+    setBalances({ sol: 0, G2U: 0, G2Ushards: 0, usdc: 0 });
+    setHasLocksmithNft(false);
+    setDailyAdsWatched(0);
+    setIsShardSwapOpen(false);
+    setIsModalOpen(false);
+    setIsReceiveOpen(false);
+    setIsWithdrawOpen(false);
+    setIsSwapOpen(false);
+    setShardSwapAmount('');
+    setTaps([]);
+  }, []);
 
   const handleLogout = async () => {
     const ok = await confirmNotice(
@@ -1283,6 +1391,8 @@ const GiftTapGame = () => {
       },
     );
     if (!ok) return;
+    // Cancel saves + wipe progress BEFORE clearing session id
+    resetGameProgressState();
     clearSession();
     setPlayer({ id: '', username: '', first_name: '' });
     setIsAuthed(false);
@@ -1291,7 +1401,9 @@ const GiftTapGame = () => {
     setShowClaimAccount(false);
     setPlayerWallet(null);
     setDecryptedPhrase('');
+    setGeneratedSecret(null);
     setIsDataLoaded(false);
+    setIsLoading(false);
   };
 
 
@@ -1407,6 +1519,8 @@ const GiftTapGame = () => {
     const raw = typeof updater === 'function' ? updater(prevBal) : updater;
     const next = Math.max(0, Math.round((Number(raw) || 0) * 1000) / 1000);
     optimisticBalance.current = next;
+    // Mark intentional spend so save merge does not re-raise balance from a stale server row
+    if (next < prevBal - 0.001) spendGuardRef.current = true;
     setBalance(next);
     if (pendingSaveRef.current) {
       pendingSaveRef.current = { ...pendingSaveRef.current, b: next };
@@ -1429,6 +1543,10 @@ const GiftTapGame = () => {
   const saveToDatabase = (b, e, dt, ltd, strk, ltt, mul, s) => {
     if (!playerId) return;
 
+    // Capture account at schedule time — never write to a different player after logout/switch
+    const scheduledPlayerId = String(playerId);
+    const scheduledGen = saveGenerationRef.current;
+
     // Merge pending save:
     // - lifetime / season only go up (Math.max) — pure earnings counters
     // - shard balance / energy / daily taps use LATEST snapshot (not Math.max!)
@@ -1444,13 +1562,100 @@ const GiftTapGame = () => {
       ltt: Math.max(Number(ltt) || 0, Number(prev?.ltt) || 0),
       mul,
       s: Math.max(Number(s) || 0, Number(prev?.s) || 0),
+      playerId: scheduledPlayerId,
     };
     pendingSaveRef.current = merged;
 
     clearTimeout(window.saveTimeout);
     window.saveTimeout = setTimeout(async () => {
       const p = pendingSaveRef.current;
-      if (!p || !playerId) return;
+      if (!p) return;
+      // Drop if logout / account switch happened, or session is someone else
+      if (scheduledGen !== saveGenerationRef.current) return;
+      if (p.playerId && p.playerId !== scheduledPlayerId) return;
+      if (getPlayerId() !== scheduledPlayerId) return;
+      const savePlayerId = scheduledPlayerId;
+
+      // Reconcile with server:
+      // - If server was manually fixed (lower than what we last loaded), ADOPT server
+      //   so admin corrections are not overwritten by a stale high client.
+      // - Otherwise write this device's pending values (do not Math.max stale highs forever).
+      let writeB = Number(p.b) || 0;
+      let writeLtt = Number(p.ltt) || 0;
+      let writeS = Number(p.s) || 0;
+      let writeDt = Number(p.dt) || 0;
+      const isSpend = !!spendGuardRef.current;
+      const base = serverProgressRef.current || { b: 0, ltt: 0, s: 0, dt: 0 };
+      try {
+        const { data: serverRow } = await supabase
+          .from('players')
+          .select('shard_balance, lifetime_taps, season_shards, daily_taps')
+          .eq(DB_PLAYER_ID, savePlayerId)
+          .maybeSingle();
+        if (serverRow) {
+          const sb = Number(serverRow.shard_balance) || 0;
+          const sl = Number(serverRow.lifetime_taps) || 0;
+          const ss = Number(serverRow.season_shards) || 0;
+          const sd = Number(serverRow.daily_taps) || 0;
+
+          // Server dropped below last-loaded snapshot → admin (or other) correction
+          const serverCorrectedDown =
+            ss + 0.001 < (Number(base.s) || 0) ||
+            sl + 0.001 < (Number(base.ltt) || 0) ||
+            sb + 0.001 < (Number(base.b) || 0);
+
+          if (serverCorrectedDown) {
+            // Re-base session on server truth, then keep only positive local deltas if any
+            const dLtt = Math.max(0, writeLtt - (Number(base.ltt) || 0));
+            const dS = Math.max(0, writeS - (Number(base.s) || 0));
+            const dDt = Math.max(0, writeDt - (Number(base.dt) || 0));
+            const dB = Math.max(0, writeB - (Number(base.b) || 0));
+            writeLtt = sl + dLtt;
+            writeS = ss + dS;
+            writeDt = sd + dDt;
+            writeB = isSpend ? writeB : sb + dB;
+            serverProgressRef.current = { b: writeB, ltt: writeLtt, s: writeS, dt: writeDt };
+          } else {
+            // Normal play: this device is source of truth for the save payload
+            // (other devices still push via realtime)
+            if (!isSpend && sb > writeB + 0.001) {
+              // Other device earned more shards — take the higher balance
+              writeB = sb;
+            }
+            if (sl > writeLtt + 0.001) writeLtt = sl;
+            if (ss > writeS + 0.001) writeS = ss;
+            if (sd > writeDt + 0.001) writeDt = sd;
+          }
+        }
+      } catch (reconErr) {
+        console.warn('save reconcile skipped', reconErr?.message || reconErr);
+      }
+      spendGuardRef.current = false;
+      lastLocalSaveAtRef.current = Date.now();
+
+      // Align local state with what we actually write
+      optimisticBalance.current = writeB;
+      optimisticTaps.current = writeLtt;
+      optimisticSeason.current = writeS;
+      optimisticDaily.current = writeDt;
+      setBalance(writeB);
+      setLifetimeTaps(writeLtt);
+      setSeasonShards(writeS);
+      setDailyTaps(writeDt);
+      setBalances((bal) => ({ ...bal, G2Ushards: writeB }));
+      pendingSaveRef.current = {
+        ...p,
+        b: writeB,
+        ltt: writeLtt,
+        s: writeS,
+        dt: writeDt,
+      };
+      serverProgressRef.current = {
+        b: writeB,
+        ltt: writeLtt,
+        s: writeS,
+        dt: writeDt,
+      };
 
       const inv = { ...(stats.inventory || {}) };
       delete inv.wall_fee_progress;
@@ -1466,13 +1671,13 @@ const GiftTapGame = () => {
       const baseRow = {
         [DB_PLAYER_ID]: playerId,
         username: player.username || player.first_name || 'Player',
-        shard_balance: p.b,
-        season_shards: p.s,
+        shard_balance: writeB,
+        season_shards: writeS,
         last_energy: p.e,
-        daily_taps: p.dt,
+        daily_taps: writeDt,
         last_tap_date: p.ltd,
         current_streak: p.strk,
-        lifetime_taps: p.ltt,
+        lifetime_taps: writeLtt,
         max_unlocked_level: p.mul,
         max_daily_limit: maxDailyLimit,
         limit_boost_amount: stats.limit_boost_amount,
@@ -1482,7 +1687,7 @@ const GiftTapGame = () => {
       };
 
       const doUpdate = async (row) =>
-        supabase.from('players').update(row).eq(DB_PLAYER_ID, playerId).select();
+        supabase.from('players').update(row).eq(DB_PLAYER_ID, savePlayerId).select();
 
       let { data, error } = await doUpdate(baseRow);
 
@@ -1514,10 +1719,10 @@ const GiftTapGame = () => {
       if (error) {
         console.warn('Full save failed, trying shards-only:', error.message);
         ({ data, error } = await doUpdate({
-          shard_balance: p.b,
-          season_shards: p.s,
+          shard_balance: writeB,
+          season_shards: writeS,
           last_energy: p.e,
-          daily_taps: p.dt,
+          daily_taps: writeDt,
           last_tap_date: p.ltd,
           inventory: nextInventory,
           last_updated: new Date().toISOString(),
@@ -1530,7 +1735,7 @@ const GiftTapGame = () => {
           shards: p.b,
           lifetime: p.ltt,
         });
-        tryPayReferrerForLevel1(playerId, p.ltt).catch((e) =>
+        tryPayReferrerForLevel1(savePlayerId, p.ltt).catch((e) =>
           console.warn('referral L1 check', e?.message || e),
         );
         return;
@@ -1940,31 +2145,69 @@ const GiftTapGame = () => {
             const inv = payload.new.inventory || {};
             const incomingShards = Number(payload.new.shard_balance) || 0;
 
-            setLifetimeTaps((prevTaps) => {
-              const prevLife = Number(prevTaps) || 0;
-              setBalance((prevBal) => {
-                const localBal = Number(prevBal) || 0;
-                const remoteAhead =
-                  incomingShards > localBal + 0.001 || incomingTaps > prevLife + 0.001;
-                if (!remoteAhead) return prevBal;
+            // Skip echo of our own save for 1.5s (avoid fighting mid-tap)
+            const isOwnEcho = Date.now() - (lastLocalSaveAtRef.current || 0) < 1500;
+            const incSeason = Number(payload.new.season_shards) || 0;
+            const incDaily = Number(payload.new.daily_taps) || 0;
+            const base = serverProgressRef.current || {};
+            const serverChanged =
+              Math.abs(incomingShards - (Number(base.b) || 0)) > 0.001 ||
+              Math.abs(incomingTaps - (Number(base.ltt) || 0)) > 0.001 ||
+              Math.abs(incSeason - (Number(base.s) || 0)) > 0.001 ||
+              Math.abs(incDaily - (Number(base.dt) || 0)) > 0.001;
 
-                setEnergy(Number(payload.new.last_energy));
-                if (payload.new.tap_power != null) setTapPower(payload.new.tap_power);
-                if (payload.new.max_daily_limit != null) setMaxDailyLimit(payload.new.max_daily_limit);
-                setSeasonShards(Number(payload.new.season_shards) || 0);
-                setDailyTaps(Number(payload.new.daily_taps) || 0);
-                setStats((prev) => ({
-                  ...prev,
-                  inventory: inv,
-                  frenzy_expires: payload.new.frenzy_expires,
-                  efficiency_expires: payload.new.efficiency_expires,
-                  energy_boost_expires: payload.new.energy_boost_expires,
-                }));
-                optimisticTaps.current = Math.max(optimisticTaps.current, incomingTaps);
-                return incomingShards;
-              });
-              return incomingTaps > prevLife ? incomingTaps : prevLife;
-            });
+            // Admin / other-device update: apply ABSOLUTE server values
+            // (do not Math.max — that blocked manual Supabase corrections)
+            if (serverChanged && !isOwnEcho) {
+              optimisticBalance.current = incomingShards;
+              optimisticTaps.current = incomingTaps;
+              optimisticSeason.current = incSeason;
+              optimisticDaily.current = incDaily;
+              serverProgressRef.current = {
+                b: incomingShards,
+                ltt: incomingTaps,
+                s: incSeason,
+                dt: incDaily,
+              };
+              // Drop pending save built on old wrong stats
+              pendingSaveRef.current = null;
+              try {
+                if (window.saveTimeout) clearTimeout(window.saveTimeout);
+              } catch {
+                /* ignore */
+              }
+              setBalance(incomingShards);
+              setLifetimeTaps(incomingTaps);
+              setSeasonShards(incSeason);
+              setDailyTaps(incDaily);
+              setBalances((b) => ({ ...b, G2Ushards: incomingShards }));
+              if (payload.new.last_energy != null) {
+                const en = Number(payload.new.last_energy);
+                setEnergy(en);
+                optimisticEnergy.current = en;
+              }
+              if (payload.new.tap_power != null) setTapPower(payload.new.tap_power);
+              if (payload.new.max_daily_limit != null) {
+                setMaxDailyLimit(payload.new.max_daily_limit);
+              }
+              setStats((prev) => ({
+                ...prev,
+                inventory: inv,
+                frenzy_expires: payload.new.frenzy_expires,
+                efficiency_expires: payload.new.efficiency_expires,
+                energy_boost_expires: payload.new.energy_boost_expires,
+              }));
+            } else if (!isOwnEcho) {
+              // Still refresh inventory / buffs
+              setStats((prev) => ({
+                ...prev,
+                inventory: inv,
+                frenzy_expires: payload.new.frenzy_expires ?? prev.frenzy_expires,
+                efficiency_expires: payload.new.efficiency_expires ?? prev.efficiency_expires,
+                energy_boost_expires:
+                  payload.new.energy_boost_expires ?? prev.energy_boost_expires,
+              }));
+            }
           }
 
           const fetchTopLeaderSafe = async () => {
@@ -3866,155 +4109,119 @@ const GiftTapGame = () => {
 
           {/* Shard Swap Pop-up — free tier vs GiftLocksmith */}
           {isShardSwapOpen && (
-            <div style={styles.modalOverlay} onClick={() => setIsShardSwapOpen(false)}>
-              <div style={{ ...styles.modalContent, background: '#131517', border: 'none', width: '90%', maxWidth: '360px' }} onClick={e => e.stopPropagation()}>
-                
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                  <h3 style={{ color: '#fff', margin: 0 }}>Shard Swap</h3>
-                  <button onClick={() => { setIsShardSwapOpen(false); setIsModalOpen(true); }} style={{ background: 'none', border: 'none', color: '#888', fontSize: '20px', cursor: 'pointer', padding: 0 }}>✕</button>
+            <div
+              style={{
+                ...styles.modalOverlay,
+                alignItems: 'center',
+                padding: 'max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left))',
+                boxSizing: 'border-box',
+                overflow: 'hidden',
+              }}
+              onClick={() => setIsShardSwapOpen(false)}
+            >
+              <div
+                style={{
+                  ...styles.modalContent,
+                  background: '#131517',
+                  border: '1px solid #333',
+                  width: '100%',
+                  maxWidth: '360px',
+                  maxHeight: 'min(90dvh, 100%)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  padding: 0,
+                  overflow: 'hidden',
+                  boxSizing: 'border-box',
+                }}
+                onClick={e => e.stopPropagation()}
+              >
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    padding: '14px 16px 10px',
+                    flexShrink: 0,
+                    borderBottom: '1px solid #2a2a2a',
+                  }}
+                >
+                  <h3 style={{ color: '#fff', margin: 0, fontSize: 18 }}>Shard Swap</h3>
+                  <button onClick={() => { setIsShardSwapOpen(false); setIsModalOpen(true); }} style={{ background: 'none', border: 'none', color: '#888', fontSize: '22px', cursor: 'pointer', padding: 0, lineHeight: 1 }}>✕</button>
                 </div>
 
-                {/* Fee/rate only when swap is open — locked free path uses Swap Badge card below */}
-                {swapAccess.allowed && (
-                  <div style={{
-                    background: swapAccess.tier === 'locksmith' ? 'rgba(153,69,255,0.15)' : 'rgba(74,222,128,0.1)',
-                    border: `1px solid ${swapAccess.tier === 'locksmith' ? '#9945FF' : '#4ade80'}`,
-                    borderRadius: 12,
-                    padding: '10px 12px',
-                    marginBottom: 14,
-                    fontSize: 12,
-                    color: '#ccc',
-                    textAlign: 'left',
-                    lineHeight: 1.45,
-                  }}>
-                    <div style={{ fontWeight: 'bold', color: '#fff', marginBottom: 4 }}>
-                      {swapAccess.tier === 'locksmith' ? 'GiftLocksmith' : 'Swap active'}
-                      {hasLocksmithNft ? ' 🔑' : ''}
-                    </div>
-                    Fee {(swapAccess.feeBps / 100).toFixed(1)}% in G2U · Min {swapAccess.minShards.toLocaleString()} shards
-                    <br />
-                    Today: {getDailySwapUsed(stats.inventory).toLocaleString()} / {swapAccess.dailyCapShards.toLocaleString()} shards
-                    <br />
-                    Rate: {SHARD_SWAP_CONFIG.shardsPerGft.toLocaleString()} shards → 1 G2U (provisional until launch)
+                <div
+                  style={{
+                    flex: '1 1 auto',
+                    minHeight: 0,
+                    overflowY: 'auto',
+                    WebkitOverflowScrolling: 'touch',
+                    overscrollBehavior: 'contain',
+                    padding: '12px 16px 16px',
+                    boxSizing: 'border-box',
+                    touchAction: 'pan-y',
+                  }}
+                >
+
+                {/* Access Card (free path) — unified NFT-style panel */}
+                {!hasLocksmithNft && (
+                  <div style={{ marginBottom: 12 }}>
+                    <SwapBadgeCard
+                      inventory={stats.inventory || {}}
+                      editionNumber={1}
+                      editionTotal={SHARD_SWAP_CONFIG.freeAccessCardEditionTotal || 20000}
+                      dailyCapShards={SHARD_SWAP_CONFIG.free.dailyCapShards}
+                      compact
+                      levelUpBusy={shardSwapBusy}
+                      levelUpCostGft={
+                        hasSwapLicense(stats.inventory)
+                          ? badgeLevelUpCostGft(getSwapBadgeLevel(stats.inventory))
+                          : null
+                      }
+                      canAffordLevelUp={
+                        hasSwapLicense(stats.inventory) &&
+                        badgeLevelUpCostGft(getSwapBadgeLevel(stats.inventory)) != null &&
+                        (Number(balances.G2U) || 0) >=
+                          (badgeLevelUpCostGft(getSwapBadgeLevel(stats.inventory)) || 0)
+                      }
+                      onLevelUp={levelUpSwapBadge}
+                      onMint={() => {
+                        notify(
+                          'Mint opens later — card Lv5+ holders can mint and sell Access Cards. Not live yet.',
+                        );
+                      }}
+                    />
                   </div>
                 )}
 
-                {/* Swap Badge — always visible for free path (not Locksmith) */}
-                {!hasLocksmithNft && (
-                  <div style={{
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: 10,
-                    background: 'linear-gradient(145deg, #1a1520 0%, #1c1e22 100%)',
-                    borderRadius: 14,
-                    padding: '12px',
-                    marginBottom: 12,
-                    border: '1px solid #fbbf2488',
-                  }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                      <img
-                        src="/shop/swap-badge.png"
-                        alt="Swap Badge"
-                        width={56}
-                        height={56}
-                        style={{ borderRadius: 12, objectFit: 'cover', background: '#0f0f12', border: '1px solid #fbbf2444' }}
-                      />
-                      <div style={{ flex: 1, textAlign: 'left', fontSize: 12, color: '#ccc', minWidth: 0 }}>
-                        <div style={{ fontWeight: 'bold', color: '#fbbf24', fontSize: 13 }}>
-                          Swap Badge {hasSwapLicense(stats.inventory) ? `· Lv${getSwapBadgeLevel(stats.inventory)}` : '· locked'}
-                        </div>
-                        {hasSwapLicense(stats.inventory) ? (
-                          <>
-                            <div>
-                              Charge {getSwapDurability(stats.inventory).toFixed(1)}% · ~
-                              {durabilityRemainingShards(stats.inventory).toLocaleString()} shards left
-                            </div>
-                            <div style={{ fontSize: 10, color: '#888', marginTop: 2 }}>
-                              Full charge ≈ {durabilityFullVolumeForLevel(getSwapBadgeLevel(stats.inventory)).toLocaleString()} shards volume · daily cap {SHARD_SWAP_CONFIG.free.dailyCapShards.toLocaleString()}
-                            </div>
-                            <div style={{ marginTop: 6, height: 6, background: '#333', borderRadius: 4, overflow: 'hidden' }}>
-                              <div style={{
-                                width: `${Math.min(100, getSwapDurability(stats.inventory))}%`,
-                                height: '100%',
-                                background: getSwapDurability(stats.inventory) > 20
-                                  ? 'linear-gradient(90deg,#fbbf24,#f59e0b)'
-                                  : '#f87171',
-                              }} />
-                            </div>
-                          </>
-                        ) : (
-                          <div style={{ fontSize: 11, color: '#aaa', lineHeight: 1.4, marginTop: 2 }}>
-                            Free path badge (same spirit as Locksmith NFT). Unlock at L{SHARD_SWAP_CONFIG.freeUnlockMinLevel}+ for {SHARD_SWAP_CONFIG.freeUnlockBurnShards.toLocaleString()} shards. Level up with G2U so each % lasts longer.
-                          </div>
-                        )}
+                {/* Locksmith daily limit (energy-style) when no free card panel */}
+                {hasLocksmithNft && swapAccess.allowed && (() => {
+                  const used = getDailySwapUsed(stats.inventory) || 0;
+                  const cap = Number(swapAccess.dailyCapShards) || 0;
+                  const left = Math.max(0, cap - used);
+                  const pct = cap > 0 ? Math.min(100, (used / cap) * 100) : 0;
+                  return (
+                    <div
+                      style={{
+                        marginBottom: 12,
+                        padding: '10px 12px',
+                        borderRadius: 12,
+                        border: '1px solid #9945FF88',
+                        background: 'rgba(153,69,255,0.12)',
+                      }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                        <span style={{ color: '#ffd700', fontWeight: 800, fontSize: 12 }}>⚡ Daily swap</span>
+                        <span style={{ color: '#ffd700', fontWeight: 900, fontSize: 13 }}>
+                          {used.toLocaleString()} / {cap.toLocaleString()}
+                        </span>
                       </div>
+                      <div style={{ height: 8, borderRadius: 4, background: '#000', border: '1px solid #444', overflow: 'hidden' }}>
+                        <div style={{ width: `${pct}%`, height: '100%', background: 'linear-gradient(90deg,#ca8a04,#ffd700)' }} />
+                      </div>
+                      <div style={{ fontSize: 10, color: '#888', marginTop: 4 }}>{left.toLocaleString()} left today · Fee {(swapAccess.feeBps / 100).toFixed(0)}%</div>
                     </div>
-                    {hasSwapLicense(stats.inventory) && (
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                        {[5, 10, 25].map((g) => (
-                          <button
-                            key={g}
-                            type="button"
-                            disabled={
-                              shardSwapBusy ||
-                              getSwapDurability(stats.inventory) >= 100 ||
-                              (Number(balances.G2U) || 0) < g
-                            }
-                            onClick={() => topUpSwapBadge(g)}
-                            style={{
-                              flex: '1 1 auto',
-                              background: '#2a2d34',
-                              color: '#fbbf24',
-                              border: '1px solid #fbbf24',
-                              borderRadius: 12,
-                              padding: '6px 8px',
-                              fontWeight: 'bold',
-                              fontSize: 10,
-                              cursor: 'pointer',
-                              opacity:
-                                getSwapDurability(stats.inventory) >= 100 ||
-                                (Number(balances.G2U) || 0) < g
-                                  ? 0.4
-                                  : 1,
-                            }}
-                          >
-                            Charge +{g * SHARD_SWAP_CONFIG.durabilityPercentPerGft}% · {g} G2U
-                          </button>
-                        ))}
-                        {badgeLevelUpCostGft(getSwapBadgeLevel(stats.inventory)) != null && (
-                          <button
-                            type="button"
-                            disabled={
-                              shardSwapBusy ||
-                              (Number(balances.G2U) || 0) <
-                                badgeLevelUpCostGft(getSwapBadgeLevel(stats.inventory))
-                            }
-                            onClick={levelUpSwapBadge}
-                            style={{
-                              width: '100%',
-                              background: 'rgba(153,69,255,0.2)',
-                              color: '#c4b5fd',
-                              border: '1px solid #9945FF',
-                              borderRadius: 12,
-                              padding: '8px',
-                              fontWeight: 'bold',
-                              fontSize: 11,
-                              cursor: 'pointer',
-                              marginTop: 2,
-                            }}
-                          >
-                            Level badge → Lv{getSwapBadgeLevel(stats.inventory) + 1} ·{' '}
-                            {badgeLevelUpCostGft(getSwapBadgeLevel(stats.inventory))} G2U
-                            {' '}(more shards per % drain)
-                          </button>
-                        )}
-                      </div>
-                    )}
-                    <p style={{ margin: 0, fontSize: 10, color: '#666', lineHeight: 1.35, textAlign: 'left' }}>
-                      In-game Swap Badge for free path (not an NFT yet). GiftLocksmith is the permanent NFT. On-chain mint + marketplace sell planned later.
-                    </p>
-                  </div>
-                )}
+                  );
+                })()}
 
                 {/* You Pay Section */}
                 <div style={{ background: '#1c1e22', borderRadius: '16px', padding: '15px', textAlign: 'left', marginBottom: '5px' }}>
@@ -4070,10 +4277,6 @@ const GiftTapGame = () => {
                   )}
                 </div>
 
-                <p style={{ fontSize: '11px', color: '#666', marginTop: '14px', textAlign: 'center', lineHeight: 1.4 }}>
-                  G2U is credited to your account. Free Swap Badge uses durability % (volume drain) + daily cap. GiftLocksmith is permanent with lower fees.
-                </p>
-
                 {!swapAccess.allowed && (
                   <button
                     type="button"
@@ -4115,7 +4318,7 @@ const GiftTapGame = () => {
                         ? `Need Level ${SHARD_SWAP_CONFIG.freeUnlockMinLevel} first (you: ${currentLevel})`
                         : stats.inventory?.swap_unlock_burned || stats.inventory?.swap_unlocked
                           ? 'Badge owned — need Level 5+ or top up'
-                          : `Get Swap Badge (${SHARD_SWAP_CONFIG.freeUnlockBurnShards.toLocaleString()} shards) · L${SHARD_SWAP_CONFIG.freeUnlockMinLevel}+`}
+                          : `Get Access Card (${SHARD_SWAP_CONFIG.freeUnlockBurnShards.toLocaleString()} shards) · L${SHARD_SWAP_CONFIG.freeUnlockMinLevel}+`}
                   </button>
                 )}
 
@@ -4133,6 +4336,7 @@ const GiftTapGame = () => {
                     fontWeight: 'bold', 
                     fontSize: '16px',
                     marginTop: '12px',
+                    marginBottom: '8px',
                     cursor: swapAccess.allowed && shardQuote.ok ? 'pointer' : 'not-allowed'
                   }}
                 >
@@ -4142,6 +4346,7 @@ const GiftTapGame = () => {
                       ? 'Swap locked'
                       : 'Swap G2Ushards → G2U'}
                 </button>
+                </div>
               </div>
             </div>
           )}
