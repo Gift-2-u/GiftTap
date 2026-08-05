@@ -467,6 +467,11 @@ const GiftTapGame = () => {
   const [itemToBuy, setItemToBuy] = useState(null);
   const touchLock = useRef(false);
   const optimisticTaps = useRef(lifetimeTaps);
+  /** Shard balance / season — same instant-update pattern as lifetime (rapid multi-touch safe) */
+  const optimisticBalance = useRef(0);
+  const optimisticSeason = useRef(0);
+  const optimisticEnergy = useRef(500);
+  const optimisticDaily = useRef(0);
   const pendingSaveRef = useRef(null);
   const saveFailNotifiedRef = useRef(0);
   const [decryptedPhrase, setDecryptedPhrase] = useState("");
@@ -633,10 +638,8 @@ const GiftTapGame = () => {
     return TRANSLATIONS[appLanguage]?.[key] || TRANSLATIONS['EN'][key] || key;
   };
 
-  // Keep the ref synced if lifetimeTaps changes from the database load
-  useEffect(() => { 
-    optimisticTaps.current = lifetimeTaps; 
-  }, [lifetimeTaps]);
+  // NOTE: Do NOT sync optimisticTaps from lifetimeTaps state each render —
+  // rapid taps update the ref first; lagging setState would reset the ref and desync.
 
   const connection = useMemo(() => {
     const rpcUrl = import.meta.env.VITE_SOLANA_RPC_URL;
@@ -780,7 +783,9 @@ const GiftTapGame = () => {
           G2Ushards: Number(playerRow.shard_balance) || 0, 
           usdc: playerRow.usdc_balance || 0 
         });
-        setBalance(Number(playerRow.shard_balance));
+        const _bal = Number(playerRow.shard_balance) || 0;
+        setBalance(_bal);
+        optimisticBalance.current = _bal;
         setTapPower(playerRow.tap_power || 1);
         setMaxDailyLimit(playerRow.max_daily_limit || 1000);
         
@@ -800,7 +805,9 @@ const GiftTapGame = () => {
         const _lt = Number(playerRow.lifetime_taps) || 0;
         setLifetimeTaps(_lt);
         optimisticTaps.current = _lt;
-        setSeasonShards(Number(playerRow.season_shards) || 0); 
+        const _ss = Number(playerRow.season_shards) || 0;
+        setSeasonShards(_ss);
+        optimisticSeason.current = _ss; 
         const loadedMax = playerRow.max_unlocked_level || 4;
         setMaxUnlockedLevel(loadedMax); 
         const _max = loadedMax;
@@ -812,7 +819,9 @@ const GiftTapGame = () => {
           setWallSnoozedFor(null);
         }
         // 🚨 ADD THIS LINE TO LOAD ENERGY FROM DB
-        setEnergy(Number(playerRow.last_energy) || 0);
+        const _en = Number(playerRow.last_energy) || 0;
+        setEnergy(_en);
+        optimisticEnergy.current = _en;
 
         // Daily Reset Logic
         const today = new Date().toISOString().split('T')[0];
@@ -821,8 +830,11 @@ const GiftTapGame = () => {
 
         if (playerRow.last_tap_date !== today) {
           setDailyTaps(0);
+          optimisticDaily.current = 0;
         } else {
-          setDailyTaps(playerRow.daily_taps || 0);
+          const _dt = Number(playerRow.daily_taps) || 0;
+          setDailyTaps(_dt);
+          optimisticDaily.current = _dt;
         }
 
         // 🚨 NEW: Ad Capacity & Midnight Reset Logic
@@ -863,7 +875,9 @@ const GiftTapGame = () => {
         const recovered = Math.max(0, Math.floor(secondsPassed / 4)); 
         // If dbEnergy is 0, we fallback to 500 to keep the game playable as it was before
         const dbEnergy = (Number(playerRow.last_energy) > 0) ? Number(playerRow.last_energy) : 500;
-        setEnergy(Math.min(dbEnergy + recovered, 500));
+        const recoveredEnergy = Math.min(dbEnergy + recovered, 500);
+        setEnergy(recoveredEnergy);
+        optimisticEnergy.current = recoveredEnergy;
         
         // 🚨 NEW: B. Weekend Bot (Offline Mining) Multi-Day Math
         let offlineShardsEarned = 0;
@@ -936,10 +950,17 @@ const GiftTapGame = () => {
 
                 if (offlineShardsEarned > 0) {
                     // 1. Update React UI instantly (Balance, Limits, and Leaderboard Stats!)
-                    setBalance(prev => prev + offlineShardsEarned);
-                    setDailyTaps(simDailyTaps); 
-                    setLifetimeTaps(prev => prev + offlineShardsEarned); // <-- NEW: Updates Level XP visually
-                    setSeasonShards(prev => prev + offlineShardsEarned); // <-- NEW: Updates Beta Season visually (if you use this state)
+                    const botBal = Math.round((Number(optimisticBalance.current) + offlineShardsEarned) * 1000) / 1000;
+                    const botLife = Math.round((Number(optimisticTaps.current) + offlineShardsEarned) * 1000) / 1000;
+                    const botSeason = Math.round((Number(optimisticSeason.current) + offlineShardsEarned) * 1000) / 1000;
+                    optimisticBalance.current = botBal;
+                    optimisticTaps.current = botLife;
+                    optimisticSeason.current = botSeason;
+                    optimisticDaily.current = simDailyTaps;
+                    setBalance(botBal);
+                    setDailyTaps(simDailyTaps);
+                    setLifetimeTaps(botLife);
+                    setSeasonShards(botSeason);
                     
                     // 2. Save to Supabase (Add shards to ALL tracking columns)
                     supabase
@@ -1326,7 +1347,14 @@ const GiftTapGame = () => {
 
   useEffect(() => {
     const ticker = setInterval(() => {
-      setEnergy((prev) => (prev < 500 ? prev + 1 : 500 ));
+      setEnergy((prev) => {
+        const cap = 500; // base regen cap (battery expands max via boosts at use-time)
+        const next = prev < cap ? prev + 1 : cap;
+        if (next > Number(optimisticEnergy.current)) {
+          optimisticEnergy.current = next;
+        }
+        return next;
+      });
     }, 2000);
     return () => clearInterval(ticker);
   }, [stats.energy_boost_expires]);
@@ -1375,26 +1403,26 @@ const GiftTapGame = () => {
    * Otherwise a debounced tap save can restore the pre-purchase balance.
    */
   const setBalanceSynced = (updater) => {
-    setBalance((prev) => {
-      const raw = typeof updater === 'function' ? updater(Number(prev) || 0) : updater;
-      const next = Math.max(0, Math.round((Number(raw) || 0) * 1000) / 1000);
-      if (pendingSaveRef.current) {
-        pendingSaveRef.current = { ...pendingSaveRef.current, b: next };
-      } else {
-        pendingSaveRef.current = {
-          b: next,
-          e: energy,
-          dt: dailyTaps,
-          ltd: lastTapDate,
-          strk: streak,
-          ltt: lifetimeTaps,
-          mul: maxUnlockedLevel,
-          s: seasonShards,
-        };
-      }
-      setBalances((bal) => ({ ...bal, G2Ushards: next }));
-      return next;
-    });
+    const prevBal = Number(optimisticBalance.current);
+    const raw = typeof updater === 'function' ? updater(prevBal) : updater;
+    const next = Math.max(0, Math.round((Number(raw) || 0) * 1000) / 1000);
+    optimisticBalance.current = next;
+    setBalance(next);
+    if (pendingSaveRef.current) {
+      pendingSaveRef.current = { ...pendingSaveRef.current, b: next };
+    } else {
+      pendingSaveRef.current = {
+        b: next,
+        e: Number(optimisticEnergy.current),
+        dt: Number(optimisticDaily.current),
+        ltd: lastTapDate,
+        strk: streak,
+        ltt: Number(optimisticTaps.current) || 0,
+        mul: maxUnlockedLevel,
+        s: Number(optimisticSeason.current) || 0,
+      };
+    }
+    setBalances((bal) => ({ ...bal, G2Ushards: next }));
   };
 
   // 6. SAVE PROGRESS — always persist shards; open mining past walls
@@ -1565,9 +1593,19 @@ const GiftTapGame = () => {
 
         currentDailyTaps = 0;
         setDailyTaps(0);
+        optimisticDaily.current = 0;
         setLastTapDate(today);
         setStreak(currentStreak);
-        saveToDatabase(balance, energy, 0, today, currentStreak, lifetimeTaps, maxUnlockedLevel, seasonShards);
+        saveToDatabase(
+          Number(optimisticBalance.current),
+          Number(optimisticEnergy.current),
+          0,
+          today,
+          currentStreak,
+          Number(optimisticTaps.current),
+          maxUnlockedLevel,
+          Number(optimisticSeason.current),
+        );
       }
       // 1. CALCULATE THE TRUE LIMIT (Surgical Fix)
       let currentMaxLimit = Number(maxDailyLimit) || 1000;
@@ -1608,8 +1646,9 @@ const GiftTapGame = () => {
       }
 
       // 3. CALCULATE VALID FINGERS
-      const availableByEnergy = Math.floor(energy / costMultiplier);
-      const availableByDailyLimit = Math.floor((currentMaxLimit - currentDailyTaps) / costMultiplier);
+      const availableByEnergy = Math.floor(Number(optimisticEnergy.current) / costMultiplier);
+      const dailyUsed = Math.max(Number(currentDailyTaps) || 0, Number(optimisticDaily.current) || 0);
+      const availableByDailyLimit = Math.floor((currentMaxLimit - dailyUsed) / costMultiplier);
       const validTaps = Math.min(tapPoints.length, availableByEnergy, availableByDailyLimit);
 
       if (validTaps <= 0) return; 
@@ -1634,17 +1673,28 @@ const GiftTapGame = () => {
         setShowAscensionModal(true);
       }
 
-      // 🚨 FIX: Update the optimistic ref INSTANTLY so the next rapid tap is blocked
-      optimisticTaps.current += shardsEarned;
+      // Instant refs so multi-touch / rapid taps never use stale React state in saves
+      optimisticTaps.current = Math.round((safeLifetimeTaps + shardsEarned) * 1000) / 1000;
+      const nextLifetimeTaps = optimisticTaps.current;
 
-      const nextBalance = Math.round((balance + shardsEarned) * 1000) / 1000;
-      const nextLifetimeTaps = Math.round((safeLifetimeTaps + shardsEarned) * 1000) / 1000;
-      // ADD THIS LINE: Calculate the new season total
-      const nextSeasonShards = Math.round((seasonShards + shardsEarned) * 1000) / 1000;
+      const safeBal = Number(optimisticBalance.current);
+      optimisticBalance.current = Math.round((safeBal + shardsEarned) * 1000) / 1000;
+      const nextBalance = optimisticBalance.current;
+
+      const safeSeason = Number(optimisticSeason.current) || 0;
+      optimisticSeason.current = Math.round((safeSeason + shardsEarned) * 1000) / 1000;
+      const nextSeasonShards = optimisticSeason.current;
 
       const totalCost = costMultiplier * validTaps;
-      let nextEnergy = energy - totalCost;
-      const nextDaily = currentDailyTaps + totalCost;
+      const safeEnergy = Number(optimisticEnergy.current);
+      let nextEnergy = Math.max(0, safeEnergy - totalCost);
+      optimisticEnergy.current = nextEnergy;
+
+      const safeDaily = Number(optimisticDaily.current);
+      // Prefer ref for daily progress (stale state under multi-touch)
+      const baseDaily = Math.max(Number(currentDailyTaps) || 0, safeDaily);
+      const nextDaily = baseDaily + totalCost;
+      optimisticDaily.current = nextDaily;
 
       // Level-ups only inside unlocked tier (climbing wall is paid / optional)
       if (!isAtLevelCap) {
@@ -1662,11 +1712,12 @@ const GiftTapGame = () => {
       setTimeout(() => setIsPressed(false), 100);
 
       // --- RAPID TAP UI FIX ---
-      setBalance(prev => Math.round((Number(prev) + shardsEarned) * 1000) / 1000);
-      setLifetimeTaps(prev => Math.round((Number(prev) + shardsEarned) * 1000) / 1000);
-      setSeasonShards(prev => Math.round((Number(prev) + shardsEarned) * 1000) / 1000); 
-      setEnergy(prev => Math.max(0, prev - totalCost));
-      setDailyTaps(prev => prev + totalCost);
+      setBalance(nextBalance);
+      setLifetimeTaps(nextLifetimeTaps);
+      setSeasonShards(nextSeasonShards);
+      setEnergy(nextEnergy);
+      setDailyTaps(nextDaily);
+      setBalances((bal) => ({ ...bal, G2Ushards: nextBalance }));
 
       // Send the trigger to save (No absolute totals passed anymore)
       // Make sure this exact line is at the bottom of handleTap:
