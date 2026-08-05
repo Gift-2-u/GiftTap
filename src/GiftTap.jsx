@@ -1605,16 +1605,17 @@ const GiftTapGame = () => {
             sb + 0.001 < (Number(base.b) || 0);
 
           if (serverCorrectedDown) {
-            // Re-base session on server truth, then keep only positive local deltas if any
-            const dLtt = Math.max(0, writeLtt - (Number(base.ltt) || 0));
-            const dS = Math.max(0, writeS - (Number(base.s) || 0));
-            const dDt = Math.max(0, writeDt - (Number(base.dt) || 0));
-            const dB = Math.max(0, writeB - (Number(base.b) || 0));
-            writeLtt = sl + dLtt;
-            writeS = ss + dS;
-            writeDt = sd + dDt;
-            writeB = isSpend ? writeB : sb + dB;
+            // Admin fixed stats down in Supabase — adopt server EXACTLY.
+            // Do not re-add local deltas from the old wrong baseline (that kept 5101 alive).
+            writeLtt = sl;
+            writeS = ss;
+            writeDt = sd;
+            writeB = isSpend ? writeB : sb;
             serverProgressRef.current = { b: writeB, ltt: writeLtt, s: writeS, dt: writeDt };
+            console.warn('Adopted admin/server progress correction', {
+              from: base,
+              to: serverProgressRef.current,
+            });
           } else {
             // Normal play: this device is source of truth for the save payload
             // (other devices still push via realtime)
@@ -1643,6 +1644,12 @@ const GiftTapGame = () => {
       setSeasonShards(writeS);
       setDailyTaps(writeDt);
       setBalances((bal) => ({ ...bal, G2Ushards: writeB }));
+      // Level HUD is derived from lifetime_taps — keep it in sync after corrections
+      setCurrentLevel((prev) => {
+        const maxU = Number(maxUnlockedLevel) || 4;
+        const next = Math.min(calculateLevel(writeLtt), maxU);
+        return next;
+      });
       pendingSaveRef.current = {
         ...p,
         b: writeB,
@@ -2146,7 +2153,7 @@ const GiftTapGame = () => {
             const incomingShards = Number(payload.new.shard_balance) || 0;
 
             // Skip echo of our own save for 1.5s (avoid fighting mid-tap)
-            const isOwnEcho = Date.now() - (lastLocalSaveAtRef.current || 0) < 1500;
+            const isOwnEcho = Date.now() - (lastLocalSaveAtRef.current || 0) < 400;
             const incSeason = Number(payload.new.season_shards) || 0;
             const incDaily = Number(payload.new.daily_taps) || 0;
             const base = serverProgressRef.current || {};
@@ -2181,6 +2188,15 @@ const GiftTapGame = () => {
               setSeasonShards(incSeason);
               setDailyTaps(incDaily);
               setBalances((b) => ({ ...b, G2Ushards: incomingShards }));
+              {
+                const maxU = Number(
+                  payload.new.max_unlocked_level ?? maxUnlockedLevel,
+                ) || 4;
+                if (payload.new.max_unlocked_level != null) {
+                  setMaxUnlockedLevel(maxU);
+                }
+                setCurrentLevel(Math.min(calculateLevel(incomingTaps), maxU));
+              }
               if (payload.new.last_energy != null) {
                 const en = Number(payload.new.last_energy);
                 setEnergy(en);
