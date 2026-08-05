@@ -39,7 +39,7 @@ import {
 
 import { hasLocksmith } from './locksmith';
 import WalletNftSection from './WalletNftSection';
-import SwapBadgeCard from './SwapBadgeCard';
+import SwapBadgeCard, { NftDetailModal, LOCKSMITH_PERKS } from './SwapBadgeCard';
 import {
   SHARD_SWAP_CONFIG,
   getSwapAccess,
@@ -514,6 +514,7 @@ const GiftTapGame = () => {
   const [swapFromToken, setSwapFromToken] = useState('SOL');
   const [swapToToken, setSwapToToken] = useState('G2U');
   const [isShardSwapOpen, setIsShardSwapOpen] = useState(false);
+  const [locksmithDetailOpen, setLocksmithDetailOpen] = useState(false);
   const [shardSwapAmount, setShardSwapAmount] = useState('');
   const [hasLocksmithNft, setHasLocksmithNft] = useState(false);
   const [shardSwapBusy, setShardSwapBusy] = useState(false);
@@ -4209,7 +4210,7 @@ const GiftTapGame = () => {
                   </div>
                 )}
 
-                {/* GiftLocksmith — same compact strip style as Access Card */}
+                {/* GiftLocksmith — real NFT art (click for perks) */}
                 {hasLocksmithNft && (
                   <div
                     style={{
@@ -4221,23 +4222,32 @@ const GiftTapGame = () => {
                       textAlign: 'left',
                     }}
                   >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
-                      <div
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
+                      <button
+                        type="button"
+                        onClick={() => setLocksmithDetailOpen(true)}
+                        title="View NFT details"
                         style={{
-                          width: 44,
-                          height: 44,
-                          borderRadius: 8,
-                          background: 'linear-gradient(135deg,#4c1d95,#1e1b4b)',
-                          border: '1px solid #9945FF',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          fontSize: 22,
+                          padding: 0,
+                          width: 72,
+                          height: 72,
+                          borderRadius: 12,
+                          border: '2px solid #9945FF88',
+                          overflow: 'hidden',
+                          background: '#000',
+                          cursor: 'pointer',
                           flexShrink: 0,
+                          boxShadow: '0 0 12px rgba(153,69,255,0.25)',
                         }}
                       >
-                        🔑
-                      </div>
+                        <img
+                          src="/shop/gift-locksmith.jpg"
+                          alt="GiftLocksmith"
+                          width={72}
+                          height={72}
+                          style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                        />
+                      </button>
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ fontWeight: 800, fontSize: 14, color: '#f8fafc' }}>
                           GiftLocksmith
@@ -4245,7 +4255,7 @@ const GiftTapGame = () => {
                         <div
                           style={{
                             position: 'relative',
-                            marginTop: 3,
+                            marginTop: 4,
                             minHeight: 16,
                             fontSize: 11,
                             fontWeight: 600,
@@ -4263,6 +4273,23 @@ const GiftTapGame = () => {
                             Access granted
                           </span>
                         </div>
+                        <button
+                          type="button"
+                          onClick={() => setLocksmithDetailOpen(true)}
+                          style={{
+                            marginTop: 6,
+                            background: 'none',
+                            border: 'none',
+                            color: '#c4b5fd',
+                            fontSize: 11,
+                            fontWeight: 700,
+                            padding: 0,
+                            cursor: 'pointer',
+                            textDecoration: 'underline',
+                          }}
+                        >
+                          View perks
+                        </button>
                       </div>
                     </div>
                     {swapAccess.allowed && (() => {
@@ -4289,6 +4316,16 @@ const GiftTapGame = () => {
                     })()}
                   </div>
                 )}
+
+                <NftDetailModal
+                  open={locksmithDetailOpen}
+                  onClose={() => setLocksmithDetailOpen(false)}
+                  title="GiftLocksmith"
+                  imageSrc="/shop/gift-locksmith.jpg"
+                  subtitle="Gift2u Elves · Gen 1 · Permanent utility NFT"
+                  statusLine="Access granted"
+                  perks={LOCKSMITH_PERKS}
+                />
 
                 {/* You Pay Section */}
                 <div style={{ background: '#1c1e22', borderRadius: '16px', padding: '15px', textAlign: 'left', marginBottom: '5px' }}>
