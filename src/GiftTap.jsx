@@ -1370,16 +1370,47 @@ const GiftTapGame = () => {
 
   }, [playerId]);
 
+  /**
+   * Shop / spends must update shard balance AND pending cloud-save snapshot.
+   * Otherwise a debounced tap save can restore the pre-purchase balance.
+   */
+  const setBalanceSynced = (updater) => {
+    setBalance((prev) => {
+      const raw = typeof updater === 'function' ? updater(Number(prev) || 0) : updater;
+      const next = Math.max(0, Math.round((Number(raw) || 0) * 1000) / 1000);
+      if (pendingSaveRef.current) {
+        pendingSaveRef.current = { ...pendingSaveRef.current, b: next };
+      } else {
+        pendingSaveRef.current = {
+          b: next,
+          e: energy,
+          dt: dailyTaps,
+          ltd: lastTapDate,
+          strk: streak,
+          ltt: lifetimeTaps,
+          mul: maxUnlockedLevel,
+          s: seasonShards,
+        };
+      }
+      setBalances((bal) => ({ ...bal, G2Ushards: next }));
+      return next;
+    });
+  };
+
   // 6. SAVE PROGRESS — always persist shards; open mining past walls
   const saveToDatabase = (b, e, dt, ltd, strk, ltt, mul, s) => {
     if (!playerId) return;
 
-    // Merge: never write lower shards/lifetime than a newer pending save
+    // Merge pending save:
+    // - lifetime / season only go up (Math.max) — pure earnings counters
+    // - shard balance / energy / daily taps use LATEST snapshot (not Math.max!)
+    //   Math.max on shards was a critical bug: shop spends (battery 750 etc.)
+    //   got overwritten by an older debounced tap save → free items, wrong balance.
     const prev = pendingSaveRef.current;
     const merged = {
-      b: Math.max(Number(b) || 0, Number(prev?.b) || 0),
+      b: Number(b) || 0,
       e: Number(e),
-      dt: Math.max(Number(dt) || 0, Number(prev?.dt) || 0),
+      dt: Number(dt) || 0,
       ltd,
       strk,
       ltt: Math.max(Number(ltt) || 0, Number(prev?.ltt) || 0),
@@ -2280,7 +2311,7 @@ const GiftTapGame = () => {
         })
         .eq(DB_PLAYER_ID, playerId);
       if (error) throw error;
-      setBalance(newBal);
+      setBalanceSynced(newBal);
       setStats((s) => ({ ...s, inventory: nextInv }));
       notify('✅ Swap Badge charged to 100%! Free path: 10% fee, daily cap, durability drains by volume. Top up with G2U when low.');
     } catch (e) {
@@ -2335,7 +2366,7 @@ const GiftTapGame = () => {
         .eq(DB_PLAYER_ID, playerId);
       if (error) throw error;
 
-      setBalance(newShardBal);
+      setBalanceSynced(newShardBal);
       setBalances((b) => ({ ...b, G2U: newGft, G2Ushards: newShardBal }));
       setStats((s) => ({ ...s, inventory: nextInv }));
       setShardSwapAmount('');
@@ -3208,7 +3239,7 @@ const GiftTapGame = () => {
             {currentPage === 'shop' && (
               <Marketplace 
                 balance={balance} 
-                setBalance={setBalance}
+                setBalance={setBalanceSynced}
                 setEnergy={setEnergy} 
                 stats={stats}
                 setStats={setStats}
@@ -3221,7 +3252,7 @@ const GiftTapGame = () => {
             {currentPage === 'tasks' && (
               <Tasks 
                 balance={balance} 
-                setBalance={setBalance} 
+                setBalance={setBalanceSynced} 
                 player={player} 
               />
             )}

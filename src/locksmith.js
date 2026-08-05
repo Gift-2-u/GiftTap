@@ -36,12 +36,24 @@ const assetToCard = (asset) => {
     asset?.content?.files?.find((f) => f?.uri || f?.cdn_uri)?.cdn_uri ||
     asset?.content?.files?.find((f) => f?.uri || f?.cdn_uri)?.uri ||
     null;
+  const attributes = Array.isArray(meta.attributes)
+    ? meta.attributes
+        .map((a) => ({
+          trait_type: String(a?.trait_type || a?.traitType || a?.key || ''),
+          value: String(a?.value ?? ''),
+        }))
+        .filter((a) => a.trait_type || a.value)
+    : [];
   return {
     id,
     name: String(name),
+    symbol: meta.symbol ? String(meta.symbol) : 'Locksmith',
+    description: meta.description ? String(meta.description) : '',
     image: image ? String(image) : null,
     collection: 'Gift2u Elves',
     kind: 'locksmith',
+    attributes,
+    jsonUri: asset?.content?.json_uri ? String(asset.content.json_uri) : null,
   };
 };
 

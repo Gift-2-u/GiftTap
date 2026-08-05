@@ -281,7 +281,9 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
 
   // --- 1. BUYING WITH SHARDS (Goes to Backpack) ---
   const handleShardBuy = async (item) => {
-    if (balance < item.cost) {
+    const cost = Number(item.cost) || 0;
+    const have = Number(balance) || 0;
+    if (have < cost) {
       setTxStatus({ show: true, loading: false, message: "❌ Not enough Shards!", success: false });
       return;
     }
@@ -291,19 +293,22 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
     // Copy current inventory and add 1
     const newInventory = { ...localInventory };
     newInventory[item.id] = (newInventory[item.id] || 0) + 1;
+    const nextBalance = Math.max(0, Math.round((have - cost) * 1000) / 1000);
 
     try {
+      // Deduct shards + add backpack item together
       const { error } = await supabase.from('players')
-        .update({ shard_balance: balance - item.cost, inventory: newInventory })
+        .update({ shard_balance: nextBalance, inventory: newInventory })
         .eq(DB_PLAYER_ID, String(user.id));
        
       if (error) throw error;
 
-      setBalance(prev => prev - item.cost);
+      // Parent setBalanceSynced also patches pending cloud-save so taps cannot refund this spend
+      setBalance(nextBalance);
       setLocalInventory(newInventory);
       if (setStats) setStats({ ...stats, inventory: newInventory }); // Keep parent in sync
 
-      setTxStatus({ show: true, loading: false, message: `✅ ${item.name} added to Backpack!`, success: true });
+      setTxStatus({ show: true, loading: false, message: `✅ ${item.name} added to Backpack! (−${cost.toLocaleString()} G2Ushards)`, success: true });
       setTimeout(() => setTxStatus(prev => ({ ...prev, show: false })), 2000);
 
     } catch (err) {
