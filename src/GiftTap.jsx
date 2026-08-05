@@ -4209,35 +4209,86 @@ const GiftTapGame = () => {
                   </div>
                 )}
 
-                {/* Locksmith daily limit (energy-style) when no free card panel */}
-                {hasLocksmithNft && swapAccess.allowed && (() => {
-                  const used = getDailySwapUsed(stats.inventory) || 0;
-                  const cap = Number(swapAccess.dailyCapShards) || 0;
-                  const left = Math.max(0, cap - used);
-                  const pct = cap > 0 ? Math.min(100, (used / cap) * 100) : 0;
-                  return (
-                    <div
-                      style={{
-                        marginBottom: 12,
-                        padding: '10px 12px',
-                        borderRadius: 12,
-                        border: '1px solid #9945FF88',
-                        background: 'rgba(153,69,255,0.12)',
-                      }}
-                    >
-                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-                        <span style={{ color: '#ffd700', fontWeight: 800, fontSize: 12 }}>⚡ Daily swap</span>
-                        <span style={{ color: '#ffd700', fontWeight: 900, fontSize: 13 }}>
-                          {used.toLocaleString()} / {cap.toLocaleString()}
-                        </span>
+                {/* GiftLocksmith — same compact strip style as Access Card */}
+                {hasLocksmithNft && (
+                  <div
+                    style={{
+                      marginBottom: 12,
+                      padding: '10px 12px',
+                      borderRadius: 12,
+                      border: '1px solid #9945FF88',
+                      background: 'rgba(153,69,255,0.12)',
+                      textAlign: 'left',
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+                      <div
+                        style={{
+                          width: 44,
+                          height: 44,
+                          borderRadius: 8,
+                          background: 'linear-gradient(135deg,#4c1d95,#1e1b4b)',
+                          border: '1px solid #9945FF',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          fontSize: 22,
+                          flexShrink: 0,
+                        }}
+                      >
+                        🔑
                       </div>
-                      <div style={{ height: 8, borderRadius: 4, background: '#000', border: '1px solid #444', overflow: 'hidden' }}>
-                        <div style={{ width: `${pct}%`, height: '100%', background: 'linear-gradient(90deg,#ca8a04,#ffd700)' }} />
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontWeight: 800, fontSize: 14, color: '#f8fafc' }}>
+                          GiftLocksmith
+                        </div>
+                        <div
+                          style={{
+                            position: 'relative',
+                            marginTop: 3,
+                            minHeight: 16,
+                            fontSize: 11,
+                            fontWeight: 600,
+                          }}
+                        >
+                          <span style={{ color: '#c4b5fd' }}>NFT</span>
+                          <span
+                            style={{
+                              display: 'block',
+                              textAlign: 'center',
+                              marginTop: -16,
+                              color: '#86efac',
+                            }}
+                          >
+                            Access granted
+                          </span>
+                        </div>
                       </div>
-                      <div style={{ fontSize: 10, color: '#888', marginTop: 4 }}>{left.toLocaleString()} left today · Fee {(swapAccess.feeBps / 100).toFixed(0)}%</div>
                     </div>
-                  );
-                })()}
+                    {swapAccess.allowed && (() => {
+                      const used = getDailySwapUsed(stats.inventory) || 0;
+                      const cap = Number(swapAccess.dailyCapShards) || 0;
+                      const left = Math.max(0, cap - used);
+                      const pct = cap > 0 ? Math.min(100, (used / cap) * 100) : 0;
+                      return (
+                        <div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
+                            <span style={{ color: '#ffd700', fontWeight: 800, fontSize: 12 }}>Daily swap</span>
+                            <span style={{ color: '#ffd700', fontWeight: 900, fontSize: 12, fontVariantNumeric: 'tabular-nums' }}>
+                              {used.toLocaleString()} / {cap.toLocaleString()}
+                            </span>
+                          </div>
+                          <div style={{ height: 7, borderRadius: 4, background: 'rgba(0,0,0,0.55)', border: '1px solid #444', overflow: 'hidden' }}>
+                            <div style={{ width: `${pct}%`, height: '100%', background: 'linear-gradient(90deg,#ca8a04,#ffd700,#fef08a)' }} />
+                          </div>
+                          <div style={{ fontSize: 10, color: '#666', marginTop: 2 }}>
+                            {left.toLocaleString()} left today · Fee {(swapAccess.feeBps / 100).toFixed(0)}% · permanent
+                          </div>
+                        </div>
+                      );
+                    })()}
+                  </div>
+                )}
 
                 {/* You Pay Section */}
                 <div style={{ background: '#1c1e22', borderRadius: '16px', padding: '15px', textAlign: 'left', marginBottom: '5px' }}>
