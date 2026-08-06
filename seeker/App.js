@@ -136,17 +136,20 @@ export default function App() {
   /**
    * Native Mobile Wallet Adapter (Seed Vault / Phantom / etc. on Seeker).
    * WebView MWA does NOT work — must run here, same idea as AdMob for ads.
+   *
+   * cluster MUST be 'mainnet-beta' | 'devnet' | 'testnet'
+   * (NOT 'solana:mainnet' — that invalid param was shown as "cancelled")
    */
   const connectWalletNative = useCallback(
     async (requestId) => {
       try {
         const auth = await transact(async (wallet) => {
           return wallet.authorize({
-            cluster: 'solana:mainnet',
+            cluster: 'mainnet-beta',
             identity: {
               name: 'Gift2U',
               uri: 'https://gift2u.fun',
-              // MWA requires a relative URI when icon is set (not https://...)
+              // Relative path only when icon is set (MWA rule)
               icon: '/Gift2u_logo.png',
             },
           });
@@ -162,7 +165,19 @@ export default function App() {
           return;
         }
 
-        const address = mwaAddressToBase58(account.address);
+        let address;
+        try {
+          address = mwaAddressToBase58(account.address);
+        } catch (convErr) {
+          // Some wallets may already return base58
+          const raw = String(account.address || '');
+          if (raw.length >= 32 && raw.length <= 64 && !raw.includes('/')) {
+            address = raw;
+          } else {
+            throw convErr;
+          }
+        }
+
         const label = account.label || account.display_address || 'Seeker wallet';
         injectWalletResult({
           requestId,
@@ -173,15 +188,21 @@ export default function App() {
         });
         console.log('[Gift2U Seeker] wallet connected', address);
       } catch (e) {
-        const msg = e?.message || String(e);
-        console.warn('[Gift2U Seeker] wallet connect failed', msg);
+        const msg = e?.message || e?.name || String(e);
+        const code = e?.code != null ? String(e.code) : '';
+        const data = e?.data != null ? String(e.data) : '';
+        const full = [code && `code ${code}`, msg, data].filter(Boolean).join(' · ');
+        console.warn('[Gift2U Seeker] wallet connect failed', full, e);
+        // Only say "cancelled" for real user cancel — not for protocol errors
+        const userCancel =
+          /user.?cancel|cancelled by user|rejected by user|declined by user/i.test(msg) ||
+          code === 'ERROR_AUTHENTICATE' && /cancel/i.test(msg);
         injectWalletResult({
           requestId,
           success: false,
-          error:
-            /cancel|rejected|declined/i.test(msg)
-              ? 'Connection cancelled.'
-              : msg || 'Could not connect wallet. Is Seed Vault set up on this Seeker?',
+          error: userCancel
+            ? 'You cancelled the wallet prompt. Tap Connect again and approve.'
+            : full || 'Could not connect wallet. Is Seed Vault set up on this Seeker?',
         });
       }
     },
