@@ -21,6 +21,7 @@ import TokenBalanceList from './TokenBalanceList';
 import { fetchFiatRates } from './fiatPrices';
 import GameWalletActionModals from './GameWalletActionModals';
 import AppNotice from './AppNotice';
+import { isSeekerShell } from './adService';
 
 /** Tokens shown on Solana tab — same set as the game wallet (shards are off-chain only). */
 const USDC_MINT = new PublicKey('EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v');
@@ -189,7 +190,13 @@ export function SolanaWalletPanel({ note, onClose }) {
     }
   };
 
-  /** Mobile: MWA opens system chooser of installed Solana wallets */
+  const onSeeker = typeof window !== 'undefined' && isSeekerShell();
+
+  /**
+   * Mobile Wallet Adapter (MWA):
+   * - Seeker APK: primary path (Seed Vault + installed wallets)
+   * - Mobile browser: optional "other wallets"
+   */
   const connectMobileAdapter = () => {
     setMsg('');
     const mwa = wallets.find(
@@ -199,9 +206,11 @@ export function SolanaWalletPanel({ note, onClose }) {
     );
     if (!mwa || mwa.readyState === 'Unsupported') {
       setMsg(
-        window.isSecureContext
-          ? 'Installed-wallet connect needs Android Chrome. Or use Phantom / Solflare buttons below.'
-          : 'Need HTTPS — open https://gift2u.fun on your phone.',
+        onSeeker
+          ? 'Seeker wallet connect is not ready. Update the Gift2U Seeker APK, or use Phantom / Solflare below.'
+          : window.isSecureContext
+            ? 'Installed-wallet connect needs Android Chrome. Or use Phantom / Solflare buttons below.'
+            : 'Need HTTPS — open https://gift2u.fun on your phone.',
       );
       return;
     }
@@ -343,7 +352,48 @@ export function SolanaWalletPanel({ note, onClose }) {
           'Connect your Solana wallet for vault and staking. Game wallet is on the Game tab.'}
       </p>
 
-      {!connected && isMobile && (
+      {/* SEEKER APK: one-tap MWA (Seed Vault / installed wallets) — like AdMob path for ads */}
+      {!connected && onSeeker && (
+        <div style={{ marginBottom: '14px' }}>
+          <p style={{ color: '#ffd700', fontSize: '13px', fontWeight: 'bold', margin: '0 0 8px' }}>
+            Connect on Seeker
+          </p>
+          <p style={{ color: '#aaa', fontSize: '11px', margin: '0 0 12px', lineHeight: 1.45 }}>
+            One tap opens wallets on this phone (Seed Vault, Phantom, Solflare…). Easier than the
+            web browser flow.
+          </p>
+          <button
+            type="button"
+            disabled={connecting}
+            onClick={connectMobileAdapter}
+            style={{
+              width: '100%',
+              padding: '16px',
+              borderRadius: '14px',
+              border: 'none',
+              background: 'linear-gradient(90deg, #9945FF, #14F195)',
+              color: '#000',
+              fontWeight: 'bold',
+              fontSize: '16px',
+              cursor: connecting ? 'wait' : 'pointer',
+              marginBottom: '10px',
+            }}
+          >
+            {connecting ? 'Connecting…' : 'Connect Seeker wallet'}
+          </button>
+          <p style={{ color: '#666', fontSize: '11px', margin: '0 0 8px', textAlign: 'center' }}>
+            Or open a wallet app
+          </p>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px' }}>
+            {walletBtn('Phantom', () => connectNamed('Phantom'))}
+            {walletBtn('Solflare', () => connectNamed('Solflare'))}
+            {walletBtn('Backpack', () => connectNamed('Backpack'))}
+          </div>
+        </div>
+      )}
+
+      {/* WEB mobile browser: deep-link into Phantom / Solflare */}
+      {!connected && isMobile && !onSeeker && (
         <div style={{ marginBottom: '14px' }}>
           <p style={{ color: '#ffd700', fontSize: '13px', fontWeight: 'bold', margin: '0 0 8px' }}>
             Connect on your phone
@@ -381,7 +431,7 @@ export function SolanaWalletPanel({ note, onClose }) {
         </div>
       )}
 
-      {!connected && !isMobile && (
+      {!connected && !isMobile && !onSeeker && (
         <div style={{ marginBottom: '12px' }}>
           <button
             type="button"

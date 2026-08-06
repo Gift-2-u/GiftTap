@@ -34,18 +34,20 @@ const isPlaceholder = (url) =>
  */
 export function isSeekerShell() {
   if (typeof window === 'undefined') return false;
+  // Expo / native Gift2U APK WebView always has this bridge
   try {
-    const q = new URLSearchParams(window.location.search || '');
-    if (q.get('seeker') === '1' || q.get('seeker') === 'true') return true;
+    if (
+      window.ReactNativeWebView &&
+      typeof window.ReactNativeWebView.postMessage === 'function'
+    ) {
+      return true;
+    }
   } catch {
     /* ignore */
   }
   try {
-    if (window.ReactNativeWebView && typeof window.ReactNativeWebView.postMessage === 'function') {
-      // Only treat as Seeker shell when we also set the query (avoids other WebViews)
-      const q = new URLSearchParams(window.location.search || '');
-      if (q.get('seeker')) return true;
-    }
+    const q = new URLSearchParams(window.location.search || '');
+    if (q.get('seeker') === '1' || q.get('seeker') === 'true') return true;
   } catch {
     /* ignore */
   }

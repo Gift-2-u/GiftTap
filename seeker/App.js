@@ -8,6 +8,7 @@ import React, { useCallback, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   BackHandler,
+  Linking,
   Platform,
   SafeAreaView,
   StatusBar,
@@ -238,6 +239,27 @@ export default function App() {
     [injectAdResult, showRewardedAd],
   );
 
+  /** Wallet deep links / MWA must leave the WebView (Seed Vault, Phantom, etc.) */
+  const handleWalletUrl = useCallback((url) => {
+    if (!url || typeof url !== 'string') return false;
+    const u = url.toLowerCase();
+    const isWallet =
+      u.startsWith('solana-wallet:') ||
+      u.startsWith('solana:') ||
+      u.startsWith('intent:') ||
+      u.startsWith('phantom:') ||
+      u.startsWith('solflare:') ||
+      u.startsWith('backpack:') ||
+      u.includes('://phantom.app/') ||
+      u.includes('://solflare.com/') ||
+      u.includes('://backpack.app/');
+    if (!isWallet) return false;
+    Linking.openURL(url).catch((e) =>
+      console.warn('[Gift2U Seeker] open wallet url failed', e?.message || e),
+    );
+    return true;
+  }, []);
+
   return (
     <SafeAreaView style={styles.root}>
       <StatusBar barStyle="light-content" backgroundColor="#0f172a" />
@@ -248,13 +270,20 @@ export default function App() {
           style={styles.flex}
           onLoadStart={() => setLoading(true)}
           onLoadEnd={() => setLoading(false)}
-          onNavigationStateChange={(nav) => setCanGoBack(nav.canGoBack)}
+          onNavigationStateChange={(nav) => {
+            setCanGoBack(nav.canGoBack);
+            if (nav?.url) handleWalletUrl(nav.url);
+          }}
+          onShouldStartLoadWithRequest={(req) => {
+            if (handleWalletUrl(req?.url)) return false;
+            return true;
+          }}
           onMessage={onWebMessage}
           javaScriptEnabled
           domStorageEnabled
           allowsInlineMediaPlayback
           mediaPlaybackRequiresUserAction={false}
-          // Free Energy uses native AdMob; keep false so random window.open does not break the shell
+          // Ads use native AdMob; wallet intents handled above
           setSupportMultipleWindows={false}
           originWhitelist={['*']}
           mixedContentMode="compatibility"

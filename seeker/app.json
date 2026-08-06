@@ -2,7 +2,7 @@
   "expo": {
     "name": "Gift2U",
     "slug": "gift2u-seeker",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
@@ -13,7 +13,7 @@
     },
     "android": {
       "package": "fun.gift2u.tap",
-      "versionCode": 2,
+      "versionCode": 3,
       "adaptiveIcon": {
         "foregroundImage": "./assets/icon.png",
         "backgroundColor": "#0f172a"
@@ -37,16 +37,20 @@
       [
         "react-native-google-mobile-ads",
         {
-          "androidAppId": "ca-app-pub-3940256099942544~3347511713",
-          "iosAppId": "ca-app-pub-3940256099942544~1458002511"
+          "androidAppId": "ca-app-pub-2758551027842720~3312205373",
+          "iosAppId": "ca-app-pub-2758551027842720~3312205373"
         }
       ]
     ],
     "extra": {
       "webUrl": "https://gift2u.fun/play",
-      "admobUseTestIds": true,
-      "admobRewardedUnitId": "ca-app-pub-3940256099942544/5224354917",
-      "admobAndroidAppId": "ca-app-pub-3940256099942544~3347511713"
+      "admobUseTestIds": false,
+      "admobRewardedUnitId": "ca-app-pub-2758551027842720/9012802776",
+      "admobAndroidAppId": "ca-app-pub-2758551027842720~3312205373"
     }
+  },
+  "react-native-google-mobile-ads": {
+    "android_app_id": "ca-app-pub-2758551027842720~3312205373",
+    "ios_app_id": "ca-app-pub-2758551027842720~3312205373"
   }
 }
