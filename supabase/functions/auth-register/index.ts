@@ -98,11 +98,31 @@ serve(async (req) => {
       throw new Error(msg);
     }
 
+    const tokenBytes = crypto.getRandomValues(new Uint8Array(32));
+    // b64 helper may exist — reuse inline if needed
+    const bytes = tokenBytes;
+    let progressToken = "";
+    {
+      let s = "";
+      for (let i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i]);
+      progressToken = btoa(s);
+    }
+    const tokenExpires = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+    await supabase
+      .from("players")
+      .update({
+        progress_token: progressToken,
+        progress_token_expires: tokenExpires,
+      })
+      .eq("telegram_id", playerId);
+
     return new Response(
       JSON.stringify({
         success: true,
         player_id: playerId,
         username: cleanName,
+        progress_token: progressToken,
+        progress_token_expires: tokenExpires,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200 },
     );

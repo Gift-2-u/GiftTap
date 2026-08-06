@@ -7,6 +7,7 @@ import CryptoJS from 'crypto-js';
 import { Keypair } from '@solana/web3.js';
 import bs58 from 'bs58';
 import { supabase } from './supabaseClient';
+import { setProgressSession } from './progressSession';
 import { vaultSaltFor } from './playerIdentity';
 
 const USERNAME_RE = /^[a-zA-Z0-9_]{3,20}$/;
@@ -131,6 +132,33 @@ export function suggestUsername() {
 /**
  * Create account + wallet in one step (wallet_address is required NOT NULL in DB).
  */
+
+async function fetchProgressToken({ username, password, playerId }) {
+  const base = import.meta.env.VITE_SUPABASE_URL || '';
+  const anon = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+  const res = await fetch(`${base}/functions/v1/issue-progress-token`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${anon}`,
+    },
+    body: JSON.stringify({
+      username: username || undefined,
+      password,
+      player_id: playerId || undefined,
+    }),
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    console.warn('progress token:', json.error || res.status);
+    return null;
+  }
+  if (json.progress_token) {
+    setProgressSession(json.progress_token, json.progress_token_expires);
+  }
+  return json;
+}
+
 export async function registerAccount(username, password) {
   const cleanName = String(username || '').trim();
   const pass = String(password || '');
@@ -200,6 +228,8 @@ export async function registerAccount(username, password) {
     throw new Error(msg);
   }
 
+  await fetchProgressToken({ username: cleanName, password: pass, playerId });
+
   return {
     success: true,
     player_id: playerId,
@@ -234,6 +264,8 @@ export async function loginAccount(username, password) {
 
   const ok = await verifyPassword(pass, row.password_hash);
   if (!ok) throw new Error('Wrong password.');
+
+  await fetchProgressToken({ username: cleanName, password: pass, playerId: row.telegram_id });
 
   return {
     success: true,

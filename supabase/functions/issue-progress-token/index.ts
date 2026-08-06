@@ -3,7 +3,8 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.7";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
@@ -22,13 +23,11 @@ function b64(buf: ArrayBuffer | Uint8Array) {
 }
 
 async function verifyPassword(password: string, stored: string): Promise<boolean> {
-  // format: pbkdf2_sha256$iterations$saltB64$hashB64
   const parts = String(stored || "").split("$");
   if (parts.length !== 4 || parts[0] !== "pbkdf2_sha256") return false;
   const iterations = parseInt(parts[1], 10);
   const salt = b64ToBytes(parts[2]);
   const expected = parts[3];
-
   const keyMaterial = await crypto.subtle.importKey(
     "raw",
     new TextEncoder().encode(password),
@@ -48,62 +47,59 @@ serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
-
   try {
-    const { username, password } = await req.json();
-    const cleanName = String(username || "").trim();
-    const pass = String(password || "");
-
-    if (!cleanName || !pass) {
-      throw new Error("Username and password are required.");
-    }
-
+    const { username, password, player_id } = await req.json();
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL") ?? "",
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
     );
 
-    const { data: row, error } = await supabase
-      .from("players")
-      .select("telegram_id, username, password_hash, wallet_address, has_beta_access, encrypted_vault")
-      .ilike("username", cleanName)
-      .maybeSingle();
-
-    if (error) throw error;
-    if (!row) {
-      throw new Error("No account with that username.");
+    let row;
+    if (username && password) {
+      const { data, error } = await supabase
+        .from("players")
+        .select("telegram_id, password_hash, is_banned")
+        .ilike("username", String(username).trim())
+        .maybeSingle();
+      if (error) throw error;
+      if (!data?.password_hash) throw new Error("No password on account");
+      if (data.is_banned) throw new Error("ACCOUNT_BANNED");
+      const ok = await verifyPassword(String(password), data.password_hash);
+      if (!ok) throw new Error("Wrong password");
+      row = data;
+    } else if (player_id && password) {
+      const { data, error } = await supabase
+        .from("players")
+        .select("telegram_id, password_hash, is_banned")
+        .eq("telegram_id", String(player_id))
+        .maybeSingle();
+      if (error) throw error;
+      if (!data?.password_hash) throw new Error("No password on account");
+      if (data.is_banned) throw new Error("ACCOUNT_BANNED");
+      const ok = await verifyPassword(String(password), data.password_hash);
+      if (!ok) throw new Error("Wrong password");
+      row = data;
+    } else {
+      throw new Error("username+password or player_id+password required");
     }
-    if (!row.password_hash) {
-      throw new Error(
-        "This account has no password yet. Use Restore with 12 words once, then set a password — or create a new account.",
-      );
-    }
 
-    const ok = await verifyPassword(pass, row.password_hash);
-    if (!ok) {
-      throw new Error("Wrong password.");
-    }
-
-    // Progress session: required for save-progress (cannot forge lifetime_taps without this)
     const tokenBytes = crypto.getRandomValues(new Uint8Array(32));
     const progressToken = b64(tokenBytes);
     const tokenExpires = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
-    await supabase
+
+    const { error: upErr } = await supabase
       .from("players")
       .update({
         progress_token: progressToken,
         progress_token_expires: tokenExpires,
       })
       .eq("telegram_id", row.telegram_id);
+    if (upErr) throw upErr;
 
     return new Response(
       JSON.stringify({
         success: true,
         player_id: row.telegram_id,
-        username: row.username,
-        wallet_address: row.wallet_address,
-        has_beta_access: !!row.has_beta_access,
-        has_vault: !!row.encrypted_vault,
         progress_token: progressToken,
         progress_token_expires: tokenExpires,
       }),

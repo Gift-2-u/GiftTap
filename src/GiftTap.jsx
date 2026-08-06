@@ -38,6 +38,7 @@ import {
 // DB_PLAYER_ID === 'telegram_id' (legacy Supabase column — still the player primary key)
 
 import { hasLocksmith } from './locksmith';
+import { saveProgressSecure, clearProgressSession, getProgressToken } from './progressSession';
 import WalletNftSection from './WalletNftSection';
 import SwapBadgeCard, { NftDetailModal, LOCKSMITH_PERKS } from './SwapBadgeCard';
 import {
@@ -1014,19 +1015,19 @@ const GiftTapGame = () => {
                     setSeasonShards(botSeason);
                     
                     // 2. Save to Supabase (Add shards to ALL tracking columns)
-                    supabase
-                      .from('players')
-                      .update({ 
+                    saveProgressSecure(userId, {
                           shard_balance: Number(playerRow.shard_balance) + offlineShardsEarned,
                           daily_taps: simDailyTaps,
                           lifetime_taps: projectedLifetime,
-                          season_shards: Number(playerRow.season_shards) + offlineShardsEarned, // <-- NEW: Pushes to Beta Leaderboard
-                          last_tap_date: todayStr, 
-                          last_updated: new Date().toISOString() // Reset the clock
-                      })
-                      .eq(DB_PLAYER_ID, userId)
-                      .then(({ error }) => {
-                          if (error) console.error("Bot sync failed:", error);
+                          season_shards: Number(playerRow.season_shards) + offlineShardsEarned,
+                          last_tap_date: todayStr,
+                          last_energy: Number(playerRow.last_energy) || 500,
+                          current_streak: Number(playerRow.current_streak) || 0,
+                          max_unlocked_level: Number(playerRow.max_unlocked_level) || 4,
+                          max_daily_limit: Number(playerRow.max_daily_limit) || 1000,
+                          inventory: playerRow.inventory || {},
+                      }).catch((error) => {
+                          console.error("Bot sync failed:", error?.message || error);
                       });
 
                     // Fire the welcome back popup!
@@ -1676,74 +1677,38 @@ const GiftTapGame = () => {
             : inv.wall_snooze_level ?? null,
       };
 
-      const baseRow = {
-        [DB_PLAYER_ID]: playerId,
-        username: player.username || player.first_name || 'Player',
-        shard_balance: writeB,
-        season_shards: writeS,
-        last_energy: p.e,
-        daily_taps: writeDt,
-        last_tap_date: p.ltd,
-        current_streak: p.strk,
-        lifetime_taps: writeLtt,
-        max_unlocked_level: p.mul,
-        max_daily_limit: maxDailyLimit,
-        limit_boost_amount: stats.limit_boost_amount,
-        limit_boost_expires: stats.limit_boost_expires,
-        inventory: nextInventory,
-        last_updated: new Date().toISOString(),
-      };
-
-      const doUpdate = async (row) =>
-        supabase.from('players').update(row).eq(DB_PLAYER_ID, savePlayerId).select();
-
-      let { data, error } = await doUpdate(baseRow);
-
-      // Legacy PAYWALL trigger still blocks lifetime_taps past wall until you drop it in SQL.
-      // Retry keeps the SAME field name (lifetime_taps) at wall cap so shards still save.
-      // After SQL drops the trigger, the first update above saves full lifetime_taps again.
-      if (error && /PAYWALL/i.test(`${error.message || ''} ${error.details || ''}`)) {
-        const cap = getPaywallCap(p.mul);
-        const cappedLife = Math.min(p.ltt, Number.isFinite(cap) ? cap : p.ltt);
-        console.warn('PAYWALL_LOCKED — retry with lifetime_taps at wall cap. Drop trigger in Supabase to unlock.');
-        ({ data, error } = await doUpdate({
-          ...baseRow,
-          lifetime_taps: cappedLife,
-        }));
-        if (!error) {
-          const full = await doUpdate({
-            lifetime_taps: p.ltt,
-            last_updated: new Date().toISOString(),
-          });
-          if (!full.error && full.data?.length) {
-            data = full.data;
-            console.log('✅ lifetime_taps saved', p.ltt);
-          }
+      // Secure path: Edge Function validates gains (service_role). Direct client
+      // updates of lifetime/season are blocked by DB trigger.
+      let data = null;
+      let error = null;
+      try {
+        if (!getProgressToken()) {
+          throw new Error('No progress session — log in again to save taps securely');
         }
-      }
-
-
-      // Last resort: save shards only (never lose balance)
-      if (error) {
-        console.warn('Full save failed, trying shards-only:', error.message);
-        ({ data, error } = await doUpdate({
-          shard_balance: writeB,
+        const result = await saveProgressSecure(savePlayerId, {
+          lifetime_taps: writeLtt,
           season_shards: writeS,
-          last_energy: p.e,
+          shard_balance: writeB,
           daily_taps: writeDt,
           last_tap_date: p.ltd,
+          last_energy: p.e,
+          current_streak: p.strk,
+          max_unlocked_level: p.mul,
+          max_daily_limit: maxDailyLimit,
+          limit_boost_amount: stats.limit_boost_amount,
+          limit_boost_expires: stats.limit_boost_expires,
           inventory: nextInventory,
-          last_updated: new Date().toISOString(),
-        }));
+        });
+        data = result?.progress ? [result.progress] : [{ ok: true }];
+        console.log('✅ SECURE SAVE', { shards: writeB, lifetime: writeLtt, season: writeS });
+      } catch (secErr) {
+        error = secErr;
+        console.error('Secure save failed:', secErr?.message || secErr);
       }
 
       if (!error && data && data.length > 0) {
         setStats((prev) => ({ ...prev, inventory: nextInventory }));
-        console.log('✅ SAVE SUCCESS', {
-          shards: p.b,
-          lifetime: p.ltt,
-        });
-        tryPayReferrerForLevel1(savePlayerId, p.ltt).catch((e) =>
+        tryPayReferrerForLevel1(savePlayerId, writeLtt).catch((e) =>
           console.warn('referral L1 check', e?.message || e),
         );
         return;

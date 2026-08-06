@@ -4,7 +4,13 @@ import { DB_PLAYER_ID } from './playerIdentity';
 import { Connection, PublicKey, Keypair, Transaction, SystemProgram, ComputeBudgetProgram, sendAndConfirmTransaction } from '@solana/web3.js';
 import bs58 from 'bs58';
 import { keypairFromMnemonic } from './solanaWallet';
-import { mintLocksmithWave1, LOCKSMITH_WAVE1 } from './mintLocksmith';
+import {
+  mintLocksmithWave1,
+  LOCKSMITH_WAVE1,
+  minSolForLocksmithMint,
+  getWalletSolBalance,
+  assertWalletCanMintLocksmith,
+} from './mintLocksmith';
 import { ShopGlyph } from './shopIcons';
 
 /** Professional icon tile — custom SVG / image or built-in glyph */
@@ -82,10 +88,46 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
   // NEW: Track daily usage from the database stats
   const [dailyUsage, setDailyUsage] = useState(stats?.daily_usage || {});
 
+  /** Game wallet SOL — used to disable GiftLocksmith mint when under 0.25 + fees */
+  const [walletSol, setWalletSol] = useState(null);
+  const [walletSolLoading, setWalletSolLoading] = useState(false);
+  const minMintSol = minSolForLocksmithMint();
+  const walletUnlocked = Boolean(decryptedPhrase);
+  const canAffordLocksmithMint =
+    walletUnlocked &&
+    walletSol != null &&
+    Number.isFinite(walletSol) &&
+    walletSol >= minMintSol;
+
   useEffect(() => {
     if (stats?.inventory) setLocalInventory(stats.inventory);
     if (stats?.daily_usage) setDailyUsage(stats.daily_usage);
   }, [stats?.inventory, stats?.daily_usage]);
+
+  // Refresh SOL when player opens NFTs tab (or wallet address changes)
+  useEffect(() => {
+    if (activeTab !== 'nft') return;
+    const addr = playerWallet && String(playerWallet).trim();
+    if (!addr || addr.length < 32) {
+      setWalletSol(null);
+      return;
+    }
+    let cancelled = false;
+    setWalletSolLoading(true);
+    getWalletSolBalance(addr)
+      .then((sol) => {
+        if (!cancelled) setWalletSol(sol);
+      })
+      .catch(() => {
+        if (!cancelled) setWalletSol(null);
+      })
+      .finally(() => {
+        if (!cancelled) setWalletSolLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTab, playerWallet]);
 
   // NEW: Helper to get the current date in UTC format (YYYY-MM-DD)
   // This ensures everyone resets at the exact same global moment.
@@ -319,18 +361,55 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
 
   /** Mint GiftLocksmith Wave 1 from Core Candy Machine (0.25 SOL). */
   const handleLocksmithMint = async () => {
+    // Block before any status that looks like a live mint — no SOL = no network call
+    if (!decryptedPhrase) {
+      setTxStatus({
+        show: true,
+        loading: false,
+        message: '❌ Unlock your game wallet first (Menu / wallet settings).',
+        success: false,
+      });
+      return;
+    }
+    if (!playerWallet) {
+      setTxStatus({
+        show: true,
+        loading: false,
+        message: '❌ No game wallet found on this account.',
+        success: false,
+      });
+      return;
+    }
+
     setTxStatus({
       show: true,
       loading: true,
-      message: `Minting GiftLocksmith for ${LOCKSMITH_WAVE1.priceSol} SOL…`,
+      message: 'Checking game wallet SOL balance…',
       success: false,
     });
+
     try {
-      const storedSecret = decryptedPhrase;
-      if (!storedSecret) {
-        throw new Error('Unlock your game wallet in settings first.');
+      // Pre-check balance (same gate as button). Never start mint without 0.25 + fees.
+      const { sol } = await assertWalletCanMintLocksmith(String(playerWallet));
+      setWalletSol(sol);
+
+      setTxStatus({
+        show: true,
+        loading: true,
+        message: `Minting GiftLocksmith for ${LOCKSMITH_WAVE1.priceSol} SOL…`,
+        success: false,
+      });
+
+      const result = await mintLocksmithWave1(decryptedPhrase);
+
+      // Refresh balance after successful mint
+      try {
+        const after = await getWalletSolBalance(String(playerWallet));
+        setWalletSol(after);
+      } catch {
+        /* ignore */
       }
-      const result = await mintLocksmithWave1(storedSecret);
+
       setTxStatus({
         show: true,
         loading: false,
@@ -340,10 +419,19 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
     } catch (err) {
       console.error('Locksmith mint error', err);
       const msg = err?.message || String(err);
+      // Refresh shown balance so UI stays honest after a fail
+      try {
+        if (playerWallet) {
+          const sol = await getWalletSolBalance(String(playerWallet));
+          setWalletSol(sol);
+        }
+      } catch {
+        /* ignore */
+      }
       setTxStatus({
         show: true,
         loading: false,
-        message: `❌ Mint failed: ${msg}`,
+        message: `❌ Mint blocked: ${msg}`,
         success: false,
       });
     }
@@ -902,28 +990,63 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
                       Supply wave: {item.supply} · Max {item.maxPerWallet}/wallet
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
-                      <div style={{ color: '#14F195', fontWeight: 'bold', fontSize: 18 }}>
-                        {item.price} {item.currency}
+                      <div>
+                        <div style={{ color: '#14F195', fontWeight: 'bold', fontSize: 18 }}>
+                          {item.price} {item.currency}
+                        </div>
+                        <div style={{ color: '#666', fontSize: 10, marginTop: 2 }}>
+                          + ~{LOCKSMITH_WAVE1.feeBufferSol} SOL fees
+                        </div>
                       </div>
                       <button
                         type="button"
+                        disabled={!canAffordLocksmithMint || walletSolLoading}
                         onClick={() => {
+                          if (!canAffordLocksmithMint) return;
                           setItemToBuy(item);
                           setShowConfirmModal(true);
                         }}
                         style={{
-                          background: 'linear-gradient(90deg, #9945FF, #14F195)',
-                          color: '#000',
+                          background: canAffordLocksmithMint
+                            ? 'linear-gradient(90deg, #9945FF, #14F195)'
+                            : '#333',
+                          color: canAffordLocksmithMint ? '#000' : '#777',
                           border: 'none',
                           padding: '12px 20px',
                           borderRadius: 12,
                           fontWeight: 'bold',
                           fontSize: 13,
-                          cursor: 'pointer',
+                          cursor: canAffordLocksmithMint ? 'pointer' : 'not-allowed',
+                          opacity: walletSolLoading ? 0.7 : 1,
                         }}
                       >
-                        Mint NFT
+                        {walletSolLoading
+                          ? 'Checking SOL…'
+                          : !walletUnlocked
+                            ? 'Unlock wallet'
+                            : !canAffordLocksmithMint
+                              ? 'Need more SOL'
+                              : 'Mint NFT'}
                       </button>
+                    </div>
+                    <div style={{ marginTop: 10, fontSize: 11, color: '#888', lineHeight: 1.4 }}>
+                      {walletSolLoading ? (
+                        <span>Checking game wallet balance…</span>
+                      ) : walletSol == null ? (
+                        <span style={{ color: '#f59e0b' }}>
+                          Could not read SOL balance. Open wallet and try again.
+                        </span>
+                      ) : canAffordLocksmithMint ? (
+                        <span style={{ color: '#14F195' }}>
+                          Game wallet: {walletSol.toFixed(4)} SOL · ready to mint
+                        </span>
+                      ) : (
+                        <span style={{ color: '#f87171' }}>
+                          Game wallet: {walletSol.toFixed(4)} SOL · need at least{' '}
+                          {minMintSol.toFixed(2)} SOL ({item.price} mint + fees). Deposit SOL
+                          first — mint stays off so you do not lose network fees.
+                        </span>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -931,7 +1054,8 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
             ))}
 
             <p style={{ color: '#555', fontSize: 10, textAlign: 'center', lineHeight: 1.4, margin: '4px 0 0' }}>
-              Mints from your game wallet on Solana mainnet. After mint, open Wallet → Shard to use the unlocked swap.
+              Mints from your game wallet on Solana mainnet. Requires {minMintSol.toFixed(2)}+ SOL
+              (0.25 mint + network/rent). After mint, open Wallet → Shard for better swap fees.
             </p>
           </div>
         )}
@@ -1016,7 +1140,17 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
                 Cancel
               </button>
               <button
+                disabled={
+                  (itemToBuy.isNftMint || itemToBuy.id === 'locksmith') &&
+                  !canAffordLocksmithMint
+                }
                 onClick={() => {
+                  if (
+                    (itemToBuy.isNftMint || itemToBuy.id === 'locksmith') &&
+                    !canAffordLocksmithMint
+                  ) {
+                    return;
+                  }
                   setShowConfirmModal(false);
                   if (itemToBuy.isNftMint || itemToBuy.id === 'locksmith') {
                     handleLocksmithMint();
@@ -1026,9 +1160,34 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
                     handleShardBuy(itemToBuy); // Triggers Shard purchase
                   }
                 }}
-                style={{ flex: 1, padding: '12px', background: '#4ade80', color: '#000', borderRadius: '10px', border: 'none', fontWeight: 'bold' }}
+                style={{
+                  flex: 1,
+                  padding: '12px',
+                  background:
+                    (itemToBuy.isNftMint || itemToBuy.id === 'locksmith') &&
+                    !canAffordLocksmithMint
+                      ? '#444'
+                      : '#4ade80',
+                  color:
+                    (itemToBuy.isNftMint || itemToBuy.id === 'locksmith') &&
+                    !canAffordLocksmithMint
+                      ? '#888'
+                      : '#000',
+                  borderRadius: '10px',
+                  border: 'none',
+                  fontWeight: 'bold',
+                  cursor:
+                    (itemToBuy.isNftMint || itemToBuy.id === 'locksmith') &&
+                    !canAffordLocksmithMint
+                      ? 'not-allowed'
+                      : 'pointer',
+                }}
               >
-                {itemToBuy.isNftMint ? 'Mint NFT' : 'Confirm'}
+                {itemToBuy.isNftMint
+                  ? canAffordLocksmithMint
+                    ? 'Mint NFT'
+                    : 'Need more SOL'
+                  : 'Confirm'}
               </button>
             </div>
           </div>

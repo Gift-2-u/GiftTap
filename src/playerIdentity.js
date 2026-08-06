@@ -46,6 +46,10 @@ export function clearSession() {
   localStorage.removeItem(PLAYER_ID_KEY);
   localStorage.removeItem(USERNAME_KEY);
   localStorage.removeItem(SESSION_FLAG);
+  try {
+    localStorage.removeItem('gift2u_progress_token');
+    localStorage.removeItem('gift2u_progress_token_expires');
+  } catch { /* ignore */ }
 }
 
 export function isLoggedIn() {
