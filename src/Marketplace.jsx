@@ -76,7 +76,8 @@ function ShopItemIcon({ item, size = 52, variant = 'row' }) {
 
 const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, tgUser, playerWallet, decryptedPhrase }) => {
   const user = player || tgUser;
-  const [activeTab, setActiveTab] = useState('market');
+  // Shop hub first — show ALL options (Free / Premium / NFT / Backpack) before any list
+  const [activeTab, setActiveTab] = useState('home');
   const [marketFilter, setMarketFilter] = useState('All');
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [itemToBuy, setItemToBuy] = useState(null);
@@ -795,21 +796,138 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
         </div>
       </div>
 
-      {/* Main Navigation Tabs */}
-      <div style={{ display: 'flex', background: '#111', borderRadius: '12px', padding: '5px', marginBottom: '15px', fontSize: '11px', gap: 2 }}>
-        <button onClick={() => setActiveTab('upgrades')} style={{ flex: 1, padding: '10px 2px', borderRadius: '10px', border: 'none', background: activeTab === 'upgrades' ? '#4ade80' : 'transparent', color: activeTab === 'upgrades' ? '#000' : '#888', fontWeight: 'bold' }}>Shards</button>
-        <button onClick={() => setActiveTab('market')} style={{ flex: 1, padding: '10px 2px', borderRadius: '10px', border: 'none', background: activeTab === 'market' ? '#fbef43' : 'transparent', color: activeTab === 'market' ? '#000' : '#888', fontWeight: 'bold' }}>Boosts</button>
-        <button onClick={() => setActiveTab('nft')} style={{ flex: 1, padding: '10px 2px', borderRadius: '10px', border: 'none', background: activeTab === 'nft' ? 'linear-gradient(90deg,#9945FF,#14F195)' : 'transparent', color: activeTab === 'nft' ? '#000' : '#888', fontWeight: 'bold' }}>NFTs</button>
-        <button onClick={() => setActiveTab('inventory')} style={{ flex: 1, padding: '10px 2px', borderRadius: '10px', border: 'none', background: activeTab === 'inventory' ? '#9945FF' : 'transparent', color: activeTab === 'inventory' ? '#fff' : '#888', fontWeight: 'bold' }}>
-          BackPack {backpackItemCount > 0 && <span style={{ color: activeTab === 'inventory' ? '#fff' : '#4ade80', marginLeft: '2px' }}>({backpackItemCount})</span>}
+      {/* Inside a section: back to hub so players never feel stuck in one aisle */}
+      {activeTab !== 'home' && (
+        <button
+          type="button"
+          onClick={() => setActiveTab('home')}
+          style={{
+            width: '100%',
+            marginBottom: 12,
+            padding: '10px 12px',
+            borderRadius: 12,
+            border: '1px solid #333',
+            background: '#111',
+            color: '#ffd700',
+            fontWeight: 'bold',
+            fontSize: 13,
+            cursor: 'pointer',
+            textAlign: 'left',
+          }}
+        >
+          ← All shop options
         </button>
-      </div>
+      )}
 
       <div style={{ flex: 1, overflowY: 'auto' }}>
+
+        {/* --- HUB: see Free / Premium / NFT / Backpack at a glance --- */}
+        {activeTab === 'home' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <p style={{ color: '#888', fontSize: 12, margin: '0 0 4px', textAlign: 'center', lineHeight: 1.45 }}>
+              Pick where you want to go — free boosts, SOL premium, NFTs, or your backpack.
+            </p>
+
+            {[
+              {
+                id: 'upgrades',
+                title: 'Free (shards)',
+                desc: 'Boosts paid with G2Ushards — battery, frenzy, refill…',
+                badge: 'No SOL needed',
+                bg: 'linear-gradient(145deg, #14532d 0%, #052e16 100%)',
+                border: '#4ade80',
+                titleColor: '#4ade80',
+              },
+              {
+                id: 'market',
+                title: 'Premium (SOL)',
+                desc: 'Stronger boosts paid in SOL — bot, grinder, whale…',
+                badge: 'Pay with SOL',
+                bg: 'linear-gradient(145deg, #422006 0%, #1c1917 100%)',
+                border: '#fbef43',
+                titleColor: '#fbef43',
+              },
+              {
+                id: 'nft',
+                title: 'NFT Marketplace',
+                desc: 'On-chain NFTs — GiftLocksmith unlocks better shard swap',
+                badge: 'Permanent',
+                bg: 'linear-gradient(145deg, #2e1065 0%, #0f172a 100%)',
+                border: '#9945FF',
+                titleColor: '#c4b5fd',
+              },
+              {
+                id: 'inventory',
+                title: 'Backpack',
+                desc:
+                  backpackItemCount > 0
+                    ? `Your owned items (${backpackItemCount}) — use them here`
+                    : 'Your owned items — use boosts you already bought',
+                badge: backpackItemCount > 0 ? `${backpackItemCount} owned` : 'Empty',
+                bg: 'linear-gradient(145deg, #3b0764 0%, #1c1e22 100%)',
+                border: '#a78bfa',
+                titleColor: '#e9d5ff',
+              },
+            ].map((card) => (
+              <button
+                key={card.id}
+                type="button"
+                onClick={() => setActiveTab(card.id)}
+                style={{
+                  display: 'block',
+                  width: '100%',
+                  textAlign: 'left',
+                  padding: '16px 14px',
+                  borderRadius: 14,
+                  border: `1px solid ${card.border}`,
+                  background: card.bg,
+                  cursor: 'pointer',
+                  boxShadow: '0 4px 16px rgba(0,0,0,0.35)',
+                }}
+              >
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    marginBottom: 6,
+                    gap: 8,
+                  }}
+                >
+                  <span style={{ color: card.titleColor, fontWeight: 'bold', fontSize: 16 }}>
+                    {card.title}
+                  </span>
+                  <span
+                    style={{
+                      color: '#000',
+                      background: card.border,
+                      fontSize: 10,
+                      fontWeight: 'bold',
+                      padding: '3px 8px',
+                      borderRadius: 20,
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {card.badge}
+                  </span>
+                </div>
+                <p style={{ margin: 0, color: '#ccc', fontSize: 12, lineHeight: 1.4 }}>
+                  {card.desc}
+                </p>
+                <div style={{ marginTop: 10, color: card.titleColor, fontSize: 12, fontWeight: 'bold' }}>
+                  Open →
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
        
-        {/* --- TAB 1: SHARD SHOP --- */}
+        {/* --- Free: SHARD SHOP --- */}
         {activeTab === 'upgrades' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            <p style={{ color: '#666', fontSize: 11, margin: '0 0 4px', textAlign: 'center' }}>
+              Free · pay with G2Ushards · then use items from Backpack
+            </p>
             {shardListings.map(item => {
              
               // 🚨 1. EXACT ID MATCHING FOR COOLDOWNS
@@ -870,7 +988,7 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
         {activeTab === 'market' && (
           <>
             <p style={{ color: '#666', fontSize: 11, margin: '0 0 12px', textAlign: 'center' }}>
-              Temporary boosts paid in SOL · NFTs live in the NFT tab
+              Premium · pay with SOL · stronger boosts
             </p>
             <div style={{ display: 'flex', gap: '8px', marginBottom: '15px', overflowX: 'auto', paddingBottom: '5px' }}>
               {['All', 'Power', 'Misc'].map(filter => (

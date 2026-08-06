@@ -23,8 +23,17 @@ import mobileAds, {
   RewardedAdEventType,
   TestIds,
 } from 'react-native-google-mobile-ads';
+import { transact } from '@solana-mobile/mobile-wallet-adapter-protocol-web3js';
+import { PublicKey } from '@solana/web3.js';
+import { Buffer } from 'buffer';
 
 const DEFAULT_URL = 'https://gift2u.fun/play';
+
+/** MWA account.address is base64 → base58 for the web UI */
+function mwaAddressToBase58(base64Address) {
+  const bytes = Buffer.from(String(base64Address), 'base64');
+  return new PublicKey(bytes).toBase58();
+}
 
 /** Google test rewarded unit — replace via expo.extra.admobRewardedUnitId for production */
 const getRewardedUnitId = () => {
@@ -95,13 +104,13 @@ export default function App() {
     return () => sub.remove();
   }, [canGoBack]);
 
-  const injectAdResult = useCallback((payload) => {
+  const injectJsCallback = useCallback((fnName, payload) => {
     const json = JSON.stringify(payload);
     const js = `
       (function(){
         try {
-          if (typeof window.__gift2uOnAdResult === 'function') {
-            window.__gift2uOnAdResult(${json});
+          if (typeof window.${fnName} === 'function') {
+            window.${fnName}(${json});
           }
         } catch (e) {}
         true;
@@ -110,9 +119,73 @@ export default function App() {
     try {
       webRef.current?.injectJavaScript(js);
     } catch (e) {
-      console.warn('[Gift2U Seeker] inject ad result failed', e?.message || e);
+      console.warn(`[Gift2U Seeker] inject ${fnName} failed`, e?.message || e);
     }
   }, []);
+
+  const injectAdResult = useCallback(
+    (payload) => injectJsCallback('__gift2uOnAdResult', payload),
+    [injectJsCallback],
+  );
+
+  const injectWalletResult = useCallback(
+    (payload) => injectJsCallback('__gift2uOnWalletResult', payload),
+    [injectJsCallback],
+  );
+
+  /**
+   * Native Mobile Wallet Adapter (Seed Vault / Phantom / etc. on Seeker).
+   * WebView MWA does NOT work — must run here, same idea as AdMob for ads.
+   */
+  const connectWalletNative = useCallback(
+    async (requestId) => {
+      try {
+        const auth = await transact(async (wallet) => {
+          return wallet.authorize({
+            cluster: 'solana:mainnet',
+            identity: {
+              name: 'Gift2U',
+              uri: 'https://gift2u.fun',
+              icon: 'https://gift2u.fun/Gift2u_logo.png',
+            },
+          });
+        });
+
+        const account = auth?.accounts?.[0];
+        if (!account?.address) {
+          injectWalletResult({
+            requestId,
+            success: false,
+            error: 'No wallet account returned. Try again.',
+          });
+          return;
+        }
+
+        const address = mwaAddressToBase58(account.address);
+        const label = account.label || account.display_address || 'Seeker wallet';
+        injectWalletResult({
+          requestId,
+          success: true,
+          address,
+          label: String(label),
+          authToken: auth.auth_token || null,
+        });
+        console.log('[Gift2U Seeker] wallet connected', address);
+      } catch (e) {
+        const msg = e?.message || String(e);
+        console.warn('[Gift2U Seeker] wallet connect failed', msg);
+        injectWalletResult({
+          requestId,
+          success: false,
+          error:
+            /cancel|rejected|declined/i.test(msg)
+              ? 'Connection cancelled.'
+              : msg || 'Could not connect wallet. Is Seed Vault set up on this Seeker?',
+        });
+      }
+    },
+    [injectWalletResult],
+  );
 
   const showRewardedAd = useCallback(
     (requestId) => {
@@ -234,9 +307,14 @@ export default function App() {
           return;
         }
         showRewardedAd(data.requestId);
+        return;
+      }
+
+      if (data.type === 'CONNECT_WALLET' && data.requestId) {
+        connectWalletNative(data.requestId);
       }
     },
-    [injectAdResult, showRewardedAd],
+    [injectAdResult, showRewardedAd, connectWalletNative],
   );
 
   /** Wallet deep links / MWA must leave the WebView (Seed Vault, Phantom, etc.) */

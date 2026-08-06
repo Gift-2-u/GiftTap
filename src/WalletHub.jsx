@@ -60,7 +60,29 @@ export function SolanaWalletPanel({ note, onClose }) {
   } = useWallet();
   const { setVisible } = useWalletModal();
   const { connection } = useConnection();
-  const address = publicKey?.toBase58() || '';
+  const adapterAddress = publicKey?.toBase58() || '';
+
+  /** Seeker APK native MWA connect (not browser MWA — WebView cannot do that) */
+  const [seekerAddress, setSeekerAddress] = useState(() => {
+    try {
+      return localStorage.getItem('gift2u_seeker_wallet') || '';
+    } catch {
+      return '';
+    }
+  });
+  const [seekerLabel, setSeekerLabel] = useState(() => {
+    try {
+      return localStorage.getItem('gift2u_seeker_wallet_label') || 'Seeker wallet';
+    } catch {
+      return 'Seeker wallet';
+    }
+  });
+  const [seekerConnecting, setSeekerConnecting] = useState(false);
+
+  const onSeeker = typeof window !== 'undefined' && isSeekerShell();
+  const address = onSeeker && seekerAddress ? seekerAddress : adapterAddress;
+  const effectivelyConnected = onSeeker ? Boolean(seekerAddress) : connected;
+  const effectivelyConnecting = onSeeker ? seekerConnecting : connecting;
 
   const [balances, setBalances] = useState({
     sol: 0,
@@ -190,12 +212,8 @@ export function SolanaWalletPanel({ note, onClose }) {
     }
   };
 
-  const onSeeker = typeof window !== 'undefined' && isSeekerShell();
-
   /**
-   * Mobile Wallet Adapter (MWA):
-   * - Seeker APK: primary path (Seed Vault + installed wallets)
-   * - Mobile browser: optional "other wallets"
+   * Mobile browser only: MWA inside Chrome (does NOT work in Seeker WebView).
    */
   const connectMobileAdapter = () => {
     setMsg('');
@@ -206,11 +224,9 @@ export function SolanaWalletPanel({ note, onClose }) {
     );
     if (!mwa || mwa.readyState === 'Unsupported') {
       setMsg(
-        onSeeker
-          ? 'Seeker wallet connect is not ready. Update the Gift2U Seeker APK, or use Phantom / Solflare below.'
-          : window.isSecureContext
-            ? 'Installed-wallet connect needs Android Chrome. Or use Phantom / Solflare buttons below.'
-            : 'Need HTTPS — open https://gift2u.fun on your phone.',
+        window.isSecureContext
+          ? 'Installed-wallet connect needs Android Chrome. Or use Phantom / Solflare buttons below.'
+          : 'Need HTTPS — open https://gift2u.fun on your phone.',
       );
       return;
     }
@@ -220,6 +236,84 @@ export function SolanaWalletPanel({ note, onClose }) {
       clearSelection();
       setMsg(err?.message || 'Connection cancelled or failed.');
     });
+  };
+
+  /**
+   * Seeker APK: ask native shell to run real MWA (Seed Vault), same pattern as AdMob ads.
+   */
+  const connectSeekerNativeWallet = () => {
+    setMsg('');
+    const bridge = typeof window !== 'undefined' ? window.ReactNativeWebView : null;
+    if (!bridge || typeof bridge.postMessage !== 'function') {
+      setMsg('Update the Gift2U Seeker app to connect wallets on this phone.');
+      return;
+    }
+    const requestId = `wal_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    setSeekerConnecting(true);
+
+    const timeout = setTimeout(() => {
+      setSeekerConnecting(false);
+      setMsg('Wallet connect timed out. Try again.');
+      try {
+        delete window.__gift2uOnWalletResult;
+      } catch {
+        /* ignore */
+      }
+    }, 120000);
+
+    window.__gift2uOnWalletResult = (payload) => {
+      clearTimeout(timeout);
+      setSeekerConnecting(false);
+      try {
+        delete window.__gift2uOnWalletResult;
+      } catch {
+        /* ignore */
+      }
+      const data = typeof payload === 'string' ? JSON.parse(payload) : payload;
+      if (!data || data.requestId !== requestId) return;
+      if (data.success && data.address) {
+        setSeekerAddress(data.address);
+        setSeekerLabel(data.label || 'Seeker wallet');
+        try {
+          localStorage.setItem('gift2u_seeker_wallet', data.address);
+          localStorage.setItem('gift2u_seeker_wallet_label', data.label || 'Seeker wallet');
+        } catch {
+          /* ignore */
+        }
+        setMsg('');
+        setAppNotice({
+          show: true,
+          message: 'Seeker wallet connected',
+          success: true,
+        });
+      } else {
+        setMsg(data?.error || 'Could not connect wallet.');
+      }
+    };
+
+    try {
+      bridge.postMessage(
+        JSON.stringify({
+          type: 'CONNECT_WALLET',
+          requestId,
+        }),
+      );
+    } catch (e) {
+      clearTimeout(timeout);
+      setSeekerConnecting(false);
+      setMsg(e?.message || 'Could not start wallet connect.');
+    }
+  };
+
+  const disconnectSeekerWallet = () => {
+    setSeekerAddress('');
+    setSeekerLabel('Seeker wallet');
+    try {
+      localStorage.removeItem('gift2u_seeker_wallet');
+      localStorage.removeItem('gift2u_seeker_wallet_label');
+    } catch {
+      /* ignore */
+    }
   };
 
   // Auto-connect when page is already inside Phantom/Solflare browser
@@ -251,13 +345,14 @@ export function SolanaWalletPanel({ note, onClose }) {
   }, [anyInjected, connected]);
 
   const loadBalances = useCallback(async () => {
-    if (!publicKey) return;
+    const ownerStr = onSeeker && seekerAddress ? seekerAddress : publicKey?.toBase58();
+    if (!ownerStr) return;
     setBalLoading(true);
     setBalError('');
     try {
       const rpc = MAINNET_RPC || connection?.rpcEndpoint;
       const conn = new Connection(rpc, 'confirmed');
-      const owner = publicKey;
+      const owner = new PublicKey(ownerStr);
       const readSpl = async (mint) => {
         try {
           const ata = getAssociatedTokenAddressSync(mint, owner, false);
@@ -284,7 +379,7 @@ export function SolanaWalletPanel({ note, onClose }) {
     } finally {
       setBalLoading(false);
     }
-  }, [publicKey, connection]);
+  }, [publicKey, connection, onSeeker, seekerAddress]);
 
   useEffect(() => {
     fetchFiatRates()
@@ -293,14 +388,14 @@ export function SolanaWalletPanel({ note, onClose }) {
   }, []);
 
   useEffect(() => {
-    if (!connected || !publicKey) {
+    if (!effectivelyConnected || !address) {
       setBalances({ sol: 0, usdc: 0, G2U: 0, G2Ushards: 0 });
       return;
     }
     loadBalances();
     const id = setInterval(loadBalances, 30_000);
     return () => clearInterval(id);
-  }, [connected, publicKey, loadBalances]);
+  }, [effectivelyConnected, address, loadBalances]);
 
   const short =
     address.length > 12 ? `${address.slice(0, 4)}…${address.slice(-4)}` : address;
@@ -352,20 +447,20 @@ export function SolanaWalletPanel({ note, onClose }) {
           'Connect your Solana wallet for vault and staking. Game wallet is on the Game tab.'}
       </p>
 
-      {/* SEEKER APK: one-tap MWA (Seed Vault / installed wallets) — like AdMob path for ads */}
-      {!connected && onSeeker && (
+      {/* SEEKER APK: native Seed Vault / MWA (NOT browser MWA — that fails in WebView) */}
+      {!effectivelyConnected && onSeeker && (
         <div style={{ marginBottom: '14px' }}>
           <p style={{ color: '#ffd700', fontSize: '13px', fontWeight: 'bold', margin: '0 0 8px' }}>
             Connect on Seeker
           </p>
           <p style={{ color: '#aaa', fontSize: '11px', margin: '0 0 12px', lineHeight: 1.45 }}>
-            One tap opens wallets on this phone (Seed Vault, Phantom, Solflare…). Easier than the
-            web browser flow.
+            One tap opens Seed Vault (and other wallets on this phone). No “open Phantom then come
+            back” — the app handles it natively.
           </p>
           <button
             type="button"
-            disabled={connecting}
-            onClick={connectMobileAdapter}
+            disabled={effectivelyConnecting}
+            onClick={connectSeekerNativeWallet}
             style={{
               width: '100%',
               padding: '16px',
@@ -375,20 +470,11 @@ export function SolanaWalletPanel({ note, onClose }) {
               color: '#000',
               fontWeight: 'bold',
               fontSize: '16px',
-              cursor: connecting ? 'wait' : 'pointer',
-              marginBottom: '10px',
+              cursor: effectivelyConnecting ? 'wait' : 'pointer',
             }}
           >
-            {connecting ? 'Connecting…' : 'Connect Seeker wallet'}
+            {effectivelyConnecting ? 'Connecting…' : 'Connect Seed Vault / wallet'}
           </button>
-          <p style={{ color: '#666', fontSize: '11px', margin: '0 0 8px', textAlign: 'center' }}>
-            Or open a wallet app
-          </p>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px' }}>
-            {walletBtn('Phantom', () => connectNamed('Phantom'))}
-            {walletBtn('Solflare', () => connectNamed('Solflare'))}
-            {walletBtn('Backpack', () => connectNamed('Backpack'))}
-          </div>
         </div>
       )}
 
@@ -456,7 +542,7 @@ export function SolanaWalletPanel({ note, onClose }) {
         </div>
       )}
 
-      {anyInjected && !connected && (
+      {anyInjected && !connected && !onSeeker && (
         <p style={{ color: '#4ade80', fontSize: '12px', margin: '0 0 10px' }}>
           Wallet browser detected — connecting…
         </p>
@@ -466,11 +552,20 @@ export function SolanaWalletPanel({ note, onClose }) {
         <p style={{ color: '#fbbf24', fontSize: '11px', margin: '0 0 12px', lineHeight: 1.4 }}>{msg}</p>
       ) : null}
 
-      {connecting && (
+      {effectivelyConnecting && (
         <button
           type="button"
           onClick={() => {
-            clearSelection();
+            if (onSeeker) {
+              setSeekerConnecting(false);
+              try {
+                delete window.__gift2uOnWalletResult;
+              } catch {
+                /* ignore */
+              }
+            } else {
+              clearSelection();
+            }
             setMsg('');
           }}
           style={{
@@ -489,7 +584,7 @@ export function SolanaWalletPanel({ note, onClose }) {
         </button>
       )}
 
-      {connected && address ? (
+      {effectivelyConnected && address ? (
         <>
           <TokenBalanceList
             balances={balances}
@@ -513,7 +608,13 @@ export function SolanaWalletPanel({ note, onClose }) {
             }}
           >
             <div style={{ color: '#888', fontSize: '11px', marginBottom: '4px' }}>
-              Connected{wallet?.adapter?.name ? ` · ${wallet.adapter.name}` : ''} · {short}
+              Connected
+              {onSeeker && seekerAddress
+                ? ` · ${seekerLabel}`
+                : wallet?.adapter?.name
+                  ? ` · ${wallet.adapter.name}`
+                  : ''}{' '}
+              · {short}
             </div>
             <div
               style={{
@@ -568,7 +669,10 @@ export function SolanaWalletPanel({ note, onClose }) {
               </button>
               <button
                 type="button"
-                onClick={() => disconnect()}
+                onClick={() => {
+                  if (onSeeker && seekerAddress) disconnectSeekerWallet();
+                  else disconnect();
+                }}
                 style={{
                   flex: 1,
                   padding: '10px',
