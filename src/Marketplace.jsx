@@ -10,6 +10,7 @@ import {
   minSolForLocksmithMint,
   getWalletSolBalance,
   assertWalletCanMintLocksmith,
+  publicKeyFromSecret,
 } from './mintLocksmith';
 import { ShopGlyph } from './shopIcons';
 
@@ -371,11 +372,17 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
       });
       return;
     }
-    if (!playerWallet) {
+
+    // UI gate: never open mint path if we already know balance is short
+    if (!canAffordLocksmithMint) {
+      const have =
+        walletSol != null && Number.isFinite(walletSol)
+          ? walletSol.toFixed(4)
+          : 'unknown';
       setTxStatus({
         show: true,
         loading: false,
-        message: '❌ No game wallet found on this account.',
+        message: `❌ Not enough SOL to mint GiftLocksmith. Need ${minMintSol.toFixed(2)} SOL (0.25 mint + fees). Game wallet has ${have} SOL. Deposit first — no transaction will be sent.`,
         success: false,
       });
       return;
@@ -389,8 +396,18 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
     });
 
     try {
-      // Pre-check balance (same gate as button). Never start mint without 0.25 + fees.
-      const { sol } = await assertWalletCanMintLocksmith(String(playerWallet));
+      // Always check the SIGNING wallet (from unlocked phrase), not only playerWallet prop
+      let signerAddress;
+      try {
+        signerAddress = publicKeyFromSecret(decryptedPhrase);
+      } catch {
+        signerAddress = playerWallet ? String(playerWallet) : null;
+      }
+      if (!signerAddress) {
+        throw new Error('No game wallet found on this account.');
+      }
+
+      const { sol } = await assertWalletCanMintLocksmith(signerAddress);
       setWalletSol(sol);
 
       setTxStatus({
@@ -400,11 +417,12 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
         success: false,
       });
 
+      // mintLocksmithWave1 re-checks balance on the real signer before any network submit
       const result = await mintLocksmithWave1(decryptedPhrase);
 
       // Refresh balance after successful mint
       try {
-        const after = await getWalletSolBalance(String(playerWallet));
+        const after = await getWalletSolBalance(signerAddress);
         setWalletSol(after);
       } catch {
         /* ignore */
@@ -421,8 +439,11 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
       const msg = err?.message || String(err);
       // Refresh shown balance so UI stays honest after a fail
       try {
-        if (playerWallet) {
-          const sol = await getWalletSolBalance(String(playerWallet));
+        const addr =
+          (decryptedPhrase && publicKeyFromSecret(decryptedPhrase)) ||
+          playerWallet;
+        if (addr) {
+          const sol = await getWalletSolBalance(String(addr));
           setWalletSol(sol);
         }
       } catch {
@@ -1026,7 +1047,7 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
                             ? 'Unlock wallet'
                             : !canAffordLocksmithMint
                               ? 'Need more SOL'
-                              : 'Mint NFT'}
+                              : 'Mint GiftLocksmith'}
                       </button>
                     </div>
                     <div style={{ marginTop: 10, fontSize: 11, color: '#888', lineHeight: 1.4 }}>
@@ -1185,7 +1206,7 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
               >
                 {itemToBuy.isNftMint
                   ? canAffordLocksmithMint
-                    ? 'Mint NFT'
+                    ? 'Mint GiftLocksmith'
                     : 'Need more SOL'
                   : 'Confirm'}
               </button>

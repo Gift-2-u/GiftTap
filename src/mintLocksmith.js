@@ -4,6 +4,10 @@
  *
  * CRITICAL: Always pre-check SOL before sendAndConfirm so players
  * without 0.25+fees never pay rent/bot-tax/network fees for a failed mint.
+ *
+ * Candy Machine botTax is 0.001 SOL — if we send a mint with too little SOL,
+ * solPayment fails but the tx can still "succeed" and charge bot tax.
+ * That is why the button must stay off under the minimum.
  */
 import { createUmi } from '@metaplex-foundation/umi-bundle-defaults';
 import { mplCore } from '@metaplex-foundation/mpl-core';
@@ -32,12 +36,17 @@ export const LOCKSMITH_WAVE1 = {
   candyGuard: 'CBK1Zwsnwwks3BLmhHASzD9Rsq8i2Xgs6RWMZGNSQRJ9',
   collection: LOCKSMITH_COLLECTION,
   treasury: 'AdvMvv6GzGvdLRtuxaso1Eubk7jmn6LCZEeEFHn22yeb',
+  /** On-chain solPayment guard amount (must match candy guard) */
   priceSol: 0.25,
-  /** Rent for Core asset + CU priority + botTax(0.001) + slack — never mint without this on top of price */
+  /**
+   * Rent for Core asset + CU priority + botTax(0.001) + slack.
+   * Never allow a mint attempt without price + this buffer.
+   */
   feeBufferSol: 0.02,
   maxPerWallet: 5,
   itemsAvailable: 500,
   wave: 1,
+  name: 'GiftLocksmith',
   imageUri:
     'https://gateway.irys.xyz/HXQ5D7Iu_vkgUsW4I6W7LQ0Vn3J5rTQJXkgxMwh28k4',
 };
@@ -56,7 +65,9 @@ export async function getWalletSolBalance(walletAddress) {
     throw new Error('No game wallet address');
   }
   const connection = new Connection(RPC_URL, 'confirmed');
-  const lamports = await connection.getBalance(new PublicKey(String(walletAddress).trim()));
+  const lamports = await connection.getBalance(
+    new PublicKey(String(walletAddress).trim()),
+  );
   return lamports / LAMPORTS_PER_SOL;
 }
 
@@ -76,14 +87,34 @@ export async function assertWalletCanMintLocksmith(walletAddress) {
       `Could not check wallet SOL balance. Try again in a moment. (${e?.message || e})`,
     );
   }
-  if (sol < need) {
+  if (!(sol >= need)) {
     throw new Error(
       `Not enough SOL to mint GiftLocksmith. Need at least ${need.toFixed(2)} SOL ` +
         `(${LOCKSMITH_WAVE1.priceSol} mint + ~${LOCKSMITH_WAVE1.feeBufferSol} network/rent). ` +
-        `Your game wallet has ${sol.toFixed(4)} SOL. Deposit SOL first — no mint will start.`,
+        `Your game wallet has ${Number(sol).toFixed(4)} SOL. ` +
+        `Deposit SOL first — mint is blocked so you do not lose bot-tax/network fees.`,
     );
   }
   return { sol, need };
+}
+
+/**
+ * Resolve the public key that will sign the mint (from phrase or base58 secret).
+ * @param {string} secretPhraseOrBase58
+ * @returns {string} base58 pubkey
+ */
+export function publicKeyFromSecret(secretPhraseOrBase58) {
+  if (!secretPhraseOrBase58) {
+    throw new Error('Wallet secret not available. Unlock your game wallet first.');
+  }
+  if (String(secretPhraseOrBase58).includes(' ')) {
+    const kp = keypairFromMnemonic(String(secretPhraseOrBase58).trim());
+    return kp.publicKey.toBase58();
+  }
+  const secretKey = bs58.decode(String(secretPhraseOrBase58).trim());
+  const umi = createUmi(RPC_URL);
+  const umiKp = umi.eddsa.createKeypairFromSecretKey(secretKey);
+  return umiKp.publicKey.toString();
 }
 
 function umiFromSecret(secretPhraseOrBase58) {
@@ -101,18 +132,25 @@ function umiFromSecret(secretPhraseOrBase58) {
 }
 
 /**
+ * Mint one GiftLocksmith from Wave 1 Core Candy Machine.
+ * Never sends a transaction if the signing wallet has less than price + fee buffer.
+ *
  * @param {string} secretPhraseOrBase58 - game wallet mnemonic or base58 secret
- * @returns {Promise<{ asset: string, signature: string, owner: string }>}
+ * @returns {Promise<{ asset: string, signature: string, owner: string, priceSol: number, name: string }>}
  */
 export async function mintLocksmithWave1(secretPhraseOrBase58) {
   if (!secretPhraseOrBase58) {
     throw new Error('Wallet secret not available. Unlock your game wallet first.');
   }
 
+  // Resolve signer FIRST and gate on THAT wallet (not a stale playerWallet prop)
   const umi = umiFromSecret(secretPhraseOrBase58);
   const owner = umi.identity.publicKey.toString();
 
-  // HARD STOP: never submit a mint tx without enough SOL (protects players from fee burns)
+  // HARD STOP #1: never build/send without enough SOL
+  await assertWalletCanMintLocksmith(owner);
+
+  // HARD STOP #2: re-check immediately before network submit (balance can change)
   await assertWalletCanMintLocksmith(owner);
 
   const asset = generateSigner(umi);
@@ -137,6 +175,7 @@ export async function mintLocksmithWave1(secretPhraseOrBase58) {
 
   const result = await builder.sendAndConfirm(umi, {
     confirm: { commitment: 'confirmed' },
+    send: { skipPreflight: false },
   });
 
   const signature =
@@ -149,5 +188,6 @@ export async function mintLocksmithWave1(secretPhraseOrBase58) {
     signature,
     owner,
     priceSol: LOCKSMITH_WAVE1.priceSol,
+    name: LOCKSMITH_WAVE1.name,
   };
 }
