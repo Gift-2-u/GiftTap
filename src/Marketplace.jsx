@@ -81,6 +81,8 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
   const [marketFilter, setMarketFilter] = useState('All');
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [itemToBuy, setItemToBuy] = useState(null);
+  /** NFT marketplace: grid card click → detail popup */
+  const [nftDetail, setNftDetail] = useState(null);
 
   // Custom Pop-up State
   const [txStatus, setTxStatus] = useState({ show: false, loading: false, message: '', success: false });
@@ -292,7 +294,7 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
     },
   ];
 
-  /** Separate NFT marketplace (on-chain mints) — not backpack boosts */
+  /** Separate NFT marketplace (on-chain mints) — more listings can be added later */
   const nftListings = [
     {
       id: 'locksmith',
@@ -300,14 +302,22 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
       type: 'NFT',
       rarity: 'Rare',
       collection: 'Gift2u Elves',
-      /** Short line under name */
       boost: 'Unlocks Shard Swap (G2Ushards → G2U) with better fees',
-      /** Bullet benefits shown on card */
       perks: [
         'Unlocks Shard Swap immediately (skip Level 5 + Swap Badge)',
         '4% fee in G2U vs 10% free path',
         'Higher daily swap cap',
         'Vault better APY (coming soon)',
+      ],
+      attributes: [
+        { trait_type: 'Collection', value: 'Gift2u Elves' },
+        { trait_type: 'Class', value: 'GiftLocksmith' },
+        { trait_type: 'Generation', value: 'Gen 1' },
+        { trait_type: 'Rarity', value: 'Rare' },
+        { trait_type: 'Wave', value: '1 of 3' },
+        { trait_type: 'Utility', value: 'Shard Swap + Vault' },
+        { trait_type: 'Max supply', value: String(LOCKSMITH_WAVE1.itemsAvailable) },
+        { trait_type: 'Max / wallet', value: String(LOCKSMITH_WAVE1.maxPerWallet) },
       ],
       duration: 'Permanent · Gen 1 · Wave 1 of 3',
       price: LOCKSMITH_WAVE1.priceSol,
@@ -821,167 +831,294 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
 
       <div style={{ flex: 1, overflowY: 'auto' }}>
 
-        {/* --- HUB: see Free / Premium / NFT / Backpack at a glance --- */}
+        {/* --- HUB: Free / Premium / NFT / Backpack — same 2×2 squares as Premium --- */}
         {activeTab === 'home' && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            <p style={{ color: '#888', fontSize: 12, margin: '0 0 4px', textAlign: 'center', lineHeight: 1.45 }}>
+          <>
+            <p style={{ color: '#888', fontSize: 12, margin: '0 0 12px', textAlign: 'center', lineHeight: 1.45 }}>
               Pick where you want to go — free boosts, SOL premium, NFTs, or your backpack.
             </p>
-
-            {[
-              {
-                id: 'upgrades',
-                title: 'Free (shards)',
-                desc: 'Boosts paid with G2Ushards — battery, frenzy, refill…',
-                badge: 'No SOL needed',
-                bg: 'linear-gradient(145deg, #14532d 0%, #052e16 100%)',
-                border: '#4ade80',
-                titleColor: '#4ade80',
-              },
-              {
-                id: 'market',
-                title: 'Premium (SOL)',
-                desc: 'Stronger boosts paid in SOL — bot, grinder, whale…',
-                badge: 'Pay with SOL',
-                bg: 'linear-gradient(145deg, #422006 0%, #1c1917 100%)',
-                border: '#fbef43',
-                titleColor: '#fbef43',
-              },
-              {
-                id: 'nft',
-                title: 'NFT Marketplace',
-                desc: 'On-chain NFTs — GiftLocksmith unlocks better shard swap',
-                badge: 'Permanent',
-                bg: 'linear-gradient(145deg, #2e1065 0%, #0f172a 100%)',
-                border: '#9945FF',
-                titleColor: '#c4b5fd',
-              },
-              {
-                id: 'inventory',
-                title: 'Backpack',
-                desc:
-                  backpackItemCount > 0
-                    ? `Your owned items (${backpackItemCount}) — use them here`
-                    : 'Your owned items — use boosts you already bought',
-                badge: backpackItemCount > 0 ? `${backpackItemCount} owned` : 'Empty',
-                bg: 'linear-gradient(145deg, #3b0764 0%, #1c1e22 100%)',
-                border: '#a78bfa',
-                titleColor: '#e9d5ff',
-              },
-            ].map((card) => (
-              <button
-                key={card.id}
-                type="button"
-                onClick={() => setActiveTab(card.id)}
-                style={{
-                  display: 'block',
-                  width: '100%',
-                  textAlign: 'left',
-                  padding: '16px 14px',
-                  borderRadius: 14,
-                  border: `1px solid ${card.border}`,
-                  background: card.bg,
-                  cursor: 'pointer',
-                  boxShadow: '0 4px 16px rgba(0,0,0,0.35)',
-                }}
-              >
-                <div
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '10px' }}>
+              {[
+                {
+                  id: 'upgrades',
+                  title: 'Free (shards)',
+                  desc: 'Battery, frenzy, refill…',
+                  badge: 'G2Ushards',
+                  emoji: '🎁',
+                  border: '#4ade80',
+                  titleColor: '#4ade80',
+                  iconFrom: '#4ade80',
+                  iconTo: '#14532d',
+                },
+                {
+                  id: 'market',
+                  title: 'Premium (SOL)',
+                  desc: 'Bot, grinder, whale…',
+                  badge: 'SOL',
+                  emoji: '⚡',
+                  border: '#fbef43',
+                  titleColor: '#fbef43',
+                  iconFrom: '#fbef43',
+                  iconTo: '#854d0e',
+                },
+                {
+                  id: 'nft',
+                  title: 'NFT Market',
+                  desc: 'GiftLocksmith & more',
+                  badge: 'On-chain',
+                  emoji: '🔑',
+                  border: '#9945FF',
+                  titleColor: '#c4b5fd',
+                  iconFrom: '#c084fc',
+                  iconTo: '#5b21b6',
+                },
+                {
+                  id: 'inventory',
+                  title: 'Backpack',
+                  desc:
+                    backpackItemCount > 0
+                      ? `${backpackItemCount} item${backpackItemCount === 1 ? '' : 's'} owned`
+                      : 'Use items you own',
+                  badge: backpackItemCount > 0 ? `${backpackItemCount}` : 'Empty',
+                  emoji: '🎒',
+                  border: '#a78bfa',
+                  titleColor: '#e9d5ff',
+                  iconFrom: '#a78bfa',
+                  iconTo: '#4c1d95',
+                },
+              ].map((card) => (
+                <button
+                  key={card.id}
+                  type="button"
+                  onClick={() => setActiveTab(card.id)}
                   style={{
+                    background: '#111',
+                    border: `1px solid ${card.border}`,
+                    borderRadius: '12px',
+                    padding: '10px',
                     display: 'flex',
-                    justifyContent: 'space-between',
+                    flexDirection: 'column',
                     alignItems: 'center',
-                    marginBottom: 6,
-                    gap: 8,
+                    textAlign: 'center',
+                    cursor: 'pointer',
+                    boxShadow: '0 4px 14px rgba(0,0,0,0.35)',
                   }}
                 >
-                  <span style={{ color: card.titleColor, fontWeight: 'bold', fontSize: 16 }}>
-                    {card.title}
-                  </span>
-                  <span
+                  <div
                     style={{
-                      color: '#000',
-                      background: card.border,
-                      fontSize: 10,
-                      fontWeight: 'bold',
-                      padding: '3px 8px',
-                      borderRadius: 20,
-                      whiteSpace: 'nowrap',
+                      width: '100%',
+                      height: 88,
+                      marginBottom: 10,
+                      borderRadius: 12,
+                      background: `linear-gradient(145deg, ${card.iconFrom} 0%, ${card.iconTo} 100%)`,
+                      border: `1px solid ${card.border}`,
+                      boxShadow: `0 4px 14px ${card.border}55, inset 0 1px 0 rgba(255,255,255,0.12)`,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      fontSize: 40,
                     }}
                   >
-                    {card.badge}
-                  </span>
-                </div>
-                <p style={{ margin: 0, color: '#ccc', fontSize: 12, lineHeight: 1.4 }}>
-                  {card.desc}
-                </p>
-                <div style={{ marginTop: 10, color: card.titleColor, fontSize: 12, fontWeight: 'bold' }}>
-                  Open →
-                </div>
-              </button>
-            ))}
-          </div>
+                    {card.emoji}
+                  </div>
+
+                  <div
+                    style={{
+                      color: '#fff',
+                      fontWeight: 'bold',
+                      fontSize: '13px',
+                      width: '100%',
+                      whiteSpace: 'nowrap',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                    }}
+                  >
+                    {card.title}
+                  </div>
+                  <div
+                    style={{
+                      color: card.titleColor,
+                      fontSize: '11px',
+                      marginTop: '2px',
+                      fontWeight: 'bold',
+                      lineHeight: 1.35,
+                      minHeight: 32,
+                    }}
+                  >
+                    {card.desc}
+                  </div>
+
+                  <div
+                    style={{
+                      width: '100%',
+                      marginTop: '10px',
+                      borderTop: '1px solid #222',
+                      paddingTop: '10px',
+                    }}
+                  >
+                    <div
+                      style={{
+                        color: card.titleColor,
+                        fontSize: '12px',
+                        fontWeight: 'bold',
+                        marginBottom: '6px',
+                      }}
+                    >
+                      {card.badge}
+                    </div>
+                    <div
+                      style={{
+                        width: '100%',
+                        background: card.border,
+                        color: '#000',
+                        border: 'none',
+                        padding: '6px 0',
+                        borderRadius: '6px',
+                        fontWeight: 'bold',
+                        fontSize: '12px',
+                      }}
+                    >
+                      Open
+                    </div>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </>
         )}
        
-        {/* --- Free: SHARD SHOP --- */}
+        {/* --- Free: SHARD SHOP (same square grid as Premium) --- */}
         {activeTab === 'upgrades' && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-            <p style={{ color: '#666', fontSize: 11, margin: '0 0 4px', textAlign: 'center' }}>
+          <>
+            <p style={{ color: '#666', fontSize: 11, margin: '0 0 12px', textAlign: 'center' }}>
               Free · pay with G2Ushards · then use items from Backpack
             </p>
-            {shardListings.map(item => {
-             
-              // 🚨 1. EXACT ID MATCHING FOR COOLDOWNS
-              let isActive = false;
-              const now = new Date();
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '10px' }}>
+              {shardListings.map((item) => {
+                let isActive = false;
+                const now = new Date();
+                if (item.id === 'battery' && stats.energy_boost_expires) {
+                  isActive = now < new Date(stats.energy_boost_expires);
+                } else if (item.id === 'frenzy' && stats.frenzy_expires) {
+                  isActive = now < new Date(stats.frenzy_expires);
+                } else if (item.id === 'heavy' && stats.efficiency_expires) {
+                  isActive = now < new Date(stats.efficiency_expires);
+                }
 
-              // Expanded Battery uses energy_boost_expires (not limit_boost / SOL contracts)
-              if (item.id === 'battery' && stats.energy_boost_expires) {
-                isActive = now < new Date(stats.energy_boost_expires);
-              } else if (item.id === 'frenzy' && stats.frenzy_expires) {
-                isActive = now < new Date(stats.frenzy_expires);
-              } else if (item.id === 'heavy' && stats.efficiency_expires) {
-                isActive = now < new Date(stats.efficiency_expires);
-              }
-              // 'refill' is ignored here because it is instant and has no cooldown timer!
+                const canAfford = balance >= item.cost;
+                const isDisabled = isActive || !canAfford;
 
-              const canAfford = balance >= item.cost;
-              const isDisabled = isActive || !canAfford;
-
-              return (
-                <div key={item.id} style={{ background: '#1c1e22', borderRadius: '15px', padding: '12px 15px', border: '1px solid #333', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
-                  <ShopItemIcon item={item} size={52} variant="row" />
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '5px' }}>
-                      <h3 style={{ margin: 0, color: '#ffd700', fontSize: '16px' }}>{item.name}</h3>
-                    </div>
-                    <p style={{ margin: '0 0 4px 0', color: '#ccc', fontSize: '12px' }}>{item.desc}</p>
-                    <span style={{ color: '#528db0', fontSize: '11px', fontWeight: 'bold' }}>⏱️ {item.duration}</span>
-                  </div>
-                 
-                  <button
-                    disabled={isDisabled}
+                return (
+                  <div
+                    key={item.id}
                     style={{
-                      background: isActive ? '#555' : (canAfford ? '#ffd700' : '#333'),
-                      color: isActive ? '#fff' : (canAfford ? '#000' : '#666'),
-                      border: 'none',
-                      padding: '10px 15px',
-                      borderRadius: '10px',
-                      fontWeight: 'bold',
-                      cursor: isDisabled ? 'not-allowed' : 'pointer',
-                      marginLeft: '10px'
-                    }}
-                    onClick={() => {
-                      if (isDisabled) return;
-                      setItemToBuy(item);
-                      setShowConfirmModal(true);
+                      background: '#111',
+                      border: isActive
+                        ? '1px solid #4ade80'
+                        : canAfford
+                          ? '1px solid #333'
+                          : '1px solid #222',
+                      borderRadius: '12px',
+                      padding: '10px',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      textAlign: 'center',
+                      opacity: !canAfford && !isActive ? 0.75 : 1,
                     }}
                   >
-                    {isActive ? 'Active' : (item.price ? 'Buy' : item.cost)}
-                  </button>
-                </div>
-              );
-            })}
-          </div>
+                    <div style={{ width: '100%', marginBottom: 10 }}>
+                      <ShopItemIcon item={item} variant="card" />
+                    </div>
+
+                    <div
+                      style={{
+                        color: '#fff',
+                        fontWeight: 'bold',
+                        fontSize: '13px',
+                        width: '100%',
+                        whiteSpace: 'nowrap',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                      }}
+                    >
+                      {item.name}
+                    </div>
+                    <div
+                      style={{
+                        color: '#4ade80',
+                        fontSize: '11px',
+                        marginTop: '2px',
+                        fontWeight: 'bold',
+                        lineHeight: 1.35,
+                      }}
+                    >
+                      {item.desc}
+                      <br />
+                      <span style={{ color: '#888', fontSize: '9px' }}>⏱️ {item.duration}</span>
+                    </div>
+
+                    <div
+                      style={{
+                        width: '100%',
+                        marginTop: '10px',
+                        borderTop: '1px solid #222',
+                        paddingTop: '10px',
+                      }}
+                    >
+                      <div
+                        style={{
+                          color: '#ffd700',
+                          fontSize: '13px',
+                          fontWeight: 'bold',
+                          marginBottom: '6px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: 4,
+                        }}
+                      >
+                        <img
+                          src="/shop/G2Ushard.png"
+                          alt=""
+                          width={16}
+                          height={16}
+                          style={{ objectFit: 'contain' }}
+                        />
+                        {Number(item.cost).toLocaleString()}
+                      </div>
+                      <button
+                        type="button"
+                        disabled={isDisabled}
+                        onClick={() => {
+                          if (isDisabled) return;
+                          setItemToBuy(item);
+                          setShowConfirmModal(true);
+                        }}
+                        style={{
+                          width: '100%',
+                          background: isActive
+                            ? '#555'
+                            : canAfford
+                              ? '#4ade80'
+                              : '#333',
+                          color: isActive ? '#fff' : canAfford ? '#000' : '#666',
+                          border: 'none',
+                          padding: '6px 0',
+                          borderRadius: '6px',
+                          fontWeight: 'bold',
+                          fontSize: '12px',
+                          cursor: isDisabled ? 'not-allowed' : 'pointer',
+                        }}
+                      >
+                        {isActive ? 'Active' : canAfford ? 'Buy' : 'Need shards'}
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </>
         )}
 
         {/* --- TAB 2: PREMIUM SOL BOOSTS (not NFTs) --- */}
@@ -1039,164 +1176,94 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
           </>
         )}
 
-        {/* --- TAB: NFT MARKETPLACE (on-chain, separate from boosts) --- */}
+        {/* --- NFT MARKETPLACE: square grid (image + name + price); details on click --- */}
         {activeTab === 'nft' && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-            <div style={{ textAlign: 'center' }}>
-              <h3 style={{ color: '#fff', margin: '0 0 4px', fontSize: 16 }}>NFT Marketplace</h3>
-              <p style={{ color: '#888', fontSize: 11, margin: 0, lineHeight: 1.4 }}>
-                On-chain Metaplex Core · permanent · not a boost
-              </p>
-            </div>
-
-            {nftListings.map((item) => (
-              <div
-                key={item.id}
-                style={{
-                  background: 'linear-gradient(145deg, #1a1525 0%, #111 50%, #0d1a18 100%)',
-                  border: '1px solid #9945FF',
-                  borderRadius: 16,
-                  padding: 16,
-                  boxShadow: '0 8px 24px rgba(153,69,255,0.15)',
-                }}
-              >
-                <div style={{ display: 'flex', gap: 14, alignItems: 'flex-start' }}>
+          <>
+            <p style={{ color: '#666', fontSize: 10, margin: '0 0 8px', textAlign: 'center' }}>
+              NFT Marketplace · tap for details
+            </p>
+            {/* Dense 3-col grid — image + name + price only (hundreds of listings OK) */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
+              {nftListings.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => setNftDetail(item)}
+                  style={{
+                    background: '#111',
+                    border:
+                      item.rarity === 'Legendary'
+                        ? '1px solid #ffd700'
+                        : item.rarity === 'Rare'
+                          ? '1px solid #9945FF'
+                          : '1px solid #2a2a2a',
+                    borderRadius: 8,
+                    padding: 5,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    textAlign: 'center',
+                    cursor: 'pointer',
+                    minWidth: 0,
+                  }}
+                >
                   <div
                     style={{
-                      width: 96,
-                      height: 96,
-                      borderRadius: 12,
+                      width: '100%',
+                      aspectRatio: '1',
+                      marginBottom: 4,
+                      borderRadius: 6,
                       overflow: 'hidden',
-                      background: '#222',
-                      border: '1px solid #333',
-                      flexShrink: 0,
+                      background: '#1a1525',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
-                      fontSize: 40,
+                      fontSize: 22,
                     }}
                   >
                     {item.imageUrl ? (
                       <img
                         src={item.imageUrl}
                         alt={item.name}
+                        loading="lazy"
                         style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                       />
                     ) : (
                       item.image
                     )}
                   </div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ color: '#a78bfa', fontSize: 10, fontWeight: 'bold', letterSpacing: 0.5 }}>
-                      {item.collection} · {item.rarity}
-                    </div>
-                    <h3 style={{ color: '#ffd700', margin: '4px 0 6px', fontSize: 18 }}>{item.name}</h3>
-                    <div
-                      style={{
-                        background: 'rgba(20,241,149,0.12)',
-                        border: '1px solid #14F195',
-                        borderRadius: 8,
-                        padding: '8px 10px',
-                        marginBottom: 8,
-                      }}
-                    >
-                      <div style={{ color: '#14F195', fontSize: 11, fontWeight: 'bold', marginBottom: 2 }}>
-                        🔓 Unlocks Shard Swap
-                      </div>
-                      <div style={{ color: '#ccc', fontSize: 11, lineHeight: 1.35 }}>
-                        {item.boost}
-                      </div>
-                    </div>
-                    {item.perks?.length > 0 && (
-                      <ul
-                        style={{
-                          margin: '0 0 8px',
-                          paddingLeft: 16,
-                          color: '#aaa',
-                          fontSize: 10,
-                          lineHeight: 1.45,
-                          textAlign: 'left',
-                        }}
-                      >
-                        {item.perks.map((p) => (
-                          <li key={p}>{p}</li>
-                        ))}
-                      </ul>
-                    )}
-                    <div style={{ color: '#888', fontSize: 10, marginBottom: 10 }}>
-                      {item.duration}
-                      <br />
-                      Supply wave: {item.supply} · Max {item.maxPerWallet}/wallet
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
-                      <div>
-                        <div style={{ color: '#14F195', fontWeight: 'bold', fontSize: 18 }}>
-                          {item.price} {item.currency}
-                        </div>
-                        <div style={{ color: '#666', fontSize: 10, marginTop: 2 }}>
-                          + ~{LOCKSMITH_WAVE1.feeBufferSol} SOL fees
-                        </div>
-                      </div>
-                      <button
-                        type="button"
-                        disabled={!canAffordLocksmithMint || walletSolLoading}
-                        onClick={() => {
-                          if (!canAffordLocksmithMint) return;
-                          setItemToBuy(item);
-                          setShowConfirmModal(true);
-                        }}
-                        style={{
-                          background: canAffordLocksmithMint
-                            ? 'linear-gradient(90deg, #9945FF, #14F195)'
-                            : '#333',
-                          color: canAffordLocksmithMint ? '#000' : '#777',
-                          border: 'none',
-                          padding: '12px 20px',
-                          borderRadius: 12,
-                          fontWeight: 'bold',
-                          fontSize: 13,
-                          cursor: canAffordLocksmithMint ? 'pointer' : 'not-allowed',
-                          opacity: walletSolLoading ? 0.7 : 1,
-                        }}
-                      >
-                        {walletSolLoading
-                          ? 'Checking SOL…'
-                          : !walletUnlocked
-                            ? 'Unlock wallet'
-                            : !canAffordLocksmithMint
-                              ? 'Need more SOL'
-                              : 'Mint GiftLocksmith'}
-                      </button>
-                    </div>
-                    <div style={{ marginTop: 10, fontSize: 11, color: '#888', lineHeight: 1.4 }}>
-                      {walletSolLoading ? (
-                        <span>Checking game wallet balance…</span>
-                      ) : walletSol == null ? (
-                        <span style={{ color: '#f59e0b' }}>
-                          Could not read SOL balance. Open wallet and try again.
-                        </span>
-                      ) : canAffordLocksmithMint ? (
-                        <span style={{ color: '#14F195' }}>
-                          Game wallet: {walletSol.toFixed(4)} SOL · ready to mint
-                        </span>
-                      ) : (
-                        <span style={{ color: '#f87171' }}>
-                          Game wallet: {walletSol.toFixed(4)} SOL · need at least{' '}
-                          {minMintSol.toFixed(2)} SOL ({item.price} mint + fees). Deposit SOL
-                          first — mint stays off so you do not lose network fees.
-                        </span>
-                      )}
-                    </div>
+                  <div
+                    style={{
+                      color: '#fff',
+                      fontWeight: 'bold',
+                      fontSize: 10,
+                      width: '100%',
+                      whiteSpace: 'nowrap',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      lineHeight: 1.2,
+                    }}
+                  >
+                    {item.name}
                   </div>
-                </div>
-              </div>
-            ))}
-
-            <p style={{ color: '#555', fontSize: 10, textAlign: 'center', lineHeight: 1.4, margin: '4px 0 0' }}>
-              Mints from your game wallet on Solana mainnet. Requires {minMintSol.toFixed(2)}+ SOL
-              (0.25 mint + network/rent). After mint, open Wallet → Shard for better swap fees.
+                  <div
+                    style={{
+                      color: '#14F195',
+                      fontSize: 10,
+                      fontWeight: 'bold',
+                      marginTop: 2,
+                      lineHeight: 1.2,
+                    }}
+                  >
+                    {item.price} {item.currency}
+                  </div>
+                </button>
+              ))}
+            </div>
+            <p style={{ color: '#555', fontSize: 9, textAlign: 'center', margin: '8px 0 0' }}>
+              More NFTs as they go on sale
             </p>
-          </div>
+          </>
         )}
 
         {/* --- TAB 3: THE BACKPACK --- */}
@@ -1247,7 +1314,277 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
 
       </div>
 
-      {/* --- ADD THIS AT THE BOTTOM OF MARKETPLACE.JSX --- */}
+      {/* --- NFT detail popup (compact: fits screen, mint always visible) --- */}
+      {nftDetail && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            width: '100%',
+            height: '100%',
+            background: 'rgba(0,0,0,0.92)',
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center',
+            zIndex: 10000,
+            padding: 12,
+            boxSizing: 'border-box',
+          }}
+          onClick={() => setNftDetail(null)}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: '#1c1e22',
+              padding: 12,
+              borderRadius: 14,
+              border: '2px solid #9945FF',
+              width: '100%',
+              maxWidth: 320,
+              maxHeight: 'min(88vh, 520px)',
+              display: 'flex',
+              flexDirection: 'column',
+              boxSizing: 'border-box',
+            }}
+          >
+            {/* Header: small image + name (no huge square) */}
+            <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 8 }}>
+              <div
+                style={{
+                  width: 72,
+                  height: 72,
+                  borderRadius: 10,
+                  overflow: 'hidden',
+                  background: '#111',
+                  border: '1px solid #333',
+                  flexShrink: 0,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: 28,
+                }}
+              >
+                {nftDetail.imageUrl ? (
+                  <img
+                    src={nftDetail.imageUrl}
+                    alt={nftDetail.name}
+                    style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                  />
+                ) : (
+                  nftDetail.image
+                )}
+              </div>
+              <div style={{ flex: 1, minWidth: 0, textAlign: 'left' }}>
+                <div style={{ color: '#a78bfa', fontSize: 10, fontWeight: 'bold' }}>
+                  {nftDetail.collection} · {nftDetail.rarity}
+                </div>
+                <h3
+                  style={{
+                    color: '#ffd700',
+                    margin: '2px 0 4px',
+                    fontSize: 16,
+                    lineHeight: 1.2,
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                  }}
+                >
+                  {nftDetail.name}
+                </h3>
+                {nftDetail.boost ? (
+                  <p
+                    style={{
+                      color: '#14F195',
+                      fontSize: 10,
+                      margin: 0,
+                      lineHeight: 1.3,
+                      display: '-webkit-box',
+                      WebkitLineClamp: 2,
+                      WebkitBoxOrient: 'vertical',
+                      overflow: 'hidden',
+                    }}
+                  >
+                    🔓 {nftDetail.boost}
+                  </p>
+                ) : null}
+              </div>
+            </div>
+
+            {/* Compact attributes grid */}
+            <div
+              style={{
+                flex: 1,
+                minHeight: 0,
+                overflowY: 'auto',
+                textAlign: 'left',
+                background: '#111',
+                borderRadius: 10,
+                border: '1px solid #333',
+                padding: '8px 10px',
+                marginBottom: 8,
+              }}
+            >
+              <div style={{ color: '#666', fontSize: 9, fontWeight: 'bold', marginBottom: 6 }}>
+                ATTRIBUTES
+              </div>
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: '1fr 1fr',
+                  gap: 4,
+                }}
+              >
+                {(nftDetail.attributes || []).map((a) => (
+                  <div
+                    key={`${a.trait_type}-${a.value}`}
+                    style={{
+                      background: '#1a1a1a',
+                      borderRadius: 6,
+                      padding: '4px 6px',
+                      minWidth: 0,
+                    }}
+                  >
+                    <div style={{ color: '#666', fontSize: 8, lineHeight: 1.2 }}>{a.trait_type}</div>
+                    <div
+                      style={{
+                        color: '#fff',
+                        fontSize: 10,
+                        fontWeight: 'bold',
+                        lineHeight: 1.2,
+                        whiteSpace: 'nowrap',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                      }}
+                    >
+                      {a.value}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              {nftDetail.perks?.length > 0 && (
+                <div style={{ marginTop: 6 }}>
+                  <div style={{ color: '#666', fontSize: 9, fontWeight: 'bold', marginBottom: 3 }}>
+                    PERKS
+                  </div>
+                  <p
+                    style={{
+                      margin: 0,
+                      color: '#aaa',
+                      fontSize: 9,
+                      lineHeight: 1.35,
+                      display: '-webkit-box',
+                      WebkitLineClamp: 3,
+                      WebkitBoxOrient: 'vertical',
+                      overflow: 'hidden',
+                    }}
+                  >
+                    {nftDetail.perks.join(' · ')}
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* Footer always visible — price + actions */}
+            <div style={{ flexShrink: 0 }}>
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'baseline',
+                  marginBottom: 4,
+                }}
+              >
+                <span style={{ color: '#14F195', fontWeight: 'bold', fontSize: 16 }}>
+                  {nftDetail.price} {nftDetail.currency}
+                </span>
+                {nftDetail.isNftMint && (
+                  <span style={{ color: '#555', fontSize: 9 }}>
+                    +~{LOCKSMITH_WAVE1.feeBufferSol} fees
+                  </span>
+                )}
+              </div>
+              <div style={{ fontSize: 9, color: '#777', marginBottom: 8, lineHeight: 1.3 }}>
+                {walletSolLoading
+                  ? 'Checking SOL…'
+                  : walletSol == null
+                    ? 'Could not read SOL'
+                    : canAffordLocksmithMint
+                      ? `Wallet ${walletSol.toFixed(4)} SOL · ready`
+                      : `Wallet ${Number(walletSol || 0).toFixed(4)} SOL · need ${minMintSol.toFixed(2)}+`}
+              </div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button
+                  type="button"
+                  onClick={() => setNftDetail(null)}
+                  style={{
+                    flex: 1,
+                    padding: 10,
+                    background: '#333',
+                    color: '#fff',
+                    borderRadius: 10,
+                    border: 'none',
+                    fontWeight: 'bold',
+                    fontSize: 13,
+                    cursor: 'pointer',
+                  }}
+                >
+                  Close
+                </button>
+                <button
+                  type="button"
+                  disabled={
+                    nftDetail.isNftMint &&
+                    (!canAffordLocksmithMint || walletSolLoading)
+                  }
+                  onClick={() => {
+                    if (nftDetail.isNftMint) {
+                      if (!canAffordLocksmithMint || walletSolLoading) return;
+                      setNftDetail(null);
+                      setItemToBuy(nftDetail);
+                      setShowConfirmModal(true);
+                      return;
+                    }
+                    setNftDetail(null);
+                    setItemToBuy(nftDetail);
+                    setShowConfirmModal(true);
+                  }}
+                  style={{
+                    flex: 1.2,
+                    padding: 10,
+                    background:
+                      nftDetail.isNftMint && !canAffordLocksmithMint
+                        ? '#444'
+                        : 'linear-gradient(90deg, #9945FF, #14F195)',
+                    color:
+                      nftDetail.isNftMint && !canAffordLocksmithMint ? '#888' : '#000',
+                    borderRadius: 10,
+                    border: 'none',
+                    fontWeight: 'bold',
+                    fontSize: 13,
+                    cursor:
+                      nftDetail.isNftMint && !canAffordLocksmithMint
+                        ? 'not-allowed'
+                        : 'pointer',
+                  }}
+                >
+                  {nftDetail.isNftMint
+                    ? walletSolLoading
+                      ? '…'
+                      : !walletUnlocked
+                        ? 'Unlock wallet'
+                        : !canAffordLocksmithMint
+                          ? 'Need SOL'
+                          : 'Mint'
+                    : 'Buy'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* --- Confirm purchase / mint --- */}
       {showConfirmModal && itemToBuy && (
         <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', background: 'rgba(0,0,0,0.9)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 10000 }}>
           <div style={{ background: '#1c1e22', padding: '25px', borderRadius: '15px', border: '2px solid #ffd700', textAlign: 'center', width: '80%', maxWidth: '320px' }}>
