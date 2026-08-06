@@ -84,18 +84,6 @@ serve(async (req) => {
       throw new Error("Wrong password.");
     }
 
-    // Progress session: required for save-progress (cannot forge lifetime_taps without this)
-    const tokenBytes = crypto.getRandomValues(new Uint8Array(32));
-    const progressToken = b64(tokenBytes);
-    const tokenExpires = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
-    await supabase
-      .from("players")
-      .update({
-        progress_token: progressToken,
-        progress_token_expires: tokenExpires,
-      })
-      .eq("telegram_id", row.telegram_id);
-
     return new Response(
       JSON.stringify({
         success: true,
@@ -104,8 +92,6 @@ serve(async (req) => {
         wallet_address: row.wallet_address,
         has_beta_access: !!row.has_beta_access,
         has_vault: !!row.encrypted_vault,
-        progress_token: progressToken,
-        progress_token_expires: tokenExpires,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200 },
     );
