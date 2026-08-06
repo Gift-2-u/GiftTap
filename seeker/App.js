@@ -146,7 +146,8 @@ export default function App() {
             identity: {
               name: 'Gift2U',
               uri: 'https://gift2u.fun',
-              icon: 'https://gift2u.fun/Gift2u_logo.png',
+              // MWA requires a relative URI when icon is set (not https://...)
+              icon: '/Gift2u_logo.png',
             },
           });
         });
