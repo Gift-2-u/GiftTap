@@ -874,18 +874,54 @@ const GiftTapGame = () => {
         setEnergy(_en);
         optimisticEnergy.current = _en;
 
-        // Daily Reset Logic
+        // Daily Reset Logic (UTC calendar day)
+        // daily_taps lives in Supabase — npm run dev cannot clear it unless we write 0.
         const today = new Date().toISOString().split('T')[0];
-        setLastTapDate(playerRow.last_tap_date || today);
+        const ltd = playerRow.last_tap_date
+          ? String(playerRow.last_tap_date).slice(0, 10)
+          : null;
         setStreak(playerRow.current_streak || 0);
 
-        if (playerRow.last_tap_date !== today) {
+        let loadMaxDaily = Number(playerRow.max_daily_limit) || 1000;
+        const loadNow = new Date();
+        if (playerRow.energy_boost_expires && loadNow < new Date(playerRow.energy_boost_expires)) {
+          loadMaxDaily += 1000;
+        }
+        if (playerRow.limit_boost_expires && loadNow < new Date(playerRow.limit_boost_expires)) {
+          loadMaxDaily += Number(playerRow.limit_boost_amount) || 0;
+        }
+
+        if (!ltd || ltd !== today) {
+          // New UTC day → must zero UI + DB (old code only zeroed UI; next save put 1000 back)
           setDailyTaps(0);
           optimisticDaily.current = 0;
+          setLastTapDate(today);
+          serverProgressRef.current = { ...(serverProgressRef.current || {}), dt: 0 };
+          supabase
+            .from('players')
+            .update({ daily_taps: 0, last_tap_date: today })
+            .eq(DB_PLAYER_ID, userId)
+            .then(({ error }) => {
+              if (error) console.error('UTC daily reset failed:', error.message);
+            });
         } else {
-          const _dt = Number(playerRow.daily_taps) || 0;
+          let _dt = Number(playerRow.daily_taps) || 0;
+          // Bad save left yesterday's full count under today's date → permanently "limit reached"
+          if (_dt >= loadMaxDaily) {
+            console.warn('Reset stuck daily_taps', _dt, 'cap', loadMaxDaily);
+            _dt = 0;
+            supabase
+              .from('players')
+              .update({ daily_taps: 0, last_tap_date: today })
+              .eq(DB_PLAYER_ID, userId)
+              .then(({ error }) => {
+                if (error) console.error('Stuck daily reset failed:', error.message);
+              });
+          }
           setDailyTaps(_dt);
           optimisticDaily.current = _dt;
+          setLastTapDate(today);
+          serverProgressRef.current = { ...(serverProgressRef.current || {}), dt: _dt };
         }
 
         // 🚨 NEW: Ad Capacity & Midnight Reset Logic
@@ -1590,7 +1626,7 @@ const GiftTapGame = () => {
       try {
         const { data: serverRow } = await supabase
           .from('players')
-          .select('shard_balance, lifetime_taps, season_shards, daily_taps')
+          .select('shard_balance, lifetime_taps, season_shards, daily_taps, last_tap_date')
           .eq(DB_PLAYER_ID, savePlayerId)
           .maybeSingle();
         if (serverRow) {
@@ -1598,6 +1634,10 @@ const GiftTapGame = () => {
           const sl = Number(serverRow.lifetime_taps) || 0;
           const ss = Number(serverRow.season_shards) || 0;
           const sd = Number(serverRow.daily_taps) || 0;
+          const serverLtd = String(serverRow.last_tap_date || '').slice(0, 10);
+          const clientLtd = String(p.ltd || '').slice(0, 10);
+          // Same UTC day only — never pull yesterday's daily into today's save
+          const sameUtcDay = Boolean(clientLtd && serverLtd && clientLtd === serverLtd);
 
           // Server dropped below last-loaded snapshot → admin (or other) correction
           const serverCorrectedDown =
@@ -1610,7 +1650,7 @@ const GiftTapGame = () => {
             // Do not re-add local deltas from the old wrong baseline (that kept 5101 alive).
             writeLtt = sl;
             writeS = ss;
-            writeDt = sd;
+            writeDt = sameUtcDay ? sd : writeDt;
             writeB = isSpend ? writeB : sb;
             serverProgressRef.current = { b: writeB, ltt: writeLtt, s: writeS, dt: writeDt };
             console.warn('Adopted admin/server progress correction', {
@@ -1626,7 +1666,7 @@ const GiftTapGame = () => {
             }
             if (sl > writeLtt + 0.001) writeLtt = sl;
             if (ss > writeS + 0.001) writeS = ss;
-            if (sd > writeDt + 0.001) writeDt = sd;
+            if (sameUtcDay && sd > writeDt + 0.001) writeDt = sd;
           }
         }
       } catch (reconErr) {
@@ -1833,13 +1873,13 @@ const GiftTapGame = () => {
         currentMaxLimit += (Number(stats.limit_boost_amount) || 0);
       }
 
-      // 2. THE CHECK (Using your live 'dailyTaps' state)
-      if (dailyTaps >= currentMaxLimit) {
+      // 2. Use currentDailyTaps (already 0 after midnight), not stale dailyTaps state
+      if (currentDailyTaps >= currentMaxLimit) {
         notify("Daily limit reached! Wait for tomorrow or use a boost.");
         return;
       }
 
-      if (energy <= 0 || !isDataLoaded) return;
+      if ((Number(optimisticEnergy.current) || 0) <= 0 || !isDataLoaded) return;
 
       // 🚨 FIX: Use the synchronous Ref to prevent rapid-click bypasses
       const safeLifetimeTaps = Number(optimisticTaps.current) || 0;
