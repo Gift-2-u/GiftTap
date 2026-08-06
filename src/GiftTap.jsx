@@ -880,8 +880,21 @@ const GiftTapGame = () => {
         setStreak(playerRow.current_streak || 0);
 
         if (playerRow.last_tap_date !== today) {
+          // New UTC day: zero daily usage in UI AND database so one tap
+          // cannot re-import yesterday's 1000/2000 via save reconcile.
           setDailyTaps(0);
           optimisticDaily.current = 0;
+          setLastTapDate(today);
+          supabase
+            .from('players')
+            .update({
+              daily_taps: 0,
+              last_tap_date: today,
+            })
+            .eq(DB_PLAYER_ID, userId)
+            .then(({ error }) => {
+              if (error) console.error('UTC daily reset failed:', error.message);
+            });
         } else {
           const _dt = Number(playerRow.daily_taps) || 0;
           setDailyTaps(_dt);
@@ -1590,7 +1603,7 @@ const GiftTapGame = () => {
       try {
         const { data: serverRow } = await supabase
           .from('players')
-          .select('shard_balance, lifetime_taps, season_shards, daily_taps')
+          .select('shard_balance, lifetime_taps, season_shards, daily_taps, last_tap_date')
           .eq(DB_PLAYER_ID, savePlayerId)
           .maybeSingle();
         if (serverRow) {
@@ -1598,6 +1611,13 @@ const GiftTapGame = () => {
           const sl = Number(serverRow.lifetime_taps) || 0;
           const ss = Number(serverRow.season_shards) || 0;
           const sd = Number(serverRow.daily_taps) || 0;
+          const serverLtd = serverRow.last_tap_date || '';
+          const clientLtd = p.ltd || '';
+          // New UTC day on this device: never re-import yesterday's daily_taps
+          // (that was filling Daily Limit 1000/1000 after one tap).
+          const isNewUtcDay =
+            clientLtd &&
+            (!serverLtd || serverLtd < clientLtd || serverLtd !== clientLtd);
 
           // Server dropped below last-loaded snapshot → admin (or other) correction
           const serverCorrectedDown =
@@ -1610,7 +1630,8 @@ const GiftTapGame = () => {
             // Do not re-add local deltas from the old wrong baseline (that kept 5101 alive).
             writeLtt = sl;
             writeS = ss;
-            writeDt = sd;
+            // Keep client daily when crossing into a new UTC day
+            writeDt = isNewUtcDay ? writeDt : sd;
             writeB = isSpend ? writeB : sb;
             serverProgressRef.current = { b: writeB, ltt: writeLtt, s: writeS, dt: writeDt };
             console.warn('Adopted admin/server progress correction', {
@@ -1626,7 +1647,9 @@ const GiftTapGame = () => {
             }
             if (sl > writeLtt + 0.001) writeLtt = sl;
             if (ss > writeS + 0.001) writeS = ss;
-            if (sd > writeDt + 0.001) writeDt = sd;
+            // Same calendar day only: take higher daily (multi-device).
+            // New day: client writeDt is the truth (0, 1, 2…).
+            if (!isNewUtcDay && sd > writeDt + 0.001) writeDt = sd;
           }
         }
       } catch (reconErr) {
@@ -1833,8 +1856,9 @@ const GiftTapGame = () => {
         currentMaxLimit += (Number(stats.limit_boost_amount) || 0);
       }
 
-      // 2. THE CHECK (Using your live 'dailyTaps' state)
-      if (dailyTaps >= currentMaxLimit) {
+      // 2. THE CHECK — use currentDailyTaps (already reset on new UTC day),
+      // not stale React dailyTaps which can still be yesterday's 1000.
+      if (currentDailyTaps >= currentMaxLimit) {
         notify("Daily limit reached! Wait for tomorrow or use a boost.");
         return;
       }
