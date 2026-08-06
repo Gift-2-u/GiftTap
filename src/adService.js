@@ -1,17 +1,14 @@
 // ==========================================
 // AD NETWORKS — Gift Tap Free Energy
 //
-// Monetag Direct link — Positive tag 11270717
+// WEB (browser): Monetag Direct link — Positive tag 11270717
+//   Engagement gate (must leave Gift Tap for most of the timer).
 //
-// Direct links have NO completion callback.
-// We require engagement (user leaves Gift Tap for the ad)
-// so blocked/"security" pages do NOT grant free energy.
-//
-// One network per tap only — a second window.open after the
-// first attempt loses the user gesture and looks "popup blocked".
+// SEEKER (native shell): Google AdMob Rewarded via ReactNativeWebView bridge.
+//   Real completion callback — energy only after reward earned.
 // ==========================================
 
-/** UI countdown while ad tab is open (not a free auto-reward). */
+/** UI countdown while ad is open (web Monetag; Seeker uses native ad UX). */
 export const AD_MIN_WATCH_SECONDS = 15;
 
 /**
@@ -32,16 +29,38 @@ const isPlaceholder = (url) =>
   url.trim() === '';
 
 /**
- * Open ad in a new tab during the user gesture.
+ * True when running inside the Gift2U Seeker / Android WebView shell.
+ * Shell loads play URL with ?seeker=1 and injects ReactNativeWebView.
+ */
+export function isSeekerShell() {
+  if (typeof window === 'undefined') return false;
+  try {
+    const q = new URLSearchParams(window.location.search || '');
+    if (q.get('seeker') === '1' || q.get('seeker') === 'true') return true;
+  } catch {
+    /* ignore */
+  }
+  try {
+    if (window.ReactNativeWebView && typeof window.ReactNativeWebView.postMessage === 'function') {
+      // Only treat as Seeker shell when we also set the query (avoids other WebViews)
+      const q = new URLSearchParams(window.location.search || '');
+      if (q.get('seeker')) return true;
+    }
+  } catch {
+    /* ignore */
+  }
+  return false;
+}
+
+/**
+ * Open ad in a new tab during the user gesture (web only).
  *
  * IMPORTANT: do NOT pass "noopener" / "noreferrer" as window features —
- * modern browsers then always return null from window.open, which made
- * Free Energy falsely report "popup blocked".
+ * modern browsers then always return null from window.open.
  */
 const openAdTab = (url) => {
   let win = null;
   try {
-    // No feature string → real Window handle when the tab opens
     win = window.open(url, '_blank');
   } catch {
     /* ignore */
@@ -49,7 +68,6 @@ const openAdTab = (url) => {
 
   if (win) {
     try {
-      // Drop reverse access without losing the handle
       win.opener = null;
     } catch {
       /* ignore */
@@ -57,7 +75,6 @@ const openAdTab = (url) => {
     return win;
   }
 
-  // Mobile / strict browsers: open() may return null even when a tab opened
   try {
     const a = document.createElement('a');
     a.href = url;
@@ -75,15 +92,7 @@ const openAdTab = (url) => {
 };
 
 /**
- * Monetag direct link with engagement gate.
- * - Prefer a real window handle when available
- * - Null handle is OK (common on mobile) if user leaves Gift Tap
- * - Must leave Gift Tap for most of the wait → no free energy on blocked ads
- *
- * @param {string} url
- * @param {string} networkName
- * @param {{ onTick?: (secondsLeft: number) => void }} [options]
- * @returns {Promise<{ network: string }>}
+ * Monetag direct link with engagement gate (WEB only).
  */
 const playEngagedLink = (url, networkName, options = {}) => {
   const { onTick } = options;
@@ -109,7 +118,6 @@ const playEngagedLink = (url, networkName, options = {}) => {
     let pollId = null;
     let safetyId = null;
 
-    // Must actually switch away to the ad for most of the timer
     const MIN_HIDDEN_MS = Math.floor(minMs * 0.6);
 
     console.log(
@@ -188,7 +196,6 @@ const playEngagedLink = (url, networkName, options = {}) => {
       reportTick();
       const elapsed = Date.now() - started;
 
-      // Only trust win.closed when we have a handle
       if (win) {
         try {
           if (win.closed && leftPageMs < 2000 && elapsed < 5000) {
@@ -237,12 +244,142 @@ const playEngagedLink = (url, networkName, options = {}) => {
 };
 
 /**
- * Free Energy: Monetag Positive tag only (one open per tap).
- * @param {{ onTick?: (secondsLeft: number) => void }} [options]
+ * Seeker shell: ask native AdMob rewarded unit via WebView postMessage.
+ * Native injects window.__gift2uOnAdResult({ requestId, success, error? }).
+ */
+const playSeekerRewardedAd = (options = {}) => {
+  const { onTick } = options;
+
+  return new Promise((resolve, reject) => {
+    if (typeof window === 'undefined') {
+      reject(new Error('Ads only work in the app'));
+      return;
+    }
+
+    const bridge = window.ReactNativeWebView;
+    if (!bridge || typeof bridge.postMessage !== 'function') {
+      reject(
+        new Error(
+          'Seeker ad bridge missing. Update the Gift2U Seeker app, or open gift2u.fun in a browser for Monetag ads.',
+        ),
+      );
+      return;
+    }
+
+    const requestId = `ad_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+    let settled = false;
+    let tickId = null;
+    let safetyId = null;
+    const started = Date.now();
+    // Soft UI countdown while native ad loads/plays (not used as reward gate)
+    const softSeconds = 30;
+
+    const cleanup = () => {
+      if (tickId != null) clearInterval(tickId);
+      if (safetyId != null) clearTimeout(safetyId);
+      try {
+        if (window.__gift2uOnAdResult_req === requestId) {
+          delete window.__gift2uOnAdResult;
+          delete window.__gift2uOnAdResult_req;
+        }
+      } catch {
+        /* ignore */
+      }
+    };
+
+    const finish = (ok, message, network = 'AdMob') => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      if (onTick) {
+        try {
+          onTick(ok ? 0 : Math.max(0, softSeconds - Math.floor((Date.now() - started) / 1000)));
+        } catch {
+          /* ignore */
+        }
+      }
+      if (ok) {
+        console.log('✅ Seeker AdMob: reward earned');
+        resolve({ network });
+      } else {
+        console.warn('⚠️ Seeker AdMob:', message);
+        reject(new Error(message || 'Ad not completed'));
+      }
+    };
+
+    window.__gift2uOnAdResult_req = requestId;
+    window.__gift2uOnAdResult = (payload) => {
+      try {
+        const data = typeof payload === 'string' ? JSON.parse(payload) : payload;
+        if (!data || data.requestId !== requestId) return;
+        if (data.success) {
+          finish(true, null, data.network || 'AdMob');
+        } else {
+          finish(false, data.error || 'Ad not completed');
+        }
+      } catch (e) {
+        finish(false, e?.message || 'Bad ad result');
+      }
+    };
+
+    if (onTick) {
+      try {
+        onTick(softSeconds);
+      } catch {
+        /* ignore */
+      }
+      tickId = setInterval(() => {
+        if (settled) return;
+        const left = Math.max(0, softSeconds - Math.floor((Date.now() - started) / 1000));
+        try {
+          onTick(left);
+        } catch {
+          /* ignore */
+        }
+      }, 500);
+    }
+
+    safetyId = setTimeout(() => {
+      finish(false, 'Ad timed out. Close and try Free Energy again.');
+    }, 180000);
+
+    try {
+      bridge.postMessage(
+        JSON.stringify({
+          type: 'WATCH_REWARDED_AD',
+          requestId,
+        }),
+      );
+      console.log('📺 Seeker: requested native rewarded ad', requestId);
+    } catch (e) {
+      finish(false, e?.message || 'Could not start Seeker ad');
+    }
+  });
+};
+
+/**
+ * Free Energy waterfall:
+ * - Seeker shell → native AdMob rewarded (completion callback)
+ * - Web browser → Monetag engaged direct link
+ *
+ * @param {{ onTick?: (secondsLeft: number) => void, ymid?: string }} [options]
  */
 export const showRewardedAdWaterfall = async (options = {}) => {
+  if (isSeekerShell()) {
+    console.log('🌊 Free Energy: Seeker path → AdMob rewarded (native)');
+    try {
+      if (options.onTick) options.onTick(30);
+      const result = await playSeekerRewardedAd(options);
+      return { success: true, network: result.network || 'AdMob' };
+    } catch (err) {
+      const lastError = err?.message || String(err);
+      console.log('⚠️ Seeker AdMob failed:', lastError);
+      return { success: false, error: lastError };
+    }
+  }
+
   console.log(
-    `🌊 Free Energy: Monetag zone ${MONETAG_ZONE_ID} (engaged only, single open)`,
+    `🌊 Free Energy: Web path → Monetag zone ${MONETAG_ZONE_ID} (engaged only, single open)`,
   );
 
   try {

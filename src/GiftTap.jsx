@@ -13,7 +13,7 @@ import WhitepaperModal from './WhitepaperModal';
 import LegalModal from './LegalModal';
 import AppNotice from './AppNotice';
 import HelpTip from './HelpTip';
-import { showRewardedAdWaterfall, AD_MIN_WATCH_SECONDS } from './adService';
+import { showRewardedAdWaterfall, AD_MIN_WATCH_SECONDS, isSeekerShell } from './adService';
 import WalletHub from './WalletHub';
 import TokenBalanceList from './TokenBalanceList';
 import { fetchFiatRates, FIAT_CURRENCIES } from './fiatPrices';
@@ -4633,11 +4633,25 @@ const GiftTapGame = () => {
                 {isWatchingAd && adSecondsLeft !== null ? (
                   <>
                     <p style={{ color: '#ccc', fontSize: '14px', marginBottom: '12px', lineHeight: '1.5' }}>
-                      Ad tab open — keep it open until this timer hits <strong style={{ color: '#ffd700' }}>0</strong>.
-                      <br />
-                      <span style={{ fontSize: '12px', color: '#888' }}>
-                        Closing early = no reward. &quot;Leave site?&quot; is from the ad network.
-                      </span>
+                      {isSeekerShell()
+                        ? (
+                          <>
+                            Full-screen ad on Seeker — watch until it finishes.
+                            <br />
+                            <span style={{ fontSize: '12px', color: '#888' }}>
+                              Closing early = no Free Energy. Reward only after the ad completes.
+                            </span>
+                          </>
+                        )
+                        : (
+                          <>
+                            Ad tab open — keep it open until this timer hits <strong style={{ color: '#ffd700' }}>0</strong>.
+                            <br />
+                            <span style={{ fontSize: '12px', color: '#888' }}>
+                              Closing early = no reward. &quot;Leave site?&quot; is from the ad network.
+                            </span>
+                          </>
+                        )}
                     </p>
                     <div
                       style={{
@@ -4652,12 +4666,19 @@ const GiftTapGame = () => {
                       {adSecondsLeft}
                     </div>
                     <p style={{ color: '#888', fontSize: '12px', marginBottom: '8px' }}>
-                      {adSecondsLeft > 0 ? 'Finish the ad — reward unlocks only when it completes…' : 'Finishing…'}
+                      {adSecondsLeft > 0
+                        ? (isSeekerShell()
+                          ? 'Watch the full ad…'
+                          : 'Finish the ad — reward unlocks only when it completes…')
+                        : 'Finishing…'}
                     </p>
                   </>
                 ) : (
                   <p style={{ color: '#ccc', fontSize: '14px', marginBottom: '20px', lineHeight: '1.5' }}>
-                    Want to tap more? Watch a short rewarded ad to expand your Daily Energy Limit by +100 for today. Energy is only granted when the ad network confirms the view (blocked ads do not count).
+                    Want to tap more? Watch a short rewarded ad to expand your Daily Energy Limit by +100 for today.
+                    {isSeekerShell()
+                      ? ' On Seeker, ads run in-app (AdMob) — energy only after the ad finishes.'
+                      : ' Energy is only granted when the ad network confirms the view (blocked ads do not count).'}
                     <br /><br />
                     <span style={{ fontSize: '12px', color: '#888' }}>
                       (Max 10 ads per day. You have watched {dailyAdsWatched}/10)

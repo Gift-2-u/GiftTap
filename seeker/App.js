@@ -1,9 +1,10 @@
 /**
  * Gift2U Seeker / Android shell
  * Loads the production web game in a full-screen WebView.
- * Same game as the website — Solana MWA works inside the WebView on Android/Seeker.
+ * Free Energy on Seeker → native AdMob rewarded (completion callback).
+ * Web browser still uses Monetag (handled entirely in the web app).
  */
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   BackHandler,
@@ -15,21 +16,71 @@ import {
 } from 'react-native';
 import { WebView } from 'react-native-webview';
 import Constants from 'expo-constants';
+import mobileAds, {
+  AdEventType,
+  RewardedAd,
+  RewardedAdEventType,
+  TestIds,
+} from 'react-native-google-mobile-ads';
 
 const DEFAULT_URL = 'https://gift2u.fun/play';
+
+/** Google test rewarded unit — replace via expo.extra.admobRewardedUnitId for production */
+const getRewardedUnitId = () => {
+  const extra = Constants.expoConfig?.extra || Constants.manifest?.extra || {};
+  if (extra.admobRewardedUnitId && String(extra.admobRewardedUnitId).startsWith('ca-app-pub-')) {
+    return String(extra.admobRewardedUnitId);
+  }
+  // Always safe test unit until you set a real ID in app.json extra
+  return TestIds.REWARDED;
+};
+
+const useTestAds = () => {
+  const extra = Constants.expoConfig?.extra || Constants.manifest?.extra || {};
+  if (extra.admobUseTestIds === false || extra.admobUseTestIds === 'false') {
+    return false;
+  }
+  // Default: test ads until production unit is configured
+  const unit = extra.admobRewardedUnitId;
+  return !unit || String(unit).includes('3940256099942544') || !String(unit).startsWith('ca-app-pub-');
+};
 
 export default function App() {
   const webRef = useRef(null);
   const [loading, setLoading] = useState(true);
   const [canGoBack, setCanGoBack] = useState(false);
+  const adBusyRef = useRef(false);
+  const adsReadyRef = useRef(false);
 
   const uri = useMemo(() => {
     const extra = Constants.expoConfig?.extra || Constants.manifest?.extra || {};
     const base = extra.webUrl || DEFAULT_URL;
-    // Mark traffic as coming from the Seeker shell (optional analytics / UX)
     const join = base.includes('?') ? '&' : '?';
     return `${base}${join}seeker=1`;
   }, []);
+
+  const rewardedUnitId = useMemo(() => {
+    if (useTestAds()) return TestIds.REWARDED;
+    return getRewardedUnitId();
+  }, []);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        await mobileAds().initialize();
+        if (!cancelled) {
+          adsReadyRef.current = true;
+          console.log('[Gift2U Seeker] AdMob initialized, unit=', rewardedUnitId);
+        }
+      } catch (e) {
+        console.warn('[Gift2U Seeker] AdMob init failed', e?.message || e);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [rewardedUnitId]);
 
   React.useEffect(() => {
     if (Platform.OS !== 'android') return undefined;
@@ -43,6 +94,150 @@ export default function App() {
     return () => sub.remove();
   }, [canGoBack]);
 
+  const injectAdResult = useCallback((payload) => {
+    const json = JSON.stringify(payload);
+    const js = `
+      (function(){
+        try {
+          if (typeof window.__gift2uOnAdResult === 'function') {
+            window.__gift2uOnAdResult(${json});
+          }
+        } catch (e) {}
+        true;
+      })();
+    `;
+    try {
+      webRef.current?.injectJavaScript(js);
+    } catch (e) {
+      console.warn('[Gift2U Seeker] inject ad result failed', e?.message || e);
+    }
+  }, []);
+
+  const showRewardedAd = useCallback(
+    (requestId) => {
+      if (adBusyRef.current) {
+        injectAdResult({
+          requestId,
+          success: false,
+          error: 'An ad is already playing. Try again in a moment.',
+        });
+        return;
+      }
+      adBusyRef.current = true;
+
+      const fail = (error) => {
+        adBusyRef.current = false;
+        injectAdResult({
+          requestId,
+          success: false,
+          error: error || 'Ad failed',
+          network: 'AdMob',
+        });
+      };
+
+      try {
+        const rewarded = RewardedAd.createForAdRequest(rewardedUnitId, {
+          requestNonPersonalizedAdsOnly: false,
+        });
+
+        let earned = false;
+        const unsubs = [];
+
+        const cleanup = () => {
+          unsubs.forEach((u) => {
+            try {
+              u();
+            } catch {
+              /* ignore */
+            }
+          });
+        };
+
+        unsubs.push(
+          rewarded.addAdEventListener(RewardedAdEventType.LOADED, () => {
+            rewarded.show().catch((e) => {
+              cleanup();
+              fail(e?.message || 'Could not show ad');
+            });
+          }),
+        );
+
+        unsubs.push(
+          rewarded.addAdEventListener(RewardedAdEventType.EARNED_REWARD, () => {
+            earned = true;
+          }),
+        );
+
+        unsubs.push(
+          rewarded.addAdEventListener(AdEventType.CLOSED, () => {
+            cleanup();
+            adBusyRef.current = false;
+            if (earned) {
+              injectAdResult({
+                requestId,
+                success: true,
+                network: 'AdMob',
+              });
+            } else {
+              injectAdResult({
+                requestId,
+                success: false,
+                error: 'Ad closed before reward. Watch the full ad for Free Energy.',
+                network: 'AdMob',
+              });
+            }
+          }),
+        );
+
+        unsubs.push(
+          rewarded.addAdEventListener(AdEventType.ERROR, (err) => {
+            cleanup();
+            fail(err?.message || 'Ad failed to load');
+          }),
+        );
+
+        rewarded.load();
+      } catch (e) {
+        fail(e?.message || 'AdMob not available');
+      }
+    },
+    [injectAdResult, rewardedUnitId],
+  );
+
+  const onWebMessage = useCallback(
+    (event) => {
+      let data;
+      try {
+        data = JSON.parse(event.nativeEvent.data);
+      } catch {
+        return;
+      }
+      if (!data || typeof data !== 'object') return;
+
+      if (data.type === 'WATCH_REWARDED_AD' && data.requestId) {
+        if (!adsReadyRef.current) {
+          // Still try — initialize may be racing
+          mobileAds()
+            .initialize()
+            .then(() => {
+              adsReadyRef.current = true;
+              showRewardedAd(data.requestId);
+            })
+            .catch((e) => {
+              injectAdResult({
+                requestId: data.requestId,
+                success: false,
+                error: e?.message || 'Ads not ready',
+              });
+            });
+          return;
+        }
+        showRewardedAd(data.requestId);
+      }
+    },
+    [injectAdResult, showRewardedAd],
+  );
+
   return (
     <SafeAreaView style={styles.root}>
       <StatusBar barStyle="light-content" backgroundColor="#0f172a" />
@@ -54,15 +249,15 @@ export default function App() {
           onLoadStart={() => setLoading(true)}
           onLoadEnd={() => setLoading(false)}
           onNavigationStateChange={(nav) => setCanGoBack(nav.canGoBack)}
+          onMessage={onWebMessage}
           javaScriptEnabled
           domStorageEnabled
           allowsInlineMediaPlayback
           mediaPlaybackRequiresUserAction={false}
+          // Free Energy uses native AdMob; keep false so random window.open does not break the shell
           setSupportMultipleWindows={false}
-          // Required for many wallet deep links / MWA from WebView
           originWhitelist={['*']}
           mixedContentMode="compatibility"
-          // Android: allow third-party cookies if needed by auth
           thirdPartyCookiesEnabled
           sharedCookiesEnabled
         />
