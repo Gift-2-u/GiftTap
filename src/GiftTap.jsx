@@ -11,6 +11,23 @@ function utcYesterdayStr(d = new Date()) {
   const ms = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() - 1);
   return new Date(ms).toISOString().slice(0, 10);
 }
+/**
+ * Streak after first VALID tap of a UTC day.
+ * Rules:
+ *  - last play was yesterday (UTC) → previous + 1
+ *  - last play was today → unchanged (should not call this)
+ *  - gap > 1 UTC day, or never played → 1
+ *  - on load, gap > 1 day already forces display/DB streak to 0 before this runs
+ */
+function streakAfterPlayDay(prevLtd, prevStreak, today = utcTodayStr()) {
+  const prev = prevLtd ? String(prevLtd).slice(0, 10) : '';
+  const cur = Math.max(0, Number(prevStreak) || 0);
+  if (prev === today) return Math.max(0, cur);
+  const yesterday = utcYesterdayStr();
+  if (prev && prev === yesterday) return cur + 1; // 0→1 if broken then fixed; normal 7→8
+  // Missed ≥1 full UTC day, or first ever tap
+  return 1;
+}
 
 import { getAssociatedTokenAddressSync } from '@solana/spl-token';
 
@@ -393,7 +410,7 @@ const GiftTapGame = () => {
   const [hasAccess, setHasAccess] = useState(false);
   const [dailyTaps, setDailyTaps] = useState(0);
   const [streak, setStreak] = useState(0);
-  const [lastTapDate, setLastTapDate] = useState(new Date().toISOString().split('T')[0]);
+  const [lastTapDate, setLastTapDate] = useState(''); // '' until DB load — never default to today
   const [isPressed, setIsPressed] = useState(false);
   const [isShopOpen, setIsShopOpen] = useState(false);
   const [maxDailyLimit, setMaxDailyLimit] = useState(1000);
@@ -488,6 +505,9 @@ const GiftTapGame = () => {
   const pendingSaveRef = useRef(null);
   /** True after shop/swap spend — next cloud save must write the lower balance, not Math.max with server */
   const spendGuardRef = useRef(false);
+  /** Sync streak / last play day for taps + offline bot (React state can lag). */
+  const lastTapDateRef = useRef('');
+  const streakRef = useRef(0);
   /** Bumped on logout / account switch — invalidates in-flight debounced saves */
   const saveGenerationRef = useRef(0);
   /** Last progress loaded from server (admin edits / other devices update this) */
@@ -901,11 +921,21 @@ const GiftTapGame = () => {
           ? String(playerRow.last_tap_date).slice(0, 10)
           : null;
         let loadedStreak = Number(playerRow.current_streak) || 0;
-        // Missed a full UTC day (or more) → streak is broken until they tap again
+        // Gap > 1 UTC day (last play before yesterday) → streak back to 0
         if (ltd && ltd < yesterdayUtc) {
           loadedStreak = 0;
+          if (Number(playerRow.current_streak) || 0) {
+            supabase
+              .from('players')
+              .update({ current_streak: 0 })
+              .eq(DB_PLAYER_ID, userId)
+              .then(({ error }) => {
+                if (error) console.warn('streak gap reset failed', error.message);
+              });
+          }
         }
         setStreak(loadedStreak);
+        streakRef.current = loadedStreak;
 
         let loadMaxDaily = Number(playerRow.max_daily_limit) || 1000;
         const loadNow = new Date();
@@ -922,6 +952,7 @@ const GiftTapGame = () => {
           setDailyTaps(0);
           optimisticDaily.current = 0;
           setLastTapDate(ltd || '');
+          lastTapDateRef.current = ltd || '';
           serverProgressRef.current = { ...(serverProgressRef.current || {}), dt: 0 };
           supabase
             .from('players')
@@ -947,6 +978,7 @@ const GiftTapGame = () => {
           setDailyTaps(_dt);
           optimisticDaily.current = _dt;
           setLastTapDate(today);
+          lastTapDateRef.current = today;
           serverProgressRef.current = { ...(serverProgressRef.current || {}), dt: _dt };
         }
 
@@ -1075,16 +1107,16 @@ const GiftTapGame = () => {
                     setLifetimeTaps(botLife);
                     setSeasonShards(botSeason);
                     
-                    // 2. Save to Supabase (Add shards to ALL tracking columns)
+                    // Bot is a boost only — do NOT touch last_tap_date / current_streak.
+                    // Streak = first REAL valid tap of a UTC day only.
                     supabase
                       .from('players')
                       .update({ 
                           shard_balance: Number(playerRow.shard_balance) + offlineShardsEarned,
                           daily_taps: simDailyTaps,
                           lifetime_taps: projectedLifetime,
-                          season_shards: Number(playerRow.season_shards) + offlineShardsEarned, // <-- NEW: Pushes to Beta Leaderboard
-                          last_tap_date: todayStr, 
-                          last_updated: new Date().toISOString() // Reset the clock
+                          season_shards: Number(playerRow.season_shards) + offlineShardsEarned,
+                          last_updated: new Date().toISOString()
                       })
                       .eq(DB_PLAYER_ID, userId)
                       .then(({ error }) => {
@@ -1419,7 +1451,9 @@ const GiftTapGame = () => {
     setDailyTaps(0);
     setEnergy(500);
     setStreak(0);
-    setLastTapDate(new Date().toISOString().split('T')[0]);
+    streakRef.current = 0;
+    setLastTapDate('');
+    lastTapDateRef.current = '';
     setMaxDailyLimit(1000);
     setMaxUnlockedLevel(4);
     setCurrentLevel(0);
@@ -1557,16 +1591,9 @@ const GiftTapGame = () => {
         
         // IMPORTANT: We are now officially USING the data variable to update the state!
         // This stops the Vercel "unused variable" crash.
-        // Edge only soft-syncs; never wipe a higher local streak (was resetting people to 1)
-        if (data && data.streak !== undefined) {
-          const remote = Number(data.streak) || 0;
-          setStreak((local) => {
-            const L = Number(local) || 0;
-            if (remote <= 0 && L > 0) return L;
-            if (remote < L) return L;
-            return remote;
-          });
-        }
+        // Streak is owned by client day-roll + Supabase players.current_streak.
+        // Do not let this edge function override (caused false resets / stuck values).
+
 
       } catch (err) {
         // WE ARE NOW USING THE 'err' VARIABLE! This stops Vercel from crashing.
@@ -1623,12 +1650,20 @@ const GiftTapGame = () => {
     //   Math.max on shards was a critical bug: shop spends (battery 750 etc.)
     //   got overwritten by an older debounced tap save → free items, wrong balance.
     const prev = pendingSaveRef.current;
+    const mergedLtd = ltd;
+    const prevLtdM = prev?.ltd ? String(prev.ltd).slice(0, 10) : '';
+    const nextLtdM = mergedLtd ? String(mergedLtd).slice(0, 10) : '';
+    // Same UTC day: never let a stale lower streak overwrite a day-roll higher value
+    let mergedStrk = Number(strk) || 0;
+    if (prev && prevLtdM && nextLtdM && prevLtdM === nextLtdM) {
+      mergedStrk = Math.max(mergedStrk, Number(prev.strk) || 0);
+    }
     const merged = {
       b: Number(b) || 0,
       e: Number(e),
       dt: Number(dt) || 0,
-      ltd,
-      strk,
+      ltd: mergedLtd,
+      strk: mergedStrk,
       ltt: Math.max(Number(ltt) || 0, Number(prev?.ltt) || 0),
       mul,
       s: Math.max(Number(s) || 0, Number(prev?.s) || 0),
@@ -1805,6 +1840,7 @@ const GiftTapGame = () => {
           last_energy: p.e,
           daily_taps: writeDt,
           last_tap_date: p.ltd,
+          current_streak: p.strk,
           inventory: nextInventory,
           last_updated: new Date().toISOString(),
         }));
@@ -1864,44 +1900,16 @@ const GiftTapGame = () => {
       }
 
       const today = utcTodayStr(now);
-    
-      // Streak + day roll only on first REAL tap of a new UTC day
-      // (login no longer pretends last_tap_date is today)
+
+      // UI daily counter only — do NOT advance last_tap_date / streak until a VALID tap below
       let currentDailyTaps = dailyTaps;
-      let currentStreak = Math.max(0, Number(streak) || 0);
-
-      if (lastTapDate !== today) {
-        const yesterday = utcYesterdayStr(now);
-        const prev = lastTapDate ? String(lastTapDate).slice(0, 10) : '';
-
-        if (prev && prev === yesterday) {
-          // Played yesterday (UTC) → continue streak
-          currentStreak = Math.max(1, currentStreak) + 1;
-        } else if (prev && prev === today) {
-          currentStreak = Math.max(1, currentStreak);
-        } else {
-          // First ever play, or missed ≥1 full UTC day → start at 1
-          currentStreak = 1;
-        }
-
+      const prevLtdForLimit = (lastTapDateRef.current || lastTapDate || '').slice(0, 10);
+      if (prevLtdForLimit && prevLtdForLimit !== today) {
+        // New UTC day: daily limit resets for this session (DB may already be 0 from load)
         currentDailyTaps = 0;
-        setDailyTaps(0);
-        optimisticDaily.current = 0;
-        setLastTapDate(today);
-        setStreak(currentStreak);
-        saveToDatabase(
-          Number(optimisticBalance.current),
-          Number(optimisticEnergy.current),
-          0,
-          today,
-          currentStreak,
-          Number(optimisticTaps.current),
-          maxUnlockedLevel,
-          Number(optimisticSeason.current),
-        );
-      } else {
-        currentStreak = Math.max(1, currentStreak);
       }
+      let currentStreak = Math.max(0, Number(streakRef.current) || Number(streak) || 0);
+
       // 1. CALCULATE THE TRUE LIMIT (Surgical Fix)
       let currentMaxLimit = Number(maxDailyLimit) || 1000;
       const clickTime = new Date();
@@ -1947,6 +1955,34 @@ const GiftTapGame = () => {
       const validTaps = Math.min(tapPoints.length, availableByEnergy, availableByDailyLimit);
 
       if (validTaps <= 0) return; 
+
+      // --- STREAK: only on first VALID tap of a new UTC day ---
+      {
+        const prevLtd = (lastTapDateRef.current || lastTapDate || '').slice(0, 10);
+        if (prevLtd !== today) {
+          const nextStreak = streakAfterPlayDay(prevLtd, currentStreak, today);
+          currentStreak = nextStreak;
+          currentDailyTaps = 0;
+          optimisticDaily.current = 0;
+          setDailyTaps(0);
+          lastTapDateRef.current = today;
+          streakRef.current = nextStreak;
+          setLastTapDate(today);
+          setStreak(nextStreak);
+          // Immediate write so debounce / shards-only cannot drop streak
+          supabase
+            .from('players')
+            .update({
+              current_streak: nextStreak,
+              last_tap_date: today,
+              last_updated: new Date().toISOString(),
+            })
+            .eq(DB_PLAYER_ID, playerId)
+            .then(({ error }) => {
+              if (error) console.warn('streak day-roll save failed', error.message);
+            });
+        }
+      }
 
       // 4. ALWAYS EARN SHARDS (open mining). Wall only caps *level unlock*, not earnings.
       const isAtLevelCap = currentLevel >= maxUnlockedLevel;
