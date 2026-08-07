@@ -52,12 +52,12 @@ function markSeekerShell() {
 
 /**
  * True when running inside the Gift2U Seeker / Android WebView shell.
- * Multiple signals — URL alone is not enough (SPA can drop ?seeker=1).
+ * If this is false, Free Energy opens Monetag — that must never happen in the APK.
  */
 export function isSeekerShell() {
   if (typeof window === 'undefined') return false;
 
-  // 1) Explicit inject from native App.js (most reliable)
+  // 1) Native inject from App.js (before game JS)
   try {
     if (window.__GIFT2U_SEEKER_SHELL__ === true || window.__GIFT2U_ADMOB__ === true) {
       markSeekerShell();
@@ -67,7 +67,7 @@ export function isSeekerShell() {
     /* ignore */
   }
 
-  // 2) React Native WebView bridge (Expo APK)
+  // 2) React Native WebView bridge — if present we are in the APK, always AdMob
   try {
     if (
       window.ReactNativeWebView &&
@@ -80,7 +80,7 @@ export function isSeekerShell() {
     /* ignore */
   }
 
-  // 3) Persisted after first detection (survives SPA navigations that strip ?seeker=1)
+  // 3) Persisted after first detection
   try {
     if (
       sessionStorage.getItem(SEEKER_STORAGE_KEY) === '1' ||
@@ -92,7 +92,7 @@ export function isSeekerShell() {
     /* ignore */
   }
 
-  // 4) Query param from shell start URL
+  // 4) ?seeker=1 on play URL
   try {
     const q = new URLSearchParams(window.location.search || '');
     if (q.get('seeker') === '1' || q.get('seeker') === 'true') {
@@ -103,10 +103,19 @@ export function isSeekerShell() {
     /* ignore */
   }
 
-  // 5) Custom UA suffix from native WebView (applicationNameForUserAgent)
+  // 5) Native UA stamp applicationNameForUserAgent="Gift2USeeker"
   try {
     const ua = String(navigator.userAgent || '');
     if (/Gift2USeeker/i.test(ua)) {
+      markSeekerShell();
+      return true;
+    }
+    // 6) Android WebView on our domain (store/sideload APK WebView)
+    //    UA contains "; wv)" when inside Android WebView.
+    if (
+      /;\s*wv\)/i.test(ua) &&
+      /gift2u\.fun/i.test(String(window.location.hostname || ''))
+    ) {
       markSeekerShell();
       return true;
     }
@@ -374,8 +383,18 @@ const playSeekerRewardedAd = (options = {}) => {
  * @param {{ onTick?: (secondsLeft: number) => void, ymid?: string }} [options]
  */
 export const showRewardedAdWaterfall = async (options = {}) => {
-  // Re-check shell every time (flags may be injected after first paint)
-  if (isSeekerShell()) {
+  // Prefer native AdMob whenever bridge exists — even if flags lag one frame
+  let forceNative = false;
+  try {
+    forceNative =
+      !!(window.ReactNativeWebView && typeof window.ReactNativeWebView.postMessage === 'function') ||
+      isSeekerShell();
+  } catch {
+    forceNative = isSeekerShell();
+  }
+
+  if (forceNative) {
+    markSeekerShell();
     console.log('🌊 Free Energy: Seeker path → AdMob rewarded (native) — Monetag blocked');
     try {
       const result = await playSeekerRewardedAd(options);
@@ -383,7 +402,7 @@ export const showRewardedAdWaterfall = async (options = {}) => {
     } catch (err) {
       const lastError = err?.message || String(err);
       console.log('⚠️ Seeker AdMob failed:', lastError);
-      // Do NOT fall back to Monetag on Seeker
+      // Never fall back to Monetag inside the APK
       return { success: false, error: lastError };
     }
   }

@@ -29,14 +29,29 @@ import { Buffer } from 'buffer';
 
 const DEFAULT_URL = 'https://gift2u.fun/play';
 
-/** Marks the page as Gift2U Seeker shell so web Free Energy never uses Monetag. */
+/** Live AdMob IDs — hardcoded so release builds never fall back to Google test units. */
+const LIVE_ADMOB_APP_ID = 'ca-app-pub-2758551027842720~3312205373';
+const LIVE_ADMOB_REWARDED = 'ca-app-pub-2758551027842720/9012802776';
+
+/**
+ * Marks the page as Gift2U Seeker shell so Free Energy uses AdMob, never Monetag.
+ * Must run before game JS evaluates Free Energy.
+ */
 const SEEKER_SHELL_INJECT = `
 (function(){
   try {
     window.__GIFT2U_SEEKER_SHELL__ = true;
     window.__GIFT2U_ADMOB__ = true;
+    window.__GIFT2U_ADMOB_UNIT__ = '${LIVE_ADMOB_REWARDED}';
     try { sessionStorage.setItem('gift2u_seeker','1'); } catch (e) {}
     try { localStorage.setItem('gift2u_seeker','1'); } catch (e) {}
+    try {
+      var u = new URL(window.location.href);
+      if (u.searchParams.get('seeker') !== '1') {
+        u.searchParams.set('seeker','1');
+        window.history.replaceState(null,'',u.toString());
+      }
+    } catch (e) {}
   } catch (e) {}
   true;
 })();
@@ -48,24 +63,24 @@ function mwaAddressToBase58(base64Address) {
   return new PublicKey(bytes).toBase58();
 }
 
-/** Google test rewarded unit — replace via expo.extra.admobRewardedUnitId for production */
+/** Always use live rewarded unit unless app.json forces test mode. */
 const getRewardedUnitId = () => {
   const extra = Constants.expoConfig?.extra || Constants.manifest?.extra || {};
-  if (extra.admobRewardedUnitId && String(extra.admobRewardedUnitId).startsWith('ca-app-pub-')) {
-    return String(extra.admobRewardedUnitId);
+  if (extra.admobUseTestIds === true || extra.admobUseTestIds === 'true') {
+    return TestIds.REWARDED;
   }
-  // Always safe test unit until you set a real ID in app.json extra
-  return TestIds.REWARDED;
+  if (extra.admobRewardedUnitId && String(extra.admobRewardedUnitId).startsWith('ca-app-pub-')) {
+    const id = String(extra.admobRewardedUnitId);
+    // Never silently use Google sample units in store builds
+    if (id.includes('3940256099942544')) return LIVE_ADMOB_REWARDED;
+    return id;
+  }
+  return LIVE_ADMOB_REWARDED;
 };
 
 const useTestAds = () => {
   const extra = Constants.expoConfig?.extra || Constants.manifest?.extra || {};
-  if (extra.admobUseTestIds === false || extra.admobUseTestIds === 'false') {
-    return false;
-  }
-  // Default: test ads until production unit is configured
-  const unit = extra.admobRewardedUnitId;
-  return !unit || String(unit).includes('3940256099942544') || !String(unit).startsWith('ca-app-pub-');
+  return extra.admobUseTestIds === true || extra.admobUseTestIds === 'true';
 };
 
 export default function App() {
