@@ -1,11 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Connection, PublicKey, clusterApiUrl, Keypair, Transaction, SystemProgram, ComputeBudgetProgram, sendAndConfirmTransaction, LAMPORTS_PER_SOL, VersionedTransaction } from '@solana/web3.js';
 import { supabase } from './supabaseClient';
-import {
-  clampShardWrite,
-  clampGftWrite,
-  fetchServerEconomy,
-} from './economySecurity';
 
 /** YYYY-MM-DD in UTC (streak + daily limits use UTC midnight). */
 function utcTodayStr(d = new Date()) {
@@ -1661,9 +1656,6 @@ const GiftTapGame = () => {
       let writeDt = Number(p.dt) || 0;
       const isSpend = !!spendGuardRef.current;
       const base = serverProgressRef.current || { b: 0, ltt: 0, s: 0, dt: 0 };
-      // Live server snapshot for economy clamp (updated if fetch succeeds)
-      let liveServerB = Number(base.b) || 0;
-      let liveServerLtt = Number(base.ltt) || 0;
       try {
         const { data: serverRow } = await supabase
           .from('players')
@@ -1675,8 +1667,6 @@ const GiftTapGame = () => {
           const sl = Number(serverRow.lifetime_taps) || 0;
           const ss = Number(serverRow.season_shards) || 0;
           const sd = Number(serverRow.daily_taps) || 0;
-          liveServerB = sb;
-          liveServerLtt = sl;
           const serverLtd = String(serverRow.last_tap_date || '').slice(0, 10);
           const clientLtd = String(p.ltd || '').slice(0, 10);
           // Same UTC day only — never pull yesterday's daily into today's save
@@ -1715,27 +1705,6 @@ const GiftTapGame = () => {
       } catch (reconErr) {
         console.warn('save reconcile skipped', reconErr?.message || reconErr);
       }
-
-      // Soft anti-cheat: block DevTools inventing shards without lifetime growth
-      try {
-        const clamped = clampShardWrite(writeB, writeLtt, {
-          b: liveServerB,
-          ltt: liveServerLtt,
-        });
-        if (clamped.clamped) {
-          console.warn('ECONOMY clamp shards:', clamped.reason);
-          writeB = clamped.shards;
-        }
-        // lifetime cannot invent huge jumps either
-        const lttGain = writeLtt - liveServerLtt;
-        if (lttGain > 5_000_000) {
-          console.warn('ECONOMY clamp lifetime_taps');
-          writeLtt = liveServerLtt + 5_000_000;
-        }
-      } catch (ecoErr) {
-        console.warn('economy clamp skipped', ecoErr?.message || ecoErr);
-      }
-
       spendGuardRef.current = false;
       lastLocalSaveAtRef.current = Date.now();
 
@@ -2770,19 +2739,11 @@ const GiftTapGame = () => {
 
     setShardSwapBusy(true);
     try {
-      // Authoritative balances from server (ignore DevTools-edited React state)
-      const eco = await fetchServerEconomy(supabase, playerId, DB_PLAYER_ID);
-      if (eco.b < amt) {
-        notify('Not enough G2Ushards (server balance).');
-        return;
-      }
-      const newShardBal = Math.round((eco.b - amt) * 1000) / 1000;
-      let newGft =
+      const newShardBal = Math.round((balance - amt) * 1000) / 1000;
+      const newGft =
         Math.round(
-          (eco.gft + quote.gftOut) * 1e6,
+          ((Number(balances.G2U) || 0) + quote.gftOut) * 1e6,
         ) / 1e6;
-      const gftClamp = clampGftWrite(newGft, eco.gft, newShardBal - eco.b);
-      newGft = gftClamp.gft;
       const nextInv = inventoryAfterSwap(stats.inventory, amt, quote.feeGft, {
         isFreeTier: access.tier === 'free',
       });
