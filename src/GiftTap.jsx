@@ -1707,43 +1707,44 @@ const GiftTapGame = () => {
           // Same UTC day only — never pull yesterday's daily into today's save
           const sameUtcDay = Boolean(clientLtd && serverLtd && clientLtd === serverLtd);
 
-          // Server dropped below last-loaded snapshot → admin (or other) correction
-          const serverCorrectedDown =
-            ss + 0.001 < (Number(base.s) || 0) ||
-            sl + 0.001 < (Number(base.ltt) || 0) ||
-            sb + 0.001 < (Number(base.b) || 0);
+          // Per-field reconcile (do NOT wipe season gains when lifetime saved but season lagging).
+          // Admin correction only if server is below baseline AND client is not trying to go higher.
+          const baseS = Number(base.s) || 0;
+          const baseLtt = Number(base.ltt) || 0;
+          const baseB = Number(base.b) || 0;
 
-          if (serverCorrectedDown) {
-            // Admin fixed stats down in Supabase — adopt server EXACTLY.
-            // Do not re-add local deltas from the old wrong baseline (that kept 5101 alive).
+          // Lifetime: take max(client, server); only force server down if admin cut and client not earning
+          if (sl + 0.001 < baseLtt && writeLtt <= baseLtt + 0.001) {
             writeLtt = sl;
-            writeS = ss;
-            writeDt = sameUtcDay ? sd : writeDt;
-            writeB = isSpend ? writeB : sb;
-            serverProgressRef.current = { b: writeB, ltt: writeLtt, s: writeS, dt: writeDt };
-            console.warn('Adopted admin/server progress correction', {
-              from: base,
-              to: serverProgressRef.current,
-            });
-          } else {
-            // Normal play: this device is source of truth for the save payload
-            // (other devices still push via realtime)
-            if (!isSpend && sb > writeB + 0.001) {
-              // Other device earned more shards — take the higher balance
-              writeB = sb;
-            }
-            if (sl > writeLtt + 0.001) writeLtt = sl;
-            if (ss > writeS + 0.001) writeS = ss;
-            if (sameUtcDay && sd > writeDt + 0.001) writeDt = sd;
+          } else if (sl > writeLtt + 0.001) {
+            writeLtt = sl;
           }
+
+          // Season: same rules — never drop client season below what we are saving from taps
+          if (ss + 0.001 < baseS && writeS <= baseS + 0.001) {
+            writeS = ss;
+          } else if (ss > writeS + 0.001) {
+            writeS = ss;
+          }
+          // else keep writeS (local tap earnings)
+
+          // Shards: spend keeps client; else max / admin down
+          if (isSpend) {
+            // keep writeB
+          } else if (sb + 0.001 < baseB && writeB <= baseB + 0.001) {
+            writeB = sb;
+          } else if (sb > writeB + 0.001) {
+            writeB = sb;
+          }
+
+          if (sameUtcDay && sd > writeDt + 0.001) writeDt = sd;
         }
       } catch (reconErr) {
         console.warn('save reconcile skipped', reconErr?.message || reconErr);
       }
       spendGuardRef.current = false;
-      lastLocalSaveAtRef.current = Date.now();
 
-      // Align local state with what we actually write
+      // Align optimistic refs to payload we will attempt (baseline only after SUCCESS)
       optimisticBalance.current = writeB;
       optimisticTaps.current = writeLtt;
       optimisticSeason.current = writeS;
@@ -1761,12 +1762,6 @@ const GiftTapGame = () => {
       });
       pendingSaveRef.current = {
         ...p,
-        b: writeB,
-        ltt: writeLtt,
-        s: writeS,
-        dt: writeDt,
-      };
-      serverProgressRef.current = {
         b: writeB,
         ltt: writeLtt,
         s: writeS,
@@ -1820,7 +1815,8 @@ const GiftTapGame = () => {
         }));
         if (!error) {
           const full = await doUpdate({
-            lifetime_taps: p.ltt,
+            lifetime_taps: writeLtt,
+            season_shards: writeS,
             last_updated: new Date().toISOString(),
           });
           if (!full.error && full.data?.length) {
@@ -1847,10 +1843,19 @@ const GiftTapGame = () => {
       }
 
       if (!error && data && data.length > 0) {
+        // Only after confirmed write — so a failed season write cannot poison baseline
+        serverProgressRef.current = {
+          b: writeB,
+          ltt: writeLtt,
+          s: writeS,
+          dt: writeDt,
+        };
+        lastLocalSaveAtRef.current = Date.now();
         setStats((prev) => ({ ...prev, inventory: nextInventory }));
         console.log('✅ SAVE SUCCESS', {
-          shards: p.b,
-          lifetime: p.ltt,
+          shards: writeB,
+          lifetime: writeLtt,
+          season: writeS,
         });
         tryPayReferrerForLevel1(savePlayerId, p.ltt).catch((e) =>
           console.warn('referral L1 check', e?.message || e),

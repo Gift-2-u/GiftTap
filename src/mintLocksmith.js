@@ -2,6 +2,10 @@
  * Mint GiftLocksmith Wave 1 from Core Candy Machine (mainnet).
  * Pays 0.25 SOL via solPayment guard to treasury.
  *
+ * Royalties: collection FQPYWS… has 5% (500 bps) → AdvMvv6… (Metaplex: applies to
+ * all assets in the collection). CM mint does not set per-asset plugins.
+ * To pin 5% on each asset for explorers: scripts/nft/gift-locksmith/fix-royalties.mjs
+ *
  * CRITICAL: Always pre-check SOL before sendAndConfirm so players
  * without 0.25+fees never pay rent/bot-tax/network fees for a failed mint.
  *

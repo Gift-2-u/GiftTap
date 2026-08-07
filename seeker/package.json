@@ -1,6 +1,6 @@
 {
   "name": "gift2u-seeker",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "private": true,
   "main": "expo/AppEntry.js",
   "scripts": {

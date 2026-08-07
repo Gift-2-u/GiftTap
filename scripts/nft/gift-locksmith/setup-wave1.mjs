@@ -239,6 +239,11 @@ async function main() {
     confirm: { commitment: 'confirmed' },
   };
 
+  // Royalties: set on the COLLECTION (above) at 500 bps.
+  // Metaplex Core: collection Royalties apply to every asset in the collection
+  // unless an asset overrides with its own plugin. CM mint path does not attach
+  // per-asset plugins — do NOT rely on mintV1 for royalties; collection is the source.
+  // For explorer/DAS asset-level 5%, run: node fix-royalties.mjs
   console.log('\n1/3 Creating Core Candy Machine account…');
   const cmBuilder = await createCandyMachine(umi, {
     candyMachine,
