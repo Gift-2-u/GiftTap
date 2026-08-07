@@ -6,6 +6,7 @@
 //
 // SEEKER (native shell): Google AdMob Rewarded via ReactNativeWebView bridge.
 //   Real completion callback — energy only after reward earned.
+//   NEVER fall back to Monetag inside the Seeker shell.
 // ==========================================
 
 /** UI countdown while ad is open (web Monetag; Seeker uses native ad UX). */
@@ -28,29 +29,91 @@ const isPlaceholder = (url) =>
   url.includes('XXXX') ||
   url.trim() === '';
 
+const SEEKER_STORAGE_KEY = 'gift2u_seeker';
+
+function markSeekerShell() {
+  try {
+    window.__GIFT2U_SEEKER_SHELL__ = true;
+    window.__GIFT2U_ADMOB__ = true;
+  } catch {
+    /* ignore */
+  }
+  try {
+    sessionStorage.setItem(SEEKER_STORAGE_KEY, '1');
+  } catch {
+    /* ignore */
+  }
+  try {
+    localStorage.setItem(SEEKER_STORAGE_KEY, '1');
+  } catch {
+    /* ignore */
+  }
+}
+
 /**
  * True when running inside the Gift2U Seeker / Android WebView shell.
- * Shell loads play URL with ?seeker=1 and injects ReactNativeWebView.
+ * Multiple signals — URL alone is not enough (SPA can drop ?seeker=1).
  */
 export function isSeekerShell() {
   if (typeof window === 'undefined') return false;
-  // Expo / native Gift2U APK WebView always has this bridge
+
+  // 1) Explicit inject from native App.js (most reliable)
+  try {
+    if (window.__GIFT2U_SEEKER_SHELL__ === true || window.__GIFT2U_ADMOB__ === true) {
+      markSeekerShell();
+      return true;
+    }
+  } catch {
+    /* ignore */
+  }
+
+  // 2) React Native WebView bridge (Expo APK)
   try {
     if (
       window.ReactNativeWebView &&
       typeof window.ReactNativeWebView.postMessage === 'function'
+    ) {
+      markSeekerShell();
+      return true;
+    }
+  } catch {
+    /* ignore */
+  }
+
+  // 3) Persisted after first detection (survives SPA navigations that strip ?seeker=1)
+  try {
+    if (
+      sessionStorage.getItem(SEEKER_STORAGE_KEY) === '1' ||
+      localStorage.getItem(SEEKER_STORAGE_KEY) === '1'
     ) {
       return true;
     }
   } catch {
     /* ignore */
   }
+
+  // 4) Query param from shell start URL
   try {
     const q = new URLSearchParams(window.location.search || '');
-    if (q.get('seeker') === '1' || q.get('seeker') === 'true') return true;
+    if (q.get('seeker') === '1' || q.get('seeker') === 'true') {
+      markSeekerShell();
+      return true;
+    }
   } catch {
     /* ignore */
   }
+
+  // 5) Custom UA suffix from native WebView (applicationNameForUserAgent)
+  try {
+    const ua = String(navigator.userAgent || '');
+    if (/Gift2USeeker/i.test(ua)) {
+      markSeekerShell();
+      return true;
+    }
+  } catch {
+    /* ignore */
+  }
+
   return false;
 }
 
@@ -61,6 +124,12 @@ export function isSeekerShell() {
  * modern browsers then always return null from window.open.
  */
 const openAdTab = (url) => {
+  // Hard block: never open Monetag tabs inside Seeker shell
+  if (isSeekerShell()) {
+    console.warn('[Gift2U] Blocked Monetag tab open inside Seeker shell');
+    return null;
+  }
+
   let win = null;
   try {
     win = window.open(url, '_blank');
@@ -104,6 +173,10 @@ const playEngagedLink = (url, networkName, options = {}) => {
       reject(new Error('Ads only work in the browser'));
       return;
     }
+    if (isSeekerShell()) {
+      reject(new Error('Monetag is disabled on Seeker — use AdMob'));
+      return;
+    }
     if (isPlaceholder(url)) {
       reject(new Error(`${networkName} not configured`));
       return;
@@ -120,36 +193,10 @@ const playEngagedLink = (url, networkName, options = {}) => {
     let pollId = null;
     let safetyId = null;
 
-    const MIN_HIDDEN_MS = Math.floor(minMs * 0.6);
-
-    console.log(
-      `📺 ${networkName}: opened ad`,
-      win ? '(window handle)' : '(no handle — wait for you to open/switch to the ad tab)',
-      url,
-    );
-
-    const reportTick = () => {
-      if (!onTick) return;
-      const elapsed = Date.now() - started;
-      const left = Math.max(0, Math.ceil((minMs - elapsed) / 1000));
-      if (left !== lastReported) {
-        lastReported = left;
-        try {
-          onTick(left);
-        } catch {
-          /* ignore */
-        }
-      }
-    };
-
     const cleanup = () => {
       if (pollId != null) clearInterval(pollId);
       if (safetyId != null) clearTimeout(safetyId);
-      try {
-        document.removeEventListener('visibilitychange', onVisibility);
-      } catch {
-        /* ignore */
-      }
+      document.removeEventListener('visibilitychange', onVis);
     };
 
     const finish = (ok, message) => {
@@ -158,83 +205,51 @@ const playEngagedLink = (url, networkName, options = {}) => {
       cleanup();
       if (onTick) {
         try {
-          onTick(ok ? 0 : lastReported);
+          onTick(ok ? 0 : Math.max(0, Math.ceil((minMs - (Date.now() - started)) / 1000)));
         } catch {
           /* ignore */
         }
       }
-      if (ok) {
-        console.log(`✅ ${networkName}: engaged watch complete`);
-        try {
-          if (win && !win.closed) win.close();
-        } catch {
-          /* ignore */
-        }
-        resolve({ network: networkName });
-      } else {
-        console.warn(`⚠️ ${networkName}: ${message}`);
-        reject(new Error(message || 'Ad failed'));
-      }
+      if (ok) resolve({ network: networkName });
+      else reject(new Error(message || `${networkName} not completed`));
     };
 
-    const accumulateHidden = () => {
-      if (lastHiddenAt != null) {
+    const onVis = () => {
+      if (document.hidden) {
+        lastHiddenAt = Date.now();
+      } else if (lastHiddenAt != null) {
         leftPageMs += Date.now() - lastHiddenAt;
         lastHiddenAt = null;
       }
     };
+    document.addEventListener('visibilitychange', onVis);
+    if (document.hidden) lastHiddenAt = Date.now();
 
-    const onVisibility = () => {
-      if (document.visibilityState === 'hidden') {
-        lastHiddenAt = Date.now();
-      } else if (document.visibilityState === 'visible') {
-        accumulateHidden();
-        checkDone();
-      }
-    };
-
-    const checkDone = () => {
+    pollId = setInterval(() => {
       if (settled) return;
-      reportTick();
       const elapsed = Date.now() - started;
-
-      if (win) {
+      const left = Math.max(0, Math.ceil((minMs - elapsed) / 1000));
+      if (onTick && left !== lastReported) {
+        lastReported = left;
         try {
-          if (win.closed && leftPageMs < 2000 && elapsed < 5000) {
-            finish(
-              false,
-              `${networkName}: ad closed or blocked before it could load.`,
-            );
-            return;
-          }
+          onTick(left);
         } catch {
-          /* cross-origin after redirect */
+          /* ignore */
         }
       }
 
-      if (elapsed >= minMs) {
-        const hiddenTotal =
-          leftPageMs + (lastHiddenAt != null ? Date.now() - lastHiddenAt : 0);
-        if (hiddenTotal >= MIN_HIDDEN_MS) {
-          finish(true);
-        } else {
-          finish(
-            false,
-            `${networkName}: switch to the ad tab and stay there until the timer ends. If no tab opened, allow popups for this site and try again.`,
-          );
-        }
+      let away = leftPageMs;
+      if (document.hidden && lastHiddenAt != null) {
+        away += Date.now() - lastHiddenAt;
       }
-    };
 
-    reportTick();
-    document.addEventListener('visibilitychange', onVisibility);
-    if (document.visibilityState === 'hidden') lastHiddenAt = Date.now();
+      // Must spend most of the timer off the game page (ad tab)
+      if (elapsed >= minMs && away >= minMs * 0.55) {
+        finish(true);
+      }
+    }, 400);
 
-    pollId = setInterval(checkDone, 250);
     safetyId = setTimeout(() => {
-      if (settled) return;
-      accumulateHidden();
-      checkDone();
       if (!settled) {
         finish(
           false,
@@ -242,6 +257,11 @@ const playEngagedLink = (url, networkName, options = {}) => {
         );
       }
     }, minMs + 20000);
+
+    if (!win) {
+      // Still allow engaged path if browser blocked popup but user can open link somehow
+      console.warn(`${networkName}: popup blocked or failed to open`);
+    }
   });
 };
 
@@ -262,7 +282,7 @@ const playSeekerRewardedAd = (options = {}) => {
     if (!bridge || typeof bridge.postMessage !== 'function') {
       reject(
         new Error(
-          'Seeker ad bridge missing. Update the Gift2U Seeker app, or open gift2u.fun in a browser for Monetag ads.',
+          'Seeker AdMob bridge missing. Update/reinstall Gift2U from the Solana Mobile store (native shell required — not Chrome).',
         ),
       );
       return;
@@ -282,6 +302,11 @@ const playSeekerRewardedAd = (options = {}) => {
       } catch {
         /* ignore */
       }
+      try {
+        window.removeEventListener('gift2u-ad-result', onEvent);
+      } catch {
+        /* ignore */
+      }
     };
 
     const finish = (ok, message, network = 'AdMob') => {
@@ -297,8 +322,7 @@ const playSeekerRewardedAd = (options = {}) => {
       }
     };
 
-    window.__gift2uOnAdResult_req = requestId;
-    window.__gift2uOnAdResult = (payload) => {
+    const handlePayload = (payload) => {
       try {
         const data = typeof payload === 'string' ? JSON.parse(payload) : payload;
         if (!data || data.requestId !== requestId) return;
@@ -311,6 +335,18 @@ const playSeekerRewardedAd = (options = {}) => {
         finish(false, e?.message || 'Bad ad result');
       }
     };
+
+    const onEvent = (ev) => {
+      handlePayload(ev?.detail);
+    };
+
+    window.__gift2uOnAdResult_req = requestId;
+    window.__gift2uOnAdResult = handlePayload;
+    try {
+      window.addEventListener('gift2u-ad-result', onEvent);
+    } catch {
+      /* ignore */
+    }
 
     safetyId = setTimeout(() => {
       finish(false, 'Ad timed out. Close and try Free Energy again.');
@@ -332,21 +368,22 @@ const playSeekerRewardedAd = (options = {}) => {
 
 /**
  * Free Energy waterfall:
- * - Seeker shell → native AdMob rewarded (completion callback)
+ * - Seeker shell → native AdMob rewarded ONLY (never Monetag)
  * - Web browser → Monetag engaged direct link
  *
  * @param {{ onTick?: (secondsLeft: number) => void, ymid?: string }} [options]
  */
 export const showRewardedAdWaterfall = async (options = {}) => {
+  // Re-check shell every time (flags may be injected after first paint)
   if (isSeekerShell()) {
-    console.log('🌊 Free Energy: Seeker path → AdMob rewarded (native)');
+    console.log('🌊 Free Energy: Seeker path → AdMob rewarded (native) — Monetag blocked');
     try {
-      // Native AdMob owns the countdown UI — do not drive game timer
       const result = await playSeekerRewardedAd(options);
       return { success: true, network: result.network || 'AdMob' };
     } catch (err) {
       const lastError = err?.message || String(err);
       console.log('⚠️ Seeker AdMob failed:', lastError);
+      // Do NOT fall back to Monetag on Seeker
       return { success: false, error: lastError };
     }
   }

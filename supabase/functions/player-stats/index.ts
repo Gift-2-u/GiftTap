@@ -37,13 +37,15 @@ serve(async (req) => {
     let currentStreak = player.current_streak || 0;
     const lastTapDateStr = player.last_tap_date; // Example: "2026-03-07"
 
-    // 1. Calculate "Yesterday" in exact YYYY-MM-DD format to match your frontend
-    const yesterdayObj = new Date();
-    yesterdayObj.setDate(yesterdayObj.getDate() - 1);
-    const yesterdayStr = yesterdayObj.toISOString().split('T')[0];
+    // 1. Yesterday in pure UTC (must match GiftTap utcYesterdayStr)
+    const now = new Date();
+    const yesterdayMs = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - 1);
+    const yesterdayStr = new Date(yesterdayMs).toISOString().slice(0, 10);
+    const ltd = lastTapDateStr ? String(lastTapDateStr).slice(0, 10) : null;
 
-    // 2. STREAK LOGIC: Only reset to 0 if their last tap was BEFORE yesterday
-    if (lastTapDateStr && lastTapDateStr < yesterdayStr) {
+    // 2. Only reset to 0 if last REAL tap was before yesterday (missed a full day+)
+    // Do not invent last_tap_date = today here — client does that on first tap.
+    if (ltd && ltd < yesterdayStr) {
       currentStreak = 0;
       
       const { error: updateError } = await supabaseClient

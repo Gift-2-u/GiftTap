@@ -1,6 +1,22 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Connection, PublicKey, clusterApiUrl, Keypair, Transaction, SystemProgram, ComputeBudgetProgram, sendAndConfirmTransaction, LAMPORTS_PER_SOL, VersionedTransaction } from '@solana/web3.js';
 import { supabase } from './supabaseClient';
+import {
+  clampShardWrite,
+  clampGftWrite,
+  fetchServerEconomy,
+} from './economySecurity';
+
+/** YYYY-MM-DD in UTC (streak + daily limits use UTC midnight). */
+function utcTodayStr(d = new Date()) {
+  return d.toISOString().slice(0, 10);
+}
+/** Previous UTC calendar day as YYYY-MM-DD */
+function utcYesterdayStr(d = new Date()) {
+  const ms = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() - 1);
+  return new Date(ms).toISOString().slice(0, 10);
+}
+
 import { getAssociatedTokenAddressSync } from '@solana/spl-token';
 
 import AuthScreen from './AuthScreen';
@@ -881,11 +897,20 @@ const GiftTapGame = () => {
 
         // Daily Reset Logic (UTC calendar day)
         // daily_taps lives in Supabase — npm run dev cannot clear it unless we write 0.
-        const today = new Date().toISOString().split('T')[0];
+        // IMPORTANT: do NOT write last_tap_date = today on login alone.
+        // That made first tap of the day think they already played → streak stuck at 1.
+        // last_tap_date advances only on a real tap (streak logic in handleTap).
+        const today = utcTodayStr();
+        const yesterdayUtc = utcYesterdayStr();
         const ltd = playerRow.last_tap_date
           ? String(playerRow.last_tap_date).slice(0, 10)
           : null;
-        setStreak(playerRow.current_streak || 0);
+        let loadedStreak = Number(playerRow.current_streak) || 0;
+        // Missed a full UTC day (or more) → streak is broken until they tap again
+        if (ltd && ltd < yesterdayUtc) {
+          loadedStreak = 0;
+        }
+        setStreak(loadedStreak);
 
         let loadMaxDaily = Number(playerRow.max_daily_limit) || 1000;
         const loadNow = new Date();
@@ -897,14 +922,15 @@ const GiftTapGame = () => {
         }
 
         if (!ltd || ltd !== today) {
-          // New UTC day → must zero UI + DB (old code only zeroed UI; next save put 1000 back)
+          // New UTC day (or never tapped): zero daily counter only.
+          // Keep lastTapDate = previous real play day so first tap can ++ streak.
           setDailyTaps(0);
           optimisticDaily.current = 0;
-          setLastTapDate(today);
+          setLastTapDate(ltd || '');
           serverProgressRef.current = { ...(serverProgressRef.current || {}), dt: 0 };
           supabase
             .from('players')
-            .update({ daily_taps: 0, last_tap_date: today })
+            .update({ daily_taps: 0 })
             .eq(DB_PLAYER_ID, userId)
             .then(({ error }) => {
               if (error) console.error('UTC daily reset failed:', error.message);
@@ -917,7 +943,7 @@ const GiftTapGame = () => {
             _dt = 0;
             supabase
               .from('players')
-              .update({ daily_taps: 0, last_tap_date: today })
+              .update({ daily_taps: 0 })
               .eq(DB_PLAYER_ID, userId)
               .then(({ error }) => {
                 if (error) console.error('Stuck daily reset failed:', error.message);
@@ -1536,8 +1562,15 @@ const GiftTapGame = () => {
         
         // IMPORTANT: We are now officially USING the data variable to update the state!
         // This stops the Vercel "unused variable" crash.
+        // Edge only soft-syncs; never wipe a higher local streak (was resetting people to 1)
         if (data && data.streak !== undefined) {
-          setStreak(data.streak);
+          const remote = Number(data.streak) || 0;
+          setStreak((local) => {
+            const L = Number(local) || 0;
+            if (remote <= 0 && L > 0) return L;
+            if (remote < L) return L;
+            return remote;
+          });
         }
 
       } catch (err) {
@@ -1628,6 +1661,9 @@ const GiftTapGame = () => {
       let writeDt = Number(p.dt) || 0;
       const isSpend = !!spendGuardRef.current;
       const base = serverProgressRef.current || { b: 0, ltt: 0, s: 0, dt: 0 };
+      // Live server snapshot for economy clamp (updated if fetch succeeds)
+      let liveServerB = Number(base.b) || 0;
+      let liveServerLtt = Number(base.ltt) || 0;
       try {
         const { data: serverRow } = await supabase
           .from('players')
@@ -1639,6 +1675,8 @@ const GiftTapGame = () => {
           const sl = Number(serverRow.lifetime_taps) || 0;
           const ss = Number(serverRow.season_shards) || 0;
           const sd = Number(serverRow.daily_taps) || 0;
+          liveServerB = sb;
+          liveServerLtt = sl;
           const serverLtd = String(serverRow.last_tap_date || '').slice(0, 10);
           const clientLtd = String(p.ltd || '').slice(0, 10);
           // Same UTC day only — never pull yesterday's daily into today's save
@@ -1677,6 +1715,27 @@ const GiftTapGame = () => {
       } catch (reconErr) {
         console.warn('save reconcile skipped', reconErr?.message || reconErr);
       }
+
+      // Soft anti-cheat: block DevTools inventing shards without lifetime growth
+      try {
+        const clamped = clampShardWrite(writeB, writeLtt, {
+          b: liveServerB,
+          ltt: liveServerLtt,
+        });
+        if (clamped.clamped) {
+          console.warn('ECONOMY clamp shards:', clamped.reason);
+          writeB = clamped.shards;
+        }
+        // lifetime cannot invent huge jumps either
+        const lttGain = writeLtt - liveServerLtt;
+        if (lttGain > 5_000_000) {
+          console.warn('ECONOMY clamp lifetime_taps');
+          writeLtt = liveServerLtt + 5_000_000;
+        }
+      } catch (ecoErr) {
+        console.warn('economy clamp skipped', ecoErr?.message || ecoErr);
+      }
+
       spendGuardRef.current = false;
       lastLocalSaveAtRef.current = Date.now();
 
@@ -1835,19 +1894,26 @@ const GiftTapGame = () => {
         tapPoints.push({ x: e.clientX, y: e.clientY });
       }
 
-      const today = now.toISOString().split('T')[0];
+      const today = utcTodayStr(now);
     
-      // ... [Your daily streak and limit logic stays exactly the same here] ...
+      // Streak + day roll only on first REAL tap of a new UTC day
+      // (login no longer pretends last_tap_date is today)
       let currentDailyTaps = dailyTaps;
-      let currentStreak = Math.max(1, streak);
+      let currentStreak = Math.max(0, Number(streak) || 0);
 
       if (lastTapDate !== today) {
-        const yesterdayObj = new Date();
-        yesterdayObj.setDate(yesterdayObj.getDate() - 1);
-        const yesterday = yesterdayObj.toISOString().split('T')[0];
+        const yesterday = utcYesterdayStr(now);
+        const prev = lastTapDate ? String(lastTapDate).slice(0, 10) : '';
 
-        if (lastTapDate === yesterday) currentStreak += 1;
-        else if (lastTapDate < yesterday) currentStreak = 1;
+        if (prev && prev === yesterday) {
+          // Played yesterday (UTC) → continue streak
+          currentStreak = Math.max(1, currentStreak) + 1;
+        } else if (prev && prev === today) {
+          currentStreak = Math.max(1, currentStreak);
+        } else {
+          // First ever play, or missed ≥1 full UTC day → start at 1
+          currentStreak = 1;
+        }
 
         currentDailyTaps = 0;
         setDailyTaps(0);
@@ -1864,6 +1930,8 @@ const GiftTapGame = () => {
           maxUnlockedLevel,
           Number(optimisticSeason.current),
         );
+      } else {
+        currentStreak = Math.max(1, currentStreak);
       }
       // 1. CALCULATE THE TRUE LIMIT (Surgical Fix)
       let currentMaxLimit = Number(maxDailyLimit) || 1000;
@@ -2702,11 +2770,19 @@ const GiftTapGame = () => {
 
     setShardSwapBusy(true);
     try {
-      const newShardBal = Math.round((balance - amt) * 1000) / 1000;
-      const newGft =
+      // Authoritative balances from server (ignore DevTools-edited React state)
+      const eco = await fetchServerEconomy(supabase, playerId, DB_PLAYER_ID);
+      if (eco.b < amt) {
+        notify('Not enough G2Ushards (server balance).');
+        return;
+      }
+      const newShardBal = Math.round((eco.b - amt) * 1000) / 1000;
+      let newGft =
         Math.round(
-          ((Number(balances.G2U) || 0) + quote.gftOut) * 1e6,
+          (eco.gft + quote.gftOut) * 1e6,
         ) / 1e6;
+      const gftClamp = clampGftWrite(newGft, eco.gft, newShardBal - eco.b);
+      newGft = gftClamp.gft;
       const nextInv = inventoryAfterSwap(stats.inventory, amt, quote.feeGft, {
         isFreeTier: access.tier === 'free',
       });

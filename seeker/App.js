@@ -29,6 +29,19 @@ import { Buffer } from 'buffer';
 
 const DEFAULT_URL = 'https://gift2u.fun/play';
 
+/** Marks the page as Gift2U Seeker shell so web Free Energy never uses Monetag. */
+const SEEKER_SHELL_INJECT = `
+(function(){
+  try {
+    window.__GIFT2U_SEEKER_SHELL__ = true;
+    window.__GIFT2U_ADMOB__ = true;
+    try { sessionStorage.setItem('gift2u_seeker','1'); } catch (e) {}
+    try { localStorage.setItem('gift2u_seeker','1'); } catch (e) {}
+  } catch (e) {}
+  true;
+})();
+`;
+
 /** MWA account.address is base64 → base58 for the web UI */
 function mwaAddressToBase58(base64Address) {
   const bytes = Buffer.from(String(base64Address), 'base64');
@@ -106,13 +119,27 @@ export default function App() {
 
   const injectJsCallback = useCallback((fnName, payload) => {
     const json = JSON.stringify(payload);
+    const eventName =
+      fnName === '__gift2uOnAdResult'
+        ? 'gift2u-ad-result'
+        : fnName === '__gift2uOnWalletResult'
+          ? 'gift2u-wallet-result'
+          : '';
+    const eventLine = eventName
+      ? `try { window.dispatchEvent(new CustomEvent('${eventName}', { detail: ${json} })); } catch (e) {}`
+      : '';
     const js = `
       (function(){
+        try {
+          window.__GIFT2U_SEEKER_SHELL__ = true;
+          window.__GIFT2U_ADMOB__ = true;
+        } catch (e) {}
         try {
           if (typeof window.${fnName} === 'function') {
             window.${fnName}(${json});
           }
         } catch (e) {}
+        ${eventLine}
         true;
       })();
     `;
@@ -369,7 +396,15 @@ export default function App() {
           source={{ uri }}
           style={styles.flex}
           onLoadStart={() => setLoading(true)}
-          onLoadEnd={() => setLoading(false)}
+          onLoadEnd={() => {
+            setLoading(false);
+            // Re-stamp shell flag after every navigation (SPA can drop ?seeker=1)
+            try {
+              webRef.current?.injectJavaScript(SEEKER_SHELL_INJECT);
+            } catch (e) {
+              /* ignore */
+            }
+          }}
           onNavigationStateChange={(nav) => {
             setCanGoBack(nav.canGoBack);
             if (nav?.url) handleWalletUrl(nav.url);
@@ -379,11 +414,14 @@ export default function App() {
             return true;
           }}
           onMessage={onWebMessage}
+          injectedJavaScriptBeforeContentLoaded={SEEKER_SHELL_INJECT}
+          injectedJavaScript={SEEKER_SHELL_INJECT}
+          applicationNameForUserAgent="Gift2USeeker"
           javaScriptEnabled
           domStorageEnabled
           allowsInlineMediaPlayback
           mediaPlaybackRequiresUserAction={false}
-          // Ads use native AdMob; wallet intents handled above
+          // Ads use native AdMob only — never allow Monetag popups in this shell
           setSupportMultipleWindows={false}
           originWhitelist={['*']}
           mixedContentMode="compatibility"

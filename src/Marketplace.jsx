@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from './supabaseClient';
+import { fetchServerEconomy } from './economySecurity';
 import { DB_PLAYER_ID } from './playerIdentity';
 import { Connection, PublicKey, Keypair, Transaction, SystemProgram, ComputeBudgetProgram, sendAndConfirmTransaction } from '@solana/web3.js';
 import bs58 from 'bs58';
@@ -336,8 +337,8 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
   // --- 1. BUYING WITH SHARDS (Goes to Backpack) ---
   const handleShardBuy = async (item) => {
     const cost = Number(item.cost) || 0;
-    const have = Number(balance) || 0;
-    if (have < cost) {
+    const localHave = Number(balance) || 0;
+    if (localHave < cost) {
       setTxStatus({ show: true, loading: false, message: "❌ Not enough Shards!", success: false });
       return;
     }
@@ -347,9 +348,24 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
     // Copy current inventory and add 1
     const newInventory = { ...localInventory };
     newInventory[item.id] = (newInventory[item.id] || 0) + 1;
-    const nextBalance = Math.max(0, Math.round((have - cost) * 1000) / 1000);
 
     try {
+      // Server balance wins over DevTools-edited UI
+      let have = localHave;
+      try {
+        const eco = await fetchServerEconomy(supabase, user.id, DB_PLAYER_ID);
+        have = eco.b;
+      } catch (e) {
+        console.warn('shop economy fetch', e?.message || e);
+      }
+      if (have < cost) {
+        setTxStatus({ show: true, loading: false, message: "❌ Not enough Shards (server)!", success: false });
+        // Re-sync UI to real balance
+        setBalance(have);
+        return;
+      }
+      const nextBalance = Math.max(0, Math.round((have - cost) * 1000) / 1000);
+
       // Deduct shards + add backpack item together
       const { error } = await supabase.from('players')
         .update({ shard_balance: nextBalance, inventory: newInventory })
