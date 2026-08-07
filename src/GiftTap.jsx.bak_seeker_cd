@@ -540,16 +540,13 @@ const GiftTapGame = () => {
     }
 
     setIsWatchingAd(true);
-    // Web Monetag: show our engagement timer. Seeker: AdMob has its own countdown.
-    const onSeeker = isSeekerShell();
-    setAdSecondsLeft(onSeeker ? null : AD_MIN_WATCH_SECONDS);
+    setAdSecondsLeft(AD_MIN_WATCH_SECONDS);
 
     try {
       // Monetag SDK (or engaged fallback) — reward ONLY if network confirms success.
       // Blocked / security-filtered ads must NOT grant free energy (Monetag $0 case).
-      // Seeker AdMob: no onTick (native UI already counts down).
       const result = await showRewardedAdWaterfall({
-        onTick: onSeeker ? undefined : (secondsLeft) => setAdSecondsLeft(secondsLeft),
+        onTick: (secondsLeft) => setAdSecondsLeft(secondsLeft),
         ymid: playerId ? `player_${playerId}_${Date.now()}` : undefined,
       });
 
@@ -4647,30 +4644,28 @@ const GiftTapGame = () => {
                 
                 <h2 style={{ color: '#ffd700', marginTop: 0, marginBottom: '15px', fontSize: '24px' }}>⚡ Expand Capacity</h2>
                 
-                {isWatchingAd && isSeekerShell() ? (
+                {isWatchingAd && adSecondsLeft !== null ? (
                   <>
                     <p style={{ color: '#ccc', fontSize: '14px', marginBottom: '12px', lineHeight: '1.5' }}>
-                      Full-screen ad on Seeker — use the ad&apos;s own countdown.
-                      <br />
-                      <span style={{ fontSize: '12px', color: '#888' }}>
-                        Closing early = no Free Energy. Reward only after the ad completes.
-                      </span>
-                    </p>
-                    <p style={{ color: '#ffd700', fontSize: '16px', fontWeight: 'bold', margin: '20px 0 12px' }}>
-                      Watching ad…
-                    </p>
-                    <p style={{ color: '#888', fontSize: '12px', marginBottom: '8px' }}>
-                      Wait for the native ad to finish.
-                    </p>
-                  </>
-                ) : isWatchingAd && adSecondsLeft !== null ? (
-                  <>
-                    <p style={{ color: '#ccc', fontSize: '14px', marginBottom: '12px', lineHeight: '1.5' }}>
-                      Ad tab open — keep it open until this timer hits <strong style={{ color: '#ffd700' }}>0</strong>.
-                      <br />
-                      <span style={{ fontSize: '12px', color: '#888' }}>
-                        Closing early = no reward. &quot;Leave site?&quot; is from the ad network.
-                      </span>
+                      {isSeekerShell()
+                        ? (
+                          <>
+                            Full-screen ad on Seeker — watch until it finishes.
+                            <br />
+                            <span style={{ fontSize: '12px', color: '#888' }}>
+                              Closing early = no Free Energy. Reward only after the ad completes.
+                            </span>
+                          </>
+                        )
+                        : (
+                          <>
+                            Ad tab open — keep it open until this timer hits <strong style={{ color: '#ffd700' }}>0</strong>.
+                            <br />
+                            <span style={{ fontSize: '12px', color: '#888' }}>
+                              Closing early = no reward. &quot;Leave site?&quot; is from the ad network.
+                            </span>
+                          </>
+                        )}
                     </p>
                     <div
                       style={{
@@ -4686,7 +4681,9 @@ const GiftTapGame = () => {
                     </div>
                     <p style={{ color: '#888', fontSize: '12px', marginBottom: '8px' }}>
                       {adSecondsLeft > 0
-                        ? 'Finish the ad — reward unlocks only when it completes…'
+                        ? (isSeekerShell()
+                          ? 'Watch the full ad…'
+                          : 'Finish the ad — reward unlocks only when it completes…')
                         : 'Finishing…'}
                     </p>
                   </>
@@ -4723,9 +4720,7 @@ const GiftTapGame = () => {
                   {dailyAdsWatched >= 10
                     ? 'Daily Limit Reached'
                     : isWatchingAd
-                      ? (isSeekerShell()
-                        ? 'Watching ad…'
-                        : `⏱ ${adSecondsLeft ?? AD_MIN_WATCH_SECONDS}s…`)
+                      ? `⏱ ${adSecondsLeft ?? AD_MIN_WATCH_SECONDS}s…`
                       : '▶ Watch Ad'}
                 </button>
                 
@@ -4746,9 +4741,7 @@ const GiftTapGame = () => {
                     cursor: isWatchingAd ? 'not-allowed' : 'pointer'
                   }}
                 >
-                  {isWatchingAd
-                    ? (isSeekerShell() ? 'Wait for ad…' : 'Wait for timer…')
-                    : 'Close'}
+                  {isWatchingAd ? 'Wait for timer…' : 'Close'}
                 </button>
 
               </div>

@@ -250,8 +250,8 @@ const playEngagedLink = (url, networkName, options = {}) => {
  * Native injects window.__gift2uOnAdResult({ requestId, success, error? }).
  */
 const playSeekerRewardedAd = (options = {}) => {
-  // No game-side countdown: AdMob rewarded already shows its own timer/UI.
-  // Reward is granted only via native __gift2uOnAdResult success.
+  const { onTick } = options;
+
   return new Promise((resolve, reject) => {
     if (typeof window === 'undefined') {
       reject(new Error('Ads only work in the app'));
@@ -270,9 +270,14 @@ const playSeekerRewardedAd = (options = {}) => {
 
     const requestId = `ad_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
     let settled = false;
+    let tickId = null;
     let safetyId = null;
+    const started = Date.now();
+    // Soft UI countdown while native ad loads/plays (not used as reward gate)
+    const softSeconds = 30;
 
     const cleanup = () => {
+      if (tickId != null) clearInterval(tickId);
       if (safetyId != null) clearTimeout(safetyId);
       try {
         if (window.__gift2uOnAdResult_req === requestId) {
@@ -288,6 +293,13 @@ const playSeekerRewardedAd = (options = {}) => {
       if (settled) return;
       settled = true;
       cleanup();
+      if (onTick) {
+        try {
+          onTick(ok ? 0 : Math.max(0, softSeconds - Math.floor((Date.now() - started) / 1000)));
+        } catch {
+          /* ignore */
+        }
+      }
       if (ok) {
         console.log('✅ Seeker AdMob: reward earned');
         resolve({ network });
@@ -311,6 +323,23 @@ const playSeekerRewardedAd = (options = {}) => {
         finish(false, e?.message || 'Bad ad result');
       }
     };
+
+    if (onTick) {
+      try {
+        onTick(softSeconds);
+      } catch {
+        /* ignore */
+      }
+      tickId = setInterval(() => {
+        if (settled) return;
+        const left = Math.max(0, softSeconds - Math.floor((Date.now() - started) / 1000));
+        try {
+          onTick(left);
+        } catch {
+          /* ignore */
+        }
+      }, 500);
+    }
 
     safetyId = setTimeout(() => {
       finish(false, 'Ad timed out. Close and try Free Energy again.');
@@ -341,7 +370,7 @@ export const showRewardedAdWaterfall = async (options = {}) => {
   if (isSeekerShell()) {
     console.log('🌊 Free Energy: Seeker path → AdMob rewarded (native)');
     try {
-      // Native AdMob owns the countdown UI — do not drive game timer
+      if (options.onTick) options.onTick(30);
       const result = await playSeekerRewardedAd(options);
       return { success: true, network: result.network || 'AdMob' };
     } catch (err) {

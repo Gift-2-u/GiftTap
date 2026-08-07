@@ -45,6 +45,7 @@ const Menu = ({
   setDisplayCurrency,
   t,
   onOpenWhitepaper,
+  onOpenRoadmap,
   onOpenSecret,
   username,
   playerId,
@@ -446,6 +447,22 @@ const Menu = ({
                 </span>
                 <span style={{ color: '#888' }}>{'❯'}</span>
               </button>
+
+              {typeof onOpenRoadmap === 'function' && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsMenuOpen(false);
+                    onOpenRoadmap();
+                  }}
+                  style={rowBtn}
+                >
+                  <span style={{ color: '#a78bfa', fontWeight: 'bold' }}>
+                    🗺️ {t('roadmap') || 'Roadmap'}
+                  </span>
+                  <span style={{ color: '#888' }}>{'❯'}</span>
+                </button>
+              )}
 
               <div
                 style={{

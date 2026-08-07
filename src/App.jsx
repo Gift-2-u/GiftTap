@@ -24,6 +24,7 @@ import DailyGiftBox from './DailyGiftBox';
 import WalletHub from './WalletHub';
 import VaultPage from './VaultPage';
 import LegalPage from './LegalPage';
+import RoadmapPage from './RoadmapPage';
 import { getPlayerId, isLoggedIn } from './playerIdentity';
 import idl from "../target/idl/gift_staking.json";
 import '@solana/wallet-adapter-react-ui/styles.css';
@@ -100,6 +101,7 @@ export default function App() {
                 <Route path="/stake" element={<StakingPage />} />
                 {/* Off-chain G2U credit vault — GiftLocksmith NFT holders */}
                 <Route path="/vault" element={<VaultPage />} />
+                <Route path="/roadmap" element={<RoadmapPage />} />
                 <Route path="/terms" element={<LegalPage kind="terms" />} />
                 <Route path="/privacy" element={<LegalPage kind="privacy" />} />
                 <Route path="/legal/terms" element={<LegalPage kind="terms" />} />
@@ -126,6 +128,9 @@ const SiteFooter = () => {
         </Link>
         <Link to="/privacy" className="hover:text-purple-300 font-semibold">
           Privacy Policy
+        </Link>
+        <Link to="/roadmap" className="hover:text-yellow-300 font-semibold">
+          Roadmap
         </Link>
         <Link to="/play" className="hover:text-yellow-300 font-semibold">
           Play Gift Tap
@@ -761,6 +766,11 @@ const HomePage = () => {
       <p className="mt-4 text-sm text-slate-400 max-w-md">
         <span className="text-purple-300 font-bold">Stake</span> = on-chain G2U for all holders ·{" "}
         <span className="text-yellow-300 font-bold">Vault</span> = credit yield for GiftLocksmith NFTs
+      </p>
+      <p className="mt-6 text-sm text-slate-500">
+        <Link to="/roadmap" className="text-purple-400 hover:text-purple-300 font-bold underline-offset-2 hover:underline">
+          See our roadmap →
+        </Link>
       </p>
     </main>
   );
