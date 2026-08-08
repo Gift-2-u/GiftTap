@@ -4216,31 +4216,40 @@ const GiftTapGame = () => {
                 <div style={{ background: '#1c1e22', borderRadius: '16px', padding: '15px', textAlign: 'left', marginBottom: '5px' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', color: '#888', fontSize: '12px' }}>
                     <span>You pay</span>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                      {[0.25, 0.5, 1].map((pct) => (
+                        <button
+                          key={`swap-pct-${pct}`}
+                          type="button"
+                          onClick={() => {
+                            const currentBal = parseFloat(getSwapBalance(swapFromToken)) || 0;
+                            const maxAmount = swapFromToken === 'SOL'
+                              ? Math.max(0, currentBal - 0.005)
+                              : currentBal;
+                            if (maxAmount <= 0) {
+                              setSwapFromAmount('');
+                              return;
+                            }
+                            const raw = maxAmount * pct;
+                            const formatted =
+                              Math.floor(raw * 1e6) / 1e6;
+                            setSwapFromAmount(formatted > 0 ? String(formatted) : '');
+                          }}
+                          style={{ background: 'rgba(255, 215, 0, 0.15)', color: '#ffd700', border: '1px solid rgba(255, 215, 0, 0.3)', borderRadius: '6px', fontSize: '10px', fontWeight: 'bold', padding: '2px 6px', cursor: 'pointer', outline: 'none', WebkitTapHighlightColor: 'transparent' }}
+                        >
+                          {pct === 1 ? 'MAX' : `${Math.round(pct * 100)}%`}
+                        </button>
+                      ))}
                       <span>Balance: {getSwapBalance(swapFromToken)}</span>
-                      {/* THE NEW MAX BUTTON */}
-                      <button 
-                        onClick={() => {
-                          const currentBal = parseFloat(getSwapBalance(swapFromToken)) || 0;
-                          // Secure logic: Leave 0.005 SOL buffer for gas fees so transaction doesn't fail
-                          const maxAmount = swapFromToken === 'SOL' 
-                            ? Math.max(0, currentBal - 0.005) 
-                            : currentBal;
-                          
-                          setSwapFromAmount(maxAmount > 0 ? maxAmount.toString() : '');
-                        }}
-                        style={{ background: 'rgba(255, 215, 0, 0.15)', color: '#ffd700', border: '1px solid rgba(255, 215, 0, 0.3)', borderRadius: '6px', fontSize: '10px', fontWeight: 'bold', padding: '2px 6px', cursor: 'pointer', outline: 'none', WebkitTapHighlightColor: 'transparent' }}
-                      >
-                        MAX
-                      </button>
                     </div>
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '10px' }}>
                     <input 
-                      type="number" 
+                      type="text"
+                      inputMode="decimal"
                       placeholder="0.00"
                       value={swapFromAmount}
-                      onChange={(e) => setSwapFromAmount(e.target.value)}
+                      onChange={(e) => setSwapFromAmount(e.target.value.replace(/[^0-9.]/g, ''))}
                       style={{ background: 'none', border: 'none', color: '#fff', fontSize: '24px', width: '50%', outline: 'none' }}
                     />
                     <select 
@@ -4587,16 +4596,49 @@ const GiftTapGame = () => {
 
                 {/* You Pay Section */}
                 <div style={{ background: '#1c1e22', borderRadius: '16px', padding: '15px', textAlign: 'left', marginBottom: '5px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', color: '#888', fontSize: '12px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', color: '#888', fontSize: '12px', gap: 8, flexWrap: 'wrap' }}>
                     <span>You pay</span>
-                    <span>Balance: {balance?.toLocaleString() || '0'}</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                      {[0.25, 0.5, 1].map((pct) => (
+                        <button
+                          key={`shard-pct-${pct}`}
+                          type="button"
+                          disabled={!swapAccess.allowed || shardSwapBusy}
+                          onClick={() => {
+                            const bal = Number(balance) || 0;
+                            if (bal <= 0) {
+                              setShardSwapAmount('');
+                              return;
+                            }
+                            setShardSwapAmount(String(Math.floor(bal * pct)));
+                          }}
+                          style={{
+                            background: 'rgba(153, 69, 255, 0.2)',
+                            color: '#e9d5ff',
+                            border: '1px solid rgba(153, 69, 255, 0.45)',
+                            borderRadius: '6px',
+                            fontSize: '10px',
+                            fontWeight: 'bold',
+                            padding: '2px 6px',
+                            cursor: !swapAccess.allowed || shardSwapBusy ? 'not-allowed' : 'pointer',
+                            opacity: !swapAccess.allowed || shardSwapBusy ? 0.5 : 1,
+                            outline: 'none',
+                            WebkitTapHighlightColor: 'transparent',
+                          }}
+                        >
+                          {pct === 1 ? 'MAX' : `${Math.round(pct * 100)}%`}
+                        </button>
+                      ))}
+                      <span>Balance: {balance?.toLocaleString() || '0'}</span>
+                    </div>
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '10px' }}>
                     <input 
-                      type="number" 
+                      type="text"
+                      inputMode="numeric"
                       placeholder="0"
                       value={shardSwapAmount}
-                      onChange={(e) => setShardSwapAmount(e.target.value)}
+                      onChange={(e) => setShardSwapAmount(e.target.value.replace(/[^0-9]/g, ''))}
                       disabled={!swapAccess.allowed || shardSwapBusy}
                       style={{ background: 'none', border: 'none', color: '#fff', fontSize: '24px', width: '60%', outline: 'none' }}
                     />
