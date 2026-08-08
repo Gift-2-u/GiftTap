@@ -29,6 +29,22 @@ function streakAfterPlayDay(prevLtd, prevStreak, today = utcTodayStr()) {
   return 1;
 }
 
+/** Battery energy pool (not daily limit). 1 point every ENERGY_SECONDS_PER_POINT, cap ENERGY_CAP. */
+const ENERGY_CAP = 500;
+const ENERGY_SECONDS_PER_POINT = 3;
+
+/** Recover energy from a stored (value, timestampMs) using wall clock. */
+function energyFromAnchor(value, atMs, nowMs = Date.now()) {
+  const base = Number.isFinite(Number(value))
+    ? Math.max(0, Math.min(ENERGY_CAP, Number(value)))
+    : ENERGY_CAP;
+  const at = Number(atMs);
+  const t0 = Number.isFinite(at) ? at : nowMs;
+  const seconds = Math.max(0, Math.floor((nowMs - t0) / 1000));
+  const gained = Math.floor(seconds / ENERGY_SECONDS_PER_POINT);
+  return Math.min(ENERGY_CAP, base + gained);
+}
+
 import { getAssociatedTokenAddressSync } from '@solana/spl-token';
 
 import AuthScreen from './AuthScreen';
@@ -501,6 +517,8 @@ const GiftTapGame = () => {
   const optimisticBalance = useRef(0);
   const optimisticSeason = useRef(0);
   const optimisticEnergy = useRef(500);
+  /** Wall-clock anchor for 500-energy regen (survives phone sleep; ticker only +1 is useless). */
+  const energyAnchorRef = useRef({ value: 500, at: Date.now() });
   const optimisticDaily = useRef(0);
   const pendingSaveRef = useRef(null);
   /** True after shop/swap spend — next cloud save must write the lower balance, not Math.max with server */
@@ -808,6 +826,7 @@ const GiftTapGame = () => {
     optimisticBalance.current = 0;
     optimisticSeason.current = 0;
     optimisticEnergy.current = 500;
+    energyAnchorRef.current = { value: 500, at: Date.now() };
     optimisticDaily.current = 0;
     setBalance(0);
     setSeasonShards(0);
@@ -905,10 +924,16 @@ const GiftTapGame = () => {
         } else {
           setWallSnoozedFor(null);
         }
-        // 🚨 ADD THIS LINE TO LOAD ENERGY FROM DB
-        const _en = Number(playerRow.last_energy) || 0;
-        setEnergy(_en);
-        optimisticEnergy.current = _en;
+        // Provisional energy from DB (recovery math below overwrites with wall-clock regen)
+        const _en = Number.isFinite(Number(playerRow.last_energy))
+          ? Math.max(0, Math.min(ENERGY_CAP, Number(playerRow.last_energy)))
+          : 0;
+        const _enAt = playerRow.last_updated
+          ? new Date(playerRow.last_updated).getTime()
+          : Date.now();
+        energyAnchorRef.current = { value: _en, at: _enAt };
+        setEnergy(energyFromAnchor(_en, _enAt));
+        optimisticEnergy.current = energyFromAnchor(_en, _enAt);
 
         // Daily limit + streak (UTC calendar day)
         // RULE: daily_taps only resets when last activity was a PREVIOUS UTC day.
@@ -1013,17 +1038,18 @@ const GiftTapGame = () => {
         const now = new Date().getTime();
         const secondsPassed = Math.floor((now - lastDate) / 1000);
 
-        // A. Energy Recovery Math
-        // 1 energy per 3 seconds offline, cap 500.
+        // A. Energy Recovery Math (wall-clock from last_energy + last_updated)
         // last_energy === 0 is valid (drained). Do NOT treat 0 as missing and force 500.
-        const ENERGY_CAP = 500;
-        const ENERGY_SECONDS_PER_POINT = 3;
-        const recovered = Math.max(0, Math.floor(secondsPassed / ENERGY_SECONDS_PER_POINT));
         const rawEn = Number(playerRow.last_energy);
         const dbEnergy = Number.isFinite(rawEn)
           ? Math.max(0, Math.min(ENERGY_CAP, rawEn))
           : ENERGY_CAP;
-        const recoveredEnergy = Math.min(dbEnergy + recovered, ENERGY_CAP);
+        // Anchor at last save time so remaining time regenerates correctly
+        energyAnchorRef.current = {
+          value: dbEnergy,
+          at: lastDate,
+        };
+        const recoveredEnergy = energyFromAnchor(dbEnergy, lastDate, now);
         setEnergy(recoveredEnergy);
         optimisticEnergy.current = recoveredEnergy;
         
@@ -1303,7 +1329,12 @@ const GiftTapGame = () => {
       if (startingShards && !existingPlayer?.shard_balance) {
         setBalance(startingShards);
       }
-      setEnergy((e) => e || 500);
+      // Do not force 500 when energy is legitimately 0 — catch-up already applied on load.
+      setEnergy((e) => {
+        const n = Number(e);
+        if (Number.isFinite(n)) return Math.max(0, Math.min(ENERGY_CAP, n));
+        return ENERGY_CAP;
+      });
       setHasAccess(true);
       setIsDataLoaded(true);
     } catch (err) {
@@ -1446,6 +1477,7 @@ const GiftTapGame = () => {
     optimisticBalance.current = 0;
     optimisticSeason.current = 0;
     optimisticEnergy.current = 500;
+    energyAnchorRef.current = { value: 500, at: Date.now() };
     optimisticDaily.current = 0;
 
     setBalance(0);
@@ -1557,19 +1589,36 @@ const GiftTapGame = () => {
     return () => clearInterval(timerInterval);
   }, []);
 
+  /** Apply wall-clock regen into React state + optimistic ref. Safe after sleep. */
+  const applyEnergyCatchUp = useCallback(() => {
+    const next = energyFromAnchor(
+      energyAnchorRef.current.value,
+      energyAnchorRef.current.at,
+    );
+    // Fold progress into anchor so partial seconds are not lost forever:
+    // keep residual time by advancing `at` by whole regen steps only.
+    if (next > Number(energyAnchorRef.current.value) || next !== Number(optimisticEnergy.current)) {
+      const prevVal = Math.max(0, Math.min(ENERGY_CAP, Number(energyAnchorRef.current.value) || 0));
+      const gained = next - prevVal;
+      if (gained > 0) {
+        energyAnchorRef.current = {
+          value: next,
+          at: energyAnchorRef.current.at + gained * ENERGY_SECONDS_PER_POINT * 1000,
+        };
+      }
+      optimisticEnergy.current = next;
+      setEnergy(next);
+    }
+    return next;
+  }, []);
+
   useEffect(() => {
+    // Poll often enough for UI; catch-up uses Date.now() so sleep gaps are fully credited.
     const ticker = setInterval(() => {
-      setEnergy((prev) => {
-        const cap = 500; // base regen cap (battery expands max via boosts at use-time)
-        const next = prev < cap ? prev + 1 : cap;
-        if (next > Number(optimisticEnergy.current)) {
-          optimisticEnergy.current = next;
-        }
-        return next;
-      });
-    }, 2000);
+      applyEnergyCatchUp();
+    }, 1000);
     return () => clearInterval(ticker);
-  }, [stats.energy_boost_expires]);
+  }, [applyEnergyCatchUp]);
 
   // Inside your main GiftTap component:
   useEffect(() => {
@@ -1947,6 +1996,15 @@ const GiftTapGame = () => {
         return;
       }
 
+      // Credit sleep/background time before deciding if player can tap
+      {
+        const caught = energyFromAnchor(
+          energyAnchorRef.current.value,
+          energyAnchorRef.current.at,
+        );
+        optimisticEnergy.current = caught;
+        if (caught !== Number(energy)) setEnergy(caught);
+      }
       if ((Number(optimisticEnergy.current) || 0) <= 0 || !isDataLoaded) return;
 
       // 🚨 FIX: Use the synchronous Ref to prevent rapid-click bypasses
@@ -2036,8 +2094,10 @@ const GiftTapGame = () => {
 
       const totalCost = costMultiplier * validTaps;
       const safeEnergy = Number(optimisticEnergy.current);
-      let nextEnergy = Math.max(0, safeEnergy - totalCost);
+      let nextEnergy = Math.max(0, Math.min(ENERGY_CAP, safeEnergy - totalCost));
       optimisticEnergy.current = nextEnergy;
+      // Spending re-anchors the clock at "now" with the new value
+      energyAnchorRef.current = { value: nextEnergy, at: Date.now() };
 
       const safeDaily = Number(optimisticDaily.current);
       // Prefer ref for daily progress (stale state under multi-touch)
@@ -2049,7 +2109,9 @@ const GiftTapGame = () => {
       if (!isAtLevelCap) {
         const newCalculatedLevel = calculateLevel(nextLifetimeTaps);
         if (newCalculatedLevel > currentLevel && newCalculatedLevel <= maxUnlockedLevel) {
-          nextEnergy = currentMaxLimit;
+          // Full battery refill on level-up (500 pool — not daily limit)
+          nextEnergy = ENERGY_CAP;
+          energyAnchorRef.current = { value: ENERGY_CAP, at: Date.now() };
           setCurrentLevel(newCalculatedLevel);
         }
       } else {
@@ -2335,7 +2397,15 @@ const GiftTapGame = () => {
                 setCurrentLevel(Math.min(calculateLevel(incomingTaps), maxU));
               }
               if (payload.new.last_energy != null) {
-                const en = Number(payload.new.last_energy);
+                const raw = Number(payload.new.last_energy);
+                const base = Number.isFinite(raw)
+                  ? Math.max(0, Math.min(ENERGY_CAP, raw))
+                  : ENERGY_CAP;
+                const atMs = payload.new.last_updated
+                  ? new Date(payload.new.last_updated).getTime()
+                  : Date.now();
+                const en = energyFromAnchor(base, atMs);
+                energyAnchorRef.current = { value: base, at: atMs };
                 setEnergy(en);
                 optimisticEnergy.current = en;
               }
@@ -2435,17 +2505,22 @@ const GiftTapGame = () => {
           nextDaily = 0;
         }
 
-        // Energy: recover from last_energy + last_updated (0 is valid)
-        const ENERGY_CAP = 500;
-        const ENERGY_SECONDS_PER_POINT = 3;
+        // Energy: recover from last_energy + last_updated (0 is valid).
+        // Also keep local wall-clock catch-up (tab left open overnight never reloads).
         const lastMs = row.last_updated ? new Date(row.last_updated).getTime() : Date.now();
-        const secondsPassed = Math.max(0, Math.floor((Date.now() - lastMs) / 1000));
-        const recovered = Math.floor(secondsPassed / ENERGY_SECONDS_PER_POINT);
         const rawEn = Number(row.last_energy);
         const dbEnergy = Number.isFinite(rawEn)
           ? Math.max(0, Math.min(ENERGY_CAP, rawEn))
           : ENERGY_CAP;
-        const nextEnergy = Math.min(dbEnergy + recovered, ENERGY_CAP);
+        const fromServer = energyFromAnchor(dbEnergy, lastMs);
+        const fromLocal = energyFromAnchor(
+          energyAnchorRef.current.value,
+          energyAnchorRef.current.at,
+        );
+        // Prefer higher: server offline math vs local sleep catch-up (never drop energy on wake)
+        const nextEnergy = Math.max(fromServer, fromLocal);
+        // Re-anchor at "full value now" so future ticks don't double-count
+        energyAnchorRef.current = { value: nextEnergy, at: Date.now() };
 
         const shards = Number(row.shard_balance) || 0;
         const life = Number(row.lifetime_taps) || 0;
@@ -2502,23 +2577,33 @@ const GiftTapGame = () => {
     };
 
     const onVis = () => {
-      if (document.visibilityState === 'visible') resyncFromServer('visibility');
+      if (document.visibilityState === 'visible') {
+        // Instant local catch-up (phone sleep) — do not wait on network
+        applyEnergyCatchUp();
+        resyncFromServer('visibility');
+      }
     };
-    const onFocus = () => resyncFromServer('focus');
+    const onFocus = () => {
+      applyEnergyCatchUp();
+      resyncFromServer('focus');
+    };
     const onPageShow = (ev) => {
       // bfcache restore on mobile browsers
+      applyEnergyCatchUp();
       resyncFromServer(ev?.persisted ? 'pageshow-bfcache' : 'pageshow');
     };
 
     document.addEventListener('visibilitychange', onVis);
     window.addEventListener('focus', onFocus);
     window.addEventListener('pageshow', onPageShow);
+    // Catch-up once when effect mounts (tab already visible after long freeze)
+    applyEnergyCatchUp();
     return () => {
       document.removeEventListener('visibilitychange', onVis);
       window.removeEventListener('focus', onFocus);
       window.removeEventListener('pageshow', onPageShow);
     };
-  }, [isDataLoaded, playerId]);
+  }, [isDataLoaded, playerId, applyEnergyCatchUp]);
 
   // --- PLACE THIS AROUND LINE 200 (Above fetchBalances) ---
 
