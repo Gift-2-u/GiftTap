@@ -33,7 +33,7 @@ export const ROADMAP_PHASES = [
   },
   {
     id: 'now',
-    title: 'Phase 3',
+    title: 'Phase 3 (Now)',
     status: 'Q3',
     items: [
       'August Season: Testing the database, level mechanics & NFT prizes',

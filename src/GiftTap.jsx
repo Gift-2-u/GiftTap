@@ -1014,10 +1014,16 @@ const GiftTapGame = () => {
         const secondsPassed = Math.floor((now - lastDate) / 1000);
 
         // A. Energy Recovery Math
-        const recovered = Math.max(0, Math.floor(secondsPassed / 4)); 
-        // If dbEnergy is 0, we fallback to 500 to keep the game playable as it was before
-        const dbEnergy = (Number(playerRow.last_energy) > 0) ? Number(playerRow.last_energy) : 500;
-        const recoveredEnergy = Math.min(dbEnergy + recovered, 500);
+        // 1 energy per 3 seconds offline, cap 500.
+        // last_energy === 0 is valid (drained). Do NOT treat 0 as missing and force 500.
+        const ENERGY_CAP = 500;
+        const ENERGY_SECONDS_PER_POINT = 3;
+        const recovered = Math.max(0, Math.floor(secondsPassed / ENERGY_SECONDS_PER_POINT));
+        const rawEn = Number(playerRow.last_energy);
+        const dbEnergy = Number.isFinite(rawEn)
+          ? Math.max(0, Math.min(ENERGY_CAP, rawEn))
+          : ENERGY_CAP;
+        const recoveredEnergy = Math.min(dbEnergy + recovered, ENERGY_CAP);
         setEnergy(recoveredEnergy);
         optimisticEnergy.current = recoveredEnergy;
         
@@ -2390,6 +2396,128 @@ const GiftTapGame = () => {
       .subscribe();
 
     return () => { supabase.removeChannel(channel); };
+  }, [isDataLoaded, playerId]);
+
+  // --- Resume sync: tab left open on phone, user comes back without full reload ---
+  useEffect(() => {
+    if (!isDataLoaded || !playerId) return undefined;
+
+    let busy = false;
+    const resyncFromServer = async (reason) => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+      // Avoid fighting an in-flight local save / mid-tap burst
+      if (Date.now() - (lastLocalSaveAtRef.current || 0) < 2500) return;
+      if (pendingSaveRef.current) return;
+      if (busy) return;
+      busy = true;
+      try {
+        const { data: row, error } = await supabase
+          .from('players')
+          .select(
+            'shard_balance, lifetime_taps, season_shards, daily_taps, last_tap_date, last_updated, last_energy, max_unlocked_level, max_daily_limit, tap_power, inventory, frenzy_expires, efficiency_expires, energy_boost_expires, limit_boost_amount, limit_boost_expires, current_streak, daily_ads_watched, last_ad_date, ad_energy_boost, ad_energy_expires',
+          )
+          .eq(DB_PLAYER_ID, playerId)
+          .maybeSingle();
+        if (error || !row) return;
+
+        const today = utcTodayStr();
+        const ltd = row.last_tap_date ? String(row.last_tap_date).slice(0, 10) : null;
+        const lastUpdatedDay = row.last_updated ? String(row.last_updated).slice(0, 10) : null;
+        const dbDaily = Number(row.daily_taps) || 0;
+        const isSameUtcDay =
+          ltd === today || (!ltd && dbDaily > 0 && lastUpdatedDay === today);
+
+        let nextDaily = dbDaily;
+        if (
+          !isSameUtcDay &&
+          ((ltd && ltd < today) || (!ltd && lastUpdatedDay && lastUpdatedDay < today))
+        ) {
+          nextDaily = 0;
+        }
+
+        // Energy: recover from last_energy + last_updated (0 is valid)
+        const ENERGY_CAP = 500;
+        const ENERGY_SECONDS_PER_POINT = 3;
+        const lastMs = row.last_updated ? new Date(row.last_updated).getTime() : Date.now();
+        const secondsPassed = Math.max(0, Math.floor((Date.now() - lastMs) / 1000));
+        const recovered = Math.floor(secondsPassed / ENERGY_SECONDS_PER_POINT);
+        const rawEn = Number(row.last_energy);
+        const dbEnergy = Number.isFinite(rawEn)
+          ? Math.max(0, Math.min(ENERGY_CAP, rawEn))
+          : ENERGY_CAP;
+        const nextEnergy = Math.min(dbEnergy + recovered, ENERGY_CAP);
+
+        const shards = Number(row.shard_balance) || 0;
+        const life = Number(row.lifetime_taps) || 0;
+        const season = Number(row.season_shards) || 0;
+        const maxU = Number(row.max_unlocked_level) || 4;
+
+        optimisticBalance.current = shards;
+        optimisticTaps.current = life;
+        optimisticSeason.current = season;
+        optimisticDaily.current = nextDaily;
+        optimisticEnergy.current = nextEnergy;
+        serverProgressRef.current = { b: shards, ltt: life, s: season, dt: nextDaily };
+
+        setBalance(shards);
+        setLifetimeTaps(life);
+        setSeasonShards(season);
+        setDailyTaps(nextDaily);
+        setEnergy(nextEnergy);
+        setBalances((b) => ({ ...b, G2Ushards: shards }));
+        setMaxUnlockedLevel(maxU);
+        setCurrentLevel(Math.min(calculateLevel(life), maxU));
+        if (row.max_daily_limit != null) setMaxDailyLimit(Number(row.max_daily_limit) || 1000);
+        if (row.tap_power != null) setTapPower(row.tap_power);
+        if (row.current_streak != null) {
+          const st = Number(row.current_streak) || 0;
+          setStreak(st);
+          streakRef.current = st;
+        }
+        if (ltd) {
+          lastTapDateRef.current = isSameUtcDay && nextDaily > 0 ? today : ltd;
+          setLastTapDate(lastTapDateRef.current);
+        }
+        setStats((prev) => ({
+          ...prev,
+          inventory: row.inventory || prev.inventory,
+          frenzy_expires: row.frenzy_expires ?? prev.frenzy_expires,
+          efficiency_expires: row.efficiency_expires ?? prev.efficiency_expires,
+          energy_boost_expires: row.energy_boost_expires ?? prev.energy_boost_expires,
+          limit_boost_amount: row.limit_boost_amount ?? prev.limit_boost_amount,
+          limit_boost_expires: row.limit_boost_expires ?? prev.limit_boost_expires,
+          ad_energy_boost: row.ad_energy_boost ?? prev.ad_energy_boost,
+          ad_energy_expires: row.ad_energy_expires ?? prev.ad_energy_expires,
+        }));
+        if (row.last_ad_date != null) {
+          const adToday = String(row.last_ad_date).slice(0, 10) === today;
+          setDailyAdsWatched(adToday ? Number(row.daily_ads_watched) || 0 : 0);
+        }
+        console.log('🔄 Resume sync', reason, { shards, life, season, nextDaily, nextEnergy });
+      } catch (e) {
+        console.warn('Resume sync failed', e?.message || e);
+      } finally {
+        busy = false;
+      }
+    };
+
+    const onVis = () => {
+      if (document.visibilityState === 'visible') resyncFromServer('visibility');
+    };
+    const onFocus = () => resyncFromServer('focus');
+    const onPageShow = (ev) => {
+      // bfcache restore on mobile browsers
+      resyncFromServer(ev?.persisted ? 'pageshow-bfcache' : 'pageshow');
+    };
+
+    document.addEventListener('visibilitychange', onVis);
+    window.addEventListener('focus', onFocus);
+    window.addEventListener('pageshow', onPageShow);
+    return () => {
+      document.removeEventListener('visibilitychange', onVis);
+      window.removeEventListener('focus', onFocus);
+      window.removeEventListener('pageshow', onPageShow);
+    };
   }, [isDataLoaded, playerId]);
 
   // --- PLACE THIS AROUND LINE 200 (Above fetchBalances) ---
