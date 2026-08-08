@@ -910,18 +910,21 @@ const GiftTapGame = () => {
         setEnergy(_en);
         optimisticEnergy.current = _en;
 
-        // Daily Reset Logic (UTC calendar day)
-        // daily_taps lives in Supabase — npm run dev cannot clear it unless we write 0.
-        // IMPORTANT: do NOT write last_tap_date = today on login alone.
-        // That made first tap of the day think they already played → streak stuck at 1.
-        // last_tap_date advances only on a real tap (streak logic in handleTap).
+        // Daily limit + streak (UTC calendar day)
+        // RULE: daily_taps only resets when last activity was a PREVIOUS UTC day.
+        // Never zero daily_taps on every refresh. Never zero just because bar is full.
         const today = utcTodayStr();
         const yesterdayUtc = utcYesterdayStr();
         const ltd = playerRow.last_tap_date
           ? String(playerRow.last_tap_date).slice(0, 10)
           : null;
+        const lastUpdatedDay = playerRow.last_updated
+          ? String(playerRow.last_updated).slice(0, 10)
+          : null;
+        const dbDaily = Number(playerRow.daily_taps) || 0;
+
         let loadedStreak = Number(playerRow.current_streak) || 0;
-        // Gap > 1 UTC day (last play before yesterday) → streak back to 0
+        // Gap > 1 UTC day → streak back to 0 (display + optional DB)
         if (ltd && ltd < yesterdayUtc) {
           loadedStreak = 0;
           if (Number(playerRow.current_streak) || 0) {
@@ -937,49 +940,43 @@ const GiftTapGame = () => {
         setStreak(loadedStreak);
         streakRef.current = loadedStreak;
 
-        let loadMaxDaily = Number(playerRow.max_daily_limit) || 1000;
-        const loadNow = new Date();
-        if (playerRow.energy_boost_expires && loadNow < new Date(playerRow.energy_boost_expires)) {
-          loadMaxDaily += 1000;
-        }
-        if (playerRow.limit_boost_expires && loadNow < new Date(playerRow.limit_boost_expires)) {
-          loadMaxDaily += Number(playerRow.limit_boost_amount) || 0;
-        }
+        // Same UTC day if last_tap is today, OR missing last_tap but daily progress + last_updated today
+        // (prevents refresh wiping the bar when last_tap_date lagged behind daily_taps)
+        const isSameUtcDay =
+          ltd === today ||
+          (!ltd && dbDaily > 0 && lastUpdatedDay === today);
 
-        if (!ltd || ltd !== today) {
-          // New UTC day (or never tapped): zero daily counter only.
-          // Keep lastTapDate = previous real play day so first tap can ++ streak.
+        if (
+          !isSameUtcDay &&
+          ((ltd && ltd < today) || (!ltd && lastUpdatedDay && lastUpdatedDay < today))
+        ) {
+          // NEW UTC day only — reset daily bar once
           setDailyTaps(0);
           optimisticDaily.current = 0;
           setLastTapDate(ltd || '');
           lastTapDateRef.current = ltd || '';
           serverProgressRef.current = { ...(serverProgressRef.current || {}), dt: 0 };
-          supabase
-            .from('players')
-            .update({ daily_taps: 0 })
-            .eq(DB_PLAYER_ID, userId)
-            .then(({ error }) => {
-              if (error) console.error('UTC daily reset failed:', error.message);
-            });
-        } else {
-          let _dt = Number(playerRow.daily_taps) || 0;
-          // Bad save left yesterday's full count under today's date → permanently "limit reached"
-          if (_dt >= loadMaxDaily) {
-            console.warn('Reset stuck daily_taps', _dt, 'cap', loadMaxDaily);
-            _dt = 0;
+          if (dbDaily !== 0) {
             supabase
               .from('players')
               .update({ daily_taps: 0 })
               .eq(DB_PLAYER_ID, userId)
               .then(({ error }) => {
-                if (error) console.error('Stuck daily reset failed:', error.message);
+                if (error) console.error('UTC daily reset failed:', error.message);
               });
           }
-          setDailyTaps(_dt);
-          optimisticDaily.current = _dt;
-          setLastTapDate(today);
-          lastTapDateRef.current = today;
-          serverProgressRef.current = { ...(serverProgressRef.current || {}), dt: _dt };
+        } else {
+          // Same UTC day: KEEP daily_taps — never wipe on refresh / full bar
+          setDailyTaps(dbDaily);
+          optimisticDaily.current = dbDaily;
+          if (isSameUtcDay && dbDaily > 0) {
+            setLastTapDate(today);
+            lastTapDateRef.current = today;
+          } else {
+            setLastTapDate(ltd || '');
+            lastTapDateRef.current = ltd || '';
+          }
+          serverProgressRef.current = { ...(serverProgressRef.current || {}), dt: dbDaily };
         }
 
         // 🚨 NEW: Ad Capacity & Midnight Reset Logic
@@ -1779,6 +1776,16 @@ const GiftTapGame = () => {
             : inv.wall_snooze_level ?? null,
       };
 
+      // If we have daily progress, last_tap_date must be today so reloads keep the bar
+      const saveLtd =
+        writeDt > 0
+          ? p.ltd && String(p.ltd).slice(0, 10) === utcTodayStr()
+            ? String(p.ltd).slice(0, 10)
+            : utcTodayStr()
+          : p.ltd
+            ? String(p.ltd).slice(0, 10)
+            : p.ltd;
+
       const baseRow = {
         [DB_PLAYER_ID]: playerId,
         username: player.username || player.first_name || 'Player',
@@ -1786,7 +1793,7 @@ const GiftTapGame = () => {
         season_shards: writeS,
         last_energy: p.e,
         daily_taps: writeDt,
-        last_tap_date: p.ltd,
+        last_tap_date: saveLtd,
         current_streak: p.strk,
         lifetime_taps: writeLtt,
         max_unlocked_level: p.mul,
@@ -1835,7 +1842,7 @@ const GiftTapGame = () => {
           season_shards: writeS,
           last_energy: p.e,
           daily_taps: writeDt,
-          last_tap_date: p.ltd,
+          last_tap_date: saveLtd,
           current_streak: p.strk,
           inventory: nextInventory,
           last_updated: new Date().toISOString(),
