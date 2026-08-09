@@ -25,6 +25,7 @@ import WalletHub from './WalletHub';
 import VaultPage from './VaultPage';
 import LegalPage from './LegalPage';
 import RoadmapPage from './RoadmapPage';
+import AirdropPage from './AirdropPage';
 import { getPlayerId, isLoggedIn } from './playerIdentity';
 import idl from "../target/idl/gift_staking.json";
 import '@solana/wallet-adapter-react-ui/styles.css';
@@ -102,6 +103,7 @@ export default function App() {
                 {/* Off-chain G2U credit vault — GiftLocksmith NFT holders */}
                 <Route path="/vault" element={<VaultPage />} />
                 <Route path="/roadmap" element={<RoadmapPage />} />
+                <Route path="/airdrop" element={<AirdropPage />} />
                 <Route path="/terms" element={<LegalPage kind="terms" />} />
                 <Route path="/privacy" element={<LegalPage kind="privacy" />} />
                 <Route path="/legal/terms" element={<LegalPage kind="terms" />} />
@@ -131,6 +133,9 @@ const SiteFooter = () => {
         </Link>
         <Link to="/roadmap" className="hover:text-yellow-300 font-semibold">
           Roadmap
+        </Link>
+        <Link to="/airdrop" className="hover:text-yellow-300 font-semibold">
+          G2U Airdrop
         </Link>
         <Link to="/play" className="hover:text-yellow-300 font-semibold">
           Play Gift Tap
@@ -182,6 +187,10 @@ const Navigation = () => {
             <Link to="/" className="hover:text-purple-400 font-bold whitespace-nowrap">Home</Link>
             <Link to="/stake" className="hover:text-purple-400 font-bold whitespace-nowrap">Stake</Link>
             <Link to="/vault" className="hover:text-purple-400 font-bold whitespace-nowrap">Vault</Link>
+            <Link to="/airdrop" className="hover:text-yellow-300 font-bold whitespace-nowrap">
+              <span className="sm:hidden">Airdrop</span>
+              <span className="hidden sm:inline">G2U Airdrop</span>
+            </Link>
             <Link to="/play" className="hover:text-purple-400 font-bold text-yellow-400 whitespace-nowrap">
               <span className="sm:hidden">Play</span>
               <span className="hidden sm:inline">Play Game</span>

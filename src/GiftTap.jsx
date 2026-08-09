@@ -119,6 +119,8 @@ import {
 // DB_PLAYER_ID === 'telegram_id' (legacy Supabase column — still the player primary key)
 
 import { hasLocksmith } from './locksmith';
+import AirdropBoard from './AirdropBoard';
+import { computeAirdropProgress, fetchAirdropInputs } from './airdropProgress';
 import WalletNftSection from './WalletNftSection';
 import SwapBadgeCard, { NftDetailModal, LOCKSMITH_PERKS } from './SwapBadgeCard';
 import {
@@ -583,6 +585,9 @@ const GiftTapGame = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   /** View 12 words from Menu only — close returns to Menu, not Wallet hub */
   const [showMenuSecretPhrase, setShowMenuSecretPhrase] = useState(false);
+  const [showAirdropBoard, setShowAirdropBoard] = useState(false);
+  const [airdropProgress, setAirdropProgress] = useState(null);
+  const [airdropLoading, setAirdropLoading] = useState(false);
   const [displayCurrency, setDisplayCurrencyState] = useState(() => {
     try {
       return localStorage.getItem('gift2u_display_currency') || 'USD';
@@ -627,6 +632,52 @@ const GiftTapGame = () => {
    * Task claims: +daily tap limit until UTC midnight (stackable same day).
    * Not the 500 energy pool — extra daily capacity so they can keep tapping.
    */
+
+  const openAirdropBoard = async () => {
+    setShowAirdropBoard(true);
+    setAirdropLoading(true);
+    try {
+      const raw = playerId
+        ? await fetchAirdropInputs(supabase, playerId, DB_PLAYER_ID)
+        : null;
+      // Prefer live game state for streak / taps (matches Tasks claim readiness now)
+      const lifetime = Number(lifetimeTaps) || Number(raw?.lifetimeTaps) || 0;
+      const maxU = Number(maxUnlockedLevel) || Number(raw?.maxUnlockedLevel) || 0;
+      const st = Math.max(
+        0,
+        Number(streakRef.current) || Number(streak) || Number(raw?.streak) || 0,
+      );
+      // Always re-check NFT so board % matches the checkmark
+      let hasNft = !!hasLocksmithNft;
+      const nftWallet = playerWallet || raw?.walletAddress;
+      if (nftWallet) {
+        try {
+          hasNft = !!(await hasLocksmith(nftWallet)) || hasNft;
+        } catch {
+          /* keep state flag */
+        }
+      }
+      const progress = computeAirdropProgress({
+        lifetimeTaps: lifetime,
+        maxUnlockedLevel: maxU,
+        currentLevel,
+        streak: st,
+        // Same as Tasks first_purchase claim ready / claimed
+        hasIap: !!(raw && raw.hasIap),
+        completedTasks: raw?.completedTasks || [],
+        hasNft,
+        friendsTaps1000: raw?.friendsTaps1000 || 0,
+        friendsL5: raw?.friendsL5 || 0,
+      });
+      setAirdropProgress(progress);
+    } catch (e) {
+      console.warn('airdrop board', e?.message || e);
+      setAirdropProgress(null);
+    } finally {
+      setAirdropLoading(false);
+    }
+  };
+
   const grantTaskEnergy = useCallback(
     async ({ amount }) => {
       const add = Math.max(0, Number(amount) || 0);
@@ -3948,6 +3999,7 @@ const GiftTapGame = () => {
 
                 {/* 2. MIDDLE ZONE: CENTERED GIFT */}
                 <div style={styles.giftZone}>
+                  {/* How to play — top right */}
                   <div
                     style={{
                       position: 'absolute',
@@ -3966,6 +4018,43 @@ const GiftTapGame = () => {
                     <span style={{ color: '#aaa', fontSize: 11, fontWeight: 'bold' }}>How to play</span>
                     <HelpTip tipKey="how_to_play" size={18} onOpenPlaybook={() => setIsWhitepaperOpen(true)} />
                   </div>
+
+                  {/* G2U Airdrop — top left, gift-blue, no emoji (space from How to play) */}
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      openAirdropBoard();
+                    }}
+                    style={{
+                      position: 'absolute',
+                      top: 8,
+                      left: 12,
+                      zIndex: 20,
+                      display: 'flex',
+                      alignItems: 'center',
+                      background: 'rgba(50, 100, 255, 0.22)',
+                      border: '1px solid rgba(50, 100, 255, 0.55)',
+                      borderRadius: 20,
+                      padding: '6px 12px',
+                      cursor: 'pointer',
+                      outline: 'none',
+                      WebkitTapHighlightColor: 'transparent',
+                      boxShadow: '0 0 12px rgba(50, 100, 255, 0.25)',
+                    }}
+                  >
+                    <span
+                      style={{
+                        color: '#8eb4ff',
+                        fontSize: 11,
+                        fontWeight: 'bold',
+                        whiteSpace: 'nowrap',
+                        letterSpacing: '0.02em',
+                      }}
+                    >
+                      G2U Airdrop
+                    </span>
+                  </button>
 
                   {/* Pro Touch: A subtle blue Hamster-style halo behind the gift */}
                   <div style={{ position: 'absolute', width: '250px', height: '250px', background: 'radial-gradient(circle, rgba(50, 100, 255, 0.3) 0%, transparent 70%)', zIndex: 0, borderRadius: '50%', marginTop: '-60px' }} />
@@ -5219,6 +5308,90 @@ const GiftTapGame = () => {
             </div>
           )}
 
+
+          {showAirdropBoard && (
+            <div
+              style={{
+                ...styles.modalOverlay,
+                zIndex: 10050,
+                overflowY: 'auto',
+                alignItems: 'flex-start',
+                padding: '20px 12px',
+              }}
+              onClick={() => {
+                setShowAirdropBoard(false);
+                setIsMenuOpen(true);
+              }}
+            >
+              <div
+                style={{
+                  ...styles.modalContent,
+                  maxWidth: 480,
+                  margin: '24px auto',
+                  maxHeight: 'none',
+                }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                  <h3 style={{ margin: 0, color: '#67e8f9', fontSize: 18 }}>🪂 G2U Airdrop</h3>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowAirdropBoard(false);
+                      setIsMenuOpen(true);
+                    }}
+                    style={{ background: 'none', border: 'none', color: '#888', fontSize: 22, cursor: 'pointer' }}
+                    aria-label="Close"
+                  >
+                    ✕
+                  </button>
+                </div>
+                {airdropLoading ? (
+                  <p style={{ color: '#888', textAlign: 'center', padding: 24 }}>Loading board…</p>
+                ) : (
+                  <AirdropBoard
+                    progress={airdropProgress}
+                    username={player?.username || getPlayerProfile().username}
+                    compact
+                  />
+                )}
+                <a
+                  href="/airdrop"
+                  style={{
+                    display: 'block',
+                    textAlign: 'center',
+                    marginTop: 14,
+                    color: '#a78bfa',
+                    fontWeight: 'bold',
+                    fontSize: 13,
+                  }}
+                >
+                  Open full page on gift2u.fun →
+                </a>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowAirdropBoard(false);
+                    setIsMenuOpen(true);
+                  }}
+                  style={{
+                    width: '100%',
+                    marginTop: 12,
+                    background: '#fbef43',
+                    color: '#000',
+                    border: 'none',
+                    borderRadius: 10,
+                    padding: 12,
+                    fontWeight: 'bold',
+                    cursor: 'pointer',
+                  }}
+                >
+                  Back to menu
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* --- REFACTORED MENU COMPONENT --- */}
           <Menu 
             isMenuOpen={isMenuOpen} 
@@ -5260,6 +5433,10 @@ const GiftTapGame = () => {
             onOpenLeaderboard={() => {
               setIsMenuOpen(false);
               openLeaderboardPage();
+            }}
+            onOpenAirdrop={() => {
+              setIsMenuOpen(false);
+              openAirdropBoard();
             }}
           />
 

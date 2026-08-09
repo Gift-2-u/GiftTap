@@ -56,6 +56,7 @@ const Menu = ({
   onOpenTerms,
   onOpenPrivacy,
   onOpenLeaderboard,
+  onOpenAirdrop,
 }) => {
   const playerIdHint = playerId ? String(playerId).slice(-8) : '';
   const [appNotice, setAppNotice] = useState({
@@ -533,6 +534,39 @@ const Menu = ({
                   </span>
                   <span style={{ color: '#888' }}>{'❯'}</span>
                 </button>
+              )}
+
+              {/* G2U Airdrop board */}
+              {typeof onOpenAirdrop === 'function' ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsMenuOpen(false);
+                    onOpenAirdrop();
+                  }}
+                  style={rowBtn}
+                >
+                  <span style={{ color: '#67e8f9', fontWeight: 'bold', textAlign: 'left' }}>
+                    🪂 G2U Airdrop
+                    <span
+                      style={{
+                        display: 'block',
+                        color: '#888',
+                        fontSize: 11,
+                        fontWeight: 'normal',
+                        marginTop: 4,
+                      }}
+                    >
+                      Q4 · your checklist & bonus %
+                    </span>
+                  </span>
+                  <span style={{ color: '#888' }}>{'❯'}</span>
+                </button>
+              ) : (
+                <a href="/airdrop" style={rowBtn}>
+                  <span style={{ color: '#67e8f9', fontWeight: 'bold' }}>🪂 G2U Airdrop</span>
+                  <span style={{ color: '#888' }}>{'❯'}</span>
+                </a>
               )}
 
               {/* 6. Ideas & suggestions */}
