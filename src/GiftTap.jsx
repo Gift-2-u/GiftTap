@@ -121,6 +121,16 @@ import {
 import { hasLocksmith } from './locksmith';
 import AirdropBoard from './AirdropBoard';
 import { computeAirdropProgress, fetchAirdropInputs } from './airdropProgress';
+import {
+  getSeasonDayNumber,
+  getSeasonBoardFloor,
+  filterSeasonMainBoard,
+  getSeasonScore,
+  rankInSeason,
+  seasonFloorLabel,
+  SEASON_FLOOR_PCT,
+  SEASON_DAILY_REFERENCE,
+} from './seasonLeaderboard';
 import WalletNftSection from './WalletNftSection';
 import SwapBadgeCard, { NftDetailModal, LOCKSMITH_PERKS } from './SwapBadgeCard';
 import {
@@ -461,6 +471,11 @@ const GiftTapGame = () => {
   // Leaderboard page tab: always open on Season when navigating to Ranks
   const [leaderboardType, setLeaderboardType] = useState('Season');
   const [leaderboardLoading, setLeaderboardLoading] = useState(false);
+  /** Season main-board floor (15% × 1000 × day) + your rank if off-board */
+  const [seasonBoardFloor, setSeasonBoardFloor] = useState(150);
+  const [seasonBoardDay, setSeasonBoardDay] = useState(1);
+  const [seasonYouRank, setSeasonYouRank] = useState(null); // { rank, score, onMain, need }
+  const [seasonEligibleCount, setSeasonEligibleCount] = useState(0);
   const [hasAccess, setHasAccess] = useState(false);
   const [dailyTaps, setDailyTaps] = useState(0);
   const [streak, setStreak] = useState(0);
@@ -882,16 +897,98 @@ const GiftTapGame = () => {
 
     setLeaderboardLoading(true);
     try {
-      const { data, error } = await supabase
+      if (isAllTime) {
+        const { data, error } = await supabase
+          .from(tableName)
+          .select('*')
+          .order(sortColumn, { ascending: false })
+          .limit(100);
+        if (error) console.warn('Leaderboard fetch:', error.message || error);
+        setLeaderboard(data || []);
+        setSeasonYouRank(null);
+        setSeasonEligibleCount(0);
+        return;
+      }
+
+      // Season: pull a wide list, apply 15% floor, show top eligible + your rank if off-board
+      const day = getSeasonDayNumber(seasonData?.startTime);
+      const floor = getSeasonBoardFloor(day);
+      setSeasonBoardDay(day);
+      setSeasonBoardFloor(floor);
+
+      let { data, error } = await supabase
         .from(tableName)
         .select('*')
         .order(sortColumn, { ascending: false })
-        .limit(100);
-      if (error) console.warn('Leaderboard fetch:', error.message || error);
-      setLeaderboard(data || []);
+        .limit(500);
+      if (error) {
+        // Fallback if score column missing / view differs
+        console.warn('Leaderboard season order:', error.message || error);
+        ({ data, error } = await supabase.from(tableName).select('*').limit(500));
+        if (error) console.warn('Leaderboard fetch:', error.message || error);
+        data = (data || []).sort((a, b) => getSeasonScore(b) - getSeasonScore(a));
+      }
+
+      let rows = data || [];
+      // Ensure live self is in the pool for rank (DB view can lag behind taps)
+      if (playerId) {
+        const pid = String(playerId);
+        const liveScore = Number(optimisticSeason.current) || Number(seasonShards) || 0;
+        const ix = rows.findIndex(
+          (r) => String(r[DB_PLAYER_ID] || r.id || '') === pid,
+        );
+        if (ix >= 0) {
+          const dbScore = getSeasonScore(rows[ix]);
+          if (liveScore > dbScore) {
+            rows = [...rows];
+            rows[ix] = {
+              ...rows[ix],
+              score: liveScore,
+              season_shards: liveScore,
+            };
+            rows.sort((a, b) => getSeasonScore(b) - getSeasonScore(a));
+          }
+        } else if (liveScore > 0) {
+          rows = [
+            ...rows,
+            {
+              [DB_PLAYER_ID]: pid,
+              username: player?.username || getPlayerProfile()?.username || 'You',
+              score: liveScore,
+              season_shards: liveScore,
+            },
+          ].sort((a, b) => getSeasonScore(b) - getSeasonScore(a));
+        }
+      }
+
+      const main = filterSeasonMainBoard(rows, floor, 100);
+      const eligibleAll = rows.filter((r) => getSeasonScore(r) >= floor);
+      setSeasonEligibleCount(eligibleAll.length);
+      setLeaderboard(main);
+
+      if (playerId) {
+        const info = rankInSeason(rows, playerId, DB_PLAYER_ID);
+        const myScore = info?.score ?? (Number(optimisticSeason.current) || Number(seasonShards) || 0);
+        const onMain = myScore >= floor;
+        const inList = main.some(
+          (r) => String(r[DB_PLAYER_ID] || r.id || '') === String(playerId),
+        );
+        setSeasonYouRank({
+          rank: info?.rank || null,
+          score: myScore,
+          onMain,
+          inList,
+          need: Math.max(0, floor - myScore),
+          total: rows.length,
+          eligible: eligibleAll.length,
+        });
+      } else {
+        setSeasonYouRank(null);
+      }
     } catch (err) {
       console.error('Leaderboard fetch error:', err);
       setLeaderboard([]);
+      setSeasonYouRank(null);
     } finally {
       setLeaderboardLoading(false);
     }
@@ -4207,7 +4304,8 @@ const GiftTapGame = () => {
                   🏆 Leaderboard
                 </h2>
                 <p style={{ color: '#888', textAlign: 'center', fontSize: '11px', margin: '0 0 14px', lineHeight: 1.4 }}>
-                  Season: Monthly score · All-time: lifetime taps · Top ranks may share prizes
+                  Season: main board uses a rising floor (15% of 1,000 taps/day × day).
+                  All-time: lifetime taps. GiftLocksmith giveaway tiers count main-board players only.
                 </p>
 
                 {/* Season | All-time — always land on Season when opening Ranks from nav */}
@@ -4269,18 +4367,34 @@ const GiftTapGame = () => {
                 </div>
 
                 {leaderboardType === 'Season' && seasonDisplayMsg ? (
-                  <div style={{ textAlign: 'center', color: '#4ade80', fontSize: '12px', fontWeight: 'bold', marginBottom: '12px' }}>
+                  <div style={{ textAlign: 'center', color: '#4ade80', fontSize: '12px', fontWeight: 'bold', marginBottom: '8px' }}>
                     {seasonDisplayMsg}
+                  </div>
+                ) : null}
+
+                {leaderboardType === 'Season' ? (
+                  <div style={{ textAlign: 'center', color: '#888', fontSize: '11px', marginBottom: '12px', lineHeight: 1.4 }}>
+                    Day {seasonBoardDay} · Main board ≥ <span style={{ color: '#ffd700', fontWeight: 'bold' }}>{Number(seasonBoardFloor).toLocaleString()}</span>
+                    {' '}({Math.round(SEASON_FLOOR_PCT * 100)}% × {SEASON_DAILY_REFERENCE.toLocaleString()}/day)
+                    {seasonEligibleCount > 0 ? (
+                      <span style={{ color: '#4ade80' }}> · {seasonEligibleCount} eligible</span>
+                    ) : null}
                   </div>
                 ) : null}
 
                 <div style={{ background: '#1c1e22', borderRadius: '16px', border: '1px solid #333', overflow: 'hidden' }}>
                   {leaderboardLoading ? (
                     <p style={{ color: '#888', textAlign: 'center', padding: '28px' }}>Loading ranks…</p>
-                  ) : leaderboard.length === 0 ? (
-                    <p style={{ color: '#888', textAlign: 'center', padding: '28px' }}>No players yet. Be the first!</p>
+                  ) : leaderboard.length === 0 && !(leaderboardType === 'Season' && seasonYouRank && playerId) ? (
+                    <p style={{ color: '#888', textAlign: 'center', padding: '28px' }}>No players on the main board yet. Keep mining!</p>
                   ) : (
-                    leaderboard.map((row, index) => {
+                    <>
+                    {leaderboard.length === 0 && leaderboardType === 'Season' ? (
+                      <p style={{ color: '#666', textAlign: 'center', padding: '16px 14px 8px', fontSize: 12, margin: 0 }}>
+                        No one has reached the main-board floor yet ({Number(seasonBoardFloor).toLocaleString()}).
+                      </p>
+                    ) : null}
+                    {leaderboard.map((row, index) => {
                       const name = row.username || (row[DB_PLAYER_ID] ? `ID:..${String(row[DB_PLAYER_ID]).slice(-4)}` : 'Anon');
                       const score = leaderboardType === 'all_time'
                         ? (row.lifetime_taps ?? row.score ?? 0)
@@ -4309,7 +4423,41 @@ const GiftTapGame = () => {
                           </span>
                         </div>
                       );
-                    })
+                    })}
+                    {/* Season: if you are under the floor or outside the top list, sticky last line with your rank */}
+                    {leaderboardType === 'Season' && seasonYouRank && playerId && !seasonYouRank.inList ? (
+                      <div
+                        style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          padding: '12px 14px',
+                          borderTop: '2px solid #ffd700',
+                          background: 'rgba(255, 215, 0, 0.12)',
+                        }}
+                      >
+                        <span style={{ color: '#ffd700', fontSize: '13px', fontWeight: 'bold' }}>
+                          <span style={{ color: '#888', marginRight: '8px', minWidth: '28px', display: 'inline-block' }}>
+                            {seasonYouRank.rank ? `#${seasonYouRank.rank}` : '—'}
+                          </span>
+                          {(player?.username || getPlayerProfile()?.username || 'You')}
+                          {' '}(you)
+                          {!seasonYouRank.onMain ? (
+                            <span style={{ display: 'block', color: '#888', fontSize: 10, fontWeight: 'normal', marginTop: 4, marginLeft: 36 }}>
+                              Off main board · need {Number(seasonYouRank.need || 0).toLocaleString()} more for floor ({Number(seasonBoardFloor).toLocaleString()})
+                            </span>
+                          ) : (
+                            <span style={{ display: 'block', color: '#888', fontSize: 10, fontWeight: 'normal', marginTop: 4, marginLeft: 36 }}>
+                              On main board · outside top shown
+                            </span>
+                          )}
+                        </span>
+                        <span style={{ color: '#ffd700', fontSize: '13px', fontWeight: 'bold' }}>
+                          {Number(seasonYouRank.score || 0).toLocaleString()}
+                        </span>
+                      </div>
+                    ) : null}
+                    </>
                   )}
                 </div>
               </div>
