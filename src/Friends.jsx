@@ -9,6 +9,7 @@ const Friends = ({ player, tgUser }) => {
   const [isLoading, setIsLoading] = useState(true);
 
   const JOINER_REWARD = REFERRAL.JOINER_ON_JOIN; // 500
+  const TAPS1000_REWARD = REFERRAL.REFERRER_TAPS_1000; // 500
   const LVL1_REWARD = REFERRAL.REFERRER_LVL1; // 1000
   const WALL5_REWARD = REFERRAL.REFERRER_WALL5; // 3000
 
@@ -20,7 +21,9 @@ const Friends = ({ player, tgUser }) => {
     try {
       const { data, error } = await supabase
         .from('players')
-        .select('username, shard_balance, lifetime_taps, referral_lvl1_paid, referral_wall5_paid, max_unlocked_level')
+        .select(
+          'username, shard_balance, lifetime_taps, referral_taps1000_paid, referral_lvl1_paid, referral_wall5_paid, max_unlocked_level',
+        )
         .eq('referred_by', String(user.id))
         .order('shard_balance', { ascending: false });
 
@@ -28,11 +31,20 @@ const Friends = ({ player, tgUser }) => {
         // Fallback if milestone columns not migrated yet
         const fallback = await supabase
           .from('players')
-          .select('username, shard_balance, lifetime_taps')
+          .select('username, shard_balance, lifetime_taps, referral_lvl1_paid, referral_wall5_paid, max_unlocked_level')
           .eq('referred_by', String(user.id))
           .order('shard_balance', { ascending: false });
-        if (fallback.error) throw fallback.error;
-        setFriendsList(fallback.data || []);
+        if (fallback.error) {
+          const basic = await supabase
+            .from('players')
+            .select('username, shard_balance, lifetime_taps')
+            .eq('referred_by', String(user.id))
+            .order('shard_balance', { ascending: false });
+          if (basic.error) throw basic.error;
+          setFriendsList(basic.data || []);
+        } else {
+          setFriendsList(fallback.data || []);
+        }
       } else {
         setFriendsList(data || []);
       }
@@ -48,7 +60,7 @@ const Friends = ({ player, tgUser }) => {
     else setIsLoading(false);
   }, [fetchFriends, user?.id]);
 
-  const shareText = `🎁 I'm grinding levels in Gift Tap! Join with my link and get ${JOINER_REWARD} free G2Ushards. I earn bonuses when you hit Level 1 and pass the Level 5 wall!\n\n${inviteLink}`;
+  const shareText = `🎁 I'm grinding levels in Gift Tap! Join with my link and get ${JOINER_REWARD} free G2Ushards. I earn bonuses when you mine 1,000, hit Level 1, and pass the Level 5 wall!\n\n${inviteLink}`;
 
   const handleInvite = async () => {
     try {
@@ -82,6 +94,8 @@ const Friends = ({ player, tgUser }) => {
           Friends get <span style={{ color: '#ffd700', fontWeight: 'bold' }}>+{JOINER_REWARD.toLocaleString()} Shards</span> when they join.
           <br />
           You earn:
+          <br />
+          <span style={{ color: '#4ade80', fontWeight: 'bold' }}>+{TAPS1000_REWARD.toLocaleString()}</span> when they mine <strong>1,000 G2Ushards</strong>
           <br />
           <span style={{ color: '#4ade80', fontWeight: 'bold' }}>+{LVL1_REWARD.toLocaleString()}</span> when they reach <strong>Level 1</strong>
           <br />
@@ -125,6 +139,9 @@ const Friends = ({ player, tgUser }) => {
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
             {friendsList.map((friend, index) => {
+              const taps1k =
+                friend.referral_taps1000_paid ||
+                Number(friend.lifetime_taps) >= (REFERRAL.TAPS_1000_THRESHOLD || 1000);
               const lvl1 = friend.referral_lvl1_paid || Number(friend.lifetime_taps) >= 10000;
               const wall5 = friend.referral_wall5_paid || Number(friend.max_unlocked_level) >= 9;
               return (
@@ -141,7 +158,7 @@ const Friends = ({ player, tgUser }) => {
                     </span>
                   </div>
                   <div style={{ color: '#666', fontSize: '11px', marginTop: '6px' }}>
-                    L1 {lvl1 ? '✅' : '⏳'} · Wall 5 {wall5 ? '✅' : '⏳'}
+                    1k {taps1k ? '✅' : '⏳'} · L1 {lvl1 ? '✅' : '⏳'} · Wall 5 {wall5 ? '✅' : '⏳'}
                   </div>
                 </div>
               );

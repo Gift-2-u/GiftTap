@@ -96,7 +96,12 @@ import { fetchFiatRates, FIAT_CURRENCIES } from './fiatPrices';
 import bs58 from "bs58";
 import CryptoJS from 'crypto-js';
 import { keypairFromMnemonic } from './solanaWallet';
-import { tryPayReferrerForLevel1, tryPayReferrerForWall5, REFERRAL } from './referralRewards';
+import {
+  tryPayReferrerForTaps1000,
+  tryPayReferrerForLevel1,
+  tryPayReferrerForWall5,
+  REFERRAL,
+} from './referralRewards';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   getPlayerProfile,
@@ -2055,6 +2060,9 @@ const GiftTapGame = () => {
           lifetime: writeLtt,
           season: writeS,
         });
+        tryPayReferrerForTaps1000(savePlayerId, p.ltt).catch((e) =>
+          console.warn('referral taps1000 check', e?.message || e),
+        );
         tryPayReferrerForLevel1(savePlayerId, p.ltt).catch((e) =>
           console.warn('referral L1 check', e?.message || e),
         );
