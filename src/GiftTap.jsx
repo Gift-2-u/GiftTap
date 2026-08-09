@@ -31,7 +31,7 @@ function streakAfterPlayDay(prevLtd, prevStreak, today = utcTodayStr()) {
 
 /** Battery energy pool (not daily limit). 1 point every ENERGY_SECONDS_PER_POINT, cap ENERGY_CAP. */
 const ENERGY_CAP = 500;
-const ENERGY_SECONDS_PER_POINT = 3;
+const ENERGY_SECONDS_PER_POINT = 1.5; // 1 energy / 1.5s → full 500 in ~12.5 min
 
 /** Recover energy from a stored (value, timestampMs) using wall clock. */
 function energyFromAnchor(value, atMs, nowMs = Date.now()) {
@@ -45,12 +45,43 @@ function energyFromAnchor(value, atMs, nowMs = Date.now()) {
   return Math.min(ENERGY_CAP, base + gained);
 }
 
+/** One-time task rewards that expand daily tap limit until UTC midnight. */
+const TASK_DAILY_LIMIT_REWARDS = {
+  taps_1000: 100,
+  taps_5000: 250,
+  streak_3: 200,
+  streak_10: 500,
+};
+
+function utcMidnightTonightIso(d = new Date()) {
+  return new Date(
+    Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 23, 59, 59, 999),
+  ).toISOString();
+}
+
+/** Active task daily-limit bonus from inventory.task_limit_boost */
+function getTaskLimitBoost(statsOrInv, now = new Date()) {
+  const inv =
+    statsOrInv && statsOrInv.inventory != null
+      ? statsOrInv.inventory
+      : statsOrInv || {};
+  const b = inv?.task_limit_boost;
+  if (!b || !b.expires) return 0;
+  if (new Date(b.expires).getTime() <= now.getTime()) return 0;
+  return Math.max(0, Number(b.amount) || 0);
+}
+
 import { getAssociatedTokenAddressSync } from '@solana/spl-token';
 
 import AuthScreen from './AuthScreen';
 import ClaimAccountModal from './ClaimAccountModal';
 import Marketplace from './Marketplace';
 import Tasks from './Tasks';
+import {
+  markPlayedTodayUtc,
+  scheduleStreakDeviceNotice,
+  ensureNotificationPermission,
+} from './streakReminders';
 import Friends from './Friends';
 import Menu from './Menu';
 import WhitepaperModal from './WhitepaperModal';
@@ -426,6 +457,8 @@ const GiftTapGame = () => {
   const [hasAccess, setHasAccess] = useState(false);
   const [dailyTaps, setDailyTaps] = useState(0);
   const [streak, setStreak] = useState(0);
+  /** After first valid tap of UTC day — remind to return tomorrow */
+  const [showStreakComeBack, setShowStreakComeBack] = useState(false);
   const [lastTapDate, setLastTapDate] = useState(''); // '' until DB load — never default to today
   const [isPressed, setIsPressed] = useState(false);
   const [isShopOpen, setIsShopOpen] = useState(false);
@@ -433,6 +466,8 @@ const GiftTapGame = () => {
   const [seasonTimeLeft, setSeasonTimeLeft] = useState('');
   const [tapPower, setTapPower] = useState(1);
   const [currentPage, setCurrentPage] = useState('home'); // 'home', 'shop', 'tasks', 'friends', 'leaderboard'
+  /** When opening Shop from daily-limit CTA → Free upgrades (battery) */
+  const [shopFocusTab, setShopFocusTab] = useState(null);
   const [activeTab, setActiveTab] = useState('home'); // Use this for page switching
   const [isReceiveOpen, setIsReceiveOpen] = useState(false);
   const [isWithdrawOpen, setIsWithdrawOpen] = useState(false);
@@ -541,6 +576,8 @@ const GiftTapGame = () => {
   const [decryptedPhrase, setDecryptedPhrase] = useState("");
   // Settings Menu State
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  /** View 12 words from Menu only — close returns to Menu, not Wallet hub */
+  const [showMenuSecretPhrase, setShowMenuSecretPhrase] = useState(false);
   const [displayCurrency, setDisplayCurrencyState] = useState(() => {
     try {
       return localStorage.getItem('gift2u_display_currency') || 'USD';
@@ -579,6 +616,51 @@ const GiftTapGame = () => {
   const [dailyAdsWatched, setDailyAdsWatched] = useState(0);
   const pendingShards = useRef(0);
   const pendingCost = useRef(0);
+
+
+  /**
+   * Task claims: +daily tap limit until UTC midnight (stackable same day).
+   * Not the 500 energy pool — extra daily capacity so they can keep tapping.
+   */
+  const grantTaskEnergy = useCallback(
+    async ({ amount }) => {
+      const add = Math.max(0, Number(amount) || 0);
+      if (add <= 0) return 0;
+
+      const expires = utcMidnightTonightIso();
+      const prevInv = { ...(stats.inventory || {}) };
+      const prevBoost = prevInv.task_limit_boost;
+      let stacked = add;
+      if (
+        prevBoost &&
+        prevBoost.expires &&
+        new Date(prevBoost.expires).getTime() > Date.now()
+      ) {
+        stacked = (Number(prevBoost.amount) || 0) + add;
+      }
+      const nextInv = {
+        ...prevInv,
+        task_limit_boost: { amount: stacked, expires },
+        // mark migration done so load heal does not double-apply
+        task_daily_limit_migrated_v1: true,
+      };
+
+      setStats((prev) => ({ ...prev, inventory: nextInv }));
+
+      if (playerId) {
+        const { error } = await supabase
+          .from('players')
+          .update({
+            inventory: nextInv,
+            last_updated: new Date().toISOString(),
+          })
+          .eq(DB_PLAYER_ID, String(playerId));
+        if (error) throw error;
+      }
+      return stacked;
+    },
+    [playerId, stats.inventory],
+  );
 
   const handleWatchAd = async (e) => {
     if (e) e.stopPropagation(); // Stop click-through to Gift
@@ -889,7 +971,46 @@ const GiftTapGame = () => {
         setMaxDailyLimit(playerRow.max_daily_limit || 1000);
         
         // Load Backpack and Timers
-        const inv = playerRow.inventory || {};
+        let inv = { ...(playerRow.inventory || {}) };
+        // One-time heal: energy-task claims used to fill the 500 pool by mistake.
+        // Convert completed retention tasks into today's daily-limit boost once.
+        if (!inv.task_daily_limit_migrated_v1) {
+          const done = Array.isArray(playerRow.completed_tasks)
+            ? playerRow.completed_tasks
+            : [];
+          let heal = 0;
+          for (const [tid, amt] of Object.entries(TASK_DAILY_LIMIT_REWARDS)) {
+            if (done.includes(tid)) heal += amt;
+          }
+          if (heal > 0) {
+            const prevAmt =
+              inv.task_limit_boost &&
+              inv.task_limit_boost.expires &&
+              new Date(inv.task_limit_boost.expires).getTime() > Date.now()
+                ? Number(inv.task_limit_boost.amount) || 0
+                : 0;
+            inv = {
+              ...inv,
+              task_limit_boost: {
+                amount: prevAmt + heal,
+                expires: utcMidnightTonightIso(),
+              },
+              task_daily_limit_migrated_v1: true,
+            };
+            supabase
+              .from('players')
+              .update({
+                inventory: inv,
+                last_updated: new Date().toISOString(),
+              })
+              .eq(DB_PLAYER_ID, String(userId))
+              .then(({ error }) => {
+                if (error) console.warn('task daily-limit migrate failed', error.message);
+              });
+          } else {
+            inv = { ...inv, task_daily_limit_migrated_v1: true };
+          }
+        }
         setStats({
           inventory: inv,
           frenzy_expires: playerRow.frenzy_expires || null,
@@ -1558,6 +1679,21 @@ const GiftTapGame = () => {
     };
   }, [playerWallet, isShardSwapOpen]);
 
+
+  // Schedule local streak device notice (if permission already granted)
+  useEffect(() => {
+    if (!isDataLoaded || !playerId) return undefined;
+    try {
+      if (lastTapDateRef.current === utcTodayStr() || lastTapDate === utcTodayStr()) {
+        markPlayedTodayUtc(utcTodayStr());
+      }
+      scheduleStreakDeviceNotice(2);
+    } catch {
+      /* ignore */
+    }
+    return undefined;
+  }, [isDataLoaded, playerId, lastTapDate]);
+
   // --- SEASON 1 COUNTDOWN TIMER ---
   useEffect(() => {
     // Set for exactly one month from today (April 11, 2026)
@@ -1989,10 +2125,46 @@ const GiftTapGame = () => {
       if (stats.limit_boost_expires && clickTime < new Date(stats.limit_boost_expires)) {
         currentMaxLimit += (Number(stats.limit_boost_amount) || 0);
       }
+      // Task rewards: +daily limit until UTC midnight
+      currentMaxLimit += getTaskLimitBoost(stats, clickTime);
 
       // 2. Use currentDailyTaps (already 0 after midnight), not stale dailyTaps state
       if (currentDailyTaps >= currentMaxLimit) {
-        notify("Daily limit reached! Wait for tomorrow or use a boost.");
+        // Daily limit notice + Battery CTA; streak come-back after dismiss (once / UTC day)
+        const todayUtc = utcTodayStr(now);
+        let showComeBackAfter = false;
+        try {
+          const k = `gift2u_streak_comeback_${todayUtc}`;
+          if (!localStorage.getItem(k)) {
+            localStorage.setItem(k, '1');
+            showComeBackAfter = true;
+          }
+        } catch {
+          showComeBackAfter = true;
+        }
+        setAppNotice({
+          show: true,
+          message:
+            "Daily limit reached for this UTC day.\n\n" +
+            "Want to keep playing? Expanded Battery adds +1,000 max taps until UTC midnight (Shop · Free).",
+          loading: false,
+          success: false,
+          title: "Daily limit reached",
+          confirm: {
+            confirmLabel: "Expanded Battery",
+            cancelLabel: "OK",
+            confirmDanger: false,
+            resolve: (ok) => {
+              if (ok) {
+                setShopFocusTab("upgrades");
+                setCurrentPage("shop");
+              }
+              if (showComeBackAfter) {
+                setShowStreakComeBack(true);
+              }
+            },
+          },
+        });
         return;
       }
 
@@ -2058,6 +2230,14 @@ const GiftTapGame = () => {
               if (error) console.warn('streak day-roll save failed', error.message);
             });
         }
+      }
+
+      // Any valid tap counts as played today for device streak notice
+      try {
+        markPlayedTodayUtc(today);
+        scheduleStreakDeviceNotice(2);
+      } catch {
+        /* ignore */
       }
 
       // 4. ALWAYS EARN SHARDS (open mining). Wall only caps *level unlock*, not earnings.
@@ -3282,6 +3462,8 @@ const GiftTapGame = () => {
   if (stats.limit_boost_expires && now < new Date(stats.limit_boost_expires)) {
     dynamicMaxLimit += (stats.limit_boost_amount || 0);
   }
+  // Task rewards (+100 / +250 / +200 / +500) until UTC midnight
+  dynamicMaxLimit += getTaskLimitBoost(stats, now);
 
   const handleCopyPhrase = async () => {
     // Pure state-only retrieval. Zero browser storage.
@@ -3900,14 +4082,19 @@ const GiftTapGame = () => {
                 player={player}
                 playerWallet={playerWallet}
                 decryptedPhrase={decryptedPhrase}
+                initialTab={shopFocusTab || undefined}
+                onInitialTabConsumed={() => setShopFocusTab(null)}
               />
             )}
 
             {currentPage === 'tasks' && (
               <Tasks 
-                balance={balance} 
-                setBalance={setBalanceSynced} 
-                player={player} 
+                balance={balance}
+                setBalance={setBalanceSynced}
+                player={player}
+                lifetimeTaps={lifetimeTaps}
+                streak={streak}
+                grantTaskEnergy={grantTaskEnergy}
               />
             )}
 
@@ -4889,6 +5076,141 @@ const GiftTapGame = () => {
             </div>
           )}
 
+          {/* Menu → View 12 words (standalone; ✕ returns to Menu, not Wallet) */}
+          {showMenuSecretPhrase && (
+            <div
+              style={{
+                ...styles.modalOverlay,
+                zIndex: 10050,
+              }}
+              onClick={() => {
+                setShowMenuSecretPhrase(false);
+                setIsMenuOpen(true);
+              }}
+            >
+              <div
+                style={{
+                  ...styles.modalContent,
+                  maxWidth: 400,
+                  textAlign: 'left',
+                }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    marginBottom: 12,
+                  }}
+                >
+                  <h3 style={{ margin: 0, color: '#ffd700', fontSize: 18 }}>
+                    🔐 Your 12 secret words
+                  </h3>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowMenuSecretPhrase(false);
+                      setIsMenuOpen(true);
+                    }}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      color: '#888',
+                      fontSize: 22,
+                      cursor: 'pointer',
+                      lineHeight: 1,
+                    }}
+                    aria-label="Close"
+                  >
+                    ✕
+                  </button>
+                </div>
+                <p style={{ fontSize: 12, color: '#ccc', marginBottom: 14, lineHeight: 1.45 }}>
+                  These words restore your account. Never share them. Closing this returns you to the menu.
+                </p>
+                <div
+                  style={{
+                    background: '#000',
+                    padding: 15,
+                    borderRadius: 10,
+                    border: '1px solid #ffd700',
+                    marginBottom: 14,
+                  }}
+                >
+                  <div
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: 'repeat(3, 1fr)',
+                      gap: 8,
+                    }}
+                  >
+                    {(decryptedPhrase || generatedSecret || '')
+                      .split(' ')
+                      .map((word, i) =>
+                        word ? (
+                          <div
+                            key={i}
+                            style={{
+                              background: '#222',
+                              padding: 6,
+                              borderRadius: 6,
+                              fontSize: 12,
+                              color: '#4ade80',
+                              textAlign: 'center',
+                              border: '1px solid #333',
+                            }}
+                          >
+                            <span style={{ color: '#888', marginRight: 4, fontSize: 10 }}>
+                              {i + 1}.
+                            </span>
+                            {word}
+                          </div>
+                        ) : null,
+                      )}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleCopyPhrase}
+                    style={{
+                      width: '100%',
+                      padding: 10,
+                      marginTop: 15,
+                      background: '#222',
+                      color: '#4ade80',
+                      border: '1px solid #4ade80',
+                      borderRadius: 8,
+                      cursor: 'pointer',
+                      fontWeight: 'bold',
+                      fontSize: 14,
+                    }}
+                  >
+                    📋 COPY 12-WORD PHRASE
+                  </button>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowMenuSecretPhrase(false);
+                    setIsMenuOpen(true);
+                  }}
+                  style={{
+                    width: '100%',
+                    background: '#fbef43',
+                    color: '#000',
+                    padding: 12,
+                    borderRadius: 8,
+                    fontWeight: 'bold',
+                    border: 'none',
+                    cursor: 'pointer',
+                  }}
+                >
+                  Back to menu
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* --- REFACTORED MENU COMPONENT --- */}
           <Menu 
             isMenuOpen={isMenuOpen} 
@@ -4907,7 +5229,10 @@ const GiftTapGame = () => {
               setIsMenuOpen(false);
               setIsRoadmapOpen(true);
             }}
-            onOpenSecret={() => { setMustBackup(true); setIsModalOpen(true); }}
+            onOpenSecret={() => {
+              setIsMenuOpen(false);
+              setShowMenuSecretPhrase(true);
+            }}
             username={player.username || getPlayerProfile().username || 'Player'}
             playerId={playerId}
             onLogout={handleLogout}
@@ -4976,7 +5301,103 @@ const GiftTapGame = () => {
           />
 
           {/* THE AD MODAL - Refactored to match your native game architecture */}
-          {isAdModalOpen && (
+          
+      {/* Streak: come back tomorrow (after first valid tap of UTC day) */}
+      {showStreakComeBack && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,0.72)',
+            zIndex: 9999,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 20,
+            boxSizing: 'border-box',
+          }}
+          onClick={() => setShowStreakComeBack(false)}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: '#1c1e22',
+              border: '1px solid #ffd700',
+              borderRadius: 16,
+              padding: '22px 20px',
+              maxWidth: 340,
+              width: '100%',
+              textAlign: 'center',
+            }}
+          >
+            <div style={{ fontSize: 36, marginBottom: 8 }}>🔥</div>
+            <h3 style={{ color: '#ffd700', margin: '0 0 10px', fontSize: 18 }}>
+              Come back tomorrow!
+            </h3>
+            <p style={{ color: '#ccc', fontSize: 13, lineHeight: 1.45, margin: '0 0 12px' }}>
+              You played today (UTC). Open Gift2U again tomorrow and tap to keep your streak.
+              Miss a full UTC day and it resets to 0.
+            </p>
+            <p style={{ color: '#888', fontSize: 11, lineHeight: 1.4, margin: '0 0 16px' }}>
+              Optional: allow notifications and we will remind you before the UTC day ends if you have not played yet.
+            </p>
+            <button
+              type="button"
+              onClick={async () => {
+                try {
+                  const perm = await ensureNotificationPermission();
+                  if (perm === 'granted') {
+                    scheduleStreakDeviceNotice(2);
+                    notify('Streak reminders on. We will nudge you before UTC midnight if you forget.');
+                  } else if (perm === 'denied') {
+                    notify('Notifications blocked. You can enable them in browser/app settings.');
+                  } else if (perm === 'unsupported') {
+                    notify('This device does not support notifications.');
+                  }
+                } catch {
+                  /* ignore */
+                }
+                setShowStreakComeBack(false);
+              }}
+              style={{
+                width: '100%',
+                background: '#fbef43',
+                color: '#000',
+                border: 'none',
+                borderRadius: 12,
+                padding: '12px',
+                fontWeight: 'bold',
+                fontSize: 14,
+                cursor: 'pointer',
+                marginBottom: 8,
+                outline: 'none',
+              }}
+            >
+              Enable reminder & close
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowStreakComeBack(false)}
+              style={{
+                width: '100%',
+                background: 'transparent',
+                color: '#888',
+                border: '1px solid #444',
+                borderRadius: 12,
+                padding: '10px',
+                fontWeight: 'bold',
+                fontSize: 13,
+                cursor: 'pointer',
+                outline: 'none',
+              }}
+            >
+              Just close
+            </button>
+          </div>
+        </div>
+      )}
+
+      {isAdModalOpen && (
             <div
               style={styles.modalOverlay}
               onClick={() => {

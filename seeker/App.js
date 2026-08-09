@@ -89,6 +89,9 @@ export default function App() {
   const [canGoBack, setCanGoBack] = useState(false);
   const adBusyRef = useRef(false);
   const adsReadyRef = useRef(false);
+  /** Preloaded rewarded instance (null = none ready). */
+  const preloadedRef = useRef(null);
+  const preloadUnsubsRef = useRef([]);
 
   const uri = useMemo(() => {
     const extra = Constants.expoConfig?.extra || Constants.manifest?.extra || {};
@@ -102,6 +105,42 @@ export default function App() {
     return getRewardedUnitId();
   }, []);
 
+  const clearPreload = useCallback(() => {
+    try {
+      (preloadUnsubsRef.current || []).forEach((u) => {
+        try { u(); } catch { /* ignore */ }
+      });
+    } catch { /* ignore */ }
+    preloadUnsubsRef.current = [];
+    preloadedRef.current = null;
+  }, []);
+
+  const preloadRewarded = useCallback(() => {
+    clearPreload();
+    try {
+      const rewarded = RewardedAd.createForAdRequest(rewardedUnitId, {
+        requestNonPersonalizedAdsOnly: false,
+      });
+      const unsubs = [];
+      unsubs.push(
+        rewarded.addAdEventListener(RewardedAdEventType.LOADED, () => {
+          preloadedRef.current = rewarded;
+          console.log('[Gift2U Seeker] Rewarded preloaded');
+        }),
+      );
+      unsubs.push(
+        rewarded.addAdEventListener(AdEventType.ERROR, (err) => {
+          console.warn('[Gift2U Seeker] Preload failed', err?.message || err);
+          preloadedRef.current = null;
+        }),
+      );
+      preloadUnsubsRef.current = unsubs;
+      rewarded.load();
+    } catch (e) {
+      console.warn('[Gift2U Seeker] Preload error', e?.message || e);
+    }
+  }, [clearPreload, rewardedUnitId]);
+
   React.useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -110,6 +149,8 @@ export default function App() {
         if (!cancelled) {
           adsReadyRef.current = true;
           console.log('[Gift2U Seeker] AdMob initialized, unit=', rewardedUnitId);
+          // Warm an ad so Free Energy is ready (also surfaces fill issues early in logcat)
+          preloadRewarded();
         }
       } catch (e) {
         console.warn('[Gift2U Seeker] AdMob init failed', e?.message || e);
@@ -117,8 +158,9 @@ export default function App() {
     })();
     return () => {
       cancelled = true;
+      clearPreload();
     };
-  }, [rewardedUnitId]);
+  }, [rewardedUnitId, preloadRewarded, clearPreload]);
 
   React.useEffect(() => {
     if (Platform.OS !== 'android') return undefined;
@@ -251,6 +293,21 @@ export default function App() {
     [injectWalletResult],
   );
 
+  const friendlyAdError = (raw) => {
+    const msg = String(raw || '');
+    if (/no[- ]?fill|ERROR_CODE_NO_FILL|error code:\s*3/i.test(msg)) {
+      return (
+        'No ad available right now (AdMob no inventory). ' +
+        'This is normal for new apps / low traffic — wait a minute and try again. ' +
+        'Energy was not granted.'
+      );
+    }
+    if (/network|timeout|unable to resolve|offline/i.test(msg)) {
+      return 'Network problem loading ad. Check connection and try again.';
+    }
+    return msg || 'Ad failed to load';
+  };
+
   const showRewardedAd = useCallback(
     (requestId) => {
       if (adBusyRef.current) {
@@ -263,21 +320,24 @@ export default function App() {
       }
       adBusyRef.current = true;
 
-      const fail = (error) => {
+      const MAX_LOAD_ATTEMPTS = 3;
+      let attempt = 0;
+
+      const failFinal = (error) => {
         adBusyRef.current = false;
+        clearPreload();
+        setTimeout(() => {
+          try { preloadRewarded(); } catch { /* ignore */ }
+        }, 1500);
         injectAdResult({
           requestId,
           success: false,
-          error: error || 'Ad failed',
+          error: friendlyAdError(error),
           network: 'AdMob',
         });
       };
 
-      try {
-        const rewarded = RewardedAd.createForAdRequest(rewardedUnitId, {
-          requestNonPersonalizedAdsOnly: false,
-        });
-
+      const bindAndShow = (rewarded, fromPreload) => {
         let earned = false;
         const unsubs = [];
 
@@ -291,14 +351,18 @@ export default function App() {
           });
         };
 
-        unsubs.push(
-          rewarded.addAdEventListener(RewardedAdEventType.LOADED, () => {
-            rewarded.show().catch((e) => {
-              cleanup();
-              fail(e?.message || 'Could not show ad');
-            });
-          }),
-        );
+        const onLoaded = () => {
+          rewarded.show().catch((e) => {
+            cleanup();
+            failFinal(e?.message || 'Could not show ad');
+          });
+        };
+
+        if (!fromPreload) {
+          unsubs.push(
+            rewarded.addAdEventListener(RewardedAdEventType.LOADED, onLoaded),
+          );
+        }
 
         unsubs.push(
           rewarded.addAdEventListener(RewardedAdEventType.EARNED_REWARD, () => {
@@ -310,6 +374,13 @@ export default function App() {
           rewarded.addAdEventListener(AdEventType.CLOSED, () => {
             cleanup();
             adBusyRef.current = false;
+            if (fromPreload) {
+              preloadedRef.current = null;
+            }
+            clearPreload();
+            setTimeout(() => {
+              try { preloadRewarded(); } catch { /* ignore */ }
+            }, 800);
             if (earned) {
               injectAdResult({
                 requestId,
@@ -330,16 +401,58 @@ export default function App() {
         unsubs.push(
           rewarded.addAdEventListener(AdEventType.ERROR, (err) => {
             cleanup();
-            fail(err?.message || 'Ad failed to load');
+            const msg = err?.message || 'Ad failed to load';
+            const isNoFill = /no[- ]?fill|ERROR_CODE_NO_FILL|error code:\s*3/i.test(
+              String(msg),
+            );
+            if (isNoFill && attempt < MAX_LOAD_ATTEMPTS) {
+              attempt += 1;
+              console.warn(
+                `[Gift2U Seeker] no-fill attempt ${attempt}/${MAX_LOAD_ATTEMPTS}, retrying…`,
+              );
+              setTimeout(() => loadFresh(), 1200 * attempt);
+              return;
+            }
+            failFinal(msg);
           }),
         );
 
-        rewarded.load();
+        if (fromPreload) {
+          onLoaded();
+        }
+      };
+
+      const loadFresh = () => {
+        try {
+          const rewarded = RewardedAd.createForAdRequest(rewardedUnitId, {
+            requestNonPersonalizedAdsOnly: false,
+          });
+          bindAndShow(rewarded, false);
+          rewarded.load();
+        } catch (e) {
+          failFinal(e?.message || 'AdMob not available');
+        }
+      };
+
+      try {
+        const warm = preloadedRef.current;
+        if (warm) {
+          preloadedRef.current = null;
+          try {
+            (preloadUnsubsRef.current || []).forEach((u) => {
+              try { u(); } catch { /* ignore */ }
+            });
+          } catch { /* ignore */ }
+          preloadUnsubsRef.current = [];
+          bindAndShow(warm, true);
+          return;
+        }
+        loadFresh();
       } catch (e) {
-        fail(e?.message || 'AdMob not available');
+        failFinal(e?.message || 'AdMob not available');
       }
     },
-    [injectAdResult, rewardedUnitId],
+    [injectAdResult, rewardedUnitId, clearPreload, preloadRewarded],
   );
 
   const onWebMessage = useCallback(
@@ -376,6 +489,15 @@ export default function App() {
 
       if (data.type === 'CONNECT_WALLET' && data.requestId) {
         connectWalletNative(data.requestId);
+        return;
+      }
+
+      // mailto: / external — open with OS (WebView cannot open mail apps alone)
+      if (data.type === 'OPEN_URL' && data.url) {
+        const url = String(data.url);
+        Linking.openURL(url).catch((e) =>
+          console.warn('[Gift2U Seeker] OPEN_URL failed', url, e?.message || e),
+        );
       }
     },
     [injectAdResult, showRewardedAd, connectWalletNative],
@@ -425,7 +547,15 @@ export default function App() {
             if (nav?.url) handleWalletUrl(nav.url);
           }}
           onShouldStartLoadWithRequest={(req) => {
-            if (handleWalletUrl(req?.url)) return false;
+            const u = String(req?.url || '');
+            if (handleWalletUrl(u)) return false;
+            // Mail / phone — must leave WebView for the OS app
+            if (u.startsWith('mailto:') || u.startsWith('tel:') || u.startsWith('sms:')) {
+              Linking.openURL(u).catch((e) =>
+                console.warn('[Gift2U Seeker] mailto/tel failed', e?.message || e),
+              );
+              return false;
+            }
             return true;
           }}
           onMessage={onWebMessage}

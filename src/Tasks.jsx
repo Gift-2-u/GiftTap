@@ -1,89 +1,319 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { supabase } from './supabaseClient';
 import { DB_PLAYER_ID } from './playerIdentity';
 import AppNotice from './AppNotice';
+import { IDEAS_EMAIL, openIdeasEmail, copyIdeasEmail } from './contactIdeas';
 
-const Tasks = ({ balance, setBalance, player, tgUser }) => {
+/**
+ * Existing tasks kept as-is (shards / social / purchase).
+ * New retention tasks appended (energy rewards).
+ */
+const TASK_LIST = [
+  // --- Original tasks (unchanged) ---
+  {
+    id: 'sub_tg',
+    title: 'Join telegram',
+    reward: 250,
+    link: 'https://t.me/Gift2u_GiftTap_official',
+    icon: 'https://upload.wikimedia.org/wikipedia/commons/8/82/Telegram_logo.svg',
+    type: 'social',
+  },
+  {
+    id: 'follow_x',
+    title: 'Follow us on X',
+    reward: 250,
+    link: 'https://x.com/Gift2udev',
+    icon: '/logo-white.png',
+    type: 'social',
+  },
+  {
+    id: 'taps_1000',
+    title: 'Reach 1,000 taps',
+    description: '+100 daily limit for 1 UTC day when claimed',
+    icon: '👆',
+    type: 'taps',
+    target: 1000,
+    energyReward: 100,
+    dayLimited: true,
+  },
+  {
+    id: 'taps_5000',
+    title: 'Reach 5,000 taps',
+    description: '+250 daily limit for 1 UTC day when claimed',
+    icon: '👆',
+    type: 'taps',
+    target: 5000,
+    energyReward: 250,
+    dayLimited: true,
+  },
+  {
+    id: 'streak_3',
+    title: '3-day streak',
+    description: '+200 daily limit for 1 UTC day when claimed',
+    icon: '🔥',
+    type: 'streak_energy',
+    target: 3,
+    energyReward: 200,
+    dayLimited: true,
+  },
+  {
+    id: 'streak_7',
+    title: 'Tap 7 Days in a Row',
+    reward: 500,
+    icon: '🔥',
+    type: 'streak',
+    target: 7,
+  },
+  {
+    id: 'streak_10',
+    title: '10-day streak',
+    description: '+500 daily limit for 1 UTC day when claimed',
+    icon: '🔥',
+    type: 'streak_energy',
+    target: 10,
+    energyReward: 500,
+    dayLimited: true,
+  },
+  {
+    id: 'streak_14',
+    title: 'Tap 14 Days in a Row',
+    reward: 1250,
+    icon: '🔥',
+    reqLevel: 1,
+    type: 'streak',
+    target: 14,
+  },
+  {
+    id: 'streak_30',
+    title: 'Tap 30 Days in a Row',
+    reward: 3000,
+    icon: '🔥',
+    reqLevel: 1,
+    type: 'streak',
+    target: 30,
+  },
+  {
+    id: 'first_purchase',
+    title: 'Make an In-App Purchase',
+    reward: 5000,
+    icon: '🛍️',
+    type: 'purchase',
+  },
+
+];
+
+function utcMidnightIso() {
+  const now = new Date();
+  return new Date(
+    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 23, 59, 59, 999),
+  ).toISOString();
+}
+
+function isEnergyTask(task) {
+  return task.type === 'taps' || task.type === 'streak_energy';
+}
+
+const Tasks = ({
+  balance,
+  setBalance,
+  player,
+  tgUser,
+  lifetimeTaps = 0,
+  streak = 0,
+  grantTaskEnergy,
+}) => {
   const user = player || tgUser;
+  const userId = user?.id ? String(user.id) : null;
+
   const [completedTasks, setCompletedTasks] = useState([]);
-  const [readyToClaim, setReadyToClaim] = useState([]); // Tracks tasks that are waiting to be claimed
+  const [readyToClaim, setReadyToClaim] = useState([]);
   const [loadingTasks, setLoadingTasks] = useState(true);
-  // NEW: State to track player's real progression stats
   const [playerStats, setPlayerStats] = useState({ streak: 0, purchased: false });
+  const [claimingId, setClaimingId] = useState(null);
   const [appNotice, setAppNotice] = useState({ show: false, message: '', success: true });
 
-  const TASK_LIST = [
-    { id: 'sub_tg', title: 'Join telegram', reward: 250, link: 'https://t.me/Gift2u_GiftTap_official', icon: 'https://upload.wikimedia.org/wikipedia/commons/8/82/Telegram_logo.svg', type: 'social' },
-    { id: 'follow_x', title: 'Follow us on X', reward: 250, link: 'https://x.com/Gift2udev', icon: '/logo-white.png', type: 'social' },
-    // Streak Tasks (Type: streak)
-    { id: 'streak_7', title: 'Tap 7 Days in a Row', reward: 500, icon: '🔥', type: 'streak', target: 7 },
-    { id: 'streak_14', title: 'Tap 14 Days in a Row', reward: 1250, icon: '🔥', reqLevel: 1, type: 'streak', target: 14 },
-    { id: 'streak_30', title: 'Tap 30 Days in a Row', reward: 3000, icon: '🔥', reqLevel: 1, type: 'streak', target: 30 }, 
-    // Purchase Task (Type: purchase)
-    { id: 'first_purchase', title: 'Make an In-App Purchase', reward: 5000, icon: '🛍️', type: 'purchase' }
-  ];
+  // Live streak/taps from parent when provided; else DB stats for original streak tasks
+  const liveStreak = Math.max(
+    0,
+    Math.floor(Number(streak) || Number(playerStats.streak) || 0),
+  );
+  const liveTaps = Math.max(0, Math.floor(Number(lifetimeTaps) || 0));
 
-  // 1. Load completed tasks from Supabase when the page opens
   useEffect(() => {
     const fetchTasks = async () => {
-      if (!user?.id) return;
-      
+      if (!userId) {
+        setLoadingTasks(false);
+        return;
+      }
+
       const { data, error } = await supabase
         .from('players')
-        .select('completed_tasks, current_streak, has_made_purchase')
-        .eq(DB_PLAYER_ID, String(user.id))
-        .single();
+        .select('completed_tasks, current_streak, has_made_purchase, lifetime_taps')
+        .eq(DB_PLAYER_ID, userId)
+        .maybeSingle();
 
       if (!error && data) {
         setCompletedTasks(Array.isArray(data.completed_tasks) ? data.completed_tasks : []);
         setPlayerStats({
           streak: data.current_streak || 0,
-          purchased: data.has_made_purchase || false
+          purchased: data.has_made_purchase || false,
+          lifetimeTaps: Number(data.lifetime_taps) || 0,
         });
       }
       setLoadingTasks(false);
     };
     fetchTasks();
-  }, [user?.id]);
+  }, [userId]);
 
-  // 2. Handle the "Go" button (Opens link, changes button to Claim)
+  const progress = useMemo(
+    () => ({
+      taps: liveTaps || Math.max(0, Math.floor(Number(playerStats.lifetimeTaps) || 0)),
+      streak: liveStreak,
+    }),
+    [liveTaps, liveStreak, playerStats.lifetimeTaps],
+  );
+
   const handleGo = (task) => {
-
     if (task.type === 'social') {
       window.open(task.link, '_blank', 'noopener,noreferrer');
-      setReadyToClaim(prev => [...prev, task.id]);
+      setReadyToClaim((prev) => [...prev, task.id]);
     }
   };
-  // 3. Handle the "Claim" button (Gives shards, shuts it down forever)
-  const handleClaim = async (task) => {
-    const newBalance = balance + task.reward;
-    const safeCompletedTasks = Array.isArray(completedTasks) ? completedTasks : [];
-    const newCompleted = [...safeCompletedTasks, task.id];
 
-    setBalance(newBalance);
-    setCompletedTasks(newCompleted);
-    setReadyToClaim(prev => prev.filter(id => id !== task.id));
-
-    await supabase
-      .from('players')
-      .update({
-        shard_balance: newBalance,
-        completed_tasks: newCompleted
-      })
-      .eq(DB_PLAYER_ID, String(user.id));
-      
-    setAppNotice({
-      show: true,
-      message: `You earned ${task.reward.toLocaleString()} Shards!`,
-      success: true,
-    });
+  const taskIsReady = (task) => {
+    if (task.type === 'social') return readyToClaim.includes(task.id);
+    if (task.type === 'streak') return progress.streak >= task.target;
+    if (task.type === 'purchase') return playerStats.purchased === true;
+    if (task.type === 'taps') return progress.taps >= task.target;
+    if (task.type === 'streak_energy') return progress.streak >= task.target;
+    return false;
   };
 
-  if (loadingTasks) return <div style={{ color: '#888', marginTop: '20px' }}>Loading Tasks...</div>;
+  const progressLabel = (task) => {
+    if (task.type === 'streak' || task.type === 'streak_energy') {
+      return `${Math.min(progress.streak, task.target)} / ${task.target}`;
+    }
+    if (task.type === 'taps') {
+      return `${Math.min(progress.taps, task.target).toLocaleString()} / ${task.target.toLocaleString()}`;
+    }
+    return '';
+  };
+
+  /** Original path: shard rewards */
+  const handleClaimShards = async (task) => {
+    if (!userId || claimingId) return;
+    const safeCompletedTasks = Array.isArray(completedTasks) ? completedTasks : [];
+    if (safeCompletedTasks.includes(task.id)) return;
+
+    setClaimingId(task.id);
+    try {
+      const newBalance = Number(balance) + Number(task.reward);
+      const newCompleted = [...safeCompletedTasks, task.id];
+
+      setBalance(newBalance);
+      setCompletedTasks(newCompleted);
+      setReadyToClaim((prev) => prev.filter((id) => id !== task.id));
+
+      const { error } = await supabase
+        .from('players')
+        .update({
+          shard_balance: newBalance,
+          completed_tasks: newCompleted,
+          last_updated: new Date().toISOString(),
+        })
+        .eq(DB_PLAYER_ID, userId);
+      if (error) throw error;
+
+      setAppNotice({
+        show: true,
+        message: `You earned ${task.reward.toLocaleString()} Shards!`,
+        success: true,
+      });
+    } catch (err) {
+      console.error('Shard task claim failed', err);
+      setAppNotice({
+        show: true,
+        message: err?.message || 'Could not claim task. Try again.',
+        success: false,
+      });
+    } finally {
+      setClaimingId(null);
+    }
+  };
+
+  /** New path: energy rewards */
+  const handleClaimEnergy = async (task) => {
+    if (!userId || claimingId) return;
+    const safeCompleted = Array.isArray(completedTasks) ? completedTasks : [];
+    if (safeCompleted.includes(task.id)) return;
+    if (!taskIsReady(task)) return;
+
+    setClaimingId(task.id);
+    try {
+      const amount = Number(task.energyReward) || 0;
+      const newCompleted = [...safeCompleted, task.id];
+
+      const { error: claimErr } = await supabase
+        .from('players')
+        .update({
+          completed_tasks: newCompleted,
+          last_updated: new Date().toISOString(),
+        })
+        .eq(DB_PLAYER_ID, userId);
+      if (claimErr) throw claimErr;
+
+      setCompletedTasks(newCompleted);
+
+      if (typeof grantTaskEnergy === 'function') {
+        await grantTaskEnergy({
+          amount,
+          taskId: task.id,
+          dayLimited: !!task.dayLimited,
+          expiresAt: task.dayLimited ? utcMidnightIso() : null,
+        });
+      }
+
+      const dayNote = task.dayLimited ? ' (for today UTC)' : '';
+      setAppNotice({
+        show: true,
+        message: `⚡ +${amount} Daily limit claimed${dayNote}!`,
+        success: true,
+      });
+    } catch (err) {
+      console.error('Energy task claim failed', err);
+      setAppNotice({
+        show: true,
+        message: err?.message || 'Could not claim task. Try again.',
+        success: false,
+      });
+    } finally {
+      setClaimingId(null);
+    }
+  };
+
+  const handleClaim = (task) => {
+    if (isEnergyTask(task)) handleClaimEnergy(task);
+    else handleClaimShards(task);
+  };
+
+  if (loadingTasks) {
+    return <div style={{ color: '#888', marginTop: '20px' }}>Loading Tasks...</div>;
+  }
 
   const safeCompletedTasks = Array.isArray(completedTasks) ? completedTasks : [];
+
   return (
-    <div style={{ flex: 1, width: '100%', display: 'flex', flexDirection: 'column', paddingBottom: '100px', padding: '20px', boxSizing: 'border-box' }}>
+    <div
+      style={{
+        flex: 1,
+        width: '100%',
+        display: 'flex',
+        flexDirection: 'column',
+        paddingBottom: '100px',
+        padding: '20px',
+        boxSizing: 'border-box',
+      }}
+    >
       <AppNotice
         show={appNotice.show}
         message={appNotice.message}
@@ -94,70 +324,232 @@ const Tasks = ({ balance, setBalance, player, tgUser }) => {
       <div style={{ flex: 1, overflowY: 'auto', paddingBottom: '120px' }}>
         {TASK_LIST.map((task) => {
           const isCompleted = safeCompletedTasks.includes(task.id);
-          
-          // Determine if the task is ready to claim based on its type
-          let isReady = false;
-          if (task.type === 'social') isReady = readyToClaim.includes(task.id);
-          if (task.type === 'streak') isReady = playerStats.streak >= task.target;
-          if (task.type === 'purchase') isReady = playerStats.purchased === true;
+          const isReady = !isCompleted && taskIsReady(task);
+          const iconIsImage =
+            typeof task.icon === 'string' &&
+            (task.icon.includes('.') || task.icon.includes('http'));
+
+          const rewardLine = isEnergyTask(task)
+            ? `+${task.energyReward} Daily limit${task.dayLimited ? ' · 1 UTC day' : ''}`
+            : `+${Number(task.reward).toLocaleString()} Shards`;
 
           return (
-            <div key={task.id} style={{ 
-              background: '#111', 
-              border: '1px solid #555', 
-              borderRadius: '12px', 
-              padding: '15px', 
-              marginBottom: '10px', 
-              display: 'flex', 
-              alignItems: 'center', 
-              justifyContent: 'space-between',
-              opacity: isCompleted ? 0.5 : 1
-            }}>
-              
-              <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
+            <div
+              key={task.id}
+              style={{
+                background: '#111',
+                border: '1px solid #555',
+                borderRadius: '12px',
+                padding: '15px',
+                marginBottom: '10px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                opacity: isCompleted ? 0.5 : 1,
+                gap: 12,
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '15px', minWidth: 0 }}>
                 <div style={{ fontSize: '28px', display: 'flex', alignItems: 'center' }}>
-                  {task.icon.includes('.') || task.icon.includes('http') ? (
-                    <img src={task.icon} alt="icon" style={{ width: '32px', height: '32px', objectFit: 'contain' }} />
+                  {iconIsImage ? (
+                    <img
+                      src={task.icon}
+                      alt="icon"
+                      style={{ width: '32px', height: '32px', objectFit: 'contain' }}
+                    />
                   ) : (
                     task.icon
                   )}
                 </div>
-                
-                {/* YOUR TITLES AND REWARDS RESTORED HERE! */}
-                <div style={{ textAlign: 'left' }}>
-                  <div style={{ color: '#fff', fontWeight: 'bold', fontSize: '14px' }}>{task.title}</div>
-                  <div style={{ color: '#ffd700', fontSize: '12px', marginTop: '4px' }}>
-                    +{task.reward.toLocaleString()} Shards
+
+                <div style={{ textAlign: 'left', minWidth: 0 }}>
+                  <div style={{ color: '#fff', fontWeight: 'bold', fontSize: '14px' }}>
+                    {task.title}
                   </div>
+                  <div style={{ color: '#ffd700', fontSize: '12px', marginTop: '4px' }}>
+                    {rewardLine}
+                  </div>
+                  {task.description ? (
+                    <div style={{ color: '#666', fontSize: 11, marginTop: 2 }}>{task.description}</div>
+                  ) : null}
                 </div>
               </div>
 
-              {/* DYNAMIC BUTTON LOGIC */}
               {isCompleted ? (
-                <span style={{ color: '#4ade80', fontSize: '12px', fontWeight: 'bold' }}>✓ DONE</span>
+                <span style={{ color: '#4ade80', fontSize: '12px', fontWeight: 'bold', flexShrink: 0 }}>
+                  ✓ DONE
+                </span>
               ) : isReady ? (
-                <button onClick={() => handleClaim(task)} style={{ background: '#fbef43', color: '#000', border: 'none', padding: '8px 15px', borderRadius: '20px', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer' }}>
-                  Claim
+                <button
+                  type="button"
+                  disabled={!!claimingId}
+                  onClick={() => handleClaim(task)}
+                  style={{
+                    background: '#fbef43',
+                    color: '#000',
+                    border: 'none',
+                    padding: '8px 15px',
+                    borderRadius: '20px',
+                    fontSize: '12px',
+                    fontWeight: 'bold',
+                    cursor: claimingId ? 'wait' : 'pointer',
+                    flexShrink: 0,
+                    outline: 'none',
+                    WebkitTapHighlightColor: 'transparent',
+                  }}
+                >
+                  {claimingId === task.id ? '…' : 'Claim'}
+                </button>
+              ) : task.type === 'streak' ||
+                task.type === 'streak_energy' ||
+                task.type === 'taps' ? (
+                <button
+                  type="button"
+                  disabled
+                  style={{
+                    background: '#333',
+                    color: '#888',
+                    border: '1px solid #444',
+                    padding: '8px 12px',
+                    borderRadius: '20px',
+                    fontSize: '11px',
+                    fontWeight: 'bold',
+                    flexShrink: 0,
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {progressLabel(task)}
+                </button>
+              ) : task.type === 'purchase' ? (
+                <button
+                  type="button"
+                  disabled
+                  style={{
+                    background: '#333',
+                    color: '#888',
+                    border: '1px solid #444',
+                    padding: '8px 15px',
+                    borderRadius: '20px',
+                    fontSize: '12px',
+                    fontWeight: 'bold',
+                  }}
+                >
+                  Pending
                 </button>
               ) : (
-                // RENDER PROGRESS OR "GO" DEPENDING ON TYPE
-                task.type === 'streak' ? (
-                  <button disabled style={{ background: '#333', color: '#888', border: '1px solid #444', padding: '8px 15px', borderRadius: '20px', fontSize: '12px', fontWeight: 'bold' }}>
-                    {Math.min(playerStats.streak, task.target)} / {task.target}
-                  </button>
-                ) : task.type === 'purchase' ? (
-                  <button disabled style={{ background: '#333', color: '#888', border: '1px solid #444', padding: '8px 15px', borderRadius: '20px', fontSize: '12px', fontWeight: 'bold' }}>
-                    Pending
-                  </button>
-                ) : (
-                  <button onClick={() => handleGo(task)} style={{ background: '#222', color: '#fff', border: '1px solid #ffd700', padding: '8px 15px', borderRadius: '20px', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer' }}>
-                    Go
-                  </button>
-                )
+                <button
+                  type="button"
+                  onClick={() => handleGo(task)}
+                  style={{
+                    background: '#222',
+                    color: '#fff',
+                    border: '1px solid #ffd700',
+                    padding: '8px 15px',
+                    borderRadius: '20px',
+                    fontSize: '12px',
+                    fontWeight: 'bold',
+                    cursor: 'pointer',
+                    outline: 'none',
+                    WebkitTapHighlightColor: 'transparent',
+                  }}
+                >
+                  Go
+                </button>
               )}
             </div>
           );
         })}
+
+        {/* Player ideas — email Gift2U; possible reward if shipped */}
+        <div
+          style={{
+            marginTop: 18,
+            marginBottom: 24,
+            background: 'linear-gradient(145deg, #1a1520 0%, #111 100%)',
+            border: '1px solid rgba(255, 215, 0, 0.35)',
+            borderRadius: 14,
+            padding: 16,
+            textAlign: 'left',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+            <span style={{ fontSize: 22 }}>💡</span>
+            <div style={{ color: '#ffd700', fontWeight: 'bold', fontSize: 15 }}>Got an idea?</div>
+          </div>
+          <p style={{ color: '#ccc', fontSize: 12, lineHeight: 1.45, margin: '0 0 10px' }}>
+            Send features, tasks, or balance ideas to the team. If we ship your idea in Gift2U / GiftTap,
+            you may receive a reward (shards, energy boost, or other in-game perk — decided case by case).
+          </p>
+          <p style={{ color: '#888', fontSize: 11, lineHeight: 1.4, margin: '0 0 12px' }}>
+            Include your in-game username or player ID so we can find you. No guarantee every idea is used.
+          </p>
+          <button
+            type="button"
+            onClick={async () => {
+              const result = await openIdeasEmail({
+                username: user?.username,
+                playerId: user?.id,
+              });
+              // Always copy so they can paste if no mail app / WebView blocks mailto
+              const copied = await copyIdeasEmail();
+              setAppNotice({
+                show: true,
+                message: copied
+                  ? `Opening your mail app…\n\n${IDEAS_EMAIL} is also copied — paste it if mail did not open.`
+                  : `Open your mail app and write to:\n${IDEAS_EMAIL}\n\n(Subject: Gift2U idea / suggestion)`,
+                success: true,
+                title: 'Send your idea',
+              });
+              return result;
+            }}
+            style={{
+              display: 'block',
+              width: '100%',
+              textAlign: 'center',
+              background: '#fbef43',
+              color: '#000',
+              fontWeight: 'bold',
+              fontSize: 13,
+              padding: '12px 14px',
+              borderRadius: 12,
+              border: 'none',
+              marginBottom: 8,
+              cursor: 'pointer',
+              outline: 'none',
+              WebkitTapHighlightColor: 'transparent',
+            }}
+          >
+            Open mail → {IDEAS_EMAIL}
+          </button>
+          <button
+            type="button"
+            onClick={async () => {
+              const copied = await copyIdeasEmail();
+              setAppNotice({
+                show: true,
+                message: copied
+                  ? `Copied ${IDEAS_EMAIL} — paste it in Gmail, Outlook, etc.`
+                  : `Email: ${IDEAS_EMAIL}`,
+                success: true,
+              });
+            }}
+            style={{
+              width: '100%',
+              background: 'transparent',
+              color: '#ffd700',
+              border: '1px solid rgba(255, 215, 0, 0.4)',
+              borderRadius: 12,
+              padding: '10px',
+              fontSize: 12,
+              fontWeight: 'bold',
+              cursor: 'pointer',
+              outline: 'none',
+              WebkitTapHighlightColor: 'transparent',
+            }}
+          >
+            Copy email address
+          </button>
+        </div>
       </div>
     </div>
   );

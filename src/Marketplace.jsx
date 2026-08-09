@@ -74,10 +74,17 @@ function ShopItemIcon({ item, size = 52, variant = 'row' }) {
   );
 }
 
-const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, tgUser, playerWallet, decryptedPhrase }) => {
+const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, tgUser, playerWallet, decryptedPhrase, initialTab, onInitialTabConsumed }) => {
   const user = player || tgUser;
   // Shop hub first — show ALL options (Free / Premium / NFT / Backpack) before any list
-  const [activeTab, setActiveTab] = useState('home');
+  const [activeTab, setActiveTab] = useState(initialTab || 'home');
+
+  // Deep-link from daily-limit CTA (Expanded Battery under Free / upgrades)
+  useEffect(() => {
+    if (!initialTab) return;
+    setActiveTab(initialTab);
+    if (typeof onInitialTabConsumed === 'function') onInitialTabConsumed();
+  }, [initialTab, onInitialTabConsumed]);
   const [marketFilter, setMarketFilter] = useState('All');
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [itemToBuy, setItemToBuy] = useState(null);

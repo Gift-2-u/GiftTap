@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import AppNotice from './AppNotice';
+import { IDEAS_EMAIL, openIdeasEmail, copyIdeasEmail } from './contactIdeas';
 
 // We store the massive arrays here to keep the main game file clean!
 const ALL_CURRENCIES = [
@@ -62,6 +63,8 @@ const Menu = ({
     message: '',
     success: false,
   });
+  /** Settings row expands a sub-menu (language, currency, password, 12 words) */
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   // Lock background scroll while menu is open (mobile browser chrome)
   useEffect(() => {
@@ -71,6 +74,11 @@ const Menu = ({
     return () => {
       document.body.style.overflow = prev;
     };
+  }, [isMenuOpen]);
+
+  // Collapse settings when menu closes so it starts closed next open
+  useEffect(() => {
+    if (!isMenuOpen) setSettingsOpen(false);
   }, [isMenuOpen]);
 
   if (!isMenuOpen && !appNotice.show) return null;
@@ -256,7 +264,7 @@ const Menu = ({
               )}
             </div>
 
-            {/* Scrollable body */}
+            {/* Scrollable body — order: Home → Settings → Roadmap → Guide → Ranks → Ideas */}
             <div
               style={{
                 flex: '1 1 auto',
@@ -270,7 +278,7 @@ const Menu = ({
                 boxSizing: 'border-box',
               }}
             >
-              {/* Back to gift2u.fun marketing site */}
+              {/* 1. Gift2u Home */}
               <a href="/" style={rowBtn}>
                 <span
                   style={{
@@ -297,6 +305,220 @@ const Menu = ({
                 <span style={{ color: '#888' }}>{'❯'}</span>
               </a>
 
+              {/* 2. Settings — tap arrow / row to open sub-menu */}
+              <div style={{ marginBottom: '10px' }}>
+                <button
+                  type="button"
+                  onClick={() => setSettingsOpen((o) => !o)}
+                  aria-expanded={settingsOpen}
+                  style={{
+                    ...rowBtn,
+                    marginBottom: settingsOpen ? 0 : '10px',
+                    borderBottomLeftRadius: settingsOpen ? 0 : '12px',
+                    borderBottomRightRadius: settingsOpen ? 0 : '12px',
+                    borderColor: settingsOpen ? '#3a3a20' : '#222',
+                    background: settingsOpen ? '#151510' : '#111',
+                  }}
+                >
+                  <span
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '10px',
+                      color: '#ffd700',
+                      fontWeight: 'bold',
+                    }}
+                  >
+                    <span style={{ fontSize: '18px' }} aria-hidden>
+                      ⚙️
+                    </span>
+                    Settings
+                  </span>
+                  <span
+                    style={{
+                      color: '#888',
+                      fontSize: '16px',
+                      transform: settingsOpen ? 'rotate(90deg)' : 'rotate(0deg)',
+                      transition: 'transform 0.15s ease',
+                      display: 'inline-block',
+                    }}
+                    aria-hidden
+                  >
+                    ❯
+                  </span>
+                </button>
+
+                {settingsOpen && (
+                  <div
+                    style={{
+                      background: '#0d0d0f',
+                      border: '1px solid #2a2a2a',
+                      borderTop: 'none',
+                      borderBottomLeftRadius: '12px',
+                      borderBottomRightRadius: '12px',
+                      padding: '10px 10px 6px',
+                      marginBottom: '10px',
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        background: '#111',
+                        padding: '12px',
+                        borderRadius: '10px',
+                        marginBottom: '8px',
+                        border: '1px solid #222',
+                      }}
+                    >
+                      <span style={{ color: '#fff', fontWeight: 'bold', fontSize: '13px' }}>
+                        🌐 {t('language')}
+                      </span>
+                      <select
+                        value={appLanguage}
+                        onChange={(e) => setAppLanguage(e.target.value)}
+                        style={{
+                          background: '#333',
+                          color: '#fff',
+                          border: '1px solid #555',
+                          padding: '8px 10px',
+                          borderRadius: '8px',
+                          cursor: 'pointer',
+                          fontWeight: 'bold',
+                          outline: 'none',
+                          maxWidth: '55%',
+                        }}
+                      >
+                        {ALL_LANGUAGES.map((lang) => (
+                          <option key={lang.code} value={lang.code}>
+                            {lang.code} - {lang.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        background: '#111',
+                        padding: '12px',
+                        borderRadius: '10px',
+                        marginBottom: '8px',
+                        border: '1px solid #222',
+                      }}
+                    >
+                      <span style={{ color: '#fff', fontWeight: 'bold', fontSize: '13px' }}>
+                        💱 {t('currency')}
+                      </span>
+                      <select
+                        value={displayCurrency}
+                        onChange={(e) => setDisplayCurrency(e.target.value)}
+                        style={{
+                          background: '#333',
+                          color: '#fff',
+                          border: '1px solid #555',
+                          padding: '8px 10px',
+                          borderRadius: '8px',
+                          cursor: 'pointer',
+                          fontWeight: 'bold',
+                          outline: 'none',
+                          maxWidth: '55%',
+                        }}
+                      >
+                        {ALL_CURRENCIES.map((currency) => (
+                          <option key={currency} value={currency}>
+                            {currency}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {onOpenClaimAccount && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsMenuOpen(false);
+                          onOpenClaimAccount();
+                        }}
+                        style={{
+                          ...rowBtn,
+                          marginBottom: '8px',
+                          background: needsPassword
+                            ? 'rgba(255,215,0,0.08)'
+                            : '#111',
+                          border: needsPassword
+                            ? '1px solid #ffd700'
+                            : '1px solid #222',
+                        }}
+                      >
+                        <span
+                          style={{
+                            color: needsPassword ? '#ffd700' : '#fff',
+                            fontWeight: 'bold',
+                            fontSize: '13px',
+                          }}
+                        >
+                          {needsPassword
+                            ? '⚡ Set username & password'
+                            : '✏️ Change username / password'}
+                        </span>
+                        <span style={{ color: '#888' }}>{'❯'}</span>
+                      </button>
+                    )}
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsMenuOpen(false);
+                        onOpenSecret();
+                      }}
+                      style={{ ...rowBtn, marginBottom: '4px' }}
+                    >
+                      <span style={{ color: '#ef4444', fontWeight: 'bold', fontSize: '13px' }}>
+                        🔐 {t('secret') || 'View 12 words'}
+                      </span>
+                      <span style={{ color: '#888' }}>{'❯'}</span>
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* 3. Roadmap */}
+              {typeof onOpenRoadmap === 'function' && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsMenuOpen(false);
+                    onOpenRoadmap();
+                  }}
+                  style={rowBtn}
+                >
+                  <span style={{ color: '#a78bfa', fontWeight: 'bold' }}>
+                    🗺️ {t('roadmap') || 'Roadmap'}
+                  </span>
+                  <span style={{ color: '#888' }}>{'❯'}</span>
+                </button>
+              )}
+
+              {/* 4. Game guide */}
+              <button
+                type="button"
+                onClick={() => {
+                  setIsMenuOpen(false);
+                  onOpenWhitepaper();
+                }}
+                style={rowBtn}
+              >
+                <span style={{ color: '#fff', fontWeight: 'bold' }}>
+                  📖 {t('rules') || 'Game guide'}
+                </span>
+                <span style={{ color: '#888' }}>{'❯'}</span>
+              </button>
+
+              {/* 5. Ranks / Leaderboard */}
               {typeof onOpenLeaderboard === 'function' && (
                 <button
                   type="button"
@@ -313,156 +535,43 @@ const Menu = ({
                 </button>
               )}
 
-              <div
+              {/* 6. Ideas & suggestions */}
+              <button
+                type="button"
+                onClick={async () => {
+                  setIsMenuOpen(false);
+                  await openIdeasEmail();
+                  const copied = await copyIdeasEmail();
+                  setAppNotice({
+                    show: true,
+                    message: copied
+                      ? `Opening your mail app to ${IDEAS_EMAIL}…\n\nAddress copied if mail did not open.`
+                      : `Write to ${IDEAS_EMAIL} from your mail app.`,
+                    success: true,
+                    title: 'Ideas & suggestions',
+                  });
+                }}
                 style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  background: '#111',
-                  padding: '15px',
-                  borderRadius: '12px',
-                  marginBottom: '10px',
-                  border: '1px solid #222',
+                  ...rowBtn,
+                  border: 'none',
                 }}
               >
-                <span style={{ color: '#fff', fontWeight: 'bold' }}>
-                  🌐 {t('language')}
-                </span>
-                <select
-                  value={appLanguage}
-                  onChange={(e) => setAppLanguage(e.target.value)}
-                  style={{
-                    background: '#333',
-                    color: '#fff',
-                    border: '1px solid #555',
-                    padding: '8px 10px',
-                    borderRadius: '8px',
-                    cursor: 'pointer',
-                    fontWeight: 'bold',
-                    outline: 'none',
-                    maxWidth: '55%',
-                  }}
-                >
-                  {ALL_LANGUAGES.map((lang) => (
-                    <option key={lang.code} value={lang.code}>
-                      {lang.code} - {lang.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div
-                style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  background: '#111',
-                  padding: '15px',
-                  borderRadius: '12px',
-                  marginBottom: '10px',
-                  border: '1px solid #222',
-                }}
-              >
-                <span style={{ color: '#fff', fontWeight: 'bold' }}>
-                  💱 {t('currency')}
-                </span>
-                <select
-                  value={displayCurrency}
-                  onChange={(e) => setDisplayCurrency(e.target.value)}
-                  style={{
-                    background: '#333',
-                    color: '#fff',
-                    border: '1px solid #555',
-                    padding: '8px 10px',
-                    borderRadius: '8px',
-                    cursor: 'pointer',
-                    fontWeight: 'bold',
-                    outline: 'none',
-                    maxWidth: '55%',
-                  }}
-                >
-                  {ALL_CURRENCIES.map((currency) => (
-                    <option key={currency} value={currency}>
-                      {currency}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {onOpenClaimAccount && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsMenuOpen(false);
-                    onOpenClaimAccount();
-                  }}
-                  style={{
-                    ...rowBtn,
-                    background: needsPassword
-                      ? 'rgba(255,215,0,0.08)'
-                      : '#111',
-                    border: needsPassword
-                      ? '1px solid #ffd700'
-                      : '1px solid #222',
-                  }}
-                >
+                <span style={{ color: '#e9d5ff', fontWeight: 'bold', textAlign: 'left' }}>
+                  💡 Ideas & suggestions
                   <span
                     style={{
-                      color: needsPassword ? '#ffd700' : '#fff',
-                      fontWeight: 'bold',
+                      display: 'block',
+                      color: '#888',
+                      fontSize: 11,
+                      fontWeight: 'normal',
+                      marginTop: 4,
                     }}
                   >
-                    {needsPassword
-                      ? '⚡ Set username & password'
-                      : '✏️ Change username / password'}
+                    {IDEAS_EMAIL} · opens your mail app
                   </span>
-                  <span style={{ color: '#888' }}>{'❯'}</span>
-                </button>
-              )}
-
-              <button
-                type="button"
-                onClick={() => {
-                  setIsMenuOpen(false);
-                  onOpenSecret();
-                }}
-                style={rowBtn}
-              >
-                <span style={{ color: '#ef4444', fontWeight: 'bold' }}>
-                  🔐 {t('secret')}
                 </span>
                 <span style={{ color: '#888' }}>{'❯'}</span>
               </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setIsMenuOpen(false);
-                  onOpenWhitepaper();
-                }}
-                style={rowBtn}
-              >
-                <span style={{ color: '#fff', fontWeight: 'bold' }}>
-                  📖 {t('rules')}
-                </span>
-                <span style={{ color: '#888' }}>{'❯'}</span>
-              </button>
-
-              {typeof onOpenRoadmap === 'function' && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsMenuOpen(false);
-                    onOpenRoadmap();
-                  }}
-                  style={rowBtn}
-                >
-                  <span style={{ color: '#a78bfa', fontWeight: 'bold' }}>
-                    🗺️ {t('roadmap') || 'Roadmap'}
-                  </span>
-                  <span style={{ color: '#888' }}>{'❯'}</span>
-                </button>
-              )}
 
               <div
                 style={{

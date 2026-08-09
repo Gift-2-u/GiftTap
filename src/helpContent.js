@@ -24,7 +24,7 @@ export const HELP_TIPS = {
   energy_daily: {
     title: 'Energy & Daily Limit',
     body:
-      'Energy: each tap costs Energy (usually 1). Your pool recharges over time (about 1 every 3 seconds, up to the pool max). Shop items and Free Energy ads can help.\n\n' +
+      'Energy: each tap costs Energy (usually 1). Your pool recharges over time (about 1 every 1.5 seconds, up to the pool max). Shop items and Free Energy ads can help.\n\n' +
       'Daily Limit: max taps for the UTC day. The bar under Energy shows progress. When full, wait for reset or use a boost.\n\n' +
       'Full details: Menu → Game Guide.',
   },
@@ -54,7 +54,7 @@ export const HELP_TIPS = {
     title: 'Energy',
     body:
       'Every tap spends Energy (usually 1).\n\n' +
-      'Your Energy pool recharges over time (about 1 every 3 seconds, up to the pool max).\n\n' +
+      'Your Energy pool recharges over time (about 1 every 1.5 seconds, up to the pool max).\n\n' +
       'Shop items can refill or expand Energy. Free Energy ads can raise daily capacity.',
   },
   daily_limit: {
