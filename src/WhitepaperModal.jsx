@@ -50,7 +50,23 @@ const WhitepaperModal = ({ isWhitepaperOpen, setIsWhitepaperOpen, onClose }) => 
     },
     {
       id: 9,
-      title: "9. Code of Conduct",
+      title: "9. Leaderboards (Ranks)",
+      content:
+        "Open Ranks from the bottom nav (or Menu → Ranks). There are two boards:\n\n" +
+        "ALL-TIME\n" +
+        "• Ordered by lifetime taps (your total mining history).\n" +
+        "• Always on — a long-term prestige board. No monthly reset.\n\n" +
+        "SEASON\n" +
+        "• Seasons run monthly (each calendar month / season period shown in-app).\n" +
+        "• Ordered by your score for the current season (season mining this period).\n" +
+        "• At the end of every month, a snapshot of the season board is taken to select winners (prizes / giveaways as announced for that season).\n" +
+        "• Main season board uses a rising activity floor so empty or idle accounts do not crowd the top: about 15% of a 1,000-taps-per-day pace × day of the season (e.g. day 1 ≥ 150, day 10 ≥ 1,500). Fall under that floor and you leave the main list, but you still see your name and rank on the last line so you know where you stand.\n" +
+        "• Some promotions (for example GiftLocksmith giveaway tiers) count only players on the main season board — play enough each day to stay eligible.\n\n" +
+        "Fair play rules apply: multi-accounts and bots can be disqualified from ranks and prizes. See Code of Conduct.",
+    },
+    {
+      id: 10,
+      title: "10. Code of Conduct",
       content: "No auto-clickers, scripts, multi-account mining, or abuse of swap/referral systems.\n\nFlagged accounts may be locked and lose G2Ushard-to-G2U swap eligibility and other rewards. Play fair."
     }
   ];

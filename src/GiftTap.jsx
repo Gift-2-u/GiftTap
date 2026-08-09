@@ -80,7 +80,7 @@ import Tasks from './Tasks';
 import {
   markPlayedTodayUtc,
   scheduleStreakDeviceNotice,
-  ensureNotificationPermission,
+  armStreakDeviceRemindersAfterPlay,
 } from './streakReminders';
 import Friends from './Friends';
 import Menu from './Menu';
@@ -479,8 +479,7 @@ const GiftTapGame = () => {
   const [hasAccess, setHasAccess] = useState(false);
   const [dailyTaps, setDailyTaps] = useState(0);
   const [streak, setStreak] = useState(0);
-  /** After first valid tap of UTC day — remind to return tomorrow */
-  const [showStreakComeBack, setShowStreakComeBack] = useState(false);
+
   const [lastTapDate, setLastTapDate] = useState(''); // '' until DB load — never default to today
   const [isPressed, setIsPressed] = useState(false);
   const [isShopOpen, setIsShopOpen] = useState(false);
@@ -2286,23 +2285,13 @@ const GiftTapGame = () => {
 
       // 2. Use currentDailyTaps (already 0 after midnight), not stale dailyTaps state
       if (currentDailyTaps >= currentMaxLimit) {
-        // Daily limit notice + Battery CTA; streak come-back after dismiss (once / UTC day)
-        const todayUtc = utcTodayStr(now);
-        let showComeBackAfter = false;
-        try {
-          const k = `gift2u_streak_comeback_${todayUtc}`;
-          if (!localStorage.getItem(k)) {
-            localStorage.setItem(k, '1');
-            showComeBackAfter = true;
-          }
-        } catch {
-          showComeBackAfter = true;
-        }
+        // One in-game notice only. Streak "come back" = device notification (they're not in-game).
         setAppNotice({
           show: true,
           message:
             "Daily limit reached for this UTC day.\n\n" +
-            "Want to keep playing? Expanded Battery adds +1,000 max taps until UTC midnight (Shop · Free).",
+            "Want to keep playing? Expanded Battery adds +1,000 max taps until UTC midnight (Shop · Free).\n\n" +
+            "If you allow notifications, we’ll remind you on your device tomorrow to keep your streak — not another popup in the game.",
           loading: false,
           success: false,
           title: "Daily limit reached",
@@ -2315,9 +2304,8 @@ const GiftTapGame = () => {
                 setShopFocusTab("upgrades");
                 setCurrentPage("shop");
               }
-              if (showComeBackAfter) {
-                setShowStreakComeBack(true);
-              }
+              // User gesture → can request OS notification permission once, then schedule device reminder
+              armStreakDeviceRemindersAfterPlay().catch(() => {});
             },
           },
         });
@@ -5634,101 +5622,6 @@ const GiftTapGame = () => {
           />
 
           {/* THE AD MODAL - Refactored to match your native game architecture */}
-          
-      {/* Streak: come back tomorrow (after first valid tap of UTC day) */}
-      {showStreakComeBack && (
-        <div
-          style={{
-            position: 'fixed',
-            inset: 0,
-            background: 'rgba(0,0,0,0.72)',
-            zIndex: 9999,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: 20,
-            boxSizing: 'border-box',
-          }}
-          onClick={() => setShowStreakComeBack(false)}
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              background: '#1c1e22',
-              border: '1px solid #ffd700',
-              borderRadius: 16,
-              padding: '22px 20px',
-              maxWidth: 340,
-              width: '100%',
-              textAlign: 'center',
-            }}
-          >
-            <div style={{ fontSize: 36, marginBottom: 8 }}>🔥</div>
-            <h3 style={{ color: '#ffd700', margin: '0 0 10px', fontSize: 18 }}>
-              Come back tomorrow!
-            </h3>
-            <p style={{ color: '#ccc', fontSize: 13, lineHeight: 1.45, margin: '0 0 12px' }}>
-              You played today (UTC). Open Gift2U again tomorrow and tap to keep your streak.
-              Miss a full UTC day and it resets to 0.
-            </p>
-            <p style={{ color: '#888', fontSize: 11, lineHeight: 1.4, margin: '0 0 16px' }}>
-              Optional: allow notifications and we will remind you before the UTC day ends if you have not played yet.
-            </p>
-            <button
-              type="button"
-              onClick={async () => {
-                try {
-                  const perm = await ensureNotificationPermission();
-                  if (perm === 'granted') {
-                    scheduleStreakDeviceNotice(2);
-                    notify('Streak reminders on. We will nudge you before UTC midnight if you forget.');
-                  } else if (perm === 'denied') {
-                    notify('Notifications blocked. You can enable them in browser/app settings.');
-                  } else if (perm === 'unsupported') {
-                    notify('This device does not support notifications.');
-                  }
-                } catch {
-                  /* ignore */
-                }
-                setShowStreakComeBack(false);
-              }}
-              style={{
-                width: '100%',
-                background: '#fbef43',
-                color: '#000',
-                border: 'none',
-                borderRadius: 12,
-                padding: '12px',
-                fontWeight: 'bold',
-                fontSize: 14,
-                cursor: 'pointer',
-                marginBottom: 8,
-                outline: 'none',
-              }}
-            >
-              Enable reminder & close
-            </button>
-            <button
-              type="button"
-              onClick={() => setShowStreakComeBack(false)}
-              style={{
-                width: '100%',
-                background: 'transparent',
-                color: '#888',
-                border: '1px solid #444',
-                borderRadius: 12,
-                padding: '10px',
-                fontWeight: 'bold',
-                fontSize: 13,
-                cursor: 'pointer',
-                outline: 'none',
-              }}
-            >
-              Just close
-            </button>
-          </div>
-        </div>
-      )}
 
       {isAdModalOpen && (
             <div
