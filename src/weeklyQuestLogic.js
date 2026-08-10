@@ -4,6 +4,20 @@
 
 export const WEEKLY_ENERGY_REWARD = 100;
 
+/** End-of-week prize: claim after enough weekly quests claimed */
+export const WEEKLY_PRIZE = {
+  id: 'wq_week_prize',
+  title: 'Weekly prize — Free Instant Refill',
+  description:
+    'Claim 7 of 10 weekly quests this UTC week, then claim this free boost (goes to Pack / Backpack).',
+  icon: '🎁',
+  /** How many of the energy quests must be claimed first (10 quests total) */
+  needClaims: 7,
+  /** Shop item id added to inventory */
+  rewardItemId: 'refill',
+  rewardLabel: 'Instant Refill',
+};
+
 /** ISO week id in UTC, e.g. 2026-W33 */
 export function getUtcWeekId(date = new Date()) {
   const d = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
@@ -210,4 +224,22 @@ export function markQuestClaimed(state, weekId, questId) {
   const s = ensureWeeklyState(state, weekId);
   if (s.claimed.includes(questId)) return s;
   return { ...s, claimed: [...s.claimed, questId] };
+}
+
+/** Claims that count toward the weekly prize (energy quests only, not the prize itself) */
+export function countWeeklyQuestsClaimed(state) {
+  const s = ensureWeeklyState(state);
+  return s.claimed.filter((id) => id && id !== WEEKLY_PRIZE.id).length;
+}
+
+export function weeklyPrizeProgress(state) {
+  const current = countWeeklyQuestsClaimed(state);
+  const need = WEEKLY_PRIZE.needClaims;
+  const claimed = isQuestClaimed(state, WEEKLY_PRIZE.id);
+  return {
+    current,
+    need,
+    ready: !claimed && current >= need,
+    claimed,
+  };
 }

@@ -5,16 +5,18 @@ import AppNotice from './AppNotice';
 import {
   WEEKLY_QUEST_LIST,
   WEEKLY_ENERGY_REWARD,
+  WEEKLY_PRIZE,
   getUtcWeekId,
   getUtcWeekRangeLabel,
   ensureWeeklyState,
   questProgress,
   isQuestClaimed,
   markQuestClaimed,
+  weeklyPrizeProgress,
 } from './weeklyQuestLogic';
 
 /**
- * UTC week quest board — all claims +100 energy pool.
+ * UTC week quest board — energy claims + end-of-week free boost prize.
  */
 export default function WeeklyQuests({
   player,
@@ -33,6 +35,8 @@ export default function WeeklyQuests({
     () => ensureWeeklyState(weeklyState, weekId),
     [weeklyState, weekId],
   );
+
+  const prizeProg = useMemo(() => weeklyPrizeProgress(state), [state]);
 
   useEffect(() => {
     setLocalFriends1k(friends1kCount);
@@ -89,7 +93,7 @@ export default function WeeklyQuests({
 
       setAppNotice({
         show: true,
-        message: `⚡ +${WEEKLY_ENERGY_REWARD} Energy claimed!`,
+        message: `⚡ +${WEEKLY_ENERGY_REWARD} Energy claimed! (${weeklyPrizeProgress(nextState).current}/${WEEKLY_PRIZE.needClaims} for weekly prize)`,
         success: true,
       });
     } catch (e) {
@@ -97,6 +101,55 @@ export default function WeeklyQuests({
       setAppNotice({
         show: true,
         message: e?.message || 'Could not claim. Try again.',
+        success: false,
+      });
+    } finally {
+      setClaimingId(null);
+    }
+  };
+
+  const handlePrizeClaim = async () => {
+    if (!userId || claimingId) return;
+    const pp = weeklyPrizeProgress(state);
+    if (!pp.ready) return;
+
+    setClaimingId(WEEKLY_PRIZE.id);
+    try {
+      const nextState = markQuestClaimed(state, weekId, WEEKLY_PRIZE.id);
+      const { data: row } = await supabase
+        .from('players')
+        .select('inventory')
+        .eq(DB_PLAYER_ID, userId)
+        .maybeSingle();
+      const inv = { ...(row?.inventory || {}) };
+      inv.weekly_quests = nextState;
+      // Free Instant Refill → backpack
+      const itemId = WEEKLY_PRIZE.rewardItemId;
+      inv[itemId] = (Number(inv[itemId]) || 0) + 1;
+
+      const { error } = await supabase
+        .from('players')
+        .update({
+          inventory: inv,
+          last_updated: new Date().toISOString(),
+        })
+        .eq(DB_PLAYER_ID, userId);
+      if (error) throw error;
+
+      if (typeof onWeeklyStateChange === 'function') {
+        onWeeklyStateChange(nextState, inv);
+      }
+
+      setAppNotice({
+        show: true,
+        message: `🎁 Weekly prize claimed! +1 ${WEEKLY_PRIZE.rewardLabel} in Pack (Backpack). Activate it from the Shop.`,
+        success: true,
+      });
+    } catch (e) {
+      console.error('weekly prize', e);
+      setAppNotice({
+        show: true,
+        message: e?.message || 'Could not claim weekly prize.',
         success: false,
       });
     } finally {
@@ -113,18 +166,119 @@ export default function WeeklyQuests({
         onClose={() => setAppNotice((n) => ({ ...n, show: false }))}
       />
 
+      {/* Top: Weekly quests title + weekly prize (hype first) */}
       <div
         style={{
-          background: 'linear-gradient(145deg, #0f172a 0%, #111 100%)',
-          border: '1px solid rgba(50, 100, 255, 0.4)',
+          background: prizeProg.claimed
+            ? 'linear-gradient(145deg, rgba(74,222,128,0.1), #0f172a)'
+            : 'linear-gradient(145deg, rgba(255,215,0,0.14), #0f172a 55%)',
+          border: `2px solid ${prizeProg.claimed ? 'rgba(74,222,128,0.45)' : '#ffd700'}`,
           borderRadius: 14,
           padding: 14,
-          marginBottom: 12,
+          marginBottom: 14,
         }}
       >
-        <div style={{ color: '#8eb4ff', fontWeight: 'bold', fontSize: 15 }}>Weekly quests</div>
-        <div style={{ color: '#666', fontSize: 11, marginTop: 4, lineHeight: 1.4 }}>
-          {getUtcWeekRangeLabel()} · each claim +{WEEKLY_ENERGY_REWARD} energy (pool, max 500)
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'flex-start',
+            gap: 12,
+            flexWrap: 'wrap',
+          }}
+        >
+          <div style={{ minWidth: 0, flex: '1 1 140px' }}>
+            <div style={{ color: '#8eb4ff', fontWeight: 'bold', fontSize: 15 }}>Weekly quests</div>
+            <div style={{ color: '#666', fontSize: 10, marginTop: 4, lineHeight: 1.35 }}>
+              {getUtcWeekRangeLabel()}
+            </div>
+            <div style={{ color: '#888', fontSize: 10, marginTop: 4 }}>
+              Each quest +{WEEKLY_ENERGY_REWARD} energy · 10 quests total
+            </div>
+          </div>
+
+          <div style={{ flex: '1 1 180px', minWidth: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+              <span style={{ fontSize: 22 }}>{WEEKLY_PRIZE.icon}</span>
+              <div style={{ color: '#ffd700', fontWeight: 'bold', fontSize: 13, lineHeight: 1.25 }}>
+                Weekly prize
+                <div style={{ color: '#4ade80', fontSize: 12, marginTop: 2 }}>
+                  Free {WEEKLY_PRIZE.rewardLabel}
+                </div>
+              </div>
+            </div>
+            <div style={{ color: '#ccc', fontSize: 10, lineHeight: 1.35 }}>
+              Need <strong style={{ color: '#ffd700' }}>{WEEKLY_PRIZE.needClaims} of 10</strong> quests
+              claimed this week
+            </div>
+            <div style={{ color: '#888', fontSize: 10, fontWeight: 'bold', marginTop: 4 }}>
+              {Math.min(prizeProg.current, prizeProg.need)} / {prizeProg.need}
+            </div>
+            <div
+              style={{
+                marginTop: 6,
+                width: '100%',
+                height: 8,
+                borderRadius: 999,
+                background: '#0a0a0a',
+                border: '1px solid #333',
+                overflow: 'hidden',
+              }}
+            >
+              <div
+                style={{
+                  height: '100%',
+                  width: `${Math.min(100, Math.floor((prizeProg.current / prizeProg.need) * 100))}%`,
+                  background: 'linear-gradient(90deg, #ca8a04, #fbef43)',
+                  borderRadius: 999,
+                  transition: 'width 0.3s ease',
+                }}
+              />
+            </div>
+          </div>
+
+          <div style={{ flexShrink: 0, alignSelf: 'center' }}>
+            {prizeProg.claimed ? (
+              <span style={{ color: '#4ade80', fontSize: 12, fontWeight: 'bold' }}>✓ CLAIMED</span>
+            ) : prizeProg.ready ? (
+              <button
+                type="button"
+                disabled={!!claimingId}
+                onClick={handlePrizeClaim}
+                style={{
+                  background: '#fbef43',
+                  color: '#000',
+                  border: 'none',
+                  padding: '10px 14px',
+                  borderRadius: 20,
+                  fontSize: 12,
+                  fontWeight: 'bold',
+                  cursor: claimingId ? 'wait' : 'pointer',
+                }}
+              >
+                {claimingId === WEEKLY_PRIZE.id ? '…' : 'Claim prize'}
+              </button>
+            ) : (
+              <button
+                type="button"
+                disabled
+                style={{
+                  background: '#333',
+                  color: '#888',
+                  border: '1px solid #444',
+                  padding: '10px 12px',
+                  borderRadius: 20,
+                  fontSize: 11,
+                  fontWeight: 'bold',
+                }}
+              >
+                {prizeProg.current}/{prizeProg.need}
+              </button>
+            )}
+          </div>
+        </div>
+        <div style={{ color: '#666', fontSize: 10, marginTop: 10, lineHeight: 1.35 }}>
+          Prize goes to Pack (Backpack) — activate Instant Refill from the Shop when ready.
         </div>
       </div>
 
