@@ -127,9 +127,16 @@ const Tasks = ({
   grantEnergyPool,
   activeTab,
   onTabChange,
+  dailyTaps = 0,
+  maxDailyLimit = 1000,
+  playerId: playerIdProp,
 }) => {
   const user = player || tgUser;
-  const userId = user?.id ? String(user.id) : null;
+  const userId = playerIdProp
+    ? String(playerIdProp)
+    : user?.id
+      ? String(user.id)
+      : null;
 
   const [taskTab, setTaskTab] = useState(activeTab || 'week'); // 'week' | 'lifetime'
 
@@ -379,10 +386,13 @@ const Tasks = ({
       <div style={{ flex: 1, overflowY: 'auto', paddingBottom: '120px' }}>
         {taskTab === 'week' ? (
           <WeeklyQuests
-            player={user}
+            player={user || player}
+            playerId={userId}
             weeklyState={weeklyState}
             onWeeklyStateChange={onWeeklyStateChange}
             grantTaskEnergy={grantTaskEnergy}
+            dailyTaps={dailyTaps}
+            maxDailyLimit={maxDailyLimit}
           />
         ) : null}
 

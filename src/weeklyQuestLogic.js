@@ -88,7 +88,13 @@ export function applyWeeklyDailyProgress(state, weekId, p) {
 
   if (dayTaps > 0) daysActive.add(day);
   if (dayTaps >= 500) daysTap500.add(day);
-  if (maxLimit > 0 && dayTaps >= maxLimit) daysFull.add(day);
+  // Full daily: allow tiny float error; also treat >= 99.9% of max as drained
+  if (
+    maxLimit > 0 &&
+    (dayTaps + 1e-6 >= maxLimit || dayTaps / maxLimit >= 0.999)
+  ) {
+    daysFull.add(day);
+  }
 
   return {
     ...s,

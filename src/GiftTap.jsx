@@ -580,6 +580,8 @@ const GiftTapGame = () => {
   const energyAnchorRef = useRef({ value: 500, at: Date.now() });
   const optimisticDaily = useRef(0);
   const pendingSaveRef = useRef(null);
+  /** Latest inventory (incl. weekly_quests) so debounced saves do not wipe quest progress */
+  const inventoryRef = useRef({});
   /** True after shop/swap spend — next cloud save must write the lower balance, not Math.max with server */
   const spendGuardRef = useRef(false);
   /** Sync streak / last play day for taps + offline bot (React state can lag). */
@@ -682,14 +684,59 @@ const GiftTapGame = () => {
   );
 
   const onWeeklyStateChange = useCallback((nextWeekly, nextInv) => {
-    setStats((prev) => ({
-      ...prev,
-      inventory: nextInv || {
+    setStats((prev) => {
+      const inv = nextInv || {
         ...(prev.inventory || {}),
         weekly_quests: nextWeekly,
-      },
-    }));
+      };
+      inventoryRef.current = inv;
+      return { ...prev, inventory: inv };
+    });
   }, []);
+
+  /** Track weekly quest progress (500/day, full daily, etc.) and persist inventory.weekly_quests */
+  const recordWeeklyDailyProgress = useCallback(
+    (dayTaps, maxLimit, when = new Date()) => {
+      try {
+        const weekId = getUtcWeekId(when);
+        const day = weeklyUtcDayStr(when);
+        const taps = Math.max(0, Number(dayTaps) || 0);
+        const limit = Math.max(0, Number(maxLimit) || 0);
+
+        setStats((prev) => {
+          const baseInv = inventoryRef.current || prev.inventory || {};
+          const nextW = applyWeeklyDailyProgress(baseInv.weekly_quests, weekId, {
+            day,
+            dayTaps: taps,
+            maxLimit: limit,
+          });
+          const nextInv = {
+            ...baseInv,
+            ...(prev.inventory || {}),
+            weekly_quests: nextW,
+          };
+          inventoryRef.current = nextInv;
+          // Persist so claim works after refresh
+          if (playerId) {
+            supabase
+              .from('players')
+              .update({
+                inventory: nextInv,
+                last_updated: new Date().toISOString(),
+              })
+              .eq(DB_PLAYER_ID, String(playerId))
+              .then(({ error }) => {
+                if (error) console.warn('weekly_quests save', error.message);
+              });
+          }
+          return { ...prev, inventory: nextInv };
+        });
+      } catch (e) {
+        console.warn('recordWeeklyDailyProgress', e?.message || e);
+      }
+    },
+    [playerId],
+  );
 
   const openAirdropBoard = async () => {
     setShowAirdropBoard(true);
@@ -1207,6 +1254,52 @@ const GiftTapGame = () => {
             inv = { ...inv, task_daily_limit_migrated_v1: true };
           }
         }
+        // If daily already maxed on load, credit weekly "drain daily limit" for today
+        try {
+          const dbDaily = Number(playerRow.daily_taps) || 0;
+          let lim = Number(playerRow.max_daily_limit) || 1000;
+          if (
+            playerRow.energy_boost_expires &&
+            new Date(playerRow.energy_boost_expires) > new Date()
+          ) {
+            lim += 1000;
+          }
+          if (
+            playerRow.limit_boost_expires &&
+            new Date(playerRow.limit_boost_expires) > new Date()
+          ) {
+            lim += Number(playerRow.limit_boost_amount) || 0;
+          }
+          const tlb = inv?.task_limit_boost;
+          if (tlb?.expires && new Date(tlb.expires) > new Date()) {
+            lim += Number(tlb.amount) || 0;
+          }
+          if (dbDaily > 0 && lim > 0 && dbDaily + 1e-6 >= lim) {
+            const nowLoad = new Date();
+            inv.weekly_quests = applyWeeklyDailyProgress(
+              inv.weekly_quests,
+              getUtcWeekId(nowLoad),
+              {
+                day: weeklyUtcDayStr(nowLoad),
+                dayTaps: dbDaily,
+                maxLimit: lim,
+              },
+            );
+            supabase
+              .from('players')
+              .update({
+                inventory: inv,
+                last_updated: new Date().toISOString(),
+              })
+              .eq(DB_PLAYER_ID, String(userId))
+              .then(({ error }) => {
+                if (error) console.warn('weekly full-day on load', error.message);
+              });
+          }
+        } catch {
+          /* ignore */
+        }
+        inventoryRef.current = inv;
         setStats({
           inventory: inv,
           frenzy_expires: playerRow.frenzy_expires || null,
@@ -2151,16 +2244,19 @@ const GiftTapGame = () => {
         dt: writeDt,
       };
 
-      const inv = { ...(stats.inventory || {}) };
+      // Prefer inventoryRef so weekly_quests / backpack are not wiped by a stale closure
+      const inv = { ...(inventoryRef.current || stats.inventory || {}) };
       delete inv.wall_fee_progress;
       delete inv.wall_fee_wall;
       const nextInventory = {
         ...inv,
+        weekly_quests: inv.weekly_quests || inventoryRef.current?.weekly_quests,
         wall_snooze_level:
           wallSnoozedFor === p.mul
             ? p.mul
             : inv.wall_snooze_level ?? null,
       };
+      inventoryRef.current = nextInventory;
 
       // If we have daily progress, last_tap_date must be today so reloads keep the bar
       const saveLtd =
@@ -2244,7 +2340,18 @@ const GiftTapGame = () => {
           dt: writeDt,
         };
         lastLocalSaveAtRef.current = Date.now();
-        setStats((prev) => ({ ...prev, inventory: nextInventory }));
+        setStats((prev) => {
+          // Never drop weekly_quests if a concurrent update added them
+          const mergedInv = {
+            ...nextInventory,
+            weekly_quests:
+              nextInventory.weekly_quests ||
+              prev.inventory?.weekly_quests ||
+              inventoryRef.current?.weekly_quests,
+          };
+          inventoryRef.current = mergedInv;
+          return { ...prev, inventory: mergedInv };
+        });
         console.log('✅ SAVE SUCCESS', {
           shards: writeB,
           lifetime: writeLtt,
@@ -2328,6 +2435,12 @@ const GiftTapGame = () => {
 
       // 2. Use currentDailyTaps (already 0 after midnight), not stale dailyTaps state
       if (currentDailyTaps >= currentMaxLimit) {
+        // Ensure "drain daily limit" weekly quest counts even when further taps are blocked
+        recordWeeklyDailyProgress(
+          Math.max(currentDailyTaps, Number(optimisticDaily.current) || 0),
+          currentMaxLimit,
+          now,
+        );
         // Daily limit only — Expanded Battery or OK (no notification prompt)
         setAppNotice({
           show: true,
@@ -2497,24 +2610,8 @@ const GiftTapGame = () => {
       // Make sure this exact line is at the bottom of handleTap:
       saveToDatabase(nextBalance, nextEnergy, nextDaily, today, currentStreak, nextLifetimeTaps, maxUnlockedLevel, nextSeasonShards);
 
-      try {
-        const weekId = getUtcWeekId(now);
-        const day = weeklyUtcDayStr(now);
-        const nextW = applyWeeklyDailyProgress(stats.inventory?.weekly_quests, weekId, {
-          day,
-          dayTaps: nextDaily,
-          maxLimit: currentMaxLimit,
-        });
-        setStats((prev) => ({
-          ...prev,
-          inventory: {
-            ...(prev.inventory || {}),
-            weekly_quests: nextW,
-          },
-        }));
-      } catch {
-        /* ignore weekly track */
-      }
+      // Weekly quests: 500/day, full daily limit, active days (functional state + DB)
+      recordWeeklyDailyProgress(nextDaily, currentMaxLimit, now);
  
       
       // 5. GENERATE FLOATING TEXT
@@ -4382,6 +4479,9 @@ const GiftTapGame = () => {
                 grantEnergyPool={grantEnergyPool}
                 activeTab={tasksTab}
                 onTabChange={setTasksTab}
+                dailyTaps={Math.max(Number(dailyTaps) || 0, Number(optimisticDaily.current) || 0)}
+                maxDailyLimit={dynamicMaxLimit}
+                playerId={playerId}
               />
             )}
 

@@ -13,6 +13,8 @@ import {
   isQuestClaimed,
   markQuestClaimed,
   weeklyPrizeProgress,
+  applyWeeklyDailyProgress,
+  utcDayStr,
 } from './weeklyQuestLogic';
 
 /**
@@ -20,12 +22,22 @@ import {
  */
 export default function WeeklyQuests({
   player,
+  playerId: playerIdProp,
   weeklyState,
   onWeeklyStateChange,
   grantTaskEnergy,
   friends1kCount = 0,
+  /** Live daily taps + max limit so "drain daily" can catch up if already maxed */
+  dailyTaps = 0,
+  maxDailyLimit = 1000,
 }) {
-  const userId = player?.id ? String(player.id) : null;
+  const userId = playerIdProp
+    ? String(playerIdProp)
+    : player?.id
+      ? String(player.id)
+      : player?.telegram_id
+        ? String(player.telegram_id)
+        : null;
   const weekId = getUtcWeekId();
   const [claimingId, setClaimingId] = useState(null);
   const [appNotice, setAppNotice] = useState({ show: false, message: '', success: true });
@@ -57,6 +69,41 @@ export default function WeeklyQuests({
       cancelled = true;
     };
   }, [userId]);
+
+  // If already at daily max when opening the board, credit "drain daily limit" for today
+  useEffect(() => {
+    if (!userId) return;
+    const taps = Number(dailyTaps) || 0;
+    const limit = Number(maxDailyLimit) || 0;
+    if (limit <= 0 || taps < limit * 0.999) return;
+    const day = utcDayStr();
+    const weekId = getUtcWeekId();
+    const s = ensureWeeklyState(weeklyState, weekId);
+    if (s.daysFull.includes(day)) return;
+    const nextW = applyWeeklyDailyProgress(s, weekId, {
+      day,
+      dayTaps: taps,
+      maxLimit: limit,
+    });
+    (async () => {
+      try {
+        const { data: row } = await supabase
+          .from('players')
+          .select('inventory')
+          .eq(DB_PLAYER_ID, userId)
+          .maybeSingle();
+        const inv = { ...(row?.inventory || {}) };
+        inv.weekly_quests = nextW;
+        await supabase
+          .from('players')
+          .update({ inventory: inv, last_updated: new Date().toISOString() })
+          .eq(DB_PLAYER_ID, userId);
+        if (typeof onWeeklyStateChange === 'function') onWeeklyStateChange(nextW, inv);
+      } catch (e) {
+        console.warn('weekly full-day catch-up', e?.message || e);
+      }
+    })();
+  }, [userId, dailyTaps, maxDailyLimit, weeklyState, onWeeklyStateChange]);
 
   const handleClaim = async (quest) => {
     if (!userId || claimingId) return;
