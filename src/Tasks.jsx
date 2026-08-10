@@ -3,6 +3,7 @@ import { supabase } from './supabaseClient';
 import { DB_PLAYER_ID } from './playerIdentity';
 import AppNotice from './AppNotice';
 import { IDEAS_EMAIL, openIdeasEmail, copyIdeasEmail } from './contactIdeas';
+import WeeklyQuests from './WeeklyQuests';
 
 /**
  * Existing tasks kept as-is (shards / social / purchase).
@@ -121,10 +122,27 @@ const Tasks = ({
   lifetimeTaps = 0,
   streak = 0,
   grantTaskEnergy,
+  weeklyState,
+  onWeeklyStateChange,
+  grantEnergyPool,
+  activeTab,
+  onTabChange,
 }) => {
   const user = player || tgUser;
   const userId = user?.id ? String(user.id) : null;
 
+  const [taskTab, setTaskTab] = useState(activeTab || 'week'); // 'week' | 'lifetime'
+
+  useEffect(() => {
+    if (activeTab === 'week' || activeTab === 'lifetime') {
+      setTaskTab(activeTab);
+    }
+  }, [activeTab]);
+
+  const switchTab = (tab) => {
+    setTaskTab(tab);
+    if (typeof onTabChange === 'function') onTabChange(tab);
+  };
   const [completedTasks, setCompletedTasks] = useState([]);
   const [readyToClaim, setReadyToClaim] = useState([]);
   const [loadingTasks, setLoadingTasks] = useState(true);
@@ -296,7 +314,7 @@ const Tasks = ({
     else handleClaimShards(task);
   };
 
-  if (loadingTasks) {
+  if (loadingTasks && taskTab === 'lifetime') {
     return <div style={{ color: '#888', marginTop: '20px' }}>Loading Tasks...</div>;
   }
 
@@ -321,8 +339,55 @@ const Tasks = ({
         onClose={() => setAppNotice((n) => ({ ...n, show: false }))}
       />
 
+      <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
+        <button
+          type="button"
+          onClick={() => switchTab('week')}
+          style={{
+            flex: 1,
+            padding: '10px',
+            borderRadius: 12,
+            border: taskTab === 'week' ? '2px solid #3264ff' : '1px solid #333',
+            background: taskTab === 'week' ? 'rgba(50,100,255,0.15)' : '#1c1e22',
+            color: taskTab === 'week' ? '#8eb4ff' : '#888',
+            fontWeight: 'bold',
+            fontSize: 13,
+            cursor: 'pointer',
+          }}
+        >
+          This week
+        </button>
+        <button
+          type="button"
+          onClick={() => switchTab('lifetime')}
+          style={{
+            flex: 1,
+            padding: '10px',
+            borderRadius: 12,
+            border: taskTab === 'lifetime' ? '2px solid #ffd700' : '1px solid #333',
+            background: taskTab === 'lifetime' ? 'rgba(255,215,0,0.12)' : '#1c1e22',
+            color: taskTab === 'lifetime' ? '#ffd700' : '#888',
+            fontWeight: 'bold',
+            fontSize: 13,
+            cursor: 'pointer',
+          }}
+        >
+          Lifetime
+        </button>
+      </div>
+
       <div style={{ flex: 1, overflowY: 'auto', paddingBottom: '120px' }}>
-        {TASK_LIST.map((task) => {
+        {taskTab === 'week' ? (
+          <WeeklyQuests
+            player={user}
+            weeklyState={weeklyState}
+            onWeeklyStateChange={onWeeklyStateChange}
+            grantEnergyPool={grantEnergyPool}
+          />
+        ) : null}
+
+        {taskTab === 'lifetime'
+          ? TASK_LIST.map((task) => {
           const isCompleted = safeCompletedTasks.includes(task.id);
           const isReady = !isCompleted && taskIsReady(task);
           const iconIsImage =
@@ -458,9 +523,11 @@ const Tasks = ({
               )}
             </div>
           );
-        })}
+        })
+          : null}
 
         {/* Player ideas — email Gift2U; possible reward if shipped */}
+        {taskTab === 'lifetime' ? (
         <div
           style={{
             marginTop: 18,
@@ -550,6 +617,7 @@ const Tasks = ({
             Copy email address
           </button>
         </div>
+        ) : null}
       </div>
     </div>
   );

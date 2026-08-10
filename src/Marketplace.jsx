@@ -13,6 +13,7 @@ import {
   publicKeyFromSecret,
 } from './mintLocksmith';
 import { ShopGlyph } from './shopIcons';
+import { applyWeeklyBoostBuy, getUtcWeekId } from './weeklyQuestLogic';
 
 /** Professional icon tile — custom SVG / image or built-in glyph */
 function ShopItemIcon({ item, size = 52, variant = 'row' }) {
@@ -354,6 +355,11 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
     // Copy current inventory and add 1
     const newInventory = { ...localInventory };
     newInventory[item.id] = (newInventory[item.id] || 0) + 1;
+    // Weekly quest: count shop boost purchase
+    newInventory.weekly_quests = applyWeeklyBoostBuy(
+      newInventory.weekly_quests || stats?.inventory?.weekly_quests,
+      getUtcWeekId(),
+    );
     const nextBalance = Math.max(0, Math.round((have - cost) * 1000) / 1000);
 
     try {
@@ -546,6 +552,10 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
       // Update Inventory Object Locally
       const newInventory = { ...localInventory };
       newInventory[item.id] = (newInventory[item.id] || 0) + 1;
+      newInventory.weekly_quests = applyWeeklyBoostBuy(
+        newInventory.weekly_quests || stats?.inventory?.weekly_quests,
+        getUtcWeekId(),
+      );
 
       // Single atomic payload execution to ensure consistency
       const { error: updateError } = await supabase.from('players')

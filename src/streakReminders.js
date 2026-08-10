@@ -26,9 +26,9 @@ export function markPlayedTodayUtc(today = utcTodayStr()) {
   } catch {
     /* ignore */
   }
+  // Notifications disabled for now (user will design a better reminder later)
   clearRiskTimer();
-  // They played today → remind them tomorrow (device), not another game popup
-  scheduleComeBackTomorrowNotice();
+  clearComeBackTimer();
 }
 
 export function getLastPlayedUtc() {

@@ -15,6 +15,8 @@ export const AIRDROP_META = {
 
 /** Level 5 wall cleared → max_unlocked_level becomes 9 */
 export const L5_MAX_UNLOCKED = 9;
+/** Lifetime taps at the L4→L5 paywall (progress bar target for qualification) */
+export const L5_LIFETIME_TAPS_TARGET = 50000;
 /** Level 10 wall → cap 19 */
 export const L10_MAX_UNLOCKED = 19;
 
@@ -64,6 +66,9 @@ export function computeAirdropProgress(input = {}) {
   effectiveLevel = Math.min(effectiveLevel, maxUnlocked || effectiveLevel);
 
   const qualified = maxUnlocked >= L5_MAX_UNLOCKED;
+  const l5TapsTarget = L5_LIFETIME_TAPS_TARGET;
+  const l5TapsProgress = Math.min(1, lifetimeTaps / l5TapsTarget);
+  const l5TapsRemaining = Math.max(0, l5TapsTarget - lifetimeTaps);
 
   // Level: highest only (requires wall progress for L10+)
   let levelBonus = 0;
@@ -109,11 +114,19 @@ export function computeAirdropProgress(input = {}) {
     {
       id: 'l5',
       label: 'Level 5 wall cleared',
-      detail: 'Base airdrop ticket — required to qualify for a share',
+      detail: qualified
+        ? 'Base airdrop ticket — you qualify for a share'
+        : `Progress to Level 5 wall: ${lifetimeTaps.toLocaleString()} / ${l5TapsTarget.toLocaleString()} lifetime taps`,
       done: qualified,
       earnedPct: 0, // base ticket, not a % bonus
       bonusLabel: 'BASE',
       required: true,
+      progress: {
+        current: lifetimeTaps,
+        target: l5TapsTarget,
+        ratio: l5TapsProgress,
+        remaining: l5TapsRemaining,
+      },
     },
     {
       id: 'level',
@@ -248,6 +261,9 @@ export function computeAirdropProgress(input = {}) {
     checks,
     friendsTaps1000,
     friendsL5,
+    l5TapsTarget,
+    l5TapsProgress,
+    l5TapsRemaining,
   };
 }
 

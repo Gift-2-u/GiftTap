@@ -1,5 +1,5 @@
 import React from 'react';
-import { AIRDROP_META } from './airdropProgress';
+import { AIRDROP_META, L5_LIFETIME_TAPS_TARGET } from './airdropProgress';
 
 /**
  * Visual G2U airdrop checklist board.
@@ -23,12 +23,26 @@ export default function AirdropBoard({ progress, username, compact = false }) {
     streak,
     multiplier,
     potentialMultiplier,
+    l5TapsTarget: l5TargetProp,
+    l5TapsProgress: l5ProgressProp,
+    l5TapsRemaining: l5RemainingProp,
   } = progress;
 
   // Always derive from checkmarks so UI total matches ✓ rows (e.g. NFT ✓ → +25%)
   const totalBonus = Array.isArray(checks)
     ? checks.reduce((sum, c) => sum + (Number(c.earnedPct) || 0), 0)
     : Number(totalBonusProp) || 0;
+
+  const l5Target = Number(l5TargetProp) || L5_LIFETIME_TAPS_TARGET;
+  const taps = Number(lifetimeTaps) || 0;
+  const l5Ratio = Math.min(
+    1,
+    Number.isFinite(l5ProgressProp) ? l5ProgressProp : taps / l5Target,
+  );
+  const l5Remaining = Number.isFinite(l5RemainingProp)
+    ? Math.max(0, l5RemainingProp)
+    : Math.max(0, l5Target - taps);
+  const l5PctLabel = Math.min(100, Math.floor(l5Ratio * 100));
 
   return (
     <div
@@ -109,7 +123,7 @@ export default function AirdropBoard({ progress, username, compact = false }) {
               {qualified ? '✓ Qualified (Level 5)' : '☐ Not qualified yet — clear L5 to unlock share'}
             </div>
             <div style={{ color: '#666', fontSize: 11, marginTop: 6 }}>
-              Lifetime taps: {Number(lifetimeTaps).toLocaleString()} · Streak: {streak}d
+              Lifetime taps: {taps.toLocaleString()} · Streak: {streak}d
             </div>
             {!qualified && totalBonus > 0 ? (
               <div style={{ color: '#a78bfa', fontSize: 11, marginTop: 6, lineHeight: 1.35 }}>
@@ -140,6 +154,55 @@ export default function AirdropBoard({ progress, username, compact = false }) {
                   : 'no share until L5'}
             </div>
           </div>
+        </div>
+
+        {/* L5 progress — lifetime taps → 50,000 (wall) */}
+        <div style={{ marginTop: 14 }}>
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              marginBottom: 6,
+              gap: 8,
+            }}
+          >
+            <span style={{ color: qualified ? '#4ade80' : '#ccc', fontSize: 11, fontWeight: 'bold' }}>
+              {qualified ? 'Level 5 path complete' : 'Path to Level 5'}
+            </span>
+            <span style={{ color: '#888', fontSize: 11, fontWeight: 'bold', whiteSpace: 'nowrap' }}>
+              {taps.toLocaleString()} / {l5Target.toLocaleString()}
+              {!qualified ? ` · ${l5PctLabel}%` : ' · 100%'}
+            </span>
+          </div>
+          <div
+            style={{
+              width: '100%',
+              height: 10,
+              borderRadius: 999,
+              background: 'rgba(0,0,0,0.45)',
+              border: '1px solid #333',
+              overflow: 'hidden',
+            }}
+          >
+            <div
+              style={{
+                height: '100%',
+                width: `${qualified ? 100 : l5PctLabel}%`,
+                borderRadius: 999,
+                background: qualified
+                  ? 'linear-gradient(90deg, #22c55e, #4ade80)'
+                  : 'linear-gradient(90deg, #16a34a, #4ade80)',
+                boxShadow: '0 0 10px rgba(74, 222, 128, 0.35)',
+                transition: 'width 0.35s ease',
+              }}
+            />
+          </div>
+          {!qualified ? (
+            <div style={{ color: '#666', fontSize: 10, marginTop: 6 }}>
+              {l5Remaining.toLocaleString()} lifetime taps left to the Level 5 wall (50,000)
+            </div>
+          ) : null}
         </div>
       </div>
 
@@ -219,6 +282,48 @@ export default function AirdropBoard({ progress, username, compact = false }) {
                     {s.done ? '✓' : '☐'} {s.label} +{s.pct}%
                   </span>
                 ))}
+              </div>
+            )}
+
+            {/* L5 checklist row: green bar toward 50k lifetime taps */}
+            {c.id === 'l5' && c.progress && (
+              <div style={{ marginTop: 10, marginLeft: 26 }}>
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    fontSize: 10,
+                    color: '#888',
+                    marginBottom: 4,
+                    fontWeight: 'bold',
+                  }}
+                >
+                  <span>Lifetime taps → L5 wall</span>
+                  <span>
+                    {Number(c.progress.current).toLocaleString()} /{' '}
+                    {Number(c.progress.target).toLocaleString()}
+                  </span>
+                </div>
+                <div
+                  style={{
+                    width: '100%',
+                    height: 8,
+                    borderRadius: 999,
+                    background: '#0a0a0a',
+                    border: '1px solid #333',
+                    overflow: 'hidden',
+                  }}
+                >
+                  <div
+                    style={{
+                      height: '100%',
+                      width: `${Math.min(100, Math.floor((c.progress.ratio || 0) * 100))}%`,
+                      borderRadius: 999,
+                      background: 'linear-gradient(90deg, #16a34a, #4ade80)',
+                      transition: 'width 0.35s ease',
+                    }}
+                  />
+                </div>
               </div>
             )}
           </div>

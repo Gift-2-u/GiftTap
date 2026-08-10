@@ -77,11 +77,7 @@ import AuthScreen from './AuthScreen';
 import ClaimAccountModal from './ClaimAccountModal';
 import Marketplace from './Marketplace';
 import Tasks from './Tasks';
-import {
-  markPlayedTodayUtc,
-  scheduleStreakDeviceNotice,
-  armStreakDeviceRemindersAfterPlay,
-} from './streakReminders';
+import { markPlayedTodayUtc } from './streakReminders';
 import Friends from './Friends';
 import Menu from './Menu';
 import WhitepaperModal from './WhitepaperModal';
@@ -121,6 +117,11 @@ import {
 import { hasLocksmith } from './locksmith';
 import AirdropBoard from './AirdropBoard';
 import { computeAirdropProgress, fetchAirdropInputs } from './airdropProgress';
+import {
+  getUtcWeekId,
+  utcDayStr as weeklyUtcDayStr,
+  applyWeeklyDailyProgress,
+} from './weeklyQuestLogic';
 import {
   getSeasonDayNumber,
   getSeasonBoardFloor,
@@ -487,6 +488,8 @@ const GiftTapGame = () => {
   const [seasonTimeLeft, setSeasonTimeLeft] = useState('');
   const [tapPower, setTapPower] = useState(1);
   const [currentPage, setCurrentPage] = useState('home'); // 'home', 'shop', 'tasks', 'friends', 'leaderboard'
+  /** Tasks tab: week | lifetime — set by HUD “Weekly quest” chip */
+  const [tasksTab, setTasksTab] = useState('week');
   /** When opening Shop from daily-limit CTA → Free upgrades (battery) */
   const [shopFocusTab, setShopFocusTab] = useState(null);
   const [activeTab, setActiveTab] = useState('home'); // Use this for page switching
@@ -646,6 +649,47 @@ const GiftTapGame = () => {
    * Task claims: +daily tap limit until UTC midnight (stackable same day).
    * Not the 500 energy pool — extra daily capacity so they can keep tapping.
    */
+
+
+  /** Weekly quests: +energy to the 500 pool (not daily limit). */
+  const grantEnergyPool = useCallback(
+    async (amount) => {
+      const add = Math.max(0, Number(amount) || 0);
+      if (add <= 0) return 0;
+      const nowMs = Date.now();
+      const cur = energyFromAnchor(
+        energyAnchorRef.current.value,
+        energyAnchorRef.current.at,
+        nowMs,
+      );
+      const next = Math.min(ENERGY_CAP, cur + add);
+      energyAnchorRef.current = { value: next, at: nowMs };
+      optimisticEnergy.current = next;
+      setEnergy(next);
+      if (playerId) {
+        const { error } = await supabase
+          .from('players')
+          .update({
+            last_energy: next,
+            last_updated: new Date().toISOString(),
+          })
+          .eq(DB_PLAYER_ID, String(playerId));
+        if (error) throw error;
+      }
+      return next;
+    },
+    [playerId],
+  );
+
+  const onWeeklyStateChange = useCallback((nextWeekly, nextInv) => {
+    setStats((prev) => ({
+      ...prev,
+      inventory: nextInv || {
+        ...(prev.inventory || {}),
+        weekly_quests: nextWeekly,
+      },
+    }));
+  }, []);
 
   const openAirdropBoard = async () => {
     setShowAirdropBoard(true);
@@ -1839,7 +1883,6 @@ const GiftTapGame = () => {
       if (lastTapDateRef.current === utcTodayStr() || lastTapDate === utcTodayStr()) {
         markPlayedTodayUtc(utcTodayStr());
       }
-      scheduleStreakDeviceNotice(2);
     } catch {
       /* ignore */
     }
@@ -2285,13 +2328,12 @@ const GiftTapGame = () => {
 
       // 2. Use currentDailyTaps (already 0 after midnight), not stale dailyTaps state
       if (currentDailyTaps >= currentMaxLimit) {
-        // One in-game notice only. Streak "come back" = device notification (they're not in-game).
+        // Daily limit only — Expanded Battery or OK (no notification prompt)
         setAppNotice({
           show: true,
           message:
             "Daily limit reached for this UTC day.\n\n" +
-            "Want to keep playing? Expanded Battery adds +1,000 max taps until UTC midnight (Shop · Free).\n\n" +
-            "If you allow notifications, we’ll remind you on your device tomorrow to keep your streak — not another popup in the game.",
+            "Want to keep playing? Expanded Battery adds +1,000 max taps until UTC midnight (Shop · Free).",
           loading: false,
           success: false,
           title: "Daily limit reached",
@@ -2304,8 +2346,6 @@ const GiftTapGame = () => {
                 setShopFocusTab("upgrades");
                 setCurrentPage("shop");
               }
-              // User gesture → can request OS notification permission once, then schedule device reminder
-              armStreakDeviceRemindersAfterPlay().catch(() => {});
             },
           },
         });
@@ -2379,7 +2419,6 @@ const GiftTapGame = () => {
       // Any valid tap counts as played today for device streak notice
       try {
         markPlayedTodayUtc(today);
-        scheduleStreakDeviceNotice(2);
       } catch {
         /* ignore */
       }
@@ -2456,7 +2495,27 @@ const GiftTapGame = () => {
 
       // Send the trigger to save (No absolute totals passed anymore)
       // Make sure this exact line is at the bottom of handleTap:
-      saveToDatabase(nextBalance, nextEnergy, nextDaily, today, currentStreak, nextLifetimeTaps, maxUnlockedLevel, nextSeasonShards); 
+      saveToDatabase(nextBalance, nextEnergy, nextDaily, today, currentStreak, nextLifetimeTaps, maxUnlockedLevel, nextSeasonShards);
+
+      try {
+        const weekId = getUtcWeekId(now);
+        const day = weeklyUtcDayStr(now);
+        const nextW = applyWeeklyDailyProgress(stats.inventory?.weekly_quests, weekId, {
+          day,
+          dayTaps: nextDaily,
+          maxLimit: currentMaxLimit,
+        });
+        setStats((prev) => ({
+          ...prev,
+          inventory: {
+            ...(prev.inventory || {}),
+            weekly_quests: nextW,
+          },
+        }));
+      } catch {
+        /* ignore weekly track */
+      }
+ 
       
       // 5. GENERATE FLOATING TEXT
       const nowMs = now.getTime();
@@ -4104,42 +4163,83 @@ const GiftTapGame = () => {
                     <HelpTip tipKey="how_to_play" size={18} onOpenPlaybook={() => setIsWhitepaperOpen(true)} />
                   </div>
 
-                  {/* G2U Airdrop — top left, gift-blue, no emoji (space from How to play) */}
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      openAirdropBoard();
-                    }}
+                  {/* Left chips: Airdrop + Weekly quest (gift blue, spaced) */}
+                  <div
                     style={{
                       position: 'absolute',
                       top: 8,
                       left: 12,
                       zIndex: 20,
                       display: 'flex',
-                      alignItems: 'center',
-                      background: 'rgba(50, 100, 255, 0.22)',
-                      border: '1px solid rgba(50, 100, 255, 0.55)',
-                      borderRadius: 20,
-                      padding: '6px 12px',
-                      cursor: 'pointer',
-                      outline: 'none',
-                      WebkitTapHighlightColor: 'transparent',
-                      boxShadow: '0 0 12px rgba(50, 100, 255, 0.25)',
+                      flexDirection: 'column',
+                      alignItems: 'flex-start',
+                      gap: 8,
                     }}
                   >
-                    <span
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        openAirdropBoard();
+                      }}
                       style={{
-                        color: '#8eb4ff',
-                        fontSize: 11,
-                        fontWeight: 'bold',
-                        whiteSpace: 'nowrap',
-                        letterSpacing: '0.02em',
+                        display: 'flex',
+                        alignItems: 'center',
+                        background: 'rgba(50, 100, 255, 0.22)',
+                        border: '1px solid rgba(50, 100, 255, 0.55)',
+                        borderRadius: 20,
+                        padding: '6px 12px',
+                        cursor: 'pointer',
+                        outline: 'none',
+                        WebkitTapHighlightColor: 'transparent',
+                        boxShadow: '0 0 12px rgba(50, 100, 255, 0.25)',
                       }}
                     >
-                      G2U Airdrop
-                    </span>
-                  </button>
+                      <span
+                        style={{
+                          color: '#8eb4ff',
+                          fontSize: 11,
+                          fontWeight: 'bold',
+                          whiteSpace: 'nowrap',
+                          letterSpacing: '0.02em',
+                        }}
+                      >
+                        G2U Airdrop
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setTasksTab('week');
+                        setCurrentPage('tasks');
+                      }}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        background: 'rgba(50, 100, 255, 0.22)',
+                        border: '1px solid rgba(50, 100, 255, 0.55)',
+                        borderRadius: 20,
+                        padding: '6px 12px',
+                        cursor: 'pointer',
+                        outline: 'none',
+                        WebkitTapHighlightColor: 'transparent',
+                        boxShadow: '0 0 12px rgba(50, 100, 255, 0.25)',
+                      }}
+                    >
+                      <span
+                        style={{
+                          color: '#8eb4ff',
+                          fontSize: 11,
+                          fontWeight: 'bold',
+                          whiteSpace: 'nowrap',
+                          letterSpacing: '0.02em',
+                        }}
+                      >
+                        Weekly quest
+                      </span>
+                    </button>
+                  </div>
 
                   {/* Pro Touch: A subtle blue Hamster-style halo behind the gift */}
                   <div style={{ position: 'absolute', width: '250px', height: '250px', background: 'radial-gradient(circle, rgba(50, 100, 255, 0.3) 0%, transparent 70%)', zIndex: 0, borderRadius: '50%', marginTop: '-60px' }} />
@@ -4277,6 +4377,11 @@ const GiftTapGame = () => {
                 lifetimeTaps={lifetimeTaps}
                 streak={streak}
                 grantTaskEnergy={grantTaskEnergy}
+                weeklyState={stats.inventory?.weekly_quests}
+                onWeeklyStateChange={onWeeklyStateChange}
+                grantEnergyPool={grantEnergyPool}
+                activeTab={tasksTab}
+                onTabChange={setTasksTab}
               />
             )}
 
@@ -4454,7 +4559,7 @@ const GiftTapGame = () => {
             {/* 3. Navigation Bar (Always at bottom) */}
             <div style={styles.nav}>
               <button style={currentPage === 'home' ? styles.activeBtn : styles.btn} onClick={() => setCurrentPage('home')}>Home</button>
-              <button style={currentPage === 'tasks' ? styles.activeBtn : styles.btn} onClick={() => setCurrentPage('tasks')}>Tasks</button>
+              <button style={currentPage === 'tasks' ? styles.activeBtn : styles.btn} onClick={() => { setTasksTab('week'); setCurrentPage('tasks'); }}>Tasks</button>
               <button
                 style={currentPage === 'leaderboard' ? styles.activeBtn : styles.btn}
                 onClick={openLeaderboardPage}
