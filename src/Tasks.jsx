@@ -224,7 +224,7 @@ const Tasks = ({
     return '';
   };
 
-  /** Original path: shard rewards */
+  /** Original path: shard rewards — once only */
   const handleClaimShards = async (task) => {
     if (!userId || claimingId) return;
     const safeCompletedTasks = Array.isArray(completedTasks) ? completedTasks : [];
@@ -232,8 +232,27 @@ const Tasks = ({
 
     setClaimingId(task.id);
     try {
+      const { data: row, error: selErr } = await supabase
+        .from('players')
+        .select('completed_tasks, shard_balance')
+        .eq(DB_PLAYER_ID, userId)
+        .maybeSingle();
+      if (selErr) throw selErr;
+      const serverDone = Array.isArray(row?.completed_tasks)
+        ? row.completed_tasks
+        : [];
+      if (serverDone.includes(task.id)) {
+        setCompletedTasks(serverDone);
+        setAppNotice({
+          show: true,
+          message: 'Already claimed ✓',
+          success: true,
+        });
+        return;
+      }
+
       const newBalance = Number(balance) + Number(task.reward);
-      const newCompleted = [...safeCompletedTasks, task.id];
+      const newCompleted = [...new Set([...serverDone, ...safeCompletedTasks, task.id])];
 
       setBalance(newBalance);
       setCompletedTasks(newCompleted);
@@ -266,7 +285,7 @@ const Tasks = ({
     }
   };
 
-  /** New path: energy rewards */
+  /** New path: energy rewards — once only (server completed_tasks is source of truth) */
   const handleClaimEnergy = async (task) => {
     if (!userId || claimingId) return;
     const safeCompleted = Array.isArray(completedTasks) ? completedTasks : [];
@@ -276,7 +295,28 @@ const Tasks = ({
     setClaimingId(task.id);
     try {
       const amount = Number(task.energyReward) || 0;
-      const newCompleted = [...safeCompleted, task.id];
+
+      // Re-read server so we never double-grant if already claimed
+      const { data: row, error: selErr } = await supabase
+        .from('players')
+        .select('completed_tasks')
+        .eq(DB_PLAYER_ID, userId)
+        .maybeSingle();
+      if (selErr) throw selErr;
+      const serverDone = Array.isArray(row?.completed_tasks)
+        ? row.completed_tasks
+        : [];
+      if (serverDone.includes(task.id)) {
+        setCompletedTasks(serverDone);
+        setAppNotice({
+          show: true,
+          message: 'Already claimed ✓',
+          success: true,
+        });
+        return;
+      }
+
+      const newCompleted = [...new Set([...serverDone, ...safeCompleted, task.id])];
 
       const { error: claimErr } = await supabase
         .from('players')

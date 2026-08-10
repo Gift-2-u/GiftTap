@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState, useRef } from 'react';
 import { supabase } from './supabaseClient';
 import { DB_PLAYER_ID } from './playerIdentity';
 import AppNotice from './AppNotice';
@@ -12,9 +12,16 @@ import {
   questProgress,
   isQuestClaimed,
   markQuestClaimed,
+  mergeWeeklyStates,
   weeklyPrizeProgress,
   applyWeeklyDailyProgress,
   utcDayStr,
+  isDailyLimitDrained,
+  WEEKLY_BASE_DAILY_LIMIT,
+  inventoryHasWeeklyClaim,
+  applyWeeklyClaimToInventory,
+  mergeInventoryWeekly,
+  hydrateWeeklyClaimsFromLedger,
 } from './weeklyQuestLogic';
 
 /**
@@ -40,13 +47,101 @@ export default function WeeklyQuests({
         : null;
   const weekId = getUtcWeekId();
   const [claimingId, setClaimingId] = useState(null);
+  const claimLockRef = useRef(false);
+  /** Session + tab-remount claims — never re-grant even if a concurrent save wipes DB/UI */
+  const permanentClaimedRef = useRef(new Set());
   const [appNotice, setAppNotice] = useState({ show: false, message: '', success: true });
   const [localFriends1k, setLocalFriends1k] = useState(friends1kCount);
+  /** Optimistic claimed ids so the button flips to DONE even if parent state lags */
+  const [optimisticClaimed, setOptimisticClaimed] = useState([]);
+  /** Bump to re-render when permanentClaimedRef gains an id */
+  const [claimedTick, setClaimedTick] = useState(0);
 
-  const state = useMemo(
-    () => ensureWeeklyState(weeklyState, weekId),
-    [weeklyState, weekId],
-  );
+  const storageKey =
+    userId && weekId ? `gift2u_wq_claimed_${userId}_${weekId}` : null;
+
+  const persistPermanent = (setObj) => {
+    permanentClaimedRef.current = setObj;
+    if (!storageKey) return;
+    try {
+      sessionStorage.setItem(storageKey, JSON.stringify([...setObj]));
+    } catch {
+      /* ignore */
+    }
+  };
+
+  // Restore permanent claims after tab switch remounts this component
+  useEffect(() => {
+    if (!storageKey) return;
+    try {
+      const raw = sessionStorage.getItem(storageKey);
+      if (!raw) return;
+      const ids = JSON.parse(raw);
+      if (!Array.isArray(ids) || !ids.length) return;
+      const next = new Set(permanentClaimedRef.current);
+      let added = false;
+      for (const id of ids) {
+        if (id && !next.has(id)) {
+          next.add(id);
+          added = true;
+        }
+      }
+      if (added) {
+        permanentClaimedRef.current = next;
+        setClaimedTick((t) => t + 1);
+      }
+    } catch {
+      /* ignore */
+    }
+  }, [storageKey]);
+
+  /**
+   * Board state = saved weekly_quests + LIVE daily taps for today.
+   * So 1061 taps today unlocks Claim even if inventory save lagged/failed.
+   */
+  const state = useMemo(() => {
+    let base = ensureWeeklyState(weeklyState, weekId);
+    // Repair claimed[] from durable ledger if parent inventory was passed via weeklyState only
+    // (ledger lives on full inventory; permanent + optimistic still apply)
+    const taps = Math.max(0, Number(dailyTaps) || 0);
+    if (taps > 0) {
+      base = applyWeeklyDailyProgress(base, weekId, {
+        day: utcDayStr(),
+        dayTaps: taps,
+        maxLimit: WEEKLY_BASE_DAILY_LIMIT,
+      });
+    }
+    const extra = [
+      ...optimisticClaimed,
+      ...Array.from(permanentClaimedRef.current),
+    ];
+    if (!extra.length) return base;
+    return {
+      ...base,
+      claimed: [...new Set([...(base.claimed || []), ...extra])],
+    };
+  }, [weeklyState, weekId, dailyTaps, optimisticClaimed, claimedTick]);
+
+  // Drop optimistic once parent has them; absorb parent claims into permanent set
+  useEffect(() => {
+    const parent = ensureWeeklyState(weeklyState, weekId);
+    let added = false;
+    const next = new Set(permanentClaimedRef.current);
+    for (const id of parent.claimed || []) {
+      if (id && !next.has(id)) {
+        next.add(id);
+        added = true;
+      }
+    }
+    if (added) {
+      persistPermanent(next);
+      setClaimedTick((t) => t + 1);
+    }
+    setOptimisticClaimed((prev) =>
+      prev.filter((id) => !parent.claimed.includes(id)),
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- persistPermanent closes over storageKey
+  }, [weeklyState, weekId, storageKey]);
 
   const prizeProg = useMemo(() => weeklyPrizeProgress(state), [state]);
 
@@ -70,58 +165,126 @@ export default function WeeklyQuests({
     };
   }, [userId]);
 
-  // If already at daily max when opening the board, credit "drain daily limit" for today
+  // Persist live daily progress into inventory (so claims survive refresh)
+  const catchUpKeyRef = useRef('');
   useEffect(() => {
-    if (!userId) return;
-    const taps = Number(dailyTaps) || 0;
-    const limit = Number(maxDailyLimit) || 0;
-    if (limit <= 0 || taps < limit * 0.999) return;
+    const taps = Math.max(0, Number(dailyTaps) || 0);
+    if (taps <= 0) return;
+
     const day = utcDayStr();
-    const weekId = getUtcWeekId();
-    const s = ensureWeeklyState(weeklyState, weekId);
-    if (s.daysFull.includes(day)) return;
-    const nextW = applyWeeklyDailyProgress(s, weekId, {
+    const weekIdNow = getUtcWeekId();
+    const baseLimit = WEEKLY_BASE_DAILY_LIMIT;
+    const saved = ensureWeeklyState(weeklyState, weekIdNow);
+    const nextW = applyWeeklyDailyProgress(saved, weekIdNow, {
       day,
       dayTaps: taps,
-      maxLimit: limit,
+      maxLimit: baseLimit,
     });
+
+    // Skip if nothing new vs saved (live UI already overlays taps)
+    const same =
+      saved.daysTap500.join() === nextW.daysTap500.join() &&
+      saved.daysFull.join() === nextW.daysFull.join() &&
+      saved.daysActive.join() === nextW.daysActive.join();
+    if (same) return;
+
+    // Instant parent update (do not wait for network)
+    if (typeof onWeeklyStateChange === 'function') {
+      onWeeklyStateChange(nextW);
+    }
+
+    // Debounce identical network writes
+    const key = `${userId || 'x'}|${weekIdNow}|${day}|${taps}|${nextW.daysFull.join()}|${nextW.daysTap500.join()}`;
+    if (catchUpKeyRef.current === key) return;
+    catchUpKeyRef.current = key;
+
+    if (!userId) return;
+
     (async () => {
       try {
-        const { data: row } = await supabase
+        const { data: row, error: selErr } = await supabase
           .from('players')
           .select('inventory')
           .eq(DB_PLAYER_ID, userId)
           .maybeSingle();
-        const inv = { ...(row?.inventory || {}) };
-        inv.weekly_quests = nextW;
-        await supabase
+        if (selErr) {
+          console.warn('weekly catch-up select', selErr.message);
+        }
+        let inv = hydrateWeeklyClaimsFromLedger(
+          { ...(row?.inventory || {}) },
+          weekIdNow,
+        );
+        inv = mergeInventoryWeekly(inv, { weekly_quests: nextW }, weekIdNow);
+        const { error } = await supabase
           .from('players')
           .update({ inventory: inv, last_updated: new Date().toISOString() })
           .eq(DB_PLAYER_ID, userId);
-        if (typeof onWeeklyStateChange === 'function') onWeeklyStateChange(nextW, inv);
+        if (error) {
+          console.warn('weekly catch-up save', error.message);
+          return;
+        }
+        if (typeof onWeeklyStateChange === 'function') {
+          onWeeklyStateChange(inv.weekly_quests, inv);
+        }
       } catch (e) {
-        console.warn('weekly full-day catch-up', e?.message || e);
+        console.warn('weekly progress catch-up', e?.message || e);
       }
     })();
-  }, [userId, dailyTaps, maxDailyLimit, weeklyState, onWeeklyStateChange]);
+  }, [userId, dailyTaps, weeklyState, onWeeklyStateChange]);
 
+  /**
+   * Claim any weekly energy quest ONCE this UTC week.
+   * Dual-write weekly_quests.claimed + weekly_claim_keys ledger.
+   * Never re-grants +100 if ledger/server already has the quest id.
+   */
   const handleClaim = async (quest) => {
-    if (!userId || claimingId) return;
-    if (isQuestClaimed(state, quest.id)) return;
+    if (!userId || !quest?.id || claimingId || claimLockRef.current) return;
+    // Session lock — all 10 quests share this path
+    if (
+      permanentClaimedRef.current.has(quest.id) ||
+      isQuestClaimed(state, quest.id)
+    ) {
+      return;
+    }
     const prog = questProgress(quest, state, { friends1k: localFriends1k });
     if (!prog.ready) return;
 
+    claimLockRef.current = true;
     setClaimingId(quest.id);
+    // Instant DONE for every quest id (tap500, full, boost, friend, …)
+    {
+      const next = new Set(permanentClaimedRef.current);
+      next.add(quest.id);
+      persistPermanent(next);
+    }
+    setClaimedTick((t) => t + 1);
+    setOptimisticClaimed((prev) =>
+      prev.includes(quest.id) ? prev : [...prev, quest.id],
+    );
+
+    let claimWriteOk = false;
     try {
-      const nextState = markQuestClaimed(state, weekId, quest.id);
-      // Persist claim first
-      const { data: row } = await supabase
+      const { data: row, error: selErr } = await supabase
         .from('players')
         .select('inventory')
         .eq(DB_PLAYER_ID, userId)
         .maybeSingle();
-      const inv = { ...(row?.inventory || {}) };
-      inv.weekly_quests = nextState;
+      if (selErr) throw selErr;
+
+      let inv = hydrateWeeklyClaimsFromLedger(
+        { ...(row?.inventory || {}) },
+        weekId,
+      );
+
+      // Already claimed on server/ledger → no second reward
+      const alreadyOnServer = inventoryHasWeeklyClaim(inv, weekId, quest.id);
+
+      // Dual-write claim (array + durable keys)
+      inv = applyWeeklyClaimToInventory(inv, weekId, quest.id);
+      // Keep live progress fields from local board state
+      inv.weekly_quests = mergeWeeklyStates(inv.weekly_quests, state, weekId);
+      inv.weekly_quests = markQuestClaimed(inv.weekly_quests, weekId, quest.id);
+
       const { error } = await supabase
         .from('players')
         .update({
@@ -130,24 +293,66 @@ export default function WeeklyQuests({
         })
         .eq(DB_PLAYER_ID, userId);
       if (error) throw error;
+      claimWriteOk = true;
 
       if (typeof onWeeklyStateChange === 'function') {
-        onWeeklyStateChange(nextState, inv);
+        onWeeklyStateChange(inv.weekly_quests, inv);
       }
-      if (typeof grantTaskEnergy === 'function') {
+
+      // Grant +100 daily limit only the first time this quest is claimed
+      if (!alreadyOnServer && typeof grantTaskEnergy === 'function') {
         await grantTaskEnergy({
           amount: WEEKLY_ENERGY_REWARD,
           dayLimited: true,
+          preserveWeeklyQuests: inv.weekly_quests,
+          preserveClaimKeys: inv.weekly_claim_keys,
         });
+        // Re-assert claim ledger after boost write (anti wipe)
+        try {
+          const { data: row2 } = await supabase
+            .from('players')
+            .select('inventory')
+            .eq(DB_PLAYER_ID, userId)
+            .maybeSingle();
+          let inv2 = mergeInventoryWeekly(
+            row2?.inventory || {},
+            inv,
+            weekId,
+          );
+          inv2 = applyWeeklyClaimToInventory(inv2, weekId, quest.id);
+          inv2 = hydrateWeeklyClaimsFromLedger(inv2, weekId);
+          await supabase
+            .from('players')
+            .update({
+              inventory: inv2,
+              last_updated: new Date().toISOString(),
+            })
+            .eq(DB_PLAYER_ID, userId);
+          if (typeof onWeeklyStateChange === 'function') {
+            onWeeklyStateChange(inv2.weekly_quests, inv2);
+          }
+        } catch (reassertErr) {
+          console.warn('weekly claim reassert', reassertErr?.message || reassertErr);
+        }
       }
 
       setAppNotice({
         show: true,
-        message: `⚡ +${WEEKLY_ENERGY_REWARD} Daily limit claimed (today UTC)! (${weeklyPrizeProgress(nextState).current}/${WEEKLY_PRIZE.needClaims} for weekly prize)`,
+        message: alreadyOnServer
+          ? 'Already claimed this week ✓'
+          : `⚡ +${WEEKLY_ENERGY_REWARD} Daily limit claimed (today UTC)! (${weeklyPrizeProgress(inv.weekly_quests).current}/${WEEKLY_PRIZE.needClaims} for weekly prize)`,
         success: true,
       });
     } catch (e) {
       console.error('weekly claim', e);
+      // Only unlock if claim never landed on server — prevents double +100
+      if (!claimWriteOk) {
+        const next = new Set(permanentClaimedRef.current);
+        next.delete(quest.id);
+        persistPermanent(next);
+        setOptimisticClaimed((prev) => prev.filter((id) => id !== quest.id));
+        setClaimedTick((t) => t + 1);
+      }
       setAppNotice({
         show: true,
         message: e?.message || 'Could not claim. Try again.',
@@ -155,27 +360,66 @@ export default function WeeklyQuests({
       });
     } finally {
       setClaimingId(null);
+      claimLockRef.current = false;
     }
   };
 
+  /** Weekly prize — free Instant Refill, once per UTC week */
   const handlePrizeClaim = async () => {
-    if (!userId || claimingId) return;
+    if (!userId || claimingId || claimLockRef.current) return;
+    if (
+      permanentClaimedRef.current.has(WEEKLY_PRIZE.id) ||
+      isQuestClaimed(state, WEEKLY_PRIZE.id)
+    ) {
+      return;
+    }
     const pp = weeklyPrizeProgress(state);
     if (!pp.ready) return;
 
+    claimLockRef.current = true;
     setClaimingId(WEEKLY_PRIZE.id);
+    {
+      const next = new Set(permanentClaimedRef.current);
+      next.add(WEEKLY_PRIZE.id);
+      persistPermanent(next);
+    }
+    setClaimedTick((t) => t + 1);
+    setOptimisticClaimed((prev) =>
+      prev.includes(WEEKLY_PRIZE.id) ? prev : [...prev, WEEKLY_PRIZE.id],
+    );
+
+    let claimWriteOk = false;
     try {
-      const nextState = markQuestClaimed(state, weekId, WEEKLY_PRIZE.id);
-      const { data: row } = await supabase
+      const { data: row, error: selErr } = await supabase
         .from('players')
         .select('inventory')
         .eq(DB_PLAYER_ID, userId)
         .maybeSingle();
-      const inv = { ...(row?.inventory || {}) };
-      inv.weekly_quests = nextState;
-      // Free Instant Refill → backpack
-      const itemId = WEEKLY_PRIZE.rewardItemId;
-      inv[itemId] = (Number(inv[itemId]) || 0) + 1;
+      if (selErr) throw selErr;
+
+      let inv = hydrateWeeklyClaimsFromLedger(
+        { ...(row?.inventory || {}) },
+        weekId,
+      );
+      const alreadyOnServer = inventoryHasWeeklyClaim(
+        inv,
+        weekId,
+        WEEKLY_PRIZE.id,
+      );
+
+      inv = applyWeeklyClaimToInventory(inv, weekId, WEEKLY_PRIZE.id);
+      inv.weekly_quests = mergeWeeklyStates(inv.weekly_quests, state, weekId);
+      inv.weekly_quests = markQuestClaimed(
+        inv.weekly_quests,
+        weekId,
+        WEEKLY_PRIZE.id,
+      );
+
+      // Free Instant Refill → backpack (only once)
+      if (!alreadyOnServer) {
+        const itemId = WEEKLY_PRIZE.rewardItemId;
+        inv[itemId] = (Number(inv[itemId]) || 0) + 1;
+      }
 
       const { error } = await supabase
         .from('players')
@@ -185,18 +429,30 @@ export default function WeeklyQuests({
         })
         .eq(DB_PLAYER_ID, userId);
       if (error) throw error;
+      claimWriteOk = true;
 
       if (typeof onWeeklyStateChange === 'function') {
-        onWeeklyStateChange(nextState, inv);
+        onWeeklyStateChange(inv.weekly_quests, inv);
       }
 
       setAppNotice({
         show: true,
-        message: `🎁 Weekly prize claimed! +1 ${WEEKLY_PRIZE.rewardLabel} in Pack (Backpack). Activate it from the Shop.`,
+        message: alreadyOnServer
+          ? 'Weekly prize already claimed ✓'
+          : `🎁 Weekly prize claimed! +1 ${WEEKLY_PRIZE.rewardLabel} in Pack (Backpack). Activate it from the Shop.`,
         success: true,
       });
     } catch (e) {
       console.error('weekly prize', e);
+      if (!claimWriteOk) {
+        const next = new Set(permanentClaimedRef.current);
+        next.delete(WEEKLY_PRIZE.id);
+        persistPermanent(next);
+        setOptimisticClaimed((prev) =>
+          prev.filter((id) => id !== WEEKLY_PRIZE.id),
+        );
+        setClaimedTick((t) => t + 1);
+      }
       setAppNotice({
         show: true,
         message: e?.message || 'Could not claim weekly prize.',
@@ -204,10 +460,12 @@ export default function WeeklyQuests({
       });
     } finally {
       setClaimingId(null);
+      claimLockRef.current = false;
     }
   };
 
   return (
+
     <div style={{ marginBottom: 20 }}>
       <AppNotice
         show={appNotice.show}
@@ -244,6 +502,11 @@ export default function WeeklyQuests({
             </div>
             <div style={{ color: '#888', fontSize: 10, marginTop: 4 }}>
               Each quest +{WEEKLY_ENERGY_REWARD} max daily limit (UTC day) · 10 quests total
+            </div>
+            <div style={{ color: '#4ade80', fontSize: 11, marginTop: 6, fontWeight: 'bold' }}>
+              Today (UTC): {Math.max(0, Number(dailyTaps) || 0).toLocaleString()} taps
+              {Number(dailyTaps) >= 500 ? ' · 500✓' : ''}
+              {Number(dailyTaps) >= WEEKLY_BASE_DAILY_LIMIT ? ' · base 1,000✓' : ''}
             </div>
           </div>
 

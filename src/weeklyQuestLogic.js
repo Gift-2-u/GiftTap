@@ -4,6 +4,9 @@
 
 export const WEEKLY_ENERGY_REWARD = 100; // +daily limit (not the 500 pool)
 
+/** Base daily max for drain-daily weekly quests (ignores battery / task / premium boosts) */
+export const WEEKLY_BASE_DAILY_LIMIT = 1000;
+
 /** End-of-week prize: claim after enough weekly quests claimed */
 export const WEEKLY_PRIZE = {
   id: 'wq_week_prize',
@@ -58,7 +61,11 @@ export function emptyWeeklyState(weekId) {
 }
 
 export function ensureWeeklyState(raw, weekId = getUtcWeekId()) {
-  if (!raw || typeof raw !== 'object' || raw.weekId !== weekId) {
+  if (!raw || typeof raw !== 'object') {
+    return emptyWeeklyState(weekId);
+  }
+  // Different week → fresh board. Missing weekId → keep arrays (partial writes / migration).
+  if (raw.weekId && raw.weekId !== weekId) {
     return emptyWeeklyState(weekId);
   }
   return {
@@ -69,6 +76,21 @@ export function ensureWeeklyState(raw, weekId = getUtcWeekId()) {
     daysFull: Array.isArray(raw.daysFull) ? [...raw.daysFull] : [],
     boostBuys: Math.max(0, Number(raw.boostBuys) || 0),
   };
+}
+
+/**
+ * True when daily taps meet the target limit (default = base 1000).
+ * Weekly drain-daily uses BASE 1000 only — boosts do not raise the target.
+ */
+export function isDailyLimitDrained(dayTaps, maxLimit = WEEKLY_BASE_DAILY_LIMIT) {
+  const taps = Math.max(0, Number(dayTaps) || 0);
+  const limit = Math.max(0, Number(maxLimit) || WEEKLY_BASE_DAILY_LIMIT);
+  if (limit <= 0) return false;
+  if (taps + 1e-6 >= limit) return true;
+  if (taps / limit >= 0.999) return true;
+  // Stuck under cap (e.g. efficiency cost 2 with 1 left): remaining < 1
+  if (limit - taps < 1) return true;
+  return false;
 }
 
 /**
@@ -88,11 +110,8 @@ export function applyWeeklyDailyProgress(state, weekId, p) {
 
   if (dayTaps > 0) daysActive.add(day);
   if (dayTaps >= 500) daysTap500.add(day);
-  // Full daily: allow tiny float error; also treat >= 99.9% of max as drained
-  if (
-    maxLimit > 0 &&
-    (dayTaps + 1e-6 >= maxLimit || dayTaps / maxLimit >= 0.999)
-  ) {
+  // Full daily for weekly board = BASE 1000 only (not boosted dynamic max)
+  if (isDailyLimitDrained(dayTaps, WEEKLY_BASE_DAILY_LIMIT)) {
     daysFull.add(day);
   }
 
@@ -141,7 +160,7 @@ export const WEEKLY_QUEST_LIST = [
   {
     id: 'wq_full_1',
     title: 'Drain daily limit once',
-    description: 'Fill / use your full daily limit on 1 UTC day',
+    description: 'Use the base 1,000 daily limit on 1 UTC day (boosts do not raise this target)',
     icon: '🔋',
     kind: 'daysFull',
     need: 1,
@@ -149,7 +168,7 @@ export const WEEKLY_QUEST_LIST = [
   {
     id: 'wq_full_3',
     title: 'Drain daily limit 3 days',
-    description: 'Full daily limit on 3 different UTC days',
+    description: 'Hit base 1,000 daily on 3 different UTC days (boosts ignored)',
     icon: '🔋',
     kind: 'daysFull',
     need: 3,
@@ -157,7 +176,7 @@ export const WEEKLY_QUEST_LIST = [
   {
     id: 'wq_full_5',
     title: 'Drain daily limit 5 days',
-    description: 'Full daily limit on 5 different UTC days',
+    description: 'Hit base 1,000 daily on 5 different UTC days (boosts ignored)',
     icon: '🔋',
     kind: 'daysFull',
     need: 5,
@@ -230,6 +249,110 @@ export function markQuestClaimed(state, weekId, questId) {
   const s = ensureWeeklyState(state, weekId);
   if (s.claimed.includes(questId)) return s;
   return { ...s, claimed: [...s.claimed, questId] };
+}
+
+/** Durable claim key: survives races that wipe inventory.weekly_quests */
+export function weeklyClaimKey(weekId, questId) {
+  return `${weekId}:${questId}`;
+}
+
+/** Quest ids claimed this week from ledger + weekly_quests.claimed */
+export function claimedIdsFromInventory(inv, weekId = getUtcWeekId()) {
+  const ids = new Set();
+  const wq = ensureWeeklyState(inv?.weekly_quests, weekId);
+  for (const id of wq.claimed || []) {
+    if (id) ids.add(id);
+  }
+  const keys = inv?.weekly_claim_keys;
+  if (Array.isArray(keys)) {
+    const prefix = `${weekId}:`;
+    for (const k of keys) {
+      if (typeof k === 'string' && k.startsWith(prefix)) {
+        ids.add(k.slice(prefix.length));
+      }
+    }
+  }
+  return ids;
+}
+
+export function inventoryHasWeeklyClaim(inv, weekId, questId) {
+  if (!questId) return false;
+  return claimedIdsFromInventory(inv, weekId).has(questId);
+}
+
+/** Union of durable claim key arrays (never drop a claim). */
+export function mergeWeeklyClaimKeys(a, b) {
+  const out = new Set();
+  for (const src of [a, b]) {
+    if (!Array.isArray(src)) continue;
+    for (const k of src) {
+      if (typeof k === 'string' && k.includes(':')) out.add(k);
+    }
+  }
+  return [...out].sort();
+}
+
+/**
+ * Mark a weekly quest claimed on inventory — dual-write:
+ * 1) weekly_quests.claimed
+ * 2) weekly_claim_keys ledger (anti multi-claim wipe)
+ */
+export function applyWeeklyClaimToInventory(inv, weekId, questId) {
+  const base = inv && typeof inv === 'object' ? { ...inv } : {};
+  base.weekly_quests = markQuestClaimed(base.weekly_quests, weekId, questId);
+  const key = weeklyClaimKey(weekId, questId);
+  base.weekly_claim_keys = mergeWeeklyClaimKeys(base.weekly_claim_keys, [key]);
+  return base;
+}
+
+/** Merge two inventory objects without dropping weekly claims / progress. */
+export function mergeInventoryWeekly(a, b, weekId = getUtcWeekId()) {
+  const A = a && typeof a === 'object' ? a : {};
+  const B = b && typeof b === 'object' ? b : {};
+  return {
+    ...A,
+    ...B,
+    weekly_quests: mergeWeeklyStates(A.weekly_quests, B.weekly_quests, weekId),
+    weekly_claim_keys: mergeWeeklyClaimKeys(A.weekly_claim_keys, B.weekly_claim_keys),
+  };
+}
+
+/** Sync weekly_quests.claimed from durable ledger (repair after wipe). */
+export function hydrateWeeklyClaimsFromLedger(inv, weekId = getUtcWeekId()) {
+  if (!inv || typeof inv !== 'object') return inv;
+  const ids = claimedIdsFromInventory(inv, weekId);
+  let wq = ensureWeeklyState(inv.weekly_quests, weekId);
+  for (const id of ids) {
+    wq = markQuestClaimed(wq, weekId, id);
+  }
+  return {
+    ...inv,
+    weekly_quests: wq,
+    weekly_claim_keys: mergeWeeklyClaimKeys(
+      inv.weekly_claim_keys,
+      [...ids].map((id) => weeklyClaimKey(weekId, id)),
+    ),
+  };
+}
+
+/** Merge two weekly states for same week — never drop claimed ids (anti double-claim wipe). */
+export function mergeWeeklyStates(a, b, weekId = getUtcWeekId()) {
+  const A = ensureWeeklyState(a, weekId);
+  const B = ensureWeeklyState(b, weekId);
+  // Prefer matching week; if one is empty-new week and other has data, keep data week
+  const useA = A.weekId === weekId;
+  const useB = B.weekId === weekId;
+  if (!useA && !useB) return emptyWeeklyState(weekId);
+  if (!useA) return B;
+  if (!useB) return A;
+  return {
+    weekId,
+    claimed: [...new Set([...(A.claimed || []), ...(B.claimed || [])])],
+    daysTap500: [...new Set([...(A.daysTap500 || []), ...(B.daysTap500 || [])])].sort(),
+    daysActive: [...new Set([...(A.daysActive || []), ...(B.daysActive || [])])].sort(),
+    daysFull: [...new Set([...(A.daysFull || []), ...(B.daysFull || [])])].sort(),
+    boostBuys: Math.max(Number(A.boostBuys) || 0, Number(B.boostBuys) || 0),
+  };
 }
 
 /** Claims that count toward the weekly prize (energy quests only, not the prize itself) */

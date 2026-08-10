@@ -121,6 +121,12 @@ import {
   getUtcWeekId,
   utcDayStr as weeklyUtcDayStr,
   applyWeeklyDailyProgress,
+  mergeWeeklyStates,
+  isDailyLimitDrained,
+  WEEKLY_BASE_DAILY_LIMIT,
+  mergeInventoryWeekly,
+  mergeWeeklyClaimKeys,
+  hydrateWeeklyClaimsFromLedger,
 } from './weeklyQuestLogic';
 import {
   getSeasonDayNumber,
@@ -685,10 +691,27 @@ const GiftTapGame = () => {
 
   const onWeeklyStateChange = useCallback((nextWeekly, nextInv) => {
     setStats((prev) => {
-      const inv = nextInv || {
-        ...(prev.inventory || {}),
-        weekly_quests: nextWeekly,
-      };
+      const weekId = getUtcWeekId();
+      let inv = mergeInventoryWeekly(
+        mergeInventoryWeekly(
+          inventoryRef.current || {},
+          prev.inventory || {},
+          weekId,
+        ),
+        nextInv || {
+          ...(prev.inventory || {}),
+          weekly_quests: nextWeekly,
+        },
+        weekId,
+      );
+      if (nextWeekly) {
+        inv.weekly_quests = mergeWeeklyStates(
+          inv.weekly_quests,
+          nextWeekly,
+          weekId,
+        );
+      }
+      inv = hydrateWeeklyClaimsFromLedger(inv, weekId);
       inventoryRef.current = inv;
       return { ...prev, inventory: inv };
     });
@@ -696,27 +719,34 @@ const GiftTapGame = () => {
 
   /** Track weekly quest progress (500/day, full daily, etc.) and persist inventory.weekly_quests */
   const recordWeeklyDailyProgress = useCallback(
-    (dayTaps, maxLimit, when = new Date()) => {
+    (dayTaps, _maxLimitIgnored, when = new Date()) => {
       try {
         const weekId = getUtcWeekId(when);
         const day = weeklyUtcDayStr(when);
         const taps = Math.max(0, Number(dayTaps) || 0);
-        const limit = Math.max(0, Number(maxLimit) || 0);
+        // Weekly board uses base 1000 for drain-daily (boosts ignored)
+        const limit = WEEKLY_BASE_DAILY_LIMIT;
 
         setStats((prev) => {
           const baseInv = inventoryRef.current || prev.inventory || {};
-          const nextW = applyWeeklyDailyProgress(baseInv.weekly_quests, weekId, {
+          // Progress only — merge keeps claimed[] from baseInv + prev
+          let nextW = applyWeeklyDailyProgress(baseInv.weekly_quests, weekId, {
             day,
             dayTaps: taps,
             maxLimit: limit,
           });
-          const nextInv = {
-            ...baseInv,
-            ...(prev.inventory || {}),
-            weekly_quests: nextW,
-          };
+          nextW = mergeWeeklyStates(
+            prev.inventory?.weekly_quests,
+            mergeWeeklyStates(baseInv.weekly_quests, nextW, weekId),
+            weekId,
+          );
+          let nextInv = mergeInventoryWeekly(
+            mergeInventoryWeekly(baseInv, prev.inventory || {}, weekId),
+            { weekly_quests: nextW },
+            weekId,
+          );
+          nextInv = hydrateWeeklyClaimsFromLedger(nextInv, weekId);
           inventoryRef.current = nextInv;
-          // Persist so claim works after refresh
           if (playerId) {
             supabase
               .from('players')
@@ -737,6 +767,14 @@ const GiftTapGame = () => {
     },
     [playerId],
   );
+
+  // Credit weekly Tap-500 / base-1000 whenever live daily taps are high enough
+  useEffect(() => {
+    if (!isDataLoaded) return;
+    const taps = Math.max(Number(dailyTaps) || 0, Number(optimisticDaily.current) || 0);
+    if (taps < 500) return;
+    recordWeeklyDailyProgress(taps, WEEKLY_BASE_DAILY_LIMIT, new Date());
+  }, [dailyTaps, isDataLoaded, currentPage, recordWeeklyDailyProgress]);
 
   const openAirdropBoard = async () => {
     setShowAirdropBoard(true);
@@ -784,12 +822,16 @@ const GiftTapGame = () => {
   };
 
   const grantTaskEnergy = useCallback(
-    async ({ amount }) => {
+    async ({ amount, preserveWeeklyQuests, preserveClaimKeys } = {}) => {
       const add = Math.max(0, Number(amount) || 0);
       if (add <= 0) return 0;
 
       const expires = utcMidnightTonightIso();
-      const prevInv = { ...(stats.inventory || {}) };
+      const weekId = getUtcWeekId();
+      // Use inventoryRef so we never wipe weekly claims after a quest claim
+      const prevInv = {
+        ...(inventoryRef.current || stats.inventory || {}),
+      };
       const prevBoost = prevInv.task_limit_boost;
       let stacked = add;
       if (
@@ -799,24 +841,68 @@ const GiftTapGame = () => {
       ) {
         stacked = (Number(prevBoost.amount) || 0) + add;
       }
-      const nextInv = {
+      // Force-merge claimed + durable ledger so boost write cannot drop them
+      const keptWeekly = mergeWeeklyStates(
+        prevInv.weekly_quests,
+        preserveWeeklyQuests || prevInv.weekly_quests,
+        weekId,
+      );
+      let nextInv = {
         ...prevInv,
+        weekly_quests: keptWeekly,
+        weekly_claim_keys: mergeWeeklyClaimKeys(
+          prevInv.weekly_claim_keys,
+          preserveClaimKeys || prevInv.weekly_claim_keys,
+        ),
         task_limit_boost: { amount: stacked, expires },
-        // mark migration done so load heal does not double-apply
         task_daily_limit_migrated_v1: true,
       };
-
-      setStats((prev) => ({ ...prev, inventory: nextInv }));
+      nextInv = hydrateWeeklyClaimsFromLedger(nextInv, weekId);
+      inventoryRef.current = nextInv;
+      setStats((prev) => {
+        let inv = mergeInventoryWeekly(prev.inventory || {}, nextInv, weekId);
+        inv = hydrateWeeklyClaimsFromLedger(inv, weekId);
+        inventoryRef.current = inv;
+        return { ...prev, inventory: inv };
+      });
 
       if (playerId) {
-        const { error } = await supabase
-          .from('players')
-          .update({
-            inventory: nextInv,
-            last_updated: new Date().toISOString(),
-          })
-          .eq(DB_PLAYER_ID, String(playerId));
-        if (error) throw error;
+        // Re-merge against server inventory so concurrent saves cannot wipe claims
+        try {
+          const { data: row } = await supabase
+            .from('players')
+            .select('inventory')
+            .eq(DB_PLAYER_ID, String(playerId))
+            .maybeSingle();
+          let writeInv = mergeInventoryWeekly(
+            row?.inventory || {},
+            inventoryRef.current || {},
+            weekId,
+          );
+          writeInv.task_limit_boost = inventoryRef.current.task_limit_boost;
+          writeInv.task_daily_limit_migrated_v1 = true;
+          writeInv = hydrateWeeklyClaimsFromLedger(writeInv, weekId);
+          inventoryRef.current = writeInv;
+          const { error } = await supabase
+            .from('players')
+            .update({
+              inventory: writeInv,
+              last_updated: new Date().toISOString(),
+            })
+            .eq(DB_PLAYER_ID, String(playerId));
+          if (error) throw error;
+          lastLocalSaveAtRef.current = Date.now();
+        } catch (e) {
+          const { error } = await supabase
+            .from('players')
+            .update({
+              inventory: inventoryRef.current,
+              last_updated: new Date().toISOString(),
+            })
+            .eq(DB_PLAYER_ID, String(playerId));
+          if (error) throw error;
+          lastLocalSaveAtRef.current = Date.now();
+        }
       }
       return stacked;
     },
@@ -1274,30 +1360,35 @@ const GiftTapGame = () => {
           if (tlb?.expires && new Date(tlb.expires) > new Date()) {
             lim += Number(tlb.amount) || 0;
           }
-          if (dbDaily > 0 && lim > 0 && dbDaily + 1e-6 >= lim) {
+          if (dbDaily > 0) {
             const nowLoad = new Date();
+            // Credit 500/day, active day, and full-drain at BASE 1000 (boosts ignored)
             inv.weekly_quests = applyWeeklyDailyProgress(
               inv.weekly_quests,
               getUtcWeekId(nowLoad),
               {
                 day: weeklyUtcDayStr(nowLoad),
                 dayTaps: dbDaily,
-                maxLimit: lim,
+                maxLimit: WEEKLY_BASE_DAILY_LIMIT,
               },
             );
-            supabase
-              .from('players')
-              .update({
-                inventory: inv,
-                last_updated: new Date().toISOString(),
-              })
-              .eq(DB_PLAYER_ID, String(userId))
-              .then(({ error }) => {
-                if (error) console.warn('weekly full-day on load', error.message);
-              });
           }
         } catch {
           /* ignore */
+        }
+        // Repair claims from durable ledger BEFORE any write/setState
+        inv = hydrateWeeklyClaimsFromLedger(inv, getUtcWeekId());
+        if ((Number(playerRow.daily_taps) || 0) > 0) {
+          supabase
+            .from('players')
+            .update({
+              inventory: inv,
+              last_updated: new Date().toISOString(),
+            })
+            .eq(DB_PLAYER_ID, String(userId))
+            .then(({ error }) => {
+              if (error) console.warn('weekly progress on load', error.message);
+            });
         }
         inventoryRef.current = inv;
         setStats({
@@ -2248,14 +2339,17 @@ const GiftTapGame = () => {
       const inv = { ...(inventoryRef.current || stats.inventory || {}) };
       delete inv.wall_fee_progress;
       delete inv.wall_fee_wall;
-      const nextInventory = {
-        ...inv,
-        weekly_quests: inv.weekly_quests || inventoryRef.current?.weekly_quests,
-        wall_snooze_level:
-          wallSnoozedFor === p.mul
-            ? p.mul
-            : inv.wall_snooze_level ?? null,
-      };
+      const saveWeekId = getUtcWeekId();
+      let nextInventory = mergeInventoryWeekly(
+        inv,
+        inventoryRef.current || {},
+        saveWeekId,
+      );
+      nextInventory = hydrateWeeklyClaimsFromLedger(nextInventory, saveWeekId);
+      nextInventory.wall_snooze_level =
+        wallSnoozedFor === p.mul
+          ? p.mul
+          : inv.wall_snooze_level ?? null;
       inventoryRef.current = nextInventory;
 
       // If we have daily progress, last_tap_date must be today so reloads keep the bar
@@ -2341,14 +2435,14 @@ const GiftTapGame = () => {
         };
         lastLocalSaveAtRef.current = Date.now();
         setStats((prev) => {
-          // Never drop weekly_quests if a concurrent update added them
-          const mergedInv = {
-            ...nextInventory,
-            weekly_quests:
-              nextInventory.weekly_quests ||
-              prev.inventory?.weekly_quests ||
-              inventoryRef.current?.weekly_quests,
-          };
+          // Never drop weekly claims if a concurrent claim added them
+          const wk = getUtcWeekId();
+          let mergedInv = mergeInventoryWeekly(
+            mergeInventoryWeekly(nextInventory, prev.inventory || {}, wk),
+            inventoryRef.current || {},
+            wk,
+          );
+          mergedInv = hydrateWeeklyClaimsFromLedger(mergedInv, wk);
           inventoryRef.current = mergedInv;
           return { ...prev, inventory: mergedInv };
         });
@@ -2499,7 +2593,35 @@ const GiftTapGame = () => {
       const availableByDailyLimit = Math.floor((currentMaxLimit - dailyUsed) / costMultiplier);
       const validTaps = Math.min(tapPoints.length, availableByEnergy, availableByDailyLimit);
 
-      if (validTaps <= 0) return; 
+      if (validTaps <= 0) {
+        // Still credit weekly quests (500/day + full drain) when blocked by energy/limit
+        if (dailyUsed > 0) {
+          recordWeeklyDailyProgress(dailyUsed, currentMaxLimit, now);
+        }
+        if (isDailyLimitDrained(dailyUsed, currentMaxLimit)) {
+          setAppNotice({
+            show: true,
+            message:
+              "Daily limit reached for this UTC day.\n\n" +
+              "Want to keep playing? Expanded Battery adds +1,000 max taps until UTC midnight (Shop · Free).",
+            loading: false,
+            success: false,
+            title: "Daily limit reached",
+            confirm: {
+              confirmLabel: "Expanded Battery",
+              cancelLabel: "OK",
+              confirmDanger: false,
+              resolve: (ok) => {
+                if (ok) {
+                  setShopFocusTab("upgrades");
+                  setCurrentPage("shop");
+                }
+              },
+            },
+          });
+        }
+        return;
+      }
 
       // --- STREAK: only on first VALID tap of a new UTC day ---
       {
@@ -2893,23 +3015,52 @@ const GiftTapGame = () => {
               if (payload.new.max_daily_limit != null) {
                 setMaxDailyLimit(payload.new.max_daily_limit);
               }
-              setStats((prev) => ({
-                ...prev,
-                inventory: inv,
-                frenzy_expires: payload.new.frenzy_expires,
-                efficiency_expires: payload.new.efficiency_expires,
-                energy_boost_expires: payload.new.energy_boost_expires,
-              }));
+              setStats((prev) => {
+                const wk = getUtcWeekId();
+                let nextInv = mergeInventoryWeekly(
+                  mergeInventoryWeekly(
+                    prev.inventory || {},
+                    inventoryRef.current || {},
+                    wk,
+                  ),
+                  inv || {},
+                  wk,
+                );
+                nextInv = hydrateWeeklyClaimsFromLedger(nextInv, wk);
+                inventoryRef.current = nextInv;
+                return {
+                  ...prev,
+                  inventory: nextInv,
+                  frenzy_expires: payload.new.frenzy_expires,
+                  efficiency_expires: payload.new.efficiency_expires,
+                  energy_boost_expires: payload.new.energy_boost_expires,
+                };
+              });
             } else if (!isOwnEcho) {
-              // Still refresh inventory / buffs
-              setStats((prev) => ({
-                ...prev,
-                inventory: inv,
-                frenzy_expires: payload.new.frenzy_expires ?? prev.frenzy_expires,
-                efficiency_expires: payload.new.efficiency_expires ?? prev.efficiency_expires,
-                energy_boost_expires:
-                  payload.new.energy_boost_expires ?? prev.energy_boost_expires,
-              }));
+              // Still refresh inventory / buffs — never wipe weekly claims
+              setStats((prev) => {
+                const wk = getUtcWeekId();
+                let nextInv = mergeInventoryWeekly(
+                  mergeInventoryWeekly(
+                    prev.inventory || {},
+                    inventoryRef.current || {},
+                    wk,
+                  ),
+                  inv || {},
+                  wk,
+                );
+                nextInv = hydrateWeeklyClaimsFromLedger(nextInv, wk);
+                inventoryRef.current = nextInv;
+                return {
+                  ...prev,
+                  inventory: nextInv,
+                  frenzy_expires: payload.new.frenzy_expires ?? prev.frenzy_expires,
+                  efficiency_expires:
+                    payload.new.efficiency_expires ?? prev.efficiency_expires,
+                  energy_boost_expires:
+                    payload.new.energy_boost_expires ?? prev.energy_boost_expires,
+                };
+              });
             }
           }
 
