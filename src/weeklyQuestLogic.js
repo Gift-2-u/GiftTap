@@ -1,8 +1,8 @@
 /**
- * Weekly quest board — UTC week, each claim = +100 energy pool.
+ * Weekly quest board — UTC week, each quest claim = +100 max daily limit (UTC day).
  */
 
-export const WEEKLY_ENERGY_REWARD = 100;
+export const WEEKLY_ENERGY_REWARD = 100; // +daily limit (not the 500 pool)
 
 /** End-of-week prize: claim after enough weekly quests claimed */
 export const WEEKLY_PRIZE = {

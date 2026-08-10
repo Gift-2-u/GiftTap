@@ -382,7 +382,7 @@ const Tasks = ({
             player={user}
             weeklyState={weeklyState}
             onWeeklyStateChange={onWeeklyStateChange}
-            grantEnergyPool={grantEnergyPool}
+            grantTaskEnergy={grantTaskEnergy}
           />
         ) : null}
 

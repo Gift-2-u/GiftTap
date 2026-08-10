@@ -16,13 +16,13 @@ import {
 } from './weeklyQuestLogic';
 
 /**
- * UTC week quest board — energy claims + end-of-week free boost prize.
+ * UTC week quest board — +daily limit claims + end-of-week free boost prize.
  */
 export default function WeeklyQuests({
   player,
   weeklyState,
   onWeeklyStateChange,
-  grantEnergyPool,
+  grantTaskEnergy,
   friends1kCount = 0,
 }) {
   const userId = player?.id ? String(player.id) : null;
@@ -87,13 +87,16 @@ export default function WeeklyQuests({
       if (typeof onWeeklyStateChange === 'function') {
         onWeeklyStateChange(nextState, inv);
       }
-      if (typeof grantEnergyPool === 'function') {
-        await grantEnergyPool(WEEKLY_ENERGY_REWARD);
+      if (typeof grantTaskEnergy === 'function') {
+        await grantTaskEnergy({
+          amount: WEEKLY_ENERGY_REWARD,
+          dayLimited: true,
+        });
       }
 
       setAppNotice({
         show: true,
-        message: `⚡ +${WEEKLY_ENERGY_REWARD} Energy claimed! (${weeklyPrizeProgress(nextState).current}/${WEEKLY_PRIZE.needClaims} for weekly prize)`,
+        message: `⚡ +${WEEKLY_ENERGY_REWARD} Daily limit claimed (today UTC)! (${weeklyPrizeProgress(nextState).current}/${WEEKLY_PRIZE.needClaims} for weekly prize)`,
         success: true,
       });
     } catch (e) {
@@ -193,7 +196,7 @@ export default function WeeklyQuests({
               {getUtcWeekRangeLabel()}
             </div>
             <div style={{ color: '#888', fontSize: 10, marginTop: 4 }}>
-              Each quest +{WEEKLY_ENERGY_REWARD} energy · 10 quests total
+              Each quest +{WEEKLY_ENERGY_REWARD} max daily limit (UTC day) · 10 quests total
             </div>
           </div>
 
@@ -308,7 +311,7 @@ export default function WeeklyQuests({
               <div style={{ minWidth: 0 }}>
                 <div style={{ color: '#fff', fontWeight: 'bold', fontSize: 13 }}>{quest.title}</div>
                 <div style={{ color: '#ffd700', fontSize: 11, marginTop: 3 }}>
-                  +{WEEKLY_ENERGY_REWARD} Energy
+                  +{WEEKLY_ENERGY_REWARD} Daily limit · today UTC
                 </div>
                 <div style={{ color: '#666', fontSize: 10, marginTop: 2 }}>{quest.description}</div>
                 <div style={{ color: '#888', fontSize: 10, marginTop: 4, fontWeight: 'bold' }}>
