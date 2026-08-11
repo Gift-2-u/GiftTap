@@ -31,17 +31,20 @@ export const HELP_TIPS = {
   level: {
     title: 'Level & taps',
     body:
-      'Your level comes from lifetime taps (total mining history).\n\n' +
-      'Higher levels can unlock a stronger permanent tap multiplier (more shards per tap).\n\n' +
-      'The bar shows progress to the next level — unless you are at a Climb wall, where Level up is optional.',
+      'Your level comes from lifetime taps (total mining history). Levels go up to 100.\n\n' +
+      'Permanent mining mult: 1.00x (L0–4) → 1.15x → 1.20x → 1.30x → 1.40x → 1.50x → 1.75x → 2.00x (L100).\n\n' +
+      'The bar shows progress to the next level — unless you are at an optional Climb wall.\n\n' +
+      'Full table: Menu → Game Guide.',
   },
   climb: {
     title: 'Climb / Level up',
     body:
-      'At some levels (4, 9, 19, 29, 49) you hit an optional wall.\n\n' +
-      '• Stay & mine: keep earning G2Ushards at your current level forever.\n' +
-      '• Climb: pay a shard fee (or SOL) to unlock higher levels and a better multiplier.\n\n' +
-      'Climb is never required to keep playing or mining.',
+      'Optional walls at levels 4, 9, 19, 29, 49, 74, and 99.\n\n' +
+      '• Stay & mine: keep earning G2Ushards forever at your current level.\n' +
+      '• Early walls (4, 9): pay shards OR SOL.\n' +
+      '• Mid/late walls (19+): pay shards AND SOL.\n' +
+      '• Climb unlocks higher levels and a better permanent multiplier.\n\n' +
+      'Full costs and mult table: Menu → Game Guide. Climb is never required to keep mining.',
   },
   shards: {
     title: 'G2Ushards',

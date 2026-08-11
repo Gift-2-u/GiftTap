@@ -26,6 +26,9 @@ import {
 
 /**
  * UTC week quest board — +daily limit claims + end-of-week free boost prize.
+ *
+ * CLAIM RULE: every quest is once-only after claim (see claimOnce.js + AGENTS.md).
+ * Opt out only with an explicit product decision (period reset or onceOnly:false).
  */
 export default function WeeklyQuests({
   player,

@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { supabase } from './supabaseClient';
+import { claimKey, withInventoryClaim, inventoryHasClaim } from './claimOnce';
 import { DB_PLAYER_ID } from './playerIdentity';
 import AppNotice from './AppNotice';
 import { IDEAS_EMAIL, openIdeasEmail, copyIdeasEmail } from './contactIdeas';
@@ -114,6 +115,7 @@ function isEnergyTask(task) {
   return task.type === 'taps' || task.type === 'streak_energy';
 }
 
+/** CLAIM RULE: lifetime tasks are once-only after claim (claimOnce.js + completed_tasks). */
 const Tasks = ({
   balance,
   setBalance,
@@ -258,11 +260,20 @@ const Tasks = ({
       setCompletedTasks(newCompleted);
       setReadyToClaim((prev) => prev.filter((id) => id !== task.id));
 
+      const ckShard = claimKey({ scope: 'lifetime', id: task.id });
+      const { data: invShardRow } = await supabase
+        .from('players')
+        .select('inventory')
+        .eq(DB_PLAYER_ID, userId)
+        .maybeSingle();
+      const invShard = withInventoryClaim(invShardRow?.inventory || {}, ckShard);
+
       const { error } = await supabase
         .from('players')
         .update({
           shard_balance: newBalance,
           completed_tasks: newCompleted,
+          inventory: invShard,
           last_updated: new Date().toISOString(),
         })
         .eq(DB_PLAYER_ID, userId);
@@ -306,8 +317,21 @@ const Tasks = ({
       const serverDone = Array.isArray(row?.completed_tasks)
         ? row.completed_tasks
         : [];
-      if (serverDone.includes(task.id)) {
-        setCompletedTasks(serverDone);
+      const ckCheck = claimKey({ scope: 'lifetime', id: task.id });
+      const { data: invCheck } = await supabase
+        .from('players')
+        .select('inventory')
+        .eq(DB_PLAYER_ID, userId)
+        .maybeSingle();
+      if (
+        serverDone.includes(task.id) ||
+        inventoryHasClaim(invCheck?.inventory, ckCheck)
+      ) {
+        setCompletedTasks(
+          serverDone.includes(task.id)
+            ? serverDone
+            : [...new Set([...serverDone, task.id])],
+        );
         setAppNotice({
           show: true,
           message: 'Already claimed ✓',
@@ -318,10 +342,20 @@ const Tasks = ({
 
       const newCompleted = [...new Set([...serverDone, ...safeCompleted, task.id])];
 
+      // Durable once-only: completed_tasks + claim_log
+      const ck = claimKey({ scope: 'lifetime', id: task.id });
+      const { data: invRow } = await supabase
+        .from('players')
+        .select('inventory')
+        .eq(DB_PLAYER_ID, userId)
+        .maybeSingle();
+      let inv = withInventoryClaim(invRow?.inventory || {}, ck);
+
       const { error: claimErr } = await supabase
         .from('players')
         .update({
           completed_tasks: newCompleted,
+          inventory: inv,
           last_updated: new Date().toISOString(),
         })
         .eq(DB_PLAYER_ID, userId);

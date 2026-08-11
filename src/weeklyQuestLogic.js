@@ -277,7 +277,12 @@ export function claimedIdsFromInventory(inv, weekId = getUtcWeekId()) {
 
 export function inventoryHasWeeklyClaim(inv, weekId, questId) {
   if (!questId) return false;
-  return claimedIdsFromInventory(inv, weekId).has(questId);
+  if (claimedIdsFromInventory(inv, weekId).has(questId)) return true;
+  // Global claimOnce ledger
+  const globalKey = `weekly:${weekId}:${questId}`;
+  const log = inv?.claim_log;
+  if (Array.isArray(log) && log.includes(globalKey)) return true;
+  return false;
 }
 
 /** Union of durable claim key arrays (never drop a claim). */
@@ -302,18 +307,34 @@ export function applyWeeklyClaimToInventory(inv, weekId, questId) {
   base.weekly_quests = markQuestClaimed(base.weekly_quests, weekId, questId);
   const key = weeklyClaimKey(weekId, questId);
   base.weekly_claim_keys = mergeWeeklyClaimKeys(base.weekly_claim_keys, [key]);
+  // Also write global claim_log (claimOnce.js default once-only ledger)
+  const globalKey = `weekly:${weekId}:${questId}`;
+  const log = new Set(Array.isArray(base.claim_log) ? base.claim_log : []);
+  log.add(globalKey);
+  base.claim_log = [...log].sort();
   return base;
 }
 
-/** Merge two inventory objects without dropping weekly claims / progress. */
+/** Merge two inventory objects without dropping weekly claims / progress / claim_log. */
 export function mergeInventoryWeekly(a, b, weekId = getUtcWeekId()) {
   const A = a && typeof a === 'object' ? a : {};
   const B = b && typeof b === 'object' ? b : {};
+  const claimLog = new Set();
+  for (const src of [A.claim_log, B.claim_log]) {
+    if (!Array.isArray(src)) continue;
+    for (const k of src) {
+      if (typeof k === 'string' && k) claimLog.add(k);
+    }
+  }
   return {
     ...A,
     ...B,
     weekly_quests: mergeWeeklyStates(A.weekly_quests, B.weekly_quests, weekId),
     weekly_claim_keys: mergeWeeklyClaimKeys(A.weekly_claim_keys, B.weekly_claim_keys),
+    // Global durable claim ledger (claimOnce.js) — never drop
+    claim_log: claimLog.size
+      ? [...claimLog].sort()
+      : A.claim_log || B.claim_log || undefined,
   };
 }
 

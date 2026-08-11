@@ -202,45 +202,99 @@ const decryptWallet = (encryptedData, password) => {
 export const calculateLevel = (taps) => {
   if (taps < 50000) return Math.floor(taps / 10000); 
   if (taps < 125000) return 5 + Math.floor((taps - 50000) / 15000); 
-  if (taps < 375000) return 10 + Math.floor((taps - 125000) / 25000); 
-  if (taps < 875000) return 20 + Math.floor((taps - 375000) / 50000); 
-  if (taps < 2875000) return 30 + Math.floor((taps - 875000) / 100000); 
-  return 50; 
+  if (taps < 625000) return 10 + Math.floor((taps - 125000) / 50000); 
+  if (taps < 2125000) return 20 + Math.floor((taps - 625000) / 150000); 
+  if (taps < 9125000) return 30 + Math.floor((taps - 2125000) / 350000);
+  if (taps < 34125000) return 50 + Math.floor((taps - 9125000) / 1000000);
+  if (taps < 109125000) return 75 + Math.floor((taps - 34125000) / 3000000);
+  return 100; 
 };
 
 export const getPaywallCap = (maxUnlockedLevel) => {
   if (maxUnlockedLevel <= 4) return 50000;
   if (maxUnlockedLevel <= 9) return 125000;
-  if (maxUnlockedLevel <= 19) return 375000;
-  if (maxUnlockedLevel <= 29) return 875000;
-  if (maxUnlockedLevel <= 49) return 2875000;
-  return Infinity; 
+  if (maxUnlockedLevel <= 19) return 625000;
+  if (maxUnlockedLevel <= 29) return 2125000;
+  if (maxUnlockedLevel <= 49) return 9125000;
+  if (maxUnlockedLevel <= 74) return 34125000;
+  if (maxUnlockedLevel <= 99) return 109125000;
+  return Infinity;
 };
 
 export const getNextLevelTarget = (currentLevel) => {
   if (currentLevel < 5) return (currentLevel + 1) * 10000;
-  if (currentLevel < 10) return 50000 + ((currentLevel + 1 - 5) * 15000);
-  if (currentLevel < 20) return 125000 + ((currentLevel + 1 - 10) * 25000);
-  if (currentLevel < 30) return 375000 + ((currentLevel + 1 - 20) * 50000);
-  if (currentLevel < 50) return 875000 + ((currentLevel + 1 - 30) * 100000);
-  return 2875000; // Max level cap
+  if (currentLevel < 10) return 50000 + (currentLevel + 1 - 5) * 15000;
+  if (currentLevel < 20) return 125000 + (currentLevel + 1 - 10) * 50000;
+  if (currentLevel < 30) return 625000 + (currentLevel + 1 - 20) * 150000;
+  if (currentLevel < 50) return 2125000 + (currentLevel + 1 - 30) * 350000;
+  if (currentLevel < 75) return 9125000 + (currentLevel + 1 - 50) * 1000000;
+  if (currentLevel < 100) return 34125000 + (currentLevel + 1 - 75) * 3000000;
+  return 109125000; // L100 cap
 };
 
 export const getLevelMultiplier = (level) => {
-  if (level >= 50) return 2.00;
-  if (level >= 30) return 1.75;
-  if (level >= 20) return 1.50;
-  if (level >= 10) return 1.30;
+  if (level >= 100) return 2.0;
+  if (level >= 75) return 1.75;
+  if (level >= 50) return 1.5;
+  if (level >= 30) return 1.4;
+  if (level >= 20) return 1.3;
+  if (level >= 10) return 1.2;
   if (level >= 5) return 1.15;
-  return 1.00;
+  return 1.0; // L0–4 base
 };
 
 export const ASCENSION_WALLS = {
-  4: { targetLevel: 5, shardCost: 15000, solCost: 0.025, newCap: 9 },
-  9: { targetLevel: 10, shardCost: 30000, solCost: 0.05, newCap: 19 },
-  19: { targetLevel: 20, shardCost: 75000, solCost: 0.10, newCap: 29 },
-  29: { targetLevel: 30, shardCost: 150000, solCost: 0.20, newCap: 49 },
-  49: { targetLevel: 50, shardCost: 500000, solCost: 0.75, newCap: 50 }
+  // Early: pay with EITHER shards OR SOL
+  4: {
+    targetLevel: 5,
+    shardCost: 15000,
+    solCost: 0.025,
+    requiresBoth: false,
+    newCap: 9,
+  },
+  9: {
+    targetLevel: 10,
+    shardCost: 30000,
+    solCost: 0.05,
+    requiresBoth: false,
+    newCap: 19,
+  },
+  // Mid–late: MUST pay BOTH shards AND SOL
+  19: {
+    targetLevel: 20,
+    shardCost: 50000,
+    solCost: 0.05,
+    requiresBoth: true,
+    newCap: 29,
+  },
+  29: {
+    targetLevel: 30,
+    shardCost: 100000,
+    solCost: 0.1,
+    requiresBoth: true,
+    newCap: 49,
+  },
+  49: {
+    targetLevel: 50,
+    shardCost: 300000,
+    solCost: 0.35,
+    requiresBoth: true,
+    newCap: 74,
+  },
+  74: {
+    targetLevel: 75,
+    shardCost: 800000,
+    solCost: 0.75,
+    requiresBoth: true,
+    newCap: 99,
+  },
+  99: {
+    targetLevel: 100,
+    shardCost: 2500000,
+    solCost: 1.5,
+    requiresBoth: true,
+    newCap: 100,
+  },
 };
 
 /**
@@ -258,6 +312,16 @@ export const isAtAscensionWall = (currentLevel, maxUnlockedLevel, lifetimeTaps) 
 /** Effective play level — never exceeds paid unlock cap. */
 export const effectiveLevel = (lifetimeTaps, maxUnlockedLevel) =>
   Math.min(calculateLevel(Number(lifetimeTaps) || 0), Number(maxUnlockedLevel) || 4);
+
+/**
+ * Legacy: old walls stopped at newCap 50. New track goes 50→74→99→100.
+ * Anyone already at max_unlocked 50 is bridged to 74 (they already paid the L49 wall).
+ */
+export function migrateMaxUnlockedLevel(raw) {
+  const n = Number(raw) || 4;
+  if (n === 50) return 74;
+  return n;
+}
 
 const GiftTapGame = () => {
 
@@ -1415,8 +1479,21 @@ const GiftTapGame = () => {
           s: _ss,
           dt: _dtLoad,
         }; 
-        const loadedMax = playerRow.max_unlocked_level || 4;
-        setMaxUnlockedLevel(loadedMax); 
+        let loadedMax = migrateMaxUnlockedLevel(playerRow.max_unlocked_level || 4);
+        setMaxUnlockedLevel(loadedMax);
+        // Persist bridge so DB matches new wall keys (50 → 74)
+        if (loadedMax !== Number(playerRow.max_unlocked_level || 4)) {
+          supabase
+            .from('players')
+            .update({
+              max_unlocked_level: loadedMax,
+              last_updated: new Date().toISOString(),
+            })
+            .eq(DB_PLAYER_ID, String(userId))
+            .then(({ error }) => {
+              if (error) console.warn('max_unlocked migrate', error.message);
+            });
+        }
         const _max = loadedMax;
         setCurrentLevel(Math.min(calculateLevel(_lt), _max));
         // Persist "stay mining" so wall modal does not re-open after each save/tap pause
@@ -2779,10 +2856,57 @@ const GiftTapGame = () => {
     }
   };
 
+  const finishAscensionUnlock = async (newBalance, wallData, wallKey) => {
+    const newCap = wallData.newCap;
+    const newLevel = wallData.targetLevel;
+    setBalance(newBalance);
+    setBalances((b) => ({ ...b, G2Ushards: newBalance }));
+    setMaxUnlockedLevel(newCap);
+    setCurrentLevel(newLevel);
+    setEnergy(maxDailyLimit);
+    setShowAscensionModal(false);
+    setWallSnoozedFor(null);
+    setStats((prev) => ({
+      ...prev,
+      inventory: { ...(prev.inventory || {}), wall_snooze_level: null },
+    }));
+    await saveToDatabase(
+      newBalance,
+      maxDailyLimit,
+      dailyTaps,
+      lastTapDate,
+      streak,
+      lifetimeTaps,
+      newCap,
+      seasonShards,
+      0,
+    );
+    if (wallKey === 4) {
+      tryPayReferrerForWall5(playerId).catch((e) =>
+        console.warn('referral wall5', e?.message || e),
+      );
+    }
+    notify(`Ascended to Level ${newLevel}! Tap Power Increased.`);
+  };
+
+  /** Pay wall climb. method: 'shards' | 'sol' | 'both' (both required on mid/late walls). */
   const handleAscensionPayment = async (method) => {
     const wallKey = maxUnlockedLevel; // e.g. 4 for wall 4→5
     const wallData = ASCENSION_WALLS[wallKey];
     if (!wallData) return;
+    const needsBoth = !!wallData.requiresBoth;
+
+    // Mid/late walls: only the combined path unlocks
+    if (needsBoth && method !== 'both') {
+      notify(
+        `This wall needs BOTH ${wallData.shardCost.toLocaleString()} shards AND ${wallData.solCost} SOL.`,
+      );
+      return;
+    }
+    if (!needsBoth && method === 'both') {
+      // treat as shards-or-sol early wall — ignore
+      return;
+    }
 
     if (method === 'shards') {
       if (Number(balance) < wallData.shardCost) {
@@ -2792,42 +2916,20 @@ const GiftTapGame = () => {
         return;
       }
 
-      const newBalance = Math.round((Number(balance) - wallData.shardCost) * 1000) / 1000;
-      const newCap = wallData.newCap;
-      const newLevel = wallData.targetLevel;
-      
-      setBalance(newBalance);
-      setMaxUnlockedLevel(newCap);
-      setCurrentLevel(newLevel);
-      setEnergy(maxDailyLimit); 
-      setShowAscensionModal(false);
-      setWallSnoozedFor(null);
-      setStats((prev) => ({
-        ...prev,
-        inventory: { ...(prev.inventory || {}), wall_snooze_level: null },
-      }));
-      
-      await saveToDatabase(
-        newBalance,
-        maxDailyLimit,
-        dailyTaps,
-        lastTapDate,
-        streak,
-        lifetimeTaps,
-        newCap,
-        seasonShards,
-        0,
-      );
-      // Referral: +3000 when invitee clears first wall (4→5)
-      if (wallKey === 4) {
-        tryPayReferrerForWall5(playerId).catch((e) =>
-          console.warn('referral wall5', e?.message || e),
-        );
-      }
-      notify(`Ascended to Level ${newLevel}! Tap Power Increased.`);
-      
-    } else if (method === 'sol') {
+      const newBalance =
+        Math.round((Number(balance) - wallData.shardCost) * 1000) / 1000;
+      await finishAscensionUnlock(newBalance, wallData, wallKey);
+      return;
+    }
+
+    if (method === 'sol' || method === 'both') {
       try {
+        if (method === 'both' && Number(balance) < wallData.shardCost) {
+          notify(
+            `Need ${wallData.shardCost.toLocaleString()} shards + ${wallData.solCost} SOL. You have ${Number(balance).toLocaleString()} shards.`,
+          );
+          return;
+        }
         // --- 1. ZERO-DELAY INSTANT DECRYPTION ---
         let storedSecret = decryptedPhrase || generatedSecret;
         
@@ -2897,43 +2999,24 @@ const GiftTapGame = () => {
         // --- 6. Send and Confirm ---
         const signature = await sendAndConfirmTransaction(connection, transaction, [playerKeypair]);
 
-        // --- 7. If the payment clears, unlock the tier and save to database ---
-        const newCap = wallData.newCap;
-        const newLevel = wallData.targetLevel;
-        
-        setMaxUnlockedLevel(newCap);
-        setCurrentLevel(newLevel);
-          setEnergy(maxDailyLimit); 
-        setShowAscensionModal(false);
-        setWallSnoozedFor(null);
-        setStats((prev) => ({
-          ...prev,
-          inventory: { ...(prev.inventory || {}), wall_snooze_level: null },
-        }));
-        
-        // Pass the current 'balance' because we didn't burn any shards
-        await saveToDatabase(
-          balance,
-          maxDailyLimit,
-          dailyTaps,
-          lastTapDate,
-          streak,
-          lifetimeTaps,
-          newCap,
-          seasonShards,
-          0,
-        );
-        if (wallKey === 4) {
-          tryPayReferrerForWall5(playerId).catch((e) =>
-            console.warn('referral wall5', e?.message || e),
-          );
+        // --- 7. Payment cleared — unlock (and burn shards if requiresBoth) ---
+        let newBalance = Number(balance) || 0;
+        if (method === 'both') {
+          if (newBalance < wallData.shardCost) {
+            throw new Error(
+              `SOL paid but not enough shards (${wallData.shardCost.toLocaleString()} required). Contact support with tx if needed.`,
+            );
+          }
+          newBalance =
+            Math.round((newBalance - wallData.shardCost) * 1000) / 1000;
         }
-        notify(`Payment successful! Ascended to Level ${newLevel}! Tap Power Increased.`);
+        await finishAscensionUnlock(newBalance, wallData, wallKey);
 
       } catch (err) {
         console.error("SOL Payment Error:", err);
         notify(`Transaction Failed: ${err.message || "An error occurred during the SOL payment."}`);
       }
+      return;
     }
   };
   // --- SEAMLESS SYNC (Instant Phone-to-Laptop) ---
@@ -4088,7 +4171,11 @@ const GiftTapGame = () => {
 
                 <div style={{ background: '#111', borderRadius: 12, padding: 12, marginBottom: 12, textAlign: 'left', fontSize: 13, color: '#ccc' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span>Climb fee</span><strong style={{ color: '#ffd700' }}>{need.toLocaleString()} shards</strong>
+                    <span>Climb fee</span>
+                    <strong style={{ color: '#ffd700' }}>
+                      {need.toLocaleString()} shards
+                      {wall.requiresBoth ? ` + ${wall.solCost} SOL` : ''}
+                    </strong>
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6 }}>
                     <span>Your shards</span><span>{have.toLocaleString()}</span>
@@ -4108,25 +4195,76 @@ const GiftTapGame = () => {
                   </p>
                 </div>
                 
-                <button 
-                  onClick={() => handleAscensionPayment('shards')}
-                  disabled={!ready}
-                  style={{
-                    width: '100%',
-                    background: ready ? '#2a2d34' : '#1a1a1a',
-                    color: ready ? '#fff' : '#666',
-                    border: `1px solid ${ready ? '#4ade80' : '#444'}`,
-                    padding: '15px',
-                    borderRadius: '12px',
-                    fontWeight: 'bold',
-                    cursor: ready ? 'pointer' : 'not-allowed',
-                    marginBottom: '10px',
-                  }}
-                >
-                  {ready
-                    ? `Climb to L${wall.targetLevel} (${need.toLocaleString()} shards)`
-                    : `Mine ${missing.toLocaleString()} more shards to climb`}
-                </button>
+                {wall.requiresBoth ? (
+                  <>
+                    <div style={{ background: '#111', borderRadius: 10, padding: 10, marginBottom: 10, fontSize: 12, color: '#ccc', textAlign: 'left' }}>
+                      <div style={{ color: '#fbbf24', fontWeight: 'bold', marginBottom: 4 }}>Both required</div>
+                      <div>{need.toLocaleString()} shards <strong style={{ color: '#ffd700' }}>+</strong> {wall.solCost} SOL</div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleAscensionPayment('both')}
+                      disabled={!ready}
+                      style={{
+                        width: '100%',
+                        background: ready
+                          ? 'linear-gradient(90deg, #9945FF, #14F195)'
+                          : '#1a1a1a',
+                        color: ready ? '#000' : '#666',
+                        border: 'none',
+                        padding: '15px',
+                        borderRadius: '12px',
+                        fontWeight: 'bold',
+                        cursor: ready ? 'pointer' : 'not-allowed',
+                        marginBottom: '10px',
+                      }}
+                    >
+                      {ready
+                        ? `Climb to L${wall.targetLevel} (${need.toLocaleString()} shards + ${wall.solCost} SOL)`
+                        : `Mine ${missing.toLocaleString()} more shards first`}
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => handleAscensionPayment('shards')}
+                      disabled={!ready}
+                      style={{
+                        width: '100%',
+                        background: ready ? '#2a2d34' : '#1a1a1a',
+                        color: ready ? '#fff' : '#666',
+                        border: `1px solid ${ready ? '#4ade80' : '#444'}`,
+                        padding: '15px',
+                        borderRadius: '12px',
+                        fontWeight: 'bold',
+                        cursor: ready ? 'pointer' : 'not-allowed',
+                        marginBottom: '10px',
+                      }}
+                    >
+                      {ready
+                        ? `Climb to L${wall.targetLevel} (${need.toLocaleString()} shards)`
+                        : `Mine ${missing.toLocaleString()} more shards to climb`}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleAscensionPayment('sol')}
+                      style={{
+                        width: '100%',
+                        background: 'linear-gradient(90deg, #9945FF, #14F195)',
+                        color: '#000',
+                        border: 'none',
+                        padding: '15px',
+                        borderRadius: '12px',
+                        fontWeight: 'bold',
+                        cursor: 'pointer',
+                        marginBottom: '10px',
+                      }}
+                    >
+                      Pay {wall.solCost} SOL — skip wait
+                    </button>
+                  </>
+                )}
 
                 <button
                   type="button"
@@ -4144,13 +4282,6 @@ const GiftTapGame = () => {
                   }}
                 >
                   Stay on L{maxUnlockedLevel} & keep mining shards
-                </button>
-                
-                <button 
-                  onClick={() => handleAscensionPayment('sol')}
-                  style={{ width: '100%', background: 'linear-gradient(90deg, #9945FF, #14F195)', color: '#000', border: 'none', padding: '15px', borderRadius: '12px', fontWeight: 'bold', cursor: 'pointer' }}
-                >
-                  Pay {wall.solCost} SOL — skip wait
                 </button>
               </div>
             </div>
