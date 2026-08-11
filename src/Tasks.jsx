@@ -126,7 +126,6 @@ const Tasks = ({
   grantTaskEnergy,
   weeklyState,
   onWeeklyStateChange,
-  grantEnergyPool,
   activeTab,
   onTabChange,
   dailyTaps = 0,

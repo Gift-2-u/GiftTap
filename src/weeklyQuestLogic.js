@@ -2,7 +2,7 @@
  * Weekly quest board — UTC week, each quest claim = +100 max daily limit (UTC day).
  */
 
-export const WEEKLY_ENERGY_REWARD = 100; // +daily limit (not the 500 pool)
+export const WEEKLY_ENERGY_REWARD = 100; // +max daily limit (1000 bar), NEVER the 500 Energy battery
 
 /** Base daily max for drain-daily weekly quests (ignores battery / task / premium boosts) */
 export const WEEKLY_BASE_DAILY_LIMIT = 1000;
@@ -285,6 +285,71 @@ export function inventoryHasWeeklyClaim(inv, weekId, questId) {
   return false;
 }
 
+/** Reward ledger — only set AFTER +daily-limit (or prize item) is applied */
+export function weeklyRewardKey(weekId, questId) {
+  return `${weekId}:reward:${questId}`;
+}
+
+export function inventoryHasWeeklyReward(inv, weekId, questId) {
+  if (!questId) return false;
+  const k = weeklyRewardKey(weekId, questId);
+  const keys = inv?.weekly_reward_keys;
+  if (Array.isArray(keys) && keys.includes(k)) return true;
+  const globalKey = `weekly_reward:${weekId}:${questId}`;
+  const log = inv?.claim_log;
+  if (Array.isArray(log) && log.includes(globalKey)) return true;
+  return false;
+}
+
+export function markWeeklyRewardOnInventory(inv, weekId, questId) {
+  const base = inv && typeof inv === 'object' ? { ...inv } : {};
+  const k = weeklyRewardKey(weekId, questId);
+  base.weekly_reward_keys = mergeWeeklyClaimKeys(base.weekly_reward_keys, [k]);
+  const globalKey = `weekly_reward:${weekId}:${questId}`;
+  const log = new Set(Array.isArray(base.claim_log) ? base.claim_log : []);
+  log.add(globalKey);
+  base.claim_log = [...log].sort();
+  return base;
+}
+
+/** UTC end-of-day for task/weekly daily-limit boosts */
+export function utcMidnightTonightIso(date = new Date()) {
+  return new Date(
+    Date.UTC(
+      date.getUTCFullYear(),
+      date.getUTCMonth(),
+      date.getUTCDate(),
+      23,
+      59,
+      59,
+      999,
+    ),
+  ).toISOString();
+}
+
+/**
+ * Stack +amount onto inventory.task_limit_boost until UTC midnight.
+ * Used by weekly quest claims (atomic with claim write).
+ */
+export function applyTaskLimitBoostToInventory(inv, amount, now = new Date()) {
+  const base = inv && typeof inv === 'object' ? { ...inv } : {};
+  const add = Math.max(0, Number(amount) || 0);
+  if (add <= 0) return base;
+  const expires = utcMidnightTonightIso(now);
+  const prev = base.task_limit_boost;
+  let stacked = add;
+  if (
+    prev &&
+    prev.expires &&
+    new Date(prev.expires).getTime() > now.getTime()
+  ) {
+    stacked = (Number(prev.amount) || 0) + add;
+  }
+  base.task_limit_boost = { amount: stacked, expires };
+  base.task_daily_limit_migrated_v1 = true;
+  return base;
+}
+
 /** Union of durable claim key arrays (never drop a claim). */
 export function mergeWeeklyClaimKeys(a, b) {
   const out = new Set();
@@ -326,15 +391,38 @@ export function mergeInventoryWeekly(a, b, weekId = getUtcWeekId()) {
       if (typeof k === 'string' && k) claimLog.add(k);
     }
   }
+  // Prefer higher active task_limit_boost when merging races
+  let taskBoost = B.task_limit_boost || A.task_limit_boost;
+  const aB = A.task_limit_boost;
+  const bB = B.task_limit_boost;
+  const nowMs = Date.now();
+  const aOk =
+    aB && aB.expires && new Date(aB.expires).getTime() > nowMs
+      ? Number(aB.amount) || 0
+      : 0;
+  const bOk =
+    bB && bB.expires && new Date(bB.expires).getTime() > nowMs
+      ? Number(bB.amount) || 0
+      : 0;
+  if (aOk > 0 || bOk > 0) {
+    if (bOk >= aOk && bB) taskBoost = bB;
+    else if (aB) taskBoost = aB;
+  }
+
   return {
     ...A,
     ...B,
     weekly_quests: mergeWeeklyStates(A.weekly_quests, B.weekly_quests, weekId),
     weekly_claim_keys: mergeWeeklyClaimKeys(A.weekly_claim_keys, B.weekly_claim_keys),
+    weekly_reward_keys: mergeWeeklyClaimKeys(
+      A.weekly_reward_keys,
+      B.weekly_reward_keys,
+    ),
     // Global durable claim ledger (claimOnce.js) — never drop
     claim_log: claimLog.size
       ? [...claimLog].sort()
       : A.claim_log || B.claim_log || undefined,
+    task_limit_boost: taskBoost,
   };
 }
 

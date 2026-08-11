@@ -13,7 +13,12 @@ import {
   publicKeyFromSecret,
 } from './mintLocksmith';
 import { ShopGlyph } from './shopIcons';
-import { applyWeeklyBoostBuy, getUtcWeekId } from './weeklyQuestLogic';
+import {
+  applyWeeklyBoostBuy,
+  getUtcWeekId,
+  mergeInventoryWeekly,
+  hydrateWeeklyClaimsFromLedger,
+} from './weeklyQuestLogic';
 
 /** Professional icon tile — custom SVG / image or built-in glyph */
 function ShopItemIcon({ item, size = 52, variant = 'row' }) {
@@ -162,6 +167,34 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
       now.getUTCDate() + daysFromToday,
       23, 59, 59, 999,
     ));
+  };
+
+
+  /**
+   * Never replace inventory with shop-local state alone.
+   * Shop localInventory often lacks task_limit_boost / weekly ledgers — that wiped +100 daily-limit rewards.
+   */
+  const buildFullInventory = (patch = {}) => {
+    const weekId = getUtcWeekId();
+    const parent = stats?.inventory || {};
+    const local = localInventory || {};
+    let inv = mergeInventoryWeekly(parent, local, weekId);
+    inv = mergeInventoryWeekly(inv, patch, weekId);
+    // Explicitly keep daily-limit boost if patch omitted it
+    const pBoost = parent.task_limit_boost;
+    const iBoost = inv.task_limit_boost;
+    const now = Date.now();
+    const pAmt =
+      pBoost?.expires && new Date(pBoost.expires).getTime() > now
+        ? Number(pBoost.amount) || 0
+        : 0;
+    const iAmt =
+      iBoost?.expires && new Date(iBoost.expires).getTime() > now
+        ? Number(iBoost.amount) || 0
+        : 0;
+    if (pAmt > iAmt) inv.task_limit_boost = pBoost;
+    inv = hydrateWeeklyClaimsFromLedger(inv, weekId);
+    return inv;
   };
 
   // --- ITEM DEFINITIONS (icon + gradient for ShopItemIcon) ---
@@ -352,9 +385,10 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
 
     setTxStatus({ show: true, loading: true, message: `Purchasing ${item.name}...`, success: false });
 
-    // Copy current inventory and add 1
-    const newInventory = { ...localInventory };
-    newInventory[item.id] = (newInventory[item.id] || 0) + 1;
+    // Merge with parent inventory so we never wipe task_limit_boost / weekly claims
+    const newInventory = buildFullInventory({
+      [item.id]: (Number(localInventory[item.id]) || 0) + 1,
+    });
     // Weekly quest: count shop boost purchase
     newInventory.weekly_quests = applyWeeklyBoostBuy(
       newInventory.weekly_quests || stats?.inventory?.weekly_quests,
@@ -373,7 +407,17 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
       // Parent setBalanceSynced also patches pending cloud-save so taps cannot refund this spend
       setBalance(nextBalance);
       setLocalInventory(newInventory);
-      if (setStats) setStats({ ...stats, inventory: newInventory }); // Keep parent in sync
+      if (setStats) {
+        setStats((prev) => ({
+          ...prev,
+          ...stats,
+          inventory: mergeInventoryWeekly(
+            prev?.inventory || {},
+            newInventory,
+            getUtcWeekId(),
+          ),
+        }));
+      }
 
       setTxStatus({ show: true, loading: false, message: `✅ ${item.name} added to Backpack! (−${cost.toLocaleString()} G2Ushards)`, success: true });
       setTimeout(() => setTxStatus(prev => ({ ...prev, show: false })), 2000);
@@ -692,10 +736,11 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
 
     setTxStatus({ show: true, loading: true, message: `Activating ${item.name}...`, success: false });
 
-    // 1. Deduct from inventory
-    const newInventory = { ...localInventory };
-    newInventory[item.id] -= 1;
-    if (newInventory[item.id] === 0) delete newInventory[item.id]; // Clean up empty items
+    // 1. Deduct from inventory — always merge parent inventory (preserve task_limit_boost!)
+    const newInventory = buildFullInventory();
+    const prevQty = Number(newInventory[item.id]) || 0;
+    if (prevQty <= 1) delete newInventory[item.id];
+    else newInventory[item.id] = prevQty - 1;
 
     // NEW: Mark item as used today
     const newDailyUsage = { ...dailyUsage, [item.id]: todayStr };
@@ -754,7 +799,18 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
 
       setLocalInventory(newInventory);
       setDailyUsage(newDailyUsage);
-      if (setStats) setStats({ ...stats, ...dbUpdates });
+      if (setStats) {
+        setStats((prev) => ({
+          ...prev,
+          ...stats,
+          ...dbUpdates,
+          inventory: mergeInventoryWeekly(
+            prev?.inventory || {},
+            newInventory,
+            getUtcWeekId(),
+          ),
+        }));
+      }
 
       setTxStatus({ show: true, loading: false, message: `⚡ ${item.name} is now ACTIVE!`, success: true });
       setTimeout(() => setTxStatus(prev => ({ ...prev, show: false })), 2000);

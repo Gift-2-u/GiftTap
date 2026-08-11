@@ -718,12 +718,16 @@ const GiftTapGame = () => {
 
 
   /**
-   * Task claims: +daily tap limit until UTC midnight (stackable same day).
-   * Not the 500 energy pool — extra daily capacity so they can keep tapping.
+   * Task / weekly quest claims: +max DAILY LIMIT until UTC midnight (stackable).
+   * Goes to inventory.task_limit_boost → HUD "Daily Limit: x/1000+".
+   * NEVER touches the 500 Energy battery pool (last_energy / ENERGY_CAP).
    */
 
 
-  /** Weekly quests: +energy to the 500 pool (not daily limit). */
+  /**
+   * Optional refill of the 500 Energy battery pool only (shop refill / ads / etc.).
+   * Do NOT use this for task or weekly quest rewards.
+   */
   const grantEnergyPool = useCallback(
     async (amount) => {
       const add = Math.max(0, Number(amount) || 0);
@@ -774,6 +778,20 @@ const GiftTapGame = () => {
           nextWeekly,
           weekId,
         );
+      }
+      // Prefer explicit task_limit_boost from claim payload (daily max, not 500 pool)
+      if (nextInv?.task_limit_boost) {
+        const n = nextInv.task_limit_boost;
+        const cur = inv.task_limit_boost;
+        const nAmt =
+          n.expires && new Date(n.expires).getTime() > Date.now()
+            ? Number(n.amount) || 0
+            : 0;
+        const cAmt =
+          cur && cur.expires && new Date(cur.expires).getTime() > Date.now()
+            ? Number(cur.amount) || 0
+            : 0;
+        if (nAmt >= cAmt) inv.task_limit_boost = n;
       }
       inv = hydrateWeeklyClaimsFromLedger(inv, weekId);
       inventoryRef.current = inv;
@@ -885,6 +903,7 @@ const GiftTapGame = () => {
     }
   };
 
+  /** +max daily limit (1000 bar), NOT the 500 Energy battery. */
   const grantTaskEnergy = useCallback(
     async ({ amount, preserveWeeklyQuests, preserveClaimKeys } = {}) => {
       const add = Math.max(0, Number(amount) || 0);
@@ -4758,7 +4777,6 @@ const GiftTapGame = () => {
                 grantTaskEnergy={grantTaskEnergy}
                 weeklyState={stats.inventory?.weekly_quests}
                 onWeeklyStateChange={onWeeklyStateChange}
-                grantEnergyPool={grantEnergyPool}
                 activeTab={tasksTab}
                 onTabChange={setTasksTab}
                 dailyTaps={Math.max(Number(dailyTaps) || 0, Number(optimisticDaily.current) || 0)}
