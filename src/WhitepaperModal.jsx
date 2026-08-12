@@ -52,17 +52,43 @@ const WhitepaperModal = ({ isWhitepaperOpen, setIsWhitepaperOpen, onClose }) => 
       id: 9,
       title: "9. Leaderboards (Ranks)",
       content:
-        "Open Ranks from the bottom nav (or Menu → Ranks). There are two boards:\n\n" +
+        "Open Ranks from the bottom nav (or Menu → Ranks). Three boards:\n\n" +
+        "WEEKLY\n" +
+        "• Ordered by your mining score this UTC week (resets every Monday 00:00 UTC).\n" +
+        "• Top 10 when the week freezes get one badge (claim in Shop → BackPack → Badges after the week ends):\n" +
+        "  #1 Diamond · #2 Gold · #3 Silver · #4–10 Bronze.\n" +
+        "• Winners freeze automatically at week end; the new week starts on its own.\n" +
+        "• Burn badges in Pack for Mystery Gift (costs & full odds: § 9b Mystery Gift).\n\n" +
+        "SEASON (monthly)\n" +
+        "• Ordered by season mining score for the current season period shown in-app.\n" +
+        "• At month end a snapshot can select winners / giveaways as announced.\n" +
+        "• Main board uses a rising activity floor (~15% of 1,000 taps/day × day of season). Under the floor you still see your rank on the last line.\n" +
+        "• Some promotions count only main-board players.\n\n" +
         "ALL-TIME\n" +
-        "• Ordered by lifetime taps (your total mining history).\n" +
-        "• Always on — a long-term prestige board. No monthly reset.\n\n" +
-        "SEASON\n" +
-        "• Seasons run monthly (each calendar month / season period shown in-app).\n" +
-        "• Ordered by your score for the current season (season mining this period).\n" +
-        "• At the end of every month, a snapshot of the season board is taken to select winners (prizes / giveaways as announced for that season).\n" +
-        "• Main season board uses a rising activity floor so empty or idle accounts do not crowd the top: about 15% of a 1,000-taps-per-day pace × day of the season (e.g. day 1 ≥ 150, day 10 ≥ 1,500). Fall under that floor and you leave the main list, but you still see your name and rank on the last line so you know where you stand.\n" +
-        "• Some promotions (for example GiftLocksmith giveaway tiers) count only players on the main season board — play enough each day to stay eligible.\n\n" +
-        "Fair play rules apply: multi-accounts and bots can be disqualified from ranks and prizes. See Code of Conduct.",
+        "• Ordered by lifetime taps. Always on — long-term prestige, no monthly reset.\n\n" +
+        "Fair play: multi-accounts and bots can be disqualified. See Code of Conduct.",
+    },
+    {
+      id: 91,
+      title: "9b. Mystery Gift (badge burn)",
+      content:
+        "Open Shop → Pack → Badges. Burn weekly rank badges to open Mystery Gift (one tier per open).\n\n" +
+        "Burn cost (single tier):\n" +
+        "• 3 Diamond · 4 Gold · 5 Silver · 10 Bronze\n\n" +
+        "Weekly badges (Ranks → Weekly, after week freezes):\n" +
+        "• Diamond = #1 · Gold = #2 · Silver = #3 · Bronze = #4–10\n\n" +
+        "DROP RATES by badge tier burned (each column = 100%):\n\n" +
+        "Prize                  Bronze #4–10   Silver #3   Gold #2   Diamond #1\n" +
+        "Exclusive NFT              1%            2%         5%         12%\n" +
+        "Bonus G2U Tokens          10%           20%        35%         50%\n" +
+        "Premium Boost             14%           23%        30%         28%\n" +
+        "Free Boost                35%           30%        20%         10%\n" +
+        "G2Ushards (Bulk)          40%           25%        10%          0%\n\n" +
+        "Better badges = better odds (more Exclusive NFT & Bonus G2U, less bulk shards).\n" +
+        "Exclusive NFT: rare voucher toward a special drop (on-chain mint when that path is live).\n" +
+        "Bonus G2U Tokens: paid as G2Ushards credit for now (amount scales with badge tier).\n" +
+        "Premium Boost = Frenzy · Free Boost = Instant Refill (Pack).\n\n" +
+        "Independent roll per open. Not financial advice; prizes can change for balance/fair play.",
     },
     {
       id: 10,

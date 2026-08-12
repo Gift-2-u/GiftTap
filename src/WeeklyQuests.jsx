@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState, useRef } from 'react';
+import React, { useEffect, useMemo, useState, useRef, useCallback } from 'react';
 import { supabase } from './supabaseClient';
 import { DB_PLAYER_ID } from './playerIdentity';
 import AppNotice from './AppNotice';
@@ -16,22 +16,20 @@ import {
   weeklyPrizeProgress,
   applyWeeklyDailyProgress,
   utcDayStr,
-  isDailyLimitDrained,
   WEEKLY_BASE_DAILY_LIMIT,
   inventoryHasWeeklyClaim,
-  inventoryHasWeeklyReward,
   applyWeeklyClaimToInventory,
-  markWeeklyRewardOnInventory,
   applyTaskLimitBoostToInventory,
+  markWeeklyRewardOnInventory,
   mergeInventoryWeekly,
   hydrateWeeklyClaimsFromLedger,
+  claimedIdsFromInventory,
 } from './weeklyQuestLogic';
 
 /**
- * UTC week quest board — +daily limit claims + end-of-week free boost prize.
- *
- * CLAIM RULE: every quest is once-only after claim (see claimOnce.js + AGENTS.md).
- * Opt out only with an explicit product decision (period reset or onceOnly:false).
+ * Weekly quests — SIMPLE RULE:
+ *   Do quest → Claim once → forever DONE that UTC week (unclaimable).
+ * Server RPC claim_weekly_quest is the source of truth (row lock + ledgers).
  */
 export default function WeeklyQuests({
   player,
@@ -40,9 +38,9 @@ export default function WeeklyQuests({
   onWeeklyStateChange,
   grantTaskEnergy,
   friends1kCount = 0,
-  /** Live daily taps + max limit so "drain daily" can catch up if already maxed */
   dailyTaps = 0,
   maxDailyLimit = 1000,
+  inventory = null,
 }) {
   const userId = playerIdProp
     ? String(playerIdProp)
@@ -54,61 +52,87 @@ export default function WeeklyQuests({
   const weekId = getUtcWeekId();
   const [claimingId, setClaimingId] = useState(null);
   const claimLockRef = useRef(false);
-  /** Session + tab-remount claims — never re-grant even if a concurrent save wipes DB/UI */
   const permanentClaimedRef = useRef(new Set());
+  const [claimedTick, setClaimedTick] = useState(0);
   const [appNotice, setAppNotice] = useState({ show: false, message: '', success: true });
   const [localFriends1k, setLocalFriends1k] = useState(friends1kCount);
-  /** Optimistic claimed ids so the button flips to DONE even if parent state lags */
-  const [optimisticClaimed, setOptimisticClaimed] = useState([]);
-  /** Bump to re-render when permanentClaimedRef gains an id */
-  const [claimedTick, setClaimedTick] = useState(0);
 
   const storageKey =
-    userId && weekId ? `gift2u_wq_claimed_${userId}_${weekId}` : null;
+    userId && weekId ? `gift2u_wq_claimed_v2_${userId}_${weekId}` : null;
 
-  const persistPermanent = (setObj) => {
-    permanentClaimedRef.current = setObj;
-    if (!storageKey) return;
+  const readStoredClaims = useCallback(() => {
+    if (!storageKey) return [];
     try {
-      sessionStorage.setItem(storageKey, JSON.stringify([...setObj]));
+      const raw =
+        localStorage.getItem(storageKey) || sessionStorage.getItem(storageKey);
+      if (!raw) return [];
+      const ids = JSON.parse(raw);
+      return Array.isArray(ids) ? ids.filter(Boolean) : [];
     } catch {
-      /* ignore */
+      return [];
     }
-  };
+  }, [storageKey]);
 
-  // Restore permanent claims after tab switch remounts this component
+  const persistPermanent = useCallback(
+    (setObj) => {
+      permanentClaimedRef.current = setObj;
+      if (!storageKey) return;
+      try {
+        const json = JSON.stringify([...setObj]);
+        localStorage.setItem(storageKey, json);
+        sessionStorage.setItem(storageKey, json);
+      } catch {
+        /* ignore */
+      }
+    },
+    [storageKey],
+  );
+
+  const markClaimedLocal = useCallback(
+    (questId) => {
+      if (!questId) return;
+      const next = new Set(permanentClaimedRef.current);
+      next.add(questId);
+      persistPermanent(next);
+      setClaimedTick((t) => t + 1);
+    },
+    [persistPermanent],
+  );
+
+  // Restore durable claims + absorb parent/inventory ledgers
   useEffect(() => {
     if (!storageKey) return;
-    try {
-      const raw = sessionStorage.getItem(storageKey);
-      if (!raw) return;
-      const ids = JSON.parse(raw);
-      if (!Array.isArray(ids) || !ids.length) return;
-      const next = new Set(permanentClaimedRef.current);
-      let added = false;
-      for (const id of ids) {
+    const next = new Set(permanentClaimedRef.current);
+    let added = false;
+    for (const id of readStoredClaims()) {
+      if (!next.has(id)) {
+        next.add(id);
+        added = true;
+      }
+    }
+    const parent = ensureWeeklyState(weeklyState, weekId);
+    for (const id of parent.claimed || []) {
+      if (id && !next.has(id)) {
+        next.add(id);
+        added = true;
+      }
+    }
+    if (inventory) {
+      for (const id of claimedIdsFromInventory(inventory, weekId)) {
         if (id && !next.has(id)) {
           next.add(id);
           added = true;
         }
       }
-      if (added) {
-        permanentClaimedRef.current = next;
-        setClaimedTick((t) => t + 1);
-      }
-    } catch {
-      /* ignore */
     }
-  }, [storageKey]);
+    if (added) {
+      persistPermanent(next);
+      setClaimedTick((t) => t + 1);
+    }
+  }, [storageKey, weekId, weeklyState, inventory, readStoredClaims, persistPermanent]);
 
-  /**
-   * Board state = saved weekly_quests + LIVE daily taps for today.
-   * So 1061 taps today unlocks Claim even if inventory save lagged/failed.
-   */
   const state = useMemo(() => {
     let base = ensureWeeklyState(weeklyState, weekId);
-    // Repair claimed[] from durable ledger if parent inventory was passed via weeklyState only
-    // (ledger lives on full inventory; permanent + optimistic still apply)
     const taps = Math.max(0, Number(dailyTaps) || 0);
     if (taps > 0) {
       base = applyWeeklyDailyProgress(base, weekId, {
@@ -117,37 +141,31 @@ export default function WeeklyQuests({
         maxLimit: WEEKLY_BASE_DAILY_LIMIT,
       });
     }
-    const extra = [
-      ...optimisticClaimed,
+    const extra = new Set([
       ...Array.from(permanentClaimedRef.current),
-    ];
-    if (!extra.length) return base;
+      ...readStoredClaims(),
+    ]);
+    if (inventory) {
+      for (const id of claimedIdsFromInventory(inventory, weekId)) extra.add(id);
+    }
+    if (!extra.size) return base;
     return {
       ...base,
       claimed: [...new Set([...(base.claimed || []), ...extra])],
     };
-  }, [weeklyState, weekId, dailyTaps, optimisticClaimed, claimedTick]);
+  }, [weeklyState, weekId, dailyTaps, inventory, claimedTick, readStoredClaims]);
 
-  // Drop optimistic once parent has them; absorb parent claims into permanent set
-  useEffect(() => {
-    const parent = ensureWeeklyState(weeklyState, weekId);
-    let added = false;
-    const next = new Set(permanentClaimedRef.current);
-    for (const id of parent.claimed || []) {
-      if (id && !next.has(id)) {
-        next.add(id);
-        added = true;
-      }
-    }
-    if (added) {
-      persistPermanent(next);
-      setClaimedTick((t) => t + 1);
-    }
-    setOptimisticClaimed((prev) =>
-      prev.filter((id) => !parent.claimed.includes(id)),
-    );
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- persistPermanent closes over storageKey
-  }, [weeklyState, weekId, storageKey]);
+  const isDone = useCallback(
+    (questId) => {
+      if (!questId) return false;
+      if (permanentClaimedRef.current.has(questId)) return true;
+      if (readStoredClaims().includes(questId)) return true;
+      if (isQuestClaimed(state, questId)) return true;
+      if (inventory && inventoryHasWeeklyClaim(inventory, weekId, questId)) return true;
+      return false;
+    },
+    [state, inventory, weekId, readStoredClaims],
+  );
 
   const prizeProg = useMemo(() => weeklyPrizeProgress(state), [state]);
 
@@ -171,7 +189,7 @@ export default function WeeklyQuests({
     };
   }, [userId]);
 
-  // Persist live daily progress into inventory (so claims survive refresh)
+  // Persist LIVE daily progress only — NEVER drop claimed
   const catchUpKeyRef = useRef('');
   useEffect(() => {
     const taps = Math.max(0, Number(dailyTaps) || 0);
@@ -179,31 +197,36 @@ export default function WeeklyQuests({
 
     const day = utcDayStr();
     const weekIdNow = getUtcWeekId();
-    const baseLimit = WEEKLY_BASE_DAILY_LIMIT;
     const saved = ensureWeeklyState(weeklyState, weekIdNow);
-    const nextW = applyWeeklyDailyProgress(saved, weekIdNow, {
+    let nextW = applyWeeklyDailyProgress(saved, weekIdNow, {
       day,
       dayTaps: taps,
-      maxLimit: baseLimit,
+      maxLimit: WEEKLY_BASE_DAILY_LIMIT,
     });
+    const forceClaimed = [
+      ...(nextW.claimed || []),
+      ...Array.from(permanentClaimedRef.current),
+      ...readStoredClaims(),
+    ];
+    nextW = {
+      ...nextW,
+      claimed: [...new Set(forceClaimed)],
+    };
 
-    // Skip if nothing new vs saved (live UI already overlays taps)
     const same =
       saved.daysTap500.join() === nextW.daysTap500.join() &&
       saved.daysFull.join() === nextW.daysFull.join() &&
-      saved.daysActive.join() === nextW.daysActive.join();
+      saved.daysActive.join() === nextW.daysActive.join() &&
+      (saved.claimed || []).join() === (nextW.claimed || []).join();
     if (same) return;
 
-    // Instant parent update (do not wait for network)
     if (typeof onWeeklyStateChange === 'function') {
       onWeeklyStateChange(nextW);
     }
 
-    // Debounce identical network writes
-    const key = `${userId || 'x'}|${weekIdNow}|${day}|${taps}|${nextW.daysFull.join()}|${nextW.daysTap500.join()}`;
+    const key = `${userId || 'x'}|${weekIdNow}|${day}|${taps}|${nextW.daysFull.join()}|${nextW.daysTap500.join()}|${(nextW.claimed || []).join()}`;
     if (catchUpKeyRef.current === key) return;
     catchUpKeyRef.current = key;
-
     if (!userId) return;
 
     (async () => {
@@ -215,12 +238,18 @@ export default function WeeklyQuests({
           .maybeSingle();
         if (selErr) {
           console.warn('weekly catch-up select', selErr.message);
+          return;
         }
         let inv = hydrateWeeklyClaimsFromLedger(
           { ...(row?.inventory || {}) },
           weekIdNow,
         );
         inv = mergeInventoryWeekly(inv, { weekly_quests: nextW }, weekIdNow);
+        for (const id of permanentClaimedRef.current) {
+          inv = applyWeeklyClaimToInventory(inv, weekIdNow, id);
+        }
+        inv = hydrateWeeklyClaimsFromLedger(inv, weekIdNow);
+
         const { error } = await supabase
           .from('players')
           .update({ inventory: inv, last_updated: new Date().toISOString() })
@@ -236,310 +265,130 @@ export default function WeeklyQuests({
         console.warn('weekly progress catch-up', e?.message || e);
       }
     })();
-  }, [userId, dailyTaps, weeklyState, onWeeklyStateChange]);
+  }, [userId, dailyTaps, weeklyState, onWeeklyStateChange, readStoredClaims]);
 
-  // Auto-repair: claimed weekly quests that never received task_limit_boost (e.g. wiped by shop)
-  const repairRanRef = useRef(false);
-  useEffect(() => {
-    if (!userId || repairRanRef.current) return;
-    let cancelled = false;
-    (async () => {
-      try {
-        const { data: row, error } = await supabase
+  const handleClaim = async (quest) => {
+    if (!userId || !quest?.id || claimingId || claimLockRef.current) return;
+    if (isDone(quest.id)) return;
+
+    const prog = questProgress(quest, state, { friends1k: localFriends1k });
+    if (!prog.ready) return;
+
+    claimLockRef.current = true;
+    setClaimingId(quest.id);
+    markClaimedLocal(quest.id);
+
+    try {
+      const { data, error } = await supabase.rpc('claim_weekly_quest', {
+        p_telegram_id: String(userId),
+        p_quest_id: quest.id,
+        p_reward_amount: WEEKLY_ENERGY_REWARD,
+      });
+
+      if (error) {
+        // Fallback if RPC unavailable: still once-only via ledgers
+        console.warn('claim_weekly_quest rpc', error.message);
+        const { data: row, error: selErr } = await supabase
           .from('players')
           .select('inventory')
           .eq(DB_PLAYER_ID, userId)
           .maybeSingle();
-        if (cancelled || error || !row) return;
-
-        const weekIdNow = getUtcWeekId();
+        if (selErr) throw selErr;
         let inv = hydrateWeeklyClaimsFromLedger(
-          { ...(row.inventory || {}) },
-          weekIdNow,
+          { ...(row?.inventory || {}) },
+          weekId,
         );
-        const claimed = inv.weekly_quests?.claimed || [];
-        const energyQuestIds = WEEKLY_QUEST_LIST.map((q) => q.id);
-        let unpaid = energyQuestIds.filter(
-          (id) =>
-            claimed.includes(id) &&
-            !inventoryHasWeeklyReward(inv, weekIdNow, id),
-        );
-        // Also: rewarded flag but no active task_limit_boost at all while claimed quests exist
-        const boostLive =
-          inv?.task_limit_boost &&
-          inv.task_limit_boost.expires &&
-          new Date(inv.task_limit_boost.expires).getTime() > Date.now()
-            ? Number(inv.task_limit_boost.amount) || 0
-            : 0;
-        if (!unpaid.length && boostLive <= 0) {
-          unpaid = energyQuestIds.filter((id) => claimed.includes(id));
-        }
-        if (!unpaid.length) {
-          repairRanRef.current = true;
+        if (inventoryHasWeeklyClaim(inv, weekId, quest.id)) {
+          inv = applyWeeklyClaimToInventory(inv, weekId, quest.id);
+          if (typeof onWeeklyStateChange === 'function') {
+            onWeeklyStateChange(inv.weekly_quests, inv);
+          }
+          setAppNotice({
+            show: true,
+            message: 'Already claimed this week ✓',
+            success: true,
+          });
           return;
         }
-
-        // Grant +100 per unpaid quest (once), mark rewarded
-        for (const id of unpaid) {
-          inv = applyWeeklyClaimToInventory(inv, weekIdNow, id);
-          inv = applyTaskLimitBoostToInventory(inv, WEEKLY_ENERGY_REWARD);
-          inv = markWeeklyRewardOnInventory(inv, weekIdNow, id);
-        }
-
+        inv.weekly_quests = mergeWeeklyStates(
+          inv.weekly_quests,
+          {
+            ...ensureWeeklyState(state, weekId),
+            claimed: inv.weekly_quests?.claimed || [],
+          },
+          weekId,
+        );
+        inv = applyWeeklyClaimToInventory(inv, weekId, quest.id);
+        inv.weekly_quests = markQuestClaimed(inv.weekly_quests, weekId, quest.id);
+        inv = applyTaskLimitBoostToInventory(inv, WEEKLY_ENERGY_REWARD);
+        inv = markWeeklyRewardOnInventory(inv, weekId, quest.id);
         const { error: upErr } = await supabase
           .from('players')
-          .update({
-            inventory: inv,
-            last_updated: new Date().toISOString(),
-          })
+          .update({ inventory: inv, last_updated: new Date().toISOString() })
           .eq(DB_PLAYER_ID, userId);
-        if (upErr) {
-          console.warn('weekly reward repair', upErr.message);
-          return;
-        }
-        repairRanRef.current = true;
-        if (typeof onWeeklyStateChange === 'function') {
-          onWeeklyStateChange(inv.weekly_quests, inv);
-        }
-        const total = unpaid.length * WEEKLY_ENERGY_REWARD;
-        setAppNotice({
-          show: true,
-          message: `⚡ Restored +${total} max Daily Limit from ${unpaid.length} weekly claim(s) that never paid out. Check Daily Limit (not Energy 500).`,
-          success: true,
-        });
-      } catch (e) {
-        console.warn('weekly reward repair', e?.message || e);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [userId, onWeeklyStateChange]);
-
-  /**
-   * Claim weekly energy quests once/week.
-   * Prize = +100 MAX DAILY LIMIT (task_limit_boost → 1000 bar), never 500 Energy.
-   * Order: claim → grant boost → mark rewarded (so failed grant can retry).
-   */
-  const handleClaim = async (quest) => {
-    if (!userId || !quest?.id || claimingId || claimLockRef.current) return;
-
-    const prog = questProgress(quest, state, { friends1k: localFriends1k });
-    const localClaimed =
-      permanentClaimedRef.current.has(quest.id) ||
-      isQuestClaimed(state, quest.id);
-    if (!prog.ready && !localClaimed) return;
-
-    claimLockRef.current = true;
-    setClaimingId(quest.id);
-    // Optimistic claim only — do NOT lock reward until boost is written
-    {
-      const next = new Set(permanentClaimedRef.current);
-      next.add(quest.id);
-      // Drop stale reward lock so recovery can re-grant if server never paid
-      next.delete(`reward:${quest.id}`);
-      persistPermanent(next);
-    }
-    setClaimedTick((t) => t + 1);
-    setOptimisticClaimed((prev) =>
-      prev.includes(quest.id) ? prev : [...prev, quest.id],
-    );
-
-    let claimWriteOk = false;
-    let rewardWriteOk = false;
-    try {
-      const { data: row, error: selErr } = await supabase
-        .from('players')
-        .select('inventory')
-        .eq(DB_PLAYER_ID, userId)
-        .maybeSingle();
-      if (selErr) throw selErr;
-
-      let inv = hydrateWeeklyClaimsFromLedger(
-        { ...(row?.inventory || {}) },
-        weekId,
-      );
-
-      let alreadyRewarded = inventoryHasWeeklyReward(inv, weekId, quest.id);
-      const alreadyClaimed = inventoryHasWeeklyClaim(inv, weekId, quest.id);
-
-      // If marked rewarded but boost missing/expired, allow re-grant (wipe recovery)
-      const boostAmt =
-        inv?.task_limit_boost &&
-        inv.task_limit_boost.expires &&
-        new Date(inv.task_limit_boost.expires).getTime() > Date.now()
-          ? Number(inv.task_limit_boost.amount) || 0
-          : 0;
-      if (alreadyRewarded && boostAmt <= 0) {
-        // Reward key without active boost — treat as unpaid
-        alreadyRewarded = false;
-      }
-
-      if (alreadyRewarded && boostAmt > 0) {
-        {
-          const next = new Set(permanentClaimedRef.current);
-          next.add(quest.id);
-          next.add(`reward:${quest.id}`);
-          persistPermanent(next);
-        }
-        setClaimedTick((t) => t + 1);
+        if (upErr) throw upErr;
         if (typeof onWeeklyStateChange === 'function') {
           onWeeklyStateChange(inv.weekly_quests, inv);
         }
         setAppNotice({
           show: true,
-          message: `Already claimed — your daily max includes +task boosts (now +${boostAmt}). Check Daily Limit under Energy.`,
+          message: `⚡ +${WEEKLY_ENERGY_REWARD} max Daily Limit. Claimed — cannot claim again this week.`,
           success: true,
         });
         return;
       }
 
-      // --- Step 1: ensure claim is recorded (no reward key yet) ---
-      inv = applyWeeklyClaimToInventory(inv, weekId, quest.id);
-      inv.weekly_quests = mergeWeeklyStates(inv.weekly_quests, state, weekId);
-      inv.weekly_quests = markQuestClaimed(inv.weekly_quests, weekId, quest.id);
+      const result = data && typeof data === 'object' ? data : {};
+      const inv = result.inventory || null;
+      markClaimedLocal(quest.id);
 
-      {
-        const { error } = await supabase
-          .from('players')
-          .update({
-            inventory: inv,
-            last_updated: new Date().toISOString(),
-          })
-          .eq(DB_PLAYER_ID, userId);
-        if (error) throw error;
-        claimWriteOk = true;
-        if (typeof onWeeklyStateChange === 'function') {
-          onWeeklyStateChange(inv.weekly_quests, inv);
-        }
-      }
-
-      // --- Step 2: +100 max daily limit (task_limit_boost) — ALWAYS direct write ---
-      // (grantTaskEnergy alone was getting wiped by shop inventory overwrites)
-      {
-        const { data: row2 } = await supabase
-          .from('players')
-          .select('inventory')
-          .eq(DB_PLAYER_ID, userId)
-          .maybeSingle();
-        let inv2 = hydrateWeeklyClaimsFromLedger(
-          { ...(row2?.inventory || inv) },
+      if (inv && typeof onWeeklyStateChange === 'function') {
+        const wq = markQuestClaimed(
+          inv.weekly_quests || ensureWeeklyState(state, weekId),
           weekId,
+          quest.id,
         );
-        inv2 = applyWeeklyClaimToInventory(inv2, weekId, quest.id);
-        inv2.weekly_quests = mergeWeeklyStates(
-          inv2.weekly_quests,
-          inv.weekly_quests,
-          weekId,
+        onWeeklyStateChange(wq, inv);
+      } else if (typeof onWeeklyStateChange === 'function') {
+        onWeeklyStateChange(
+          markQuestClaimed(ensureWeeklyState(state, weekId), weekId, quest.id),
         );
-        inv2 = applyTaskLimitBoostToInventory(inv2, WEEKLY_ENERGY_REWARD);
-        const { error: e2 } = await supabase
-          .from('players')
-          .update({
-            inventory: inv2,
-            last_updated: new Date().toISOString(),
-          })
-          .eq(DB_PLAYER_ID, userId);
-        if (e2) throw e2;
-        inv = inv2;
-        if (typeof onWeeklyStateChange === 'function') {
-          onWeeklyStateChange(inv.weekly_quests, inv);
-        }
-      }
-      // Also refresh parent grant path (HUD / inventoryRef)
-      if (typeof grantTaskEnergy === 'function') {
-        try {
-          // Re-read so we don't double-stack incorrectly: grantTaskEnergy stacks on current.
-          // Only call if parent still shows 0 task boost after direct write.
-          // Skip double-stack: parent already got inv via onWeeklyStateChange with boost.
-        } catch {
-          /* ignore */
-        }
       }
 
-      // --- Step 3: re-read + force boost present, then mark rewarded ---
-      {
-        const { data: row3 } = await supabase
-          .from('players')
-          .select('inventory')
-          .eq(DB_PLAYER_ID, userId)
-          .maybeSingle();
-        let inv3 = hydrateWeeklyClaimsFromLedger(
-          { ...(row3?.inventory || {}) },
-          weekId,
-        );
-        inv3 = applyWeeklyClaimToInventory(inv3, weekId, quest.id);
-        inv3 = mergeInventoryWeekly(inv3, inv, weekId);
-
-        const liveBoost =
-          inv3?.task_limit_boost &&
-          inv3.task_limit_boost.expires &&
-          new Date(inv3.task_limit_boost.expires).getTime() > Date.now()
-            ? Number(inv3.task_limit_boost.amount) || 0
-            : 0;
-
-        // If grantTaskEnergy / concurrent save lost the boost, apply it now
-        if (liveBoost < WEEKLY_ENERGY_REWARD) {
-          inv3 = applyTaskLimitBoostToInventory(inv3, WEEKLY_ENERGY_REWARD);
-        }
-
-        inv3 = markWeeklyRewardOnInventory(inv3, weekId, quest.id);
-
-        const { error: e3 } = await supabase
-          .from('players')
-          .update({
-            inventory: inv3,
-            last_updated: new Date().toISOString(),
-          })
-          .eq(DB_PLAYER_ID, userId);
-        if (e3) throw e3;
-        rewardWriteOk = true;
-        inv = inv3;
-
-        if (typeof onWeeklyStateChange === 'function') {
-          onWeeklyStateChange(inv.weekly_quests, inv);
-        }
+      if (result.already) {
+        setAppNotice({
+          show: true,
+          message: 'Already claimed this week ✓',
+          success: true,
+        });
+      } else {
+        const boostAmt =
+          inv?.task_limit_boost &&
+          inv.task_limit_boost.expires &&
+          new Date(inv.task_limit_boost.expires).getTime() > Date.now()
+            ? Number(inv.task_limit_boost.amount) || 0
+            : WEEKLY_ENERGY_REWARD;
+        setAppNotice({
+          show: true,
+          message:
+            `⚡ +${WEEKLY_ENERGY_REWARD} max Daily Limit (today UTC). ` +
+            `Boost now +${boostAmt}. ` +
+            `DONE — cannot claim again this week.`,
+          success: true,
+        });
       }
-
-      {
-        const next = new Set(permanentClaimedRef.current);
-        next.add(quest.id);
-        next.add(`reward:${quest.id}`);
-        persistPermanent(next);
-      }
-      setClaimedTick((t) => t + 1);
-
-      const finalBoost =
-        inv?.task_limit_boost &&
-        inv.task_limit_boost.expires &&
-        new Date(inv.task_limit_boost.expires).getTime() > Date.now()
-          ? Number(inv.task_limit_boost.amount) || 0
-          : 0;
-
-      setAppNotice({
-        show: true,
-        message:
-          `⚡ +${WEEKLY_ENERGY_REWARD} max Daily Limit (today UTC)! ` +
-          `Your Daily Limit bar should show base 1000 + ${finalBoost} boost. ` +
-          `Not the 500 Energy battery. (${weeklyPrizeProgress(inv.weekly_quests).current}/${WEEKLY_PRIZE.needClaims} weekly prize)`,
-        success: true,
-      });
     } catch (e) {
       console.error('weekly claim', e);
-      // Unlock so player can retry if reward never landed
-      if (!rewardWriteOk) {
+      const msg = e?.message || String(e);
+      if (/network|fetch|Failed to fetch|timeout/i.test(msg)) {
         const next = new Set(permanentClaimedRef.current);
-        if (!claimWriteOk) next.delete(quest.id);
-        next.delete(`reward:${quest.id}`);
+        next.delete(quest.id);
         persistPermanent(next);
-        if (!claimWriteOk) {
-          setOptimisticClaimed((prev) => prev.filter((id) => id !== quest.id));
-        }
         setClaimedTick((t) => t + 1);
       }
       setAppNotice({
         show: true,
-        message: e?.message || 'Could not claim reward. Tap Claim again.',
+        message: e?.message || 'Could not claim. Try again.',
         success: false,
       });
     } finally {
@@ -548,95 +397,39 @@ export default function WeeklyQuests({
     }
   };
 
-  /** Weekly prize — free Instant Refill, once per UTC week */
   const handlePrizeClaim = async () => {
     if (!userId || claimingId || claimLockRef.current) return;
-    if (
-      permanentClaimedRef.current.has(WEEKLY_PRIZE.id) ||
-      isQuestClaimed(state, WEEKLY_PRIZE.id)
-    ) {
-      return;
-    }
+    if (isDone(WEEKLY_PRIZE.id)) return;
     const pp = weeklyPrizeProgress(state);
     if (!pp.ready) return;
 
     claimLockRef.current = true;
     setClaimingId(WEEKLY_PRIZE.id);
-    {
-      const next = new Set(permanentClaimedRef.current);
-      next.add(WEEKLY_PRIZE.id);
-      persistPermanent(next);
-    }
-    setClaimedTick((t) => t + 1);
-    setOptimisticClaimed((prev) =>
-      prev.includes(WEEKLY_PRIZE.id) ? prev : [...prev, WEEKLY_PRIZE.id],
-    );
+    markClaimedLocal(WEEKLY_PRIZE.id);
 
-    let claimWriteOk = false;
     try {
-      const { data: row, error: selErr } = await supabase
-        .from('players')
-        .select('inventory')
-        .eq(DB_PLAYER_ID, userId)
-        .maybeSingle();
-      if (selErr) throw selErr;
-
-      let inv = hydrateWeeklyClaimsFromLedger(
-        { ...(row?.inventory || {}) },
-        weekId,
-      );
-      const alreadyOnServer = inventoryHasWeeklyClaim(
-        inv,
-        weekId,
-        WEEKLY_PRIZE.id,
-      );
-
-      inv = applyWeeklyClaimToInventory(inv, weekId, WEEKLY_PRIZE.id);
-      inv.weekly_quests = mergeWeeklyStates(inv.weekly_quests, state, weekId);
-      inv.weekly_quests = markQuestClaimed(
-        inv.weekly_quests,
-        weekId,
-        WEEKLY_PRIZE.id,
-      );
-
-      // Free Instant Refill → backpack (only once)
-      if (!alreadyOnServer) {
-        const itemId = WEEKLY_PRIZE.rewardItemId;
-        inv[itemId] = (Number(inv[itemId]) || 0) + 1;
-      }
-
-      const { error } = await supabase
-        .from('players')
-        .update({
-          inventory: inv,
-          last_updated: new Date().toISOString(),
-        })
-        .eq(DB_PLAYER_ID, userId);
+      const { data, error } = await supabase.rpc('claim_weekly_prize', {
+        p_telegram_id: String(userId),
+      });
       if (error) throw error;
-      claimWriteOk = true;
-
-      if (typeof onWeeklyStateChange === 'function') {
-        onWeeklyStateChange(inv.weekly_quests, inv);
+      const result = data && typeof data === 'object' ? data : {};
+      markClaimedLocal(WEEKLY_PRIZE.id);
+      if (result.inventory && typeof onWeeklyStateChange === 'function') {
+        onWeeklyStateChange(result.inventory.weekly_quests, result.inventory);
       }
-
       setAppNotice({
         show: true,
-        message: alreadyOnServer
+        message: result.already
           ? 'Weekly prize already claimed ✓'
-          : `🎁 Weekly prize claimed! +1 ${WEEKLY_PRIZE.rewardLabel} in Pack (Backpack). Activate it from the Shop.`,
+          : `🎁 Weekly prize claimed! +1 ${WEEKLY_PRIZE.rewardLabel} in Pack. Cannot claim again this week.`,
         success: true,
       });
     } catch (e) {
       console.error('weekly prize', e);
-      if (!claimWriteOk) {
-        const next = new Set(permanentClaimedRef.current);
-        next.delete(WEEKLY_PRIZE.id);
-        persistPermanent(next);
-        setOptimisticClaimed((prev) =>
-          prev.filter((id) => id !== WEEKLY_PRIZE.id),
-        );
-        setClaimedTick((t) => t + 1);
-      }
+      const next = new Set(permanentClaimedRef.current);
+      next.delete(WEEKLY_PRIZE.id);
+      persistPermanent(next);
+      setClaimedTick((t) => t + 1);
       setAppNotice({
         show: true,
         message: e?.message || 'Could not claim weekly prize.',
@@ -649,7 +442,6 @@ export default function WeeklyQuests({
   };
 
   return (
-
     <div style={{ marginBottom: 20 }}>
       <AppNotice
         show={appNotice.show}
@@ -658,7 +450,6 @@ export default function WeeklyQuests({
         onClose={() => setAppNotice((n) => ({ ...n, show: false }))}
       />
 
-      {/* Top: Weekly quests title + weekly prize (hype first) */}
       <div
         style={{
           background: prizeProg.claimed
@@ -680,12 +471,14 @@ export default function WeeklyQuests({
           }}
         >
           <div style={{ minWidth: 0, flex: '1 1 140px' }}>
-            <div style={{ color: '#8eb4ff', fontWeight: 'bold', fontSize: 15 }}>Weekly quests</div>
+            <div style={{ color: '#8eb4ff', fontWeight: 'bold', fontSize: 15 }}>
+              Weekly quests
+            </div>
             <div style={{ color: '#666', fontSize: 10, marginTop: 4, lineHeight: 1.35 }}>
               {getUtcWeekRangeLabel()}
             </div>
             <div style={{ color: '#888', fontSize: 10, marginTop: 4 }}>
-              Each quest +{WEEKLY_ENERGY_REWARD} max Daily Limit (1000 bar, not 500 Energy) · 10 quests total
+              Each quest +{WEEKLY_ENERGY_REWARD} max Daily Limit · claim once · then DONE
             </div>
             <div style={{ color: '#4ade80', fontSize: 11, marginTop: 6, fontWeight: 'bold' }}>
               Today (UTC): {Math.max(0, Number(dailyTaps) || 0).toLocaleString()} taps
@@ -699,51 +492,22 @@ export default function WeeklyQuests({
               <span style={{ fontSize: 22 }}>{WEEKLY_PRIZE.icon}</span>
               <div style={{ color: '#ffd700', fontWeight: 'bold', fontSize: 13, lineHeight: 1.25 }}>
                 Weekly prize
-                <div style={{ color: '#4ade80', fontSize: 12, marginTop: 2 }}>
-                  Free {WEEKLY_PRIZE.rewardLabel}
-                </div>
               </div>
             </div>
-            <div style={{ color: '#ccc', fontSize: 10, lineHeight: 1.35 }}>
-              Need <strong style={{ color: '#ffd700' }}>{WEEKLY_PRIZE.needClaims} of 10</strong> quests
-              claimed this week
+            <div style={{ color: '#aaa', fontSize: 10, marginBottom: 8 }}>
+              Claim {WEEKLY_PRIZE.needClaims} quests → free {WEEKLY_PRIZE.rewardLabel}
             </div>
-            <div style={{ color: '#888', fontSize: 10, fontWeight: 'bold', marginTop: 4 }}>
-              {Math.min(prizeProg.current, prizeProg.need)} / {prizeProg.need}
-            </div>
-            <div
-              style={{
-                marginTop: 6,
-                width: '100%',
-                height: 8,
-                borderRadius: 999,
-                background: '#0a0a0a',
-                border: '1px solid #333',
-                overflow: 'hidden',
-              }}
-            >
-              <div
-                style={{
-                  height: '100%',
-                  width: `${Math.min(100, Math.floor((prizeProg.current / prizeProg.need) * 100))}%`,
-                  background: 'linear-gradient(90deg, #ca8a04, #fbef43)',
-                  borderRadius: 999,
-                  transition: 'width 0.3s ease',
-                }}
-              />
-            </div>
-          </div>
-
-          <div style={{ flexShrink: 0, alignSelf: 'center' }}>
-            {prizeProg.claimed ? (
-              <span style={{ color: '#4ade80', fontSize: 12, fontWeight: 'bold' }}>✓ CLAIMED</span>
+            {isDone(WEEKLY_PRIZE.id) || prizeProg.claimed ? (
+              <span style={{ color: '#4ade80', fontSize: 12, fontWeight: 'bold' }}>
+                ✓ Prize claimed this week
+              </span>
             ) : prizeProg.ready ? (
               <button
                 type="button"
                 disabled={!!claimingId}
                 onClick={handlePrizeClaim}
                 style={{
-                  background: '#fbef43',
+                  background: 'linear-gradient(90deg, #ffd700, #fbef43)',
                   color: '#000',
                   border: 'none',
                   padding: '10px 14px',
@@ -769,31 +533,27 @@ export default function WeeklyQuests({
                   fontWeight: 'bold',
                 }}
               >
-                {prizeProg.current}/{prizeProg.need}
+                {prizeProg.current}/{prizeProg.need} claimed this week
               </button>
             )}
           </div>
         </div>
         <div style={{ color: '#666', fontSize: 10, marginTop: 10, lineHeight: 1.35 }}>
-          Prize goes to Pack (Backpack) — activate Instant Refill from the Shop when ready.
+          Prize goes to Pack (Backpack). Each quest is once-only after claim.
         </div>
       </div>
 
       {WEEKLY_QUEST_LIST.map((quest) => {
-        const claimed = isQuestClaimed(state, quest.id);
-        const rewarded = permanentClaimedRef.current.has(`reward:${quest.id}`);
+        const claimed = isDone(quest.id);
         const prog = questProgress(quest, state, { friends1k: localFriends1k });
-        // DONE only when reward confirmed; else allow Claim / recovery grant
-        const fullyDone = claimed && rewarded;
-        // Recovery: claimed without reward still shows Claim even if progress UI glitches
-        const ready = (!fullyDone && prog.ready) || (claimed && !rewarded);
+        const ready = !claimed && prog.ready;
 
         return (
           <div
             key={quest.id}
             style={{
               background: '#111',
-              border: `1px solid ${fullyDone ? 'rgba(74,222,128,0.35)' : '#555'}`,
+              border: `1px solid ${claimed ? 'rgba(74,222,128,0.35)' : '#555'}`,
               borderRadius: 12,
               padding: 14,
               marginBottom: 10,
@@ -801,25 +561,36 @@ export default function WeeklyQuests({
               alignItems: 'center',
               justifyContent: 'space-between',
               gap: 12,
-              opacity: fullyDone ? 0.65 : 1,
+              opacity: claimed ? 0.65 : 1,
             }}
           >
             <div style={{ display: 'flex', gap: 12, minWidth: 0, alignItems: 'center' }}>
               <span style={{ fontSize: 22 }}>{quest.icon}</span>
               <div style={{ minWidth: 0 }}>
-                <div style={{ color: '#fff', fontWeight: 'bold', fontSize: 13 }}>{quest.title}</div>
-                <div style={{ color: '#ffd700', fontSize: 11, marginTop: 3 }}>
-                  +{WEEKLY_ENERGY_REWARD} max daily limit (not Energy bar) · today UTC
+                <div style={{ color: '#fff', fontWeight: 'bold', fontSize: 13 }}>
+                  {quest.title}
                 </div>
-                <div style={{ color: '#666', fontSize: 10, marginTop: 2 }}>{quest.description}</div>
+                <div style={{ color: '#ffd700', fontSize: 11, marginTop: 3 }}>
+                  +{WEEKLY_ENERGY_REWARD} max daily limit · claim once
+                </div>
+                <div style={{ color: '#666', fontSize: 10, marginTop: 2 }}>
+                  {quest.description}
+                </div>
                 <div style={{ color: '#888', fontSize: 10, marginTop: 4, fontWeight: 'bold' }}>
                   {Math.min(prog.current, prog.need)} / {prog.need}
                 </div>
               </div>
             </div>
 
-            {fullyDone ? (
-              <span style={{ color: '#4ade80', fontSize: 12, fontWeight: 'bold', flexShrink: 0 }}>
+            {claimed ? (
+              <span
+                style={{
+                  color: '#4ade80',
+                  fontSize: 12,
+                  fontWeight: 'bold',
+                  flexShrink: 0,
+                }}
+              >
                 ✓ DONE
               </span>
             ) : ready ? (

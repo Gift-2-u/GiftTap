@@ -126,6 +126,7 @@ const Tasks = ({
   grantTaskEnergy,
   weeklyState,
   onWeeklyStateChange,
+  inventory = null,
   activeTab,
   onTabChange,
   dailyTaps = 0,
@@ -463,6 +464,7 @@ const Tasks = ({
             playerId={userId}
             weeklyState={weeklyState}
             onWeeklyStateChange={onWeeklyStateChange}
+            inventory={inventory}
             grantTaskEnergy={grantTaskEnergy}
             dailyTaps={dailyTaps}
             maxDailyLimit={maxDailyLimit}

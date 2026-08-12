@@ -32,6 +32,25 @@ export function getUtcWeekId(date = new Date()) {
   return `${isoYear}-W${String(weekNo).padStart(2, '0')}`;
 }
 
+/** Previous UTC ISO week id (for badge claims after the week ends). */
+export function getPreviousUtcWeekId(date = new Date()) {
+  const d = new Date(date.getTime());
+  d.setUTCDate(d.getUTCDate() - 7);
+  return getUtcWeekId(d);
+}
+
+/**
+ * True only after the current UTC ISO week has ended.
+ * Badges are claimable for the *previous* week once this is true for "now".
+ * (Always true when checking a past weekId !== getUtcWeekId().)
+ */
+export function isUtcWeekClosed(weekId, now = new Date()) {
+  if (!weekId) return false;
+  const current = getUtcWeekId(now);
+  // Closed if it's not the live week (snapshot week is in the past)
+  return weekId !== current;
+}
+
 export function utcDayStr(date = new Date()) {
   return date.toISOString().slice(0, 10);
 }

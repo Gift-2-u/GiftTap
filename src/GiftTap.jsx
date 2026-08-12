@@ -138,6 +138,14 @@ import {
   SEASON_FLOOR_PCT,
   SEASON_DAILY_REFERENCE,
 } from './seasonLeaderboard';
+import {
+  addWeeklyLbScore,
+  getWeeklyLbState,
+  sortWeeklyLeaderboard,
+  rankOnWeeklyBoard,
+  badgeTierForWeeklyRank,
+} from './weeklyBadges';
+import { ensureWeeklySeasonRollover } from './weeklySeasonRollover';
 import WalletNftSection from './WalletNftSection';
 import SwapBadgeCard, { NftDetailModal, LOCKSMITH_PERKS } from './SwapBadgeCard';
 import {
@@ -547,6 +555,9 @@ const GiftTapGame = () => {
   const [seasonBoardDay, setSeasonBoardDay] = useState(1);
   const [seasonYouRank, setSeasonYouRank] = useState(null); // { rank, score, onMain, need }
   const [seasonEligibleCount, setSeasonEligibleCount] = useState(0);
+  /** Weekly board: your rank this UTC week */
+  const [weeklyYouRank, setWeeklyYouRank] = useState(null);
+  const optimisticWeekly = useRef(0);
   const [hasAccess, setHasAccess] = useState(false);
   const [dailyTaps, setDailyTaps] = useState(0);
   const [streak, setStreak] = useState(0);
@@ -757,6 +768,17 @@ const GiftTapGame = () => {
     [playerId],
   );
 
+  // Keep inventoryRef aligned when shop/backpack/badges update stats.inventory
+  useEffect(() => {
+    if (!stats?.inventory) return;
+    const weekId = getUtcWeekId();
+    inventoryRef.current = mergeInventoryWeekly(
+      inventoryRef.current || {},
+      stats.inventory,
+      weekId,
+    );
+  }, [stats.inventory]);
+
   const onWeeklyStateChange = useCallback((nextWeekly, nextInv) => {
     setStats((prev) => {
       const weekId = getUtcWeekId();
@@ -828,18 +850,45 @@ const GiftTapGame = () => {
             weekId,
           );
           nextInv = hydrateWeeklyClaimsFromLedger(nextInv, weekId);
+          // Never let a progress write drop claim ledgers from inventoryRef
+          nextInv = mergeInventoryWeekly(
+            inventoryRef.current || {},
+            nextInv,
+            weekId,
+          );
+          nextInv = hydrateWeeklyClaimsFromLedger(nextInv, weekId);
           inventoryRef.current = nextInv;
           if (playerId) {
-            supabase
-              .from('players')
-              .update({
-                inventory: nextInv,
-                last_updated: new Date().toISOString(),
-              })
-              .eq(DB_PLAYER_ID, String(playerId))
-              .then(({ error }) => {
+            (async () => {
+              try {
+                const { data: row } = await supabase
+                  .from('players')
+                  .select('inventory')
+                  .eq(DB_PLAYER_ID, String(playerId))
+                  .maybeSingle();
+                let merged = mergeInventoryWeekly(
+                  hydrateWeeklyClaimsFromLedger(row?.inventory || {}, weekId),
+                  nextInv,
+                  weekId,
+                );
+                merged = hydrateWeeklyClaimsFromLedger(merged, weekId);
+                inventoryRef.current = mergeInventoryWeekly(
+                  inventoryRef.current || {},
+                  merged,
+                  weekId,
+                );
+                const { error } = await supabase
+                  .from('players')
+                  .update({
+                    inventory: inventoryRef.current,
+                    last_updated: new Date().toISOString(),
+                  })
+                  .eq(DB_PLAYER_ID, String(playerId));
                 if (error) console.warn('weekly_quests save', error.message);
-              });
+              } catch (e) {
+                console.warn('weekly_quests save', e?.message || e);
+              }
+            })();
           }
           return { ...prev, inventory: nextInv };
         });
@@ -1155,6 +1204,119 @@ const GiftTapGame = () => {
     const sortColumn = isAllTime ? 'lifetime_taps' : 'score';
 
     setLeaderboardLoading(true);
+
+    // --- WEEKLY board from Supabase (weekly_shards + snapshots) ---
+    if (targetType === 'Weekly') {
+      try {
+        // Freeze any finished week before reading live / claim UI
+        await ensureWeeklySeasonRollover();
+        const weekId = getUtcWeekId();
+        const liveW = Number(optimisticWeekly.current) || 0;
+
+        // Prefer dedicated view (fast). Fallback to players columns / inventory.
+        let rows = [];
+        let { data, error } = await supabase
+          .from('leaderboard_weekly')
+          .select('*')
+          .eq('weekly_week_id', weekId)
+          .order('weekly_shards', { ascending: false })
+          .limit(50);
+
+        if (error) {
+          console.warn('leaderboard_weekly view:', error.message);
+          // Fallback: players table columns
+          ({ data, error } = await supabase
+            .from('players')
+            .select(`${DB_PLAYER_ID}, username, weekly_shards, weekly_week_id, inventory`)
+            .eq('weekly_week_id', weekId)
+            .gt('weekly_shards', 0)
+            .order('weekly_shards', { ascending: false })
+            .limit(50));
+          if (error) {
+            console.warn('weekly players fallback:', error.message);
+            // Last resort: inventory.weekly_lb parse
+            ({ data, error } = await supabase
+              .from('players')
+              .select(`${DB_PLAYER_ID}, username, inventory`)
+              .limit(1000));
+            if (error) throw error;
+            rows = sortWeeklyLeaderboard(data || [], weekId, 50);
+          } else {
+            rows = (data || []).map((r) => ({
+              ...r,
+              weekly_score: Number(r.weekly_shards) || 0,
+              score: Number(r.weekly_shards) || 0,
+            }));
+          }
+        } else {
+          rows = (data || []).map((r) => ({
+            ...r,
+            weekly_score: Number(r.weekly_shards ?? r.score) || 0,
+            score: Number(r.weekly_shards ?? r.score) || 0,
+          }));
+        }
+
+        // Inject live self (device may be ahead of last save)
+        if (playerId && liveW > 0) {
+          const ix = rows.findIndex(
+            (r) => String(r[DB_PLAYER_ID] || r.telegram_id || '') === String(playerId),
+          );
+          if (ix >= 0) {
+            const best = Math.max(liveW, Number(rows[ix].weekly_score) || 0);
+            rows[ix] = { ...rows[ix], weekly_score: best, score: best, weekly_shards: best };
+            rows.sort((a, b) => (b.weekly_score || 0) - (a.weekly_score || 0));
+          } else {
+            rows = [
+              {
+                [DB_PLAYER_ID]: playerId,
+                telegram_id: playerId,
+                username: player?.username || 'You',
+                weekly_score: liveW,
+                weekly_shards: liveW,
+                score: liveW,
+                weekly_week_id: weekId,
+              },
+              ...rows,
+            ]
+              .sort((a, b) => (b.weekly_score || 0) - (a.weekly_score || 0))
+              .slice(0, 50);
+          }
+        }
+
+        setLeaderboard(rows);
+        setSeasonYouRank(null);
+        setSeasonEligibleCount(rows.length);
+        const me = rankOnWeeklyBoard(rows, playerId, DB_PLAYER_ID);
+        if (me) {
+          setWeeklyYouRank({
+            ...me,
+            inList: rows.some(
+              (r) =>
+                String(r[DB_PLAYER_ID] || r.telegram_id || '') ===
+                String(playerId),
+            ),
+          });
+        } else if (playerId) {
+          setWeeklyYouRank({
+            rank: null,
+            score: liveW,
+            total: rows.length,
+            tier: null,
+            inList: false,
+          });
+        } else {
+          setWeeklyYouRank(null);
+        }
+      } catch (e) {
+        console.warn('weekly leaderboard', e?.message || e);
+        setLeaderboard([]);
+        setWeeklyYouRank(null);
+      } finally {
+        setLeaderboardLoading(false);
+      }
+      return;
+    }
+
     try {
       if (isAllTime) {
         const { data, error } = await supabase
@@ -1166,6 +1328,7 @@ const GiftTapGame = () => {
         setLeaderboard(data || []);
         setSeasonYouRank(null);
         setSeasonEligibleCount(0);
+        setWeeklyYouRank(null);
         return;
       }
 
@@ -1472,6 +1635,56 @@ const GiftTapGame = () => {
             .then(({ error }) => {
               if (error) console.warn('weekly progress on load', error.message);
             });
+        }
+        {
+          const weekIdNow = getUtcWeekId();
+          let wScore = 0;
+          if (String(playerRow.weekly_week_id || '') === weekIdNow) {
+            wScore = Math.max(0, Number(playerRow.weekly_shards) || 0);
+          }
+          const invW = getWeeklyLbState(inv, weekIdNow).score;
+          wScore = Math.max(wScore, invW);
+          // Mid-week feature seed: if already tapping today, count today's daily_taps toward the week
+          const ltd = String(playerRow.last_tap_date || '').slice(0, 10);
+          const today = utcTodayStr();
+          if (ltd === today) {
+            wScore = Math.max(wScore, Number(playerRow.daily_taps) || 0);
+          }
+          optimisticWeekly.current = wScore;
+          inv.weekly_lb = { weekId: weekIdNow, score: wScore };
+          // Auto-freeze last week's winners (idempotent; also covered by pg_cron)
+          ensureWeeklySeasonRollover();
+          // Persist seed so this week shows on the board after first save
+          if (wScore > 0 && String(playerRow.weekly_week_id || '') !== weekIdNow) {
+            supabase
+              .from('players')
+              .update({
+                weekly_shards: wScore,
+                weekly_week_id: weekIdNow,
+                inventory: inv,
+                last_updated: new Date().toISOString(),
+              })
+              .eq(DB_PLAYER_ID, String(userId))
+              .then(({ error }) => {
+                if (error) console.warn('weekly seed save', error.message);
+              });
+          } else if (
+            wScore > 0 &&
+            (Number(playerRow.weekly_shards) || 0) < wScore
+          ) {
+            supabase
+              .from('players')
+              .update({
+                weekly_shards: wScore,
+                weekly_week_id: weekIdNow,
+                inventory: inv,
+                last_updated: new Date().toISOString(),
+              })
+              .eq(DB_PLAYER_ID, String(userId))
+              .then(({ error }) => {
+                if (error) console.warn('weekly seed bump', error.message);
+              });
+          }
         }
         inventoryRef.current = inv;
         setStats({
@@ -2458,11 +2671,27 @@ const GiftTapGame = () => {
             ? String(p.ltd).slice(0, 10)
             : p.ltd;
 
+      const weekIdSave = getUtcWeekId();
+      const writeWeekly = Math.max(
+        0,
+        Number(optimisticWeekly.current) || 0,
+        Number(getWeeklyLbState(nextInventory, weekIdSave).score) || 0,
+      );
+      // Keep inventory.weekly_lb in sync with top-level columns
+      nextInventory.weekly_lb = { weekId: weekIdSave, score: writeWeekly };
+      inventoryRef.current = {
+        ...(inventoryRef.current || {}),
+        ...nextInventory,
+        weekly_lb: nextInventory.weekly_lb,
+      };
+
       const baseRow = {
         [DB_PLAYER_ID]: playerId,
         username: player.username || player.first_name || 'Player',
         shard_balance: writeB,
         season_shards: writeS,
+        weekly_shards: writeWeekly,
+        weekly_week_id: weekIdSave,
         last_energy: p.e,
         daily_taps: writeDt,
         last_tap_date: saveLtd,
@@ -2512,6 +2741,8 @@ const GiftTapGame = () => {
         ({ data, error } = await doUpdate({
           shard_balance: writeB,
           season_shards: writeS,
+          weekly_shards: writeWeekly,
+          weekly_week_id: weekIdSave,
           last_energy: p.e,
           daily_taps: writeDt,
           last_tap_date: saveLtd,
@@ -2785,6 +3016,18 @@ const GiftTapGame = () => {
       const safeSeason = Number(optimisticSeason.current) || 0;
       optimisticSeason.current = Math.round((safeSeason + shardsEarned) * 1000) / 1000;
       const nextSeasonShards = optimisticSeason.current;
+
+      // Weekly leaderboard score (resets each UTC week)
+      {
+        const wId = getUtcWeekId();
+        const invW = addWeeklyLbScore(
+          inventoryRef.current || stats.inventory || {},
+          shardsEarned,
+          wId,
+        );
+        inventoryRef.current = invW;
+        optimisticWeekly.current = getWeeklyLbState(invW, wId).score;
+      }
 
       const totalCost = costMultiplier * validTaps;
       const safeEnergy = Number(optimisticEnergy.current);
@@ -4777,6 +5020,7 @@ const GiftTapGame = () => {
                 grantTaskEnergy={grantTaskEnergy}
                 weeklyState={stats.inventory?.weekly_quests}
                 onWeeklyStateChange={onWeeklyStateChange}
+                inventory={stats.inventory}
                 activeTab={tasksTab}
                 onTabChange={setTasksTab}
                 dailyTaps={Math.max(Number(dailyTaps) || 0, Number(optimisticDaily.current) || 0)}
@@ -4796,9 +5040,8 @@ const GiftTapGame = () => {
                 <h2 style={{ color: '#ffd700', textAlign: 'center', margin: '8px 0 6px', fontSize: '22px' }}>
                   🏆 Leaderboard
                 </h2>
-                <p style={{ color: '#888', textAlign: 'center', fontSize: '11px', margin: '0 0 14px', lineHeight: 1.4 }}>
-                  Season: main board uses a rising floor (15% of 1,000 taps/day × day).
-                  All-time: lifetime taps. GiftLocksmith giveaway tiers count main-board players only.
+                <p style={{ color: '#666', textAlign: 'center', fontSize: '11px', margin: '0 0 14px', lineHeight: 1.35 }}>
+                  Weekly · Season · All-time · details in Menu → Game Guide → Leaderboards
                 </p>
 
                 {/* Season | All-time — always land on Season when opening Ranks from nav */}
@@ -4829,6 +5072,28 @@ const GiftTapGame = () => {
                         {seasonData.name}
                       </div>
                     ) : null}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setLeaderboardType('Weekly');
+                      fetchFullLeaderboard('Weekly');
+                    }}
+                    style={{
+                      flex: 1,
+                      padding: '12px 8px',
+                      borderRadius: '12px',
+                      border: leaderboardType === 'Weekly' ? '2px solid #67e8f9' : '1px solid #333',
+                      background: leaderboardType === 'Weekly' ? 'rgba(103, 232, 249, 0.12)' : '#1c1e22',
+                      color: leaderboardType === 'Weekly' ? '#67e8f9' : '#888',
+                      fontWeight: 'bold',
+                      fontSize: '13px',
+                      cursor: 'pointer',
+                      outline: 'none',
+                      WebkitTapHighlightColor: 'transparent',
+                    }}
+                  >
+                    Weekly
                   </button>
                   <button
                     type="button"
@@ -4865,6 +5130,7 @@ const GiftTapGame = () => {
                   </div>
                 ) : null}
 
+
                 {leaderboardType === 'Season' ? (
                   <div style={{ textAlign: 'center', color: '#888', fontSize: '11px', marginBottom: '12px', lineHeight: 1.4 }}>
                     Day {seasonBoardDay} · Main board ≥ <span style={{ color: '#ffd700', fontWeight: 'bold' }}>{Number(seasonBoardFloor).toLocaleString()}</span>
@@ -4875,10 +5141,10 @@ const GiftTapGame = () => {
                   </div>
                 ) : null}
 
-                <div style={{ background: '#1c1e22', borderRadius: '16px', border: '1px solid #333', overflow: 'hidden' }}>
+<div style={{ background: '#1c1e22', borderRadius: '16px', border: '1px solid #333', overflow: 'hidden' }}>
                   {leaderboardLoading ? (
                     <p style={{ color: '#888', textAlign: 'center', padding: '28px' }}>Loading ranks…</p>
-                  ) : leaderboard.length === 0 && !(leaderboardType === 'Season' && seasonYouRank && playerId) ? (
+                  ) : leaderboard.length === 0 && !(leaderboardType === 'Season' && seasonYouRank && playerId) && !(leaderboardType === 'Weekly' && weeklyYouRank && playerId) ? (
                     <p style={{ color: '#888', textAlign: 'center', padding: '28px' }}>No players on the main board yet. Keep mining!</p>
                   ) : (
                     <>
@@ -4891,7 +5157,9 @@ const GiftTapGame = () => {
                       const name = row.username || (row[DB_PLAYER_ID] ? `ID:..${String(row[DB_PLAYER_ID]).slice(-4)}` : 'Anon');
                       const score = leaderboardType === 'all_time'
                         ? (row.lifetime_taps ?? row.score ?? 0)
-                        : (row.score ?? row.season_shards ?? row.lifetime_taps ?? 0);
+                        : leaderboardType === 'Weekly'
+                          ? (row.weekly_score ?? row.score ?? 0)
+                          : (row.score ?? row.season_shards ?? row.lifetime_taps ?? 0);
                       const isYou = playerId && String(row[DB_PLAYER_ID] || row.id || '') === String(playerId);
                       return (
                         <div
@@ -4918,6 +5186,26 @@ const GiftTapGame = () => {
                       );
                     })}
                     {/* Season: if you are under the floor or outside the top list, sticky last line with your rank */}
+                    {leaderboardType === 'Weekly' && weeklyYouRank && playerId && !weeklyYouRank.inList ? (
+                      <div
+                        style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          padding: '12px 14px',
+                          borderTop: '2px solid #67e8f9',
+                          background: 'rgba(103, 232, 249, 0.1)',
+                        }}
+                      >
+                        <span style={{ color: '#67e8f9', fontSize: '13px', fontWeight: 'bold' }}>
+                          {weeklyYouRank.rank ? `#${weeklyYouRank.rank}` : '—'}{' '}
+                          {(player?.username || 'You')} (you)
+                        </span>
+                        <span style={{ color: '#67e8f9', fontSize: '13px', fontWeight: 'bold' }}>
+                          {Number(weeklyYouRank.score || 0).toLocaleString()}
+                        </span>
+                      </div>
+                    ) : null}
                     {leaderboardType === 'Season' && seasonYouRank && playerId && !seasonYouRank.inList ? (
                       <div
                         style={{

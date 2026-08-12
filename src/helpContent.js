@@ -96,4 +96,19 @@ export const HELP_TIPS = {
       'Unlocks Shard Swap right away (no L5 + Swap Badge grind), better swap fees, higher caps, and vault access on the main site.\n\n' +
       'You can still play and mine without it.',
   },
+  mystery_gift: {
+    title: 'Mystery Gift',
+    body:
+      'Burn weekly badges in Shop → Pack → Badges.\n\n' +
+      'Cost: 3 Diamond / 4 Gold / 5 Silver / 10 Bronze per open.\n\n' +
+      'Higher-tier badges have better odds (Diamond open: 12% Exclusive NFT, 50% Bonus G2U Tokens).\n\n' +
+      'Full drop table: Menu → Game Guide → Mystery Gift.',
+  },
+  weekly_badges: {
+    title: 'Weekly badges',
+    body:
+      'Ranks → Weekly is a normal leaderboard (UTC week score). Top 10 at week end get one badge: Diamond #1, Gold #2, Silver #3, Bronze #4–10.\n\n' +
+      'Claim finished-week badges in Shop → Pack → Badges. Burn badges there for Mystery Gift.\n\n' +
+      'Full rules: Menu → Game Guide → Leaderboards.',
+  },
 };

@@ -18,7 +18,18 @@ import {
   getUtcWeekId,
   mergeInventoryWeekly,
   hydrateWeeklyClaimsFromLedger,
+  applyTaskLimitBoostToInventory,
 } from './weeklyQuestLogic';
+import {
+  BADGE_TIERS,
+  MYSTERY_BOX_COSTS,
+  BADGE_ITEM_IDS,
+  getBadgeCounts,
+  canOpenMysteryWith,
+  openMysteryGift,
+  badgeCatalogForBackpack,
+} from './weeklyBadges';
+import WeeklyBadgePanel from './WeeklyBadgePanel';
 
 /** Professional icon tile — custom SVG / image or built-in glyph */
 function ShopItemIcon({ item, size = 52, variant = 'row' }) {
@@ -102,6 +113,9 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
 
   // Initialize local inventory from stats so the UI updates instantly
   const [localInventory, setLocalInventory] = useState(stats?.inventory || {});
+  /** Backpack categories: boost | badges | nft */
+  const [backpackCat, setBackpackCat] = useState('boost');
+  const [mysteryBusy, setMysteryBusy] = useState(false);
   // NEW: Track daily usage from the database stats
   const [dailyUsage, setDailyUsage] = useState(stats?.daily_usage || {});
 
@@ -821,15 +835,95 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
     }
   };
 
-  // --- BACKPACK: only count real shop items (not wall/swap metadata keys) ---
-  // inventory also stores wall_fee_progress, swap_unlocked, etc. — those must NOT inflate the Pack badge.
+
+  // --- Mystery Gift: burn badges for weighted prize ---
+  const handleOpenMystery = async (tier) => {
+    if (mysteryBusy) return;
+    if (!canOpenMysteryWith(localInventory, tier)) {
+      const need = MYSTERY_BOX_COSTS[tier];
+      const name = BADGE_TIERS[tier]?.name || tier;
+      setTxStatus({
+        show: true,
+        loading: false,
+        message: `Need ${need} ${name}(s) to open Mystery Gift.`,
+        success: false,
+      });
+      return;
+    }
+    setMysteryBusy(true);
+    setTxStatus({ show: true, loading: true, message: 'Opening Mystery Gift...', success: false });
+    try {
+      const baseInv = buildFullInventory();
+      const bal = Number(balance) || 0;
+      const result = openMysteryGift(baseInv, tier, bal);
+      if (result.error) throw new Error(result.error);
+
+      let inv = result.inv;
+      let nextBal = bal + (Number(result.balanceDelta) || 0);
+      if (result.reward?.type === 'task_limit') {
+        inv = applyTaskLimitBoostToInventory(
+          inv,
+          Number(result.reward.amount) || 100,
+        );
+      }
+
+      const updates = {
+        inventory: inv,
+        last_updated: new Date().toISOString(),
+      };
+      if (result.balanceDelta) {
+        updates.shard_balance = nextBal;
+      }
+
+      const { error } = await supabase
+        .from('players')
+        .update(updates)
+        .eq(DB_PLAYER_ID, String(user.id));
+      if (error) throw error;
+
+      setLocalInventory(inv);
+      if (result.balanceDelta && setBalance) setBalance(nextBal);
+      if (setStats) {
+        setStats((prev) => ({
+          ...prev,
+          inventory: mergeInventoryWeekly(
+            prev?.inventory || {},
+            inv,
+            getUtcWeekId(),
+          ),
+        }));
+      }
+
+      setTxStatus({
+        show: true,
+        loading: false,
+        message: `🎁 Mystery Gift: ${result.reward.label}`,
+        success: true,
+      });
+      setTimeout(() => setTxStatus((p) => ({ ...p, show: false })), 3500);
+    } catch (e) {
+      console.error('mystery open', e);
+      setTxStatus({
+        show: true,
+        loading: false,
+        message: e?.message || 'Could not open Mystery Gift',
+        success: false,
+      });
+    } finally {
+      setMysteryBusy(false);
+    }
+  };
+
+  // --- BACKPACK: shop boosts + badges (not wall/swap metadata keys) ---
   const SHOP_ITEM_IDS = new Set(allItems.map((i) => i.id));
-  const backpackItemCount = Object.entries(localInventory || {}).reduce((total, [key, qty]) => {
-    if (!SHOP_ITEM_IDS.has(key)) return total;
-    const n = Number(qty);
-    return total + (Number.isFinite(n) && n > 0 ? n : 0);
-  }, 0);
-  const backpackItems = allItems.filter((item) => Number(localInventory[item.id]) > 0);
+  const BADGE_IDS = new Set(BADGE_ITEM_IDS);
+  const backpackBoostItems = allItems.filter((item) => Number(localInventory[item.id]) > 0);
+  const badgeCounts = getBadgeCounts(localInventory);
+  const badgeTotal = Object.values(badgeCounts).reduce((a, b) => a + b, 0);
+  const backpackItemCount =
+    backpackBoostItems.reduce((t, i) => t + (Number(localInventory[i.id]) || 0), 0) +
+    badgeTotal;
+  const backpackItems = backpackBoostItems; // legacy name for boosts
   const currentTodayStr = getTodayUTCString();
 
   return (
@@ -1343,48 +1437,281 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
           </>
         )}
 
-        {/* --- TAB 3: THE BACKPACK --- */}
+        {/* --- TAB 3: BACKPACK — Boost / Badges / NFT --- */}
         {activeTab === 'inventory' && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-            {backpackItems.length === 0 ? (
-              <div style={{ textAlign: 'center', padding: '40px 20px', color: '#888' }}>
-                <div style={{ fontSize: '48px', marginBottom: '15px' }}>🎒</div>
-                <h3 style={{ color: '#fff', margin: '0 0 10px 0' }}>Backpack is Empty</h3>
-                <p style={{ fontSize: '12px' }}>Visit the shop to purchase boosts and gear.</p>
-              </div>
-            ) : (
-              backpackItems.map(item => {
-                
-                // NEW: Check if button should be disabled due to daily limit
-                const isUsedToday = dailyUsage[item.id] === currentTodayStr;
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            <div style={{ display: 'flex', gap: 6 }}>
+              {[
+                { id: 'boost', label: 'Boost', color: '#4ade80' },
+                { id: 'badges', label: 'Badges', color: '#ffd700' },
+                { id: 'nft', label: 'NFT', color: '#c084fc' },
+              ].map((tab) => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setBackpackCat(tab.id)}
+                  style={{
+                    flex: 1,
+                    padding: '10px 6px',
+                    borderRadius: 10,
+                    border:
+                      backpackCat === tab.id
+                        ? `2px solid ${tab.color}`
+                        : '1px solid #333',
+                    background:
+                      backpackCat === tab.id
+                        ? 'rgba(255,255,255,0.06)'
+                        : '#1c1e22',
+                    color: backpackCat === tab.id ? tab.color : '#888',
+                    fontWeight: 'bold',
+                    fontSize: 12,
+                    cursor: 'pointer',
+                  }}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
 
-                return (
-                  <div key={item.id} style={{ background: '#1c1e22', borderRadius: '15px', padding: '12px 15px', border: '1px solid #9945FF', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
-                    <ShopItemIcon item={item} size={48} variant="row" />
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '5px' }}>
-                        <h3 style={{ margin: 0, color: '#fff', fontSize: '16px' }}>{item.name}</h3>
-                      </div>
-                      <span style={{ color: '#888', fontSize: '11px', fontWeight: 'bold' }}>Owned: {localInventory[item.id]}</span>
-                      {isUsedToday && <div style={{ color: '#ff4444', fontSize: '10px', marginTop: '4px' }}>Used Today</div>}
-                    </div>
-                    
-                    {/* NEW: Disable button and update text if used today */}
-                    <button
-                      disabled={isUsedToday}
-                      style={{ 
-                        background: isUsedToday ? '#444' : '#9945FF', 
-                        color: isUsedToday ? '#888' : '#fff', 
-                        border: 'none', padding: '10px 20px', borderRadius: '10px', fontWeight: 'bold', 
-                        cursor: isUsedToday ? 'not-allowed' : 'pointer', marginLeft: '10px' 
-                      }}
-                      onClick={() => handleUseItem(item)}
-                    >
-                      {isUsedToday ? 'LIMIT REACHED' : 'USE'}
-                    </button>
+            {/* BOOSTS */}
+            {backpackCat === 'boost' && (
+              <>
+                {backpackItems.length === 0 ? (
+                  <div style={{ textAlign: 'center', padding: '36px 16px', color: '#888' }}>
+                    <div style={{ fontSize: 40, marginBottom: 10 }}>⚡</div>
+                    <h3 style={{ color: '#fff', margin: '0 0 8px' }}>No boosts yet</h3>
+                    <p style={{ fontSize: 12, margin: 0 }}>
+                      Buy free or premium boosts, then activate them here.
+                    </p>
                   </div>
-                )
-              })
+                ) : (
+                  backpackItems.map((item) => {
+                    const isUsedToday = dailyUsage[item.id] === currentTodayStr;
+                    return (
+                      <div
+                        key={item.id}
+                        style={{
+                          background: '#1c1e22',
+                          borderRadius: 15,
+                          padding: '12px 15px',
+                          border: '1px solid #4ade80',
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          gap: 12,
+                        }}
+                      >
+                        <ShopItemIcon item={item} size={48} variant="row" />
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <h3 style={{ margin: '0 0 4px', color: '#fff', fontSize: 15 }}>
+                            {item.name}
+                          </h3>
+                          <span style={{ color: '#888', fontSize: 11, fontWeight: 'bold' }}>
+                            Owned: {localInventory[item.id]}
+                          </span>
+                          {isUsedToday && (
+                            <div style={{ color: '#ff4444', fontSize: 10, marginTop: 4 }}>
+                              Used today (UTC)
+                            </div>
+                          )}
+                        </div>
+                        <button
+                          type="button"
+                          disabled={isUsedToday}
+                          style={{
+                            background: isUsedToday ? '#444' : '#4ade80',
+                            color: isUsedToday ? '#888' : '#000',
+                            border: 'none',
+                            padding: '10px 16px',
+                            borderRadius: 10,
+                            fontWeight: 'bold',
+                            cursor: isUsedToday ? 'not-allowed' : 'pointer',
+                          }}
+                          onClick={() => handleUseItem(item)}
+                        >
+                          {isUsedToday ? 'LIMIT' : 'USE'}
+                        </button>
+                      </div>
+                    );
+                  })
+                )}
+              </>
+            )}
+
+            {/* BADGES + MYSTERY GIFT */}
+            {backpackCat === 'badges' && (
+              <>
+                <WeeklyBadgePanel
+                  playerId={
+                    user?.id ||
+                    user?.telegram_id ||
+                    stats?.telegram_id ||
+                    stats?.player_id ||
+                    null
+                  }
+                  inventory={localInventory}
+                  onInventoryChange={(inv) => {
+                    setLocalInventory(inv);
+                    if (typeof setStats === 'function') {
+                      setStats((prev) => ({ ...(prev || {}), inventory: inv }));
+                    }
+                  }}
+                />
+                <div
+                  style={{
+                    background: 'linear-gradient(145deg, rgba(255,215,0,0.12), #0f172a)',
+                    border: '2px solid #ffd700',
+                    borderRadius: 14,
+                    padding: 14,
+                  }}
+                >
+                  <div style={{ color: '#ffd700', fontWeight: 'bold', fontSize: 15 }}>
+                    🎁 Mystery Gift
+                  </div>
+                  <p style={{ color: '#aaa', fontSize: 11, margin: '6px 0 10px', lineHeight: 1.4 }}>
+                    Burn badges to open. One open = one burn cost (pick a tier).
+                    Odds shown below. Website gift can use the same rules later.
+                  </p>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                    {Object.keys(MYSTERY_BOX_COSTS).map((tier) => {
+                      const meta = BADGE_TIERS[tier];
+                      const need = MYSTERY_BOX_COSTS[tier];
+                      const have = badgeCounts[tier] || 0;
+                      const ok = have >= need;
+                      return (
+                        <button
+                          key={tier}
+                          type="button"
+                          disabled={!ok || mysteryBusy}
+                          onClick={() => handleOpenMystery(tier)}
+                          style={{
+                            background: ok ? '#1c1e22' : '#111',
+                            border: `1px solid ${ok ? meta.color : '#333'}`,
+                            borderRadius: 12,
+                            padding: 10,
+                            color: ok ? '#fff' : '#555',
+                            cursor: ok && !mysteryBusy ? 'pointer' : 'not-allowed',
+                            textAlign: 'left',
+                          }}
+                        >
+                          <div style={{ fontSize: 18 }}>{meta.emoji}</div>
+                          <div style={{ fontWeight: 'bold', fontSize: 12, color: meta.color }}>
+                            Burn {need} {meta.name.replace(' Badge', '')}
+                          </div>
+                          <div style={{ fontSize: 10, color: '#888', marginTop: 2 }}>
+                            You have {have}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <div style={{ marginTop: 10, fontSize: 10, color: '#666', lineHeight: 1.45 }}>
+                    <strong style={{ color: '#888' }}>Odds by badge burned</strong>
+                    {' '}(Game Guide → Mystery Gift)
+                    <div style={{ marginTop: 6, overflowX: 'auto' }}>
+                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 9, color: '#aaa' }}>
+                        <thead>
+                          <tr>
+                            <th style={{ textAlign: 'left', padding: '2px 4px', color: '#888' }}>Prize</th>
+                            <th style={{ padding: '2px 4px', color: '#cd7f32' }}>🥉#4–10</th>
+                            <th style={{ padding: '2px 4px', color: '#c0c0c0' }}>🥈#3</th>
+                            <th style={{ padding: '2px 4px', color: '#ffd700' }}>🥇#2</th>
+                            <th style={{ padding: '2px 4px', color: '#67e8f9' }}>💎#1</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {[
+                            ['Exclusive NFT', 1, 2, 5, 12],
+                            ['Bonus G2U Tokens', 10, 20, 35, 50],
+                            ['Premium Boost', 14, 23, 30, 28],
+                            ['Free Boost', 35, 30, 20, 10],
+                            ['G2Ushards (Bulk)', 40, 25, 10, 0],
+                          ].map((row) => (
+                            <tr key={row[0]}>
+                              <td style={{ padding: '2px 4px', textAlign: 'left' }}>{row[0]}</td>
+                              {row.slice(1).map((p, i) => (
+                                <td key={i} style={{ padding: '2px 4px', textAlign: 'center' }}>
+                                  {p}%
+                                </td>
+                              ))}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+
+                <div style={{ color: '#ffd700', fontWeight: 'bold', fontSize: 13, marginTop: 4 }}>
+                  Your badges
+                </div>
+                <p style={{ color: '#666', fontSize: 11, margin: '0 0 4px', lineHeight: 1.35 }}>
+                  From Ranks → Weekly (top 10). Rules: Menu → Game Guide → Leaderboards.
+                </p>
+                {badgeTotal === 0 ? (
+                  <div style={{ textAlign: 'center', padding: '20px 12px', color: '#888' }}>
+                    <div style={{ fontSize: 28 }}>🏅</div>
+                    <p style={{ fontSize: 12 }}>No badges yet.</p>
+                  </div>
+                ) : (
+                  badgeCatalogForBackpack().map((b) => {
+                    const qty = Number(localInventory[b.id]) || 0;
+                    if (qty <= 0) return null;
+                    return (
+                      <div
+                        key={b.id}
+                        style={{
+                          background: '#1c1e22',
+                          borderRadius: 14,
+                          padding: '12px 14px',
+                          border: `1px solid ${b.color}`,
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 12,
+                        }}
+                      >
+                        <div style={{ fontSize: 28 }}>{b.emoji}</div>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ color: '#fff', fontWeight: 'bold', fontSize: 14 }}>
+                            {b.name}
+                          </div>
+                          <div style={{ color: '#888', fontSize: 11 }}>{b.desc}</div>
+                        </div>
+                        <div style={{ color: b.color, fontWeight: 'bold', fontSize: 18 }}>
+                          ×{qty}
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </>
+            )}
+
+            {/* NFT (wallet) */}
+            {backpackCat === 'nft' && (
+              <div style={{ textAlign: 'center', padding: '28px 16px' }}>
+                <div style={{ fontSize: 40, marginBottom: 10 }}>🔑</div>
+                <h3 style={{ color: '#c084fc', margin: '0 0 8px' }}>On-chain NFTs</h3>
+                <p style={{ color: '#888', fontSize: 12, lineHeight: 1.45, margin: '0 0 14px' }}>
+                  GiftLocksmith and future Elves live in your game wallet — not as consumable
+                  backpack charges. View mint status under Shop → NFT.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('nft')}
+                  style={{
+                    background: 'linear-gradient(90deg, #9945FF, #14F195)',
+                    color: '#000',
+                    border: 'none',
+                    padding: '12px 18px',
+                    borderRadius: 12,
+                    fontWeight: 'bold',
+                    cursor: 'pointer',
+                  }}
+                >
+                  Open NFT shop
+                </button>
+              </div>
             )}
           </div>
         )}
