@@ -1,9 +1,11 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.7";
+import { mintSessionJwt } from "../_shared/sessionJwt.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
@@ -22,13 +24,11 @@ function b64(buf: ArrayBuffer | Uint8Array) {
 }
 
 async function verifyPassword(password: string, stored: string): Promise<boolean> {
-  // format: pbkdf2_sha256$iterations$saltB64$hashB64
   const parts = String(stored || "").split("$");
   if (parts.length !== 4 || parts[0] !== "pbkdf2_sha256") return false;
   const iterations = parseInt(parts[1], 10);
   const salt = b64ToBytes(parts[2]);
   const expected = parts[3];
-
   const keyMaterial = await crypto.subtle.importKey(
     "raw",
     new TextEncoder().encode(password),
@@ -42,6 +42,13 @@ async function verifyPassword(password: string, stored: string): Promise<boolean
     256,
   );
   return b64(bits) === expected;
+}
+
+async function sha256Hex(s: string): Promise<string> {
+  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s));
+  return Array.from(new Uint8Array(buf))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
 }
 
 serve(async (req) => {
@@ -65,14 +72,14 @@ serve(async (req) => {
 
     const { data: row, error } = await supabase
       .from("players")
-      .select("telegram_id, username, password_hash, wallet_address, has_beta_access, encrypted_vault")
+      .select(
+        "telegram_id, username, password_hash, wallet_address, has_beta_access, encrypted_vault",
+      )
       .ilike("username", cleanName)
       .maybeSingle();
 
     if (error) throw error;
-    if (!row) {
-      throw new Error("No account with that username.");
-    }
+    if (!row) throw new Error("No account with that username.");
     if (!row.password_hash) {
       throw new Error(
         "This account has no password yet. Use Restore with 12 words once, then set a password — or create a new account.",
@@ -80,8 +87,24 @@ serve(async (req) => {
     }
 
     const ok = await verifyPassword(pass, row.password_hash);
-    if (!ok) {
-      throw new Error("Wrong password.");
+    if (!ok) throw new Error("Wrong password.");
+
+    let session_token: string | null = null;
+    let expires_at: string | null = null;
+    try {
+      const minted = await mintSessionJwt(row.telegram_id, row.username);
+      session_token = minted.token;
+      expires_at = minted.expires_at;
+      const token_hash = await sha256Hex(minted.token);
+      await supabase.from("player_sessions").insert({
+        player_id: String(row.telegram_id),
+        token_hash,
+        expires_at: minted.expires_at,
+        user_agent: req.headers.get("user-agent")?.slice(0, 200) || null,
+      });
+    } catch (jwtErr) {
+      // Session secret not configured yet — still allow login, client keeps legacy mode
+      console.warn("session jwt:", jwtErr);
     }
 
     return new Response(
@@ -92,6 +115,8 @@ serve(async (req) => {
         wallet_address: row.wallet_address,
         has_beta_access: !!row.has_beta_access,
         has_vault: !!row.encrypted_vault,
+        session_token,
+        expires_at,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200 },
     );

@@ -18,6 +18,8 @@ const PLAYER_ID_KEY = 'gift2u_player_id';
 const USERNAME_KEY = 'gift2u_username';
 const REF_SESSION_KEY = 'gift2u_ref';
 const SESSION_FLAG = 'gift2u_logged_in';
+const SESSION_TOKEN_KEY = 'gift2u_session_token';
+const SESSION_EXPIRES_KEY = 'gift2u_session_expires';
 
 /** Return stored id or null — does NOT create a new account. */
 export function getPlayerId() {
@@ -46,7 +48,49 @@ export function clearSession() {
   localStorage.removeItem(PLAYER_ID_KEY);
   localStorage.removeItem(USERNAME_KEY);
   localStorage.removeItem(SESSION_FLAG);
+  localStorage.removeItem(SESSION_TOKEN_KEY);
+  localStorage.removeItem(SESSION_EXPIRES_KEY);
 }
+
+/** Hard-security session JWT (null if not issued yet). */
+export function getSessionToken() {
+  try {
+    const tok = localStorage.getItem(SESSION_TOKEN_KEY);
+    if (!tok) return null;
+    const exp = localStorage.getItem(SESSION_EXPIRES_KEY);
+    if (exp && Date.parse(exp) < Date.now() - 5000) {
+      localStorage.removeItem(SESSION_TOKEN_KEY);
+      localStorage.removeItem(SESSION_EXPIRES_KEY);
+      return null;
+    }
+    return tok;
+  } catch {
+    return null;
+  }
+}
+
+export function setSessionToken(token, expiresAt) {
+  try {
+    if (!token) {
+      localStorage.removeItem(SESSION_TOKEN_KEY);
+      localStorage.removeItem(SESSION_EXPIRES_KEY);
+      return;
+    }
+    localStorage.setItem(SESSION_TOKEN_KEY, String(token));
+    if (expiresAt) localStorage.setItem(SESSION_EXPIRES_KEY, String(expiresAt));
+  } catch {
+    /* ignore */
+  }
+}
+
+/** Authorization header map for Edge Function calls */
+export function authHeaders(extra = {}) {
+  const h = { 'Content-Type': 'application/json', ...extra };
+  const tok = getSessionToken();
+  if (tok) h.Authorization = `Bearer ${tok}`;
+  return h;
+}
+
 
 export function isLoggedIn() {
   return !!(getPlayerId() && localStorage.getItem(SESSION_FLAG));
@@ -73,11 +117,13 @@ export function getPlayerProfile() {
 }
 
 /** Apply login/signup result to this browser. */
-export function applyAuthSession({ playerId, username }) {
+export function applyAuthSession({ playerId, username, sessionToken, expiresAt }) {
   setPlayerId(playerId);
   if (username) setUsername(username);
+  if (sessionToken) setSessionToken(sessionToken, expiresAt);
   return getPlayerProfile();
 }
+
 
 export function captureReferralFromUrl() {
   try {

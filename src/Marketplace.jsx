@@ -30,6 +30,8 @@ import {
   badgeCatalogForBackpack,
 } from './weeklyBadges';
 import WeeklyBadgePanel from './WeeklyBadgePanel';
+import WalletNftSection from './WalletNftSection';
+import { listGiftNfts } from './locksmith';
 
 /** Professional icon tile — custom SVG / image or built-in glyph */
 function ShopItemIcon({ item, size = 52, variant = 'row' }) {
@@ -115,6 +117,8 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
   const [localInventory, setLocalInventory] = useState(stats?.inventory || {});
   /** Backpack categories: boost | badges | nft */
   const [backpackCat, setBackpackCat] = useState('boost');
+  const [walletNftCount, setWalletNftCount] = useState(0);
+  const [walletNftRefresh, setWalletNftRefresh] = useState(0);
   const [mysteryBusy, setMysteryBusy] = useState(false);
   // NEW: Track daily usage from the database stats
   const [dailyUsage, setDailyUsage] = useState(stats?.daily_usage || {});
@@ -129,6 +133,29 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
     walletSol != null &&
     Number.isFinite(walletSol) &&
     walletSol >= minMintSol;
+
+
+  // Count on-chain GiftLocksmith NFTs for backpack badge + NFT tab
+  useEffect(() => {
+    const addr = playerWallet && String(playerWallet).trim();
+    if (!addr || addr.length < 32) {
+      setWalletNftCount(0);
+      return undefined;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const list = await listGiftNfts(addr);
+        if (!cancelled) setWalletNftCount(Array.isArray(list) ? list.length : 0);
+      } catch (e) {
+        console.warn('backpack nft count', e?.message || e);
+        if (!cancelled) setWalletNftCount(0);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [playerWallet, activeTab, backpackCat, walletNftRefresh]);
 
   useEffect(() => {
     if (stats?.inventory) setLocalInventory(stats.inventory);
@@ -513,9 +540,10 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
       setTxStatus({
         show: true,
         loading: false,
-        message: `✅ GiftLocksmith minted!\nAsset: ${result.asset.slice(0, 8)}…\nOpen Shard Swap for better fees.`,
+        message: `✅ GiftLocksmith minted!\nAsset: ${result.asset.slice(0, 8)}…\nOpen Pack → NFT to see it.`,
         success: true,
       });
+      setWalletNftRefresh((n) => n + 1);
     } catch (err) {
       console.error('Locksmith mint error', err);
       const msg = err?.message || String(err);
@@ -922,7 +950,8 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
   const badgeTotal = Object.values(badgeCounts).reduce((a, b) => a + b, 0);
   const backpackItemCount =
     backpackBoostItems.reduce((t, i) => t + (Number(localInventory[i.id]) || 0), 0) +
-    badgeTotal;
+    badgeTotal +
+    walletNftCount;
   const backpackItems = backpackBoostItems; // legacy name for boosts
   const currentTodayStr = getTodayUTCString();
 
@@ -1444,7 +1473,7 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
               {[
                 { id: 'boost', label: 'Boost', color: '#4ade80' },
                 { id: 'badges', label: 'Badges', color: '#ffd700' },
-                { id: 'nft', label: 'NFT', color: '#c084fc' },
+                { id: 'nft', label: walletNftCount > 0 ? `NFT (${walletNftCount})` : 'NFT', color: '#c084fc' },
               ].map((tab) => (
                 <button
                   key={tab.id}
@@ -1687,19 +1716,64 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
               </>
             )}
 
-            {/* NFT (wallet) */}
+            {/* NFT (on-chain in game wallet — same scan as Wallet hub) */}
             {backpackCat === 'nft' && (
-              <div style={{ textAlign: 'center', padding: '28px 16px' }}>
-                <div style={{ fontSize: 40, marginBottom: 10 }}>🔑</div>
-                <h3 style={{ color: '#c084fc', margin: '0 0 8px' }}>On-chain NFTs</h3>
-                <p style={{ color: '#888', fontSize: 12, lineHeight: 1.45, margin: '0 0 14px' }}>
-                  GiftLocksmith and future Elves live in your game wallet — not as consumable
-                  backpack charges. View mint status under Shop → NFT.
-                </p>
+              <div>
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    marginBottom: 10,
+                    gap: 8,
+                  }}
+                >
+                  <div>
+                    <div style={{ color: '#c084fc', fontWeight: 'bold', fontSize: 14 }}>
+                      Your NFTs
+                    </div>
+                    <div style={{ color: '#666', fontSize: 11, marginTop: 2 }}>
+                      {walletNftCount > 0
+                        ? `${walletNftCount} GiftLocksmith on this game wallet`
+                        : 'On-chain in your game wallet (not consumable charges)'}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setWalletNftRefresh((n) => n + 1)}
+                    style={{
+                      background: '#222',
+                      border: '1px solid #444',
+                      color: '#c084fc',
+                      borderRadius: 10,
+                      padding: '8px 10px',
+                      fontSize: 11,
+                      fontWeight: 'bold',
+                      cursor: 'pointer',
+                      flexShrink: 0,
+                    }}
+                  >
+                    Refresh
+                  </button>
+                </div>
+                {playerWallet ? (
+                  <WalletNftSection
+                    walletAddress={playerWallet}
+                    refreshKey={walletNftRefresh}
+                    onOpenShopNfts={() => setActiveTab('nft')}
+                  />
+                ) : (
+                  <div style={{ textAlign: 'center', padding: '28px 16px', color: '#888' }}>
+                    <div style={{ fontSize: 36, marginBottom: 8 }}>🔑</div>
+                    <p style={{ fontSize: 12 }}>No game wallet yet. Finish account setup first.</p>
+                  </div>
+                )}
                 <button
                   type="button"
                   onClick={() => setActiveTab('nft')}
                   style={{
+                    width: '100%',
+                    marginTop: 12,
                     background: 'linear-gradient(90deg, #9945FF, #14F195)',
                     color: '#000',
                     border: 'none',

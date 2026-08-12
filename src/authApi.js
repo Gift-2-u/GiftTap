@@ -7,7 +7,7 @@ import CryptoJS from 'crypto-js';
 import { Keypair } from '@solana/web3.js';
 import bs58 from 'bs58';
 import { supabase } from './supabaseClient';
-import { vaultSaltFor } from './playerIdentity';
+import { vaultSaltFor, applyAuthSession, setSessionToken } from './playerIdentity';
 
 const USERNAME_RE = /^[a-zA-Z0-9_]{3,20}$/;
 
@@ -200,6 +200,18 @@ export async function registerAccount(username, password) {
     throw new Error(msg);
   }
 
+  // Issue session JWT via edge login when available
+  let session_token = null;
+  let expires_at = null;
+  try {
+    const logged = await loginAccount(cleanName, pass);
+    session_token = logged.session_token || null;
+    expires_at = logged.expires_at || null;
+  } catch (e) {
+    console.warn('post-register session:', e?.message || e);
+    applyAuthSession({ playerId, username: cleanName });
+  }
+
   return {
     success: true,
     player_id: playerId,
@@ -207,6 +219,8 @@ export async function registerAccount(username, password) {
     wallet_address: wallet.publicKey,
     /** Pass to UI so user can back up (12 words or base58 secret) */
     mnemonic: wallet.secret,
+    session_token,
+    expires_at,
   };
 }
 
@@ -216,6 +230,50 @@ export async function loginAccount(username, password) {
 
   if (!cleanName || !pass) {
     throw new Error('Username and password are required.');
+  }
+
+  const base = (import.meta.env.VITE_SUPABASE_URL || '').replace(/\/$/, '');
+  const anon = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+  // Prefer Edge auth-login (issues session JWT for hard security)
+  if (base && anon) {
+    try {
+      const res = await fetch(`${base}/functions/v1/auth-login`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${anon}`,
+          apikey: anon,
+        },
+        body: JSON.stringify({ username: cleanName, password: pass }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data.error || data.message || `Login failed (${res.status})`);
+      }
+      if (data.session_token) {
+        setSessionToken(data.session_token, data.expires_at);
+      }
+      applyAuthSession({
+        playerId: data.player_id,
+        username: data.username,
+        sessionToken: data.session_token,
+        expiresAt: data.expires_at,
+      });
+      return {
+        success: true,
+        player_id: data.player_id,
+        username: data.username,
+        wallet_address: data.wallet_address,
+        has_beta_access: !!data.has_beta_access,
+        has_vault: !!data.has_vault,
+        session_token: data.session_token || null,
+        expires_at: data.expires_at || null,
+      };
+    } catch (e) {
+      // Fall through to client verify if edge unavailable
+      console.warn('auth-login edge:', e?.message || e);
+    }
   }
 
   const { data: row, error } = await supabase
@@ -242,6 +300,8 @@ export async function loginAccount(username, password) {
     wallet_address: row.wallet_address,
     has_beta_access: !!row.has_beta_access,
     has_vault: !!row.encrypted_vault,
+    session_token: null,
+    expires_at: null,
   };
 }
 

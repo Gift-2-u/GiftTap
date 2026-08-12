@@ -1,9 +1,11 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.7";
+import { mintSessionJwt } from "../_shared/sessionJwt.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
@@ -33,18 +35,34 @@ async function hashPassword(password: string): Promise<string> {
   return `pbkdf2_sha256$100000$${b64(salt)}$${b64(bits)}`;
 }
 
+async function sha256Hex(s: string): Promise<string> {
+  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s));
+  return Array.from(new Uint8Array(buf))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
 
   try {
-    const { username, password } = await req.json();
-    const cleanName = String(username || "").trim();
-    const pass = String(password || "");
+    const body = await req.json();
+    const cleanName = String(body.username || "").trim();
+    const pass = String(body.password || "");
+    // Optional wallet from client (preferred — matches existing GiftTap wallet flow)
+    const wallet_address = body.wallet_address
+      ? String(body.wallet_address)
+      : null;
+    const encrypted_vault = body.encrypted_vault
+      ? String(body.encrypted_vault)
+      : null;
 
     if (!USERNAME_RE.test(cleanName)) {
-      throw new Error("Username must be 3–20 characters: letters, numbers, underscore only.");
+      throw new Error(
+        "Username must be 3–20 characters: letters, numbers, underscore only.",
+      );
     }
     if (pass.length < 6) {
       throw new Error("Password must be at least 6 characters.");
@@ -58,7 +76,6 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
     );
 
-    // Case-insensitive uniqueness
     const { data: existing } = await supabase
       .from("players")
       .select("telegram_id")
@@ -72,30 +89,51 @@ serve(async (req) => {
     const playerId = crypto.randomUUID();
     const password_hash = await hashPassword(pass);
 
-    // Note: do not send created_at — players table may not have that column
-    const { error: insertError } = await supabase.from("players").insert({
+    const insertRow: Record<string, unknown> = {
       telegram_id: playerId,
       username: cleanName,
       password_hash,
-      has_beta_access: false,
+      has_beta_access: true,
       shard_balance: 0,
       season_shards: 0,
       lifetime_taps: 0,
       sol_balance: 0,
       usdc_balance: 0,
-    });
+    };
+    if (wallet_address) insertRow.wallet_address = wallet_address;
+    if (encrypted_vault) insertRow.encrypted_vault = encrypted_vault;
+
+    const { error: insertError } = await supabase.from("players").insert(insertRow);
 
     if (insertError) {
-      if (insertError.message?.includes("players_username") || insertError.code === "23505") {
+      if (
+        insertError.message?.includes("players_username") ||
+        insertError.code === "23505"
+      ) {
         throw new Error("That username is already taken. Choose another.");
       }
-      // Always throw a real Error with a string message (never raw Postgrest object)
       const msg =
         insertError.message ||
         insertError.details ||
         insertError.hint ||
-        (typeof insertError === "string" ? insertError : JSON.stringify(insertError));
+        JSON.stringify(insertError);
       throw new Error(msg);
+    }
+
+    let session_token: string | null = null;
+    let expires_at: string | null = null;
+    try {
+      const minted = await mintSessionJwt(playerId, cleanName);
+      session_token = minted.token;
+      expires_at = minted.expires_at;
+      const token_hash = await sha256Hex(minted.token);
+      await supabase.from("player_sessions").insert({
+        player_id: playerId,
+        token_hash,
+        expires_at: minted.expires_at,
+      });
+    } catch (jwtErr) {
+      console.warn("session jwt:", jwtErr);
     }
 
     return new Response(
@@ -103,6 +141,9 @@ serve(async (req) => {
         success: true,
         player_id: playerId,
         username: cleanName,
+        wallet_address,
+        session_token,
+        expires_at,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200 },
     );
