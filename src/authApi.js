@@ -293,6 +293,13 @@ export async function loginAccount(username, password) {
   const ok = await verifyPassword(pass, row.password_hash);
   if (!ok) throw new Error('Wrong password.');
 
+  // No Edge JWT — still bind identity and CLEAR any previous account session token
+  applyAuthSession({
+    playerId: row.telegram_id,
+    username: row.username,
+    sessionToken: null,
+  });
+
   return {
     success: true,
     player_id: row.telegram_id,

@@ -131,10 +131,20 @@ export function getPlayerProfile() {
 }
 
 /** Apply login/signup result to this browser. */
-export function applyAuthSession({ playerId, username, sessionToken, expiresAt }) {
+export function applyAuthSession({ playerId, username, sessionToken, expiresAt } = {}) {
+  const prevId = getPlayerId();
+  const switched =
+    !!(playerId && prevId && String(prevId) !== String(playerId));
+
   setPlayerId(playerId);
   if (username) setUsername(username);
-  if (sessionToken) setSessionToken(sessionToken, expiresAt);
+
+  // CRITICAL: never keep another account's JWT (Network showed TwrLtr while UI was a different user).
+  if (sessionToken) {
+    setSessionToken(sessionToken, expiresAt);
+  } else if (switched || sessionToken === null) {
+    setSessionToken(null);
+  }
   return getPlayerProfile();
 }
 

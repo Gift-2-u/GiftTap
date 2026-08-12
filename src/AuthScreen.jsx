@@ -76,6 +76,8 @@ const AuthScreen = ({ onAuthenticated, onRestoreAccount, embedded = false }) => 
         mnemonic: data.mnemonic,
         walletAddress: data.wallet_address,
         has_beta_access: true,
+        sessionToken: data.session_token || null,
+        expiresAt: data.expires_at || null,
       });
     } catch (err) {
       console.error('Sign up error:', err);
@@ -98,6 +100,8 @@ const AuthScreen = ({ onAuthenticated, onRestoreAccount, embedded = false }) => 
         hasVault: data.has_vault,
         has_beta_access: data.has_beta_access,
         walletAddress: data.wallet_address,
+        sessionToken: data.session_token || null,
+        expiresAt: data.expires_at || null,
       });
     } catch (err) {
       console.error('Login error:', err);

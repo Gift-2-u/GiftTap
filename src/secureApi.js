@@ -1,7 +1,7 @@
 /**
  * Hard-security API helpers — Edge Functions with session JWT.
  */
-import { getSessionToken, setSessionToken, isSessionTokenStale, authHeaders, getPlayerId, isLoggedIn } from './playerIdentity';
+import { getSessionToken, setSessionToken, isSessionTokenStale, getPlayerId, isLoggedIn } from './playerIdentity';
 
 function baseUrl() {
   return (import.meta.env.VITE_SUPABASE_URL || '').replace(/\/$/, '');
@@ -19,11 +19,16 @@ export async function callSecureFunction(name, body = {}) {
   const anon = anonKey();
   if (!base || !anon) throw new Error('Supabase URL/key missing');
 
-  const headers = authHeaders({
+  // Supabase gateway needs Authorization = anon JWT.
+  // Game session JWT goes in x-gift-session so commit-taps can credit balances.
+  const sessionTok = getSessionToken();
+  const headers = {
+    'Content-Type': 'application/json',
     apikey: anon,
-  });
-  if (!headers.Authorization) {
-    headers.Authorization = `Bearer ${anon}`;
+    Authorization: `Bearer ${anon}`,
+  };
+  if (sessionTok) {
+    headers['x-gift-session'] = sessionTok;
   }
 
   const res = await fetch(`${base}/functions/v1/${name}`, {

@@ -2304,10 +2304,24 @@ const GiftTapGame = () => {
   };
 
   /** After Sign up / Log in from AuthScreen */
-  const handleAuthenticated = async ({ playerId: pid, username: uname, isNew, mnemonic, walletAddress }) => {
+  const handleAuthenticated = async ({
+    playerId: pid,
+    username: uname,
+    isNew,
+    mnemonic,
+    walletAddress,
+    sessionToken,
+    expiresAt,
+  }) => {
     // Wipe prior account UI/refs before binding the new session
     resetGameProgressState();
-    const profile = applyAuthSession({ playerId: pid, username: uname });
+    // Bind player + session JWT together (never leave previous account JWT, e.g. TwrLtr)
+    const profile = applyAuthSession({
+      playerId: pid,
+      username: uname,
+      sessionToken: sessionToken !== undefined ? (sessionToken || null) : null,
+      expiresAt: expiresAt || null,
+    });
     setPlayer(profile);
     setIsAuthed(true);
     setIsLoading(true);
@@ -2346,6 +2360,12 @@ const GiftTapGame = () => {
     optimisticEnergy.current = 500;
     energyAnchorRef.current = { value: 500, at: Date.now() };
     optimisticDaily.current = 0;
+    pendingTapsRef.current = { count: 0, batchId: null };
+    if (tapFlushTimerRef.current) {
+      try { clearTimeout(tapFlushTimerRef.current); } catch { /* ignore */ }
+      tapFlushTimerRef.current = null;
+    }
+    sessionWarnShownRef.current = false;
 
     setBalance(0);
     setSeasonShards(0);
@@ -2686,6 +2706,7 @@ const GiftTapGame = () => {
             };
           }
           flushErrorNotifiedRef.current = false;
+          lastLocalSaveAtRef.current = Date.now();
           // Stop if server rejected further taps (daily limit / no energy)
           if (data && Number(data.taps) === 0) {
             pendingTapsRef.current = { count: 0, batchId: null };
@@ -2698,15 +2719,11 @@ const GiftTapGame = () => {
             batchId: batchId,
           };
           console.warn('commit-taps failed', e?.message || e);
-          if (!flushErrorNotifiedRef.current) {
-            flushErrorNotifiedRef.current = true;
-            try {
-              notify(
-                `Mining is not saving to the server (${e?.message || 'error'}). Log out and log in again, then keep tapping.`,
-              );
-            } catch {
-              /* ignore */
-            }
+          // Silent re-queue + renew — never nag to log out after a tap
+          try {
+            await ensureSecureSession();
+          } catch {
+            /* ignore */
           }
           break;
         }
@@ -2720,7 +2737,7 @@ const GiftTapGame = () => {
     if (tapFlushTimerRef.current) clearTimeout(tapFlushTimerRef.current);
     // Fast flush so Supabase daily_taps stays close to the phone bar
     const pending = pendingTapsRef.current?.count || 0;
-    const delay = pending >= 40 ? 400 : 800;
+    const delay = pending >= 20 ? 250 : 500;
     tapFlushTimerRef.current = setTimeout(() => {
       flushPendingTaps();
     }, delay);
@@ -2871,22 +2888,33 @@ const GiftTapGame = () => {
       }
       spendGuardRef.current = false;
 
-      // Align optimistic refs to payload we will attempt (baseline only after SUCCESS)
-      optimisticBalance.current = writeB;
-      optimisticTaps.current = writeLtt;
-      optimisticSeason.current = writeS;
-      optimisticDaily.current = writeDt;
-      setBalance(writeB);
-      setLifetimeTaps(writeLtt);
-      setSeasonShards(writeS);
+      // Under secure_economy, balances are frozen on client writes — never push UI money
+      // down to a stale server value here (that caused 61727 → 61717 after every tap).
+      const secureLock = !!secureEconomyRef.current;
+      const liveB = Math.max(writeB, Number(optimisticBalance.current) || 0);
+      const liveLtt = Math.max(writeLtt, Number(optimisticTaps.current) || 0);
+      const liveS = Math.max(writeS, Number(optimisticSeason.current) || 0);
+      if (!secureLock) {
+        optimisticBalance.current = liveB;
+        optimisticTaps.current = liveLtt;
+        optimisticSeason.current = liveS;
+        setBalance(liveB);
+        setLifetimeTaps(liveLtt);
+        setSeasonShards(liveS);
+        setBalances((bal) => ({ ...bal, G2Ushards: liveB }));
+        setCurrentLevel((prev) => {
+          const maxU = Number(maxUnlockedLevel) || 4;
+          return Math.min(calculateLevel(liveLtt), maxU);
+        });
+      } else {
+        // Keep whatever the player just earned on screen; commit-taps is authority
+        writeB = Number(optimisticBalance.current) || writeB;
+        writeLtt = Number(optimisticTaps.current) || writeLtt;
+        writeS = Number(optimisticSeason.current) || writeS;
+      }
+      optimisticDaily.current = Math.max(writeDt, Number(optimisticDaily.current) || 0);
+      writeDt = optimisticDaily.current;
       setDailyTaps(writeDt);
-      setBalances((bal) => ({ ...bal, G2Ushards: writeB }));
-      // Level HUD is derived from lifetime_taps — keep it in sync after corrections
-      setCurrentLevel((prev) => {
-        const maxU = Number(maxUnlockedLevel) || 4;
-        const next = Math.min(calculateLevel(writeLtt), maxU);
-        return next;
-      });
       pendingSaveRef.current = {
         ...p,
         b: writeB,
@@ -2936,29 +2964,46 @@ const GiftTapGame = () => {
         weekly_lb: nextInventory.weekly_lb,
       };
 
-      const baseRow = {
-        [DB_PLAYER_ID]: playerId,
-        username: player.username || player.first_name || 'Player',
-        shard_balance: writeB,
-        season_shards: writeS,
-        weekly_shards: writeWeekly,
-        weekly_week_id: weekIdSave,
-        last_energy: p.e,
-        daily_taps: writeDt,
-        last_tap_date: saveLtd,
-        current_streak: p.strk,
-        lifetime_taps: writeLtt,
-        max_unlocked_level: p.mul,
-        max_daily_limit: maxDailyLimit,
-        limit_boost_amount: stats.limit_boost_amount,
-        limit_boost_expires: stats.limit_boost_expires,
-        inventory: nextInventory,
-        last_updated: new Date().toISOString(),
-      };
+      // Mining counters dual-write (protect allows monotonic +cap increases).
+      // Daily rules unchanged. Edge commit-taps still preferred when JWT works.
+      // Do NOT send last_energy under lock (still frozen) — avoids energy desync.
+      const baseRow = secureLock
+        ? {
+            shard_balance: writeB,
+            season_shards: writeS,
+            weekly_shards: writeWeekly,
+            weekly_week_id: weekIdSave,
+            lifetime_taps: writeLtt,
+            daily_taps: writeDt,
+            last_tap_date: saveLtd,
+            current_streak: p.strk,
+            inventory: nextInventory,
+            last_updated: new Date().toISOString(),
+          }
+        : {
+            [DB_PLAYER_ID]: playerId,
+            username: player.username || player.first_name || 'Player',
+            shard_balance: writeB,
+            season_shards: writeS,
+            weekly_shards: writeWeekly,
+            weekly_week_id: weekIdSave,
+            last_energy: p.e,
+            daily_taps: writeDt,
+            last_tap_date: saveLtd,
+            current_streak: p.strk,
+            lifetime_taps: writeLtt,
+            max_unlocked_level: p.mul,
+            max_daily_limit: maxDailyLimit,
+            limit_boost_amount: stats.limit_boost_amount,
+            limit_boost_expires: stats.limit_boost_expires,
+            inventory: nextInventory,
+            last_updated: new Date().toISOString(),
+          };
 
       const doUpdate = async (row) =>
         supabase.from('players').update(row).eq(DB_PLAYER_ID, savePlayerId).select();
 
+      lastLocalSaveAtRef.current = Date.now();
       let { data, error } = await doUpdate(baseRow);
 
       // Legacy PAYWALL trigger still blocks lifetime_taps past wall until you drop it in SQL.
@@ -3137,18 +3182,9 @@ const GiftTapGame = () => {
         return;
       }
 
-      // Hard security: without a session JWT, protect freezes daily_taps — UI would lie.
-      // Players close/reopen (they do NOT re-login). ensureSecureSession() silent-renews JWT.
+      // Silent session renew only — never ask players to log out mid-tap / mid-session.
       if (secureEconomyRef.current && !hasSecureSession()) {
-        // Fire-and-forget renew; if a token was stale, next taps will work
         ensureSecureSession().catch(() => {});
-        if (!sessionWarnShownRef.current) {
-          sessionWarnShownRef.current = true;
-          notify(
-            "Mining needs a one-time sign-in to save progress (then close/reopen works for months). Open Settings → Log out → Log in once.",
-          );
-        }
-        return;
       }
 
       // Credit sleep/background time before deciding if player can tap (keep residual)
@@ -3357,8 +3393,8 @@ const GiftTapGame = () => {
 
       // Send the trigger to save (No absolute totals passed anymore)
       // Make sure this exact line is at the bottom of handleTap:
-      // Hard security: queue taps for commit-taps (server is authority for shards/lifetime)
-      if (hasSecureSession() && validTaps > 0) {
+      // Queue taps for commit-taps (shards/lifetime) when JWT available.
+      if (validTaps > 0) {
         const pend = pendingTapsRef.current;
         if (!pend.batchId) {
           pend.batchId = crypto.randomUUID
@@ -3366,17 +3402,47 @@ const GiftTapGame = () => {
             : `b_${Date.now()}_${Math.random().toString(36).slice(2)}`;
         }
         pend.count = (pend.count || 0) + validTaps;
-        scheduleTapFlush();
-        // Also flush immediately when queue is getting large
-        if (pend.count >= 80) {
-          flushPendingTaps();
+        if (hasSecureSession()) {
+          scheduleTapFlush();
+          if (pend.count >= 80) flushPendingTaps();
+        } else {
+          ensureSecureSession()
+            .then((ok) => {
+              if (ok) flushPendingTaps();
+            })
+            .catch(() => {});
         }
-      } else if (!secureEconomyRef.current) {
-        // Legacy only when economy lock is OFF
-        saveToDatabase(nextBalance, nextEnergy, nextDaily, today, currentStreak, nextLifetimeTaps, maxUnlockedLevel, nextSeasonShards);
-      } else {
-        // Locked + no session: should have been blocked above; do not fake-save
-        console.warn('tap not committed: secure_economy on but no session JWT');
+      }
+      // ALWAYS persist daily_taps via client save (protect allows monotonic same-day increase).
+      // This is what keeps phone bar in sync with Supabase when JWT/commit-taps is missing.
+      saveToDatabase(
+        nextBalance,
+        nextEnergy,
+        nextDaily,
+        today,
+        currentStreak,
+        nextLifetimeTaps,
+        maxUnlockedLevel,
+        nextSeasonShards,
+      );
+      // Lightweight direct daily write (faster than debounced full save; ignore errors)
+      if (playerId && nextDaily > 0) {
+        lastLocalSaveAtRef.current = Date.now();
+        // Dual-write mining counters + daily (protect: only increases, +500 cap per field)
+        supabase
+          .from('players')
+          .update({
+            daily_taps: nextDaily,
+            last_tap_date: today,
+            shard_balance: nextBalance,
+            lifetime_taps: nextLifetimeTaps,
+            season_shards: nextSeasonShards,
+            last_updated: new Date().toISOString(),
+          })
+          .eq(DB_PLAYER_ID, playerId)
+          .then(({ error }) => {
+            if (error) console.warn('mining counters sync', error.message);
+          });
       }
 
       // Weekly quests: 500/day, full daily limit, active days (functional state + DB)
@@ -3467,7 +3533,7 @@ const GiftTapGame = () => {
         return;
       } catch (e) {
         console.error('secure wall-climb', e);
-        notify(e?.message || 'Climb failed. Log out and log in, then try again.');
+        notify(e?.message || 'Climb failed. Check connection and try again.');
         return;
       }
     }
@@ -3653,7 +3719,7 @@ const GiftTapGame = () => {
             const incomingShards = Number(payload.new.shard_balance) || 0;
 
             // Skip echo of our own save for 1.5s (avoid fighting mid-tap)
-            const isOwnEcho = Date.now() - (lastLocalSaveAtRef.current || 0) < 400;
+            const isOwnEcho = Date.now() - (lastLocalSaveAtRef.current || 0) < 3000;
             const incSeason = Number(payload.new.season_shards) || 0;
             const incDaily = Number(payload.new.daily_taps) || 0;
             const base = serverProgressRef.current || {};
@@ -3663,12 +3729,36 @@ const GiftTapGame = () => {
               Math.abs(incSeason - (Number(base.s) || 0)) > 0.001 ||
               Math.abs(incDaily - (Number(base.dt) || 0)) > 0.001;
 
-            // Admin / other-device update: apply ABSOLUTE server values
-            // (do not Math.max — that blocked manual Supabase corrections)
+            // Secure economy freezes balances on client saves — realtime often echoes
+            // OLD shard_balance while daily_taps moved. Never snap UI money DOWN mid-tap.
             if (serverChanged && !isOwnEcho) {
-              optimisticBalance.current = incomingShards;
-              optimisticTaps.current = incomingTaps;
-              optimisticSeason.current = incSeason;
+              const localB = Number(optimisticBalance.current) || 0;
+              const localLtt = Number(optimisticTaps.current) || 0;
+              const localS = Number(optimisticSeason.current) || 0;
+              const pendingTaps = pendingTapsRef.current?.count || 0;
+              // Keep the higher of local vs server for earnings counters.
+              // Only adopt a lower server value if it is a clear spend (local also not ahead
+              // from fresh taps) and no commit queue is in flight.
+              let mergedB = incomingShards;
+              let mergedLtt = incomingTaps;
+              let mergedS = incSeason;
+              if (pendingTaps > 0 || localB > incomingShards + 0.001) {
+                mergedB = Math.max(localB, incomingShards);
+              }
+              if (pendingTaps > 0 || localLtt > incomingTaps + 0.001) {
+                mergedLtt = Math.max(localLtt, incomingTaps);
+              }
+              if (pendingTaps > 0 || localS > incSeason + 0.001) {
+                mergedS = Math.max(localS, incSeason);
+              }
+              // True other-device ahead: server higher → take it
+              if (incomingShards > localB + 0.001) mergedB = incomingShards;
+              if (incomingTaps > localLtt + 0.001) mergedLtt = incomingTaps;
+              if (incSeason > localS + 0.001) mergedS = incSeason;
+
+              optimisticBalance.current = mergedB;
+              optimisticTaps.current = mergedLtt;
+              optimisticSeason.current = mergedS;
               // Daily limit: max with local same-day progress so echo/lag cannot reopen the bar
               {
                 const todayRt = utcTodayStr();
@@ -3692,23 +3782,17 @@ const GiftTapGame = () => {
                 }
               }
               serverProgressRef.current = {
-                b: incomingShards,
-                ltt: incomingTaps,
-                s: incSeason,
+                b: mergedB,
+                ltt: mergedLtt,
+                s: mergedS,
                 dt: Number(optimisticDaily.current) || 0,
               };
-              // Drop pending save built on old wrong stats
-              pendingSaveRef.current = null;
-              try {
-                if (window.saveTimeout) clearTimeout(window.saveTimeout);
-              } catch {
-                /* ignore */
-              }
-              setBalance(incomingShards);
-              setLifetimeTaps(incomingTaps);
-              setSeasonShards(incSeason);
+              // Do NOT drop pendingSave / kill debounce — that was wiping mid-tap earnings
+              setBalance(mergedB);
+              setLifetimeTaps(mergedLtt);
+              setSeasonShards(mergedS);
               setDailyTaps(Number(optimisticDaily.current) || 0);
-              setBalances((b) => ({ ...b, G2Ushards: incomingShards }));
+              setBalances((b) => ({ ...b, G2Ushards: mergedB }));
               {
                 const maxU = Number(
                   payload.new.max_unlocked_level ?? maxUnlockedLevel,
@@ -3886,9 +3970,13 @@ const GiftTapGame = () => {
         // Re-anchor at "full value now" so future ticks don't double-count
         energyAnchorRef.current = { value: nextEnergy, at: Date.now() };
 
-        const shards = Number(row.shard_balance) || 0;
-        const life = Number(row.lifetime_taps) || 0;
-        const season = Number(row.season_shards) || 0;
+        const dbShards = Number(row.shard_balance) || 0;
+        const dbLife = Number(row.lifetime_taps) || 0;
+        const dbSeason = Number(row.season_shards) || 0;
+        // Never snap money down on resume — local taps may be ahead of frozen server
+        const shards = Math.max(dbShards, Number(optimisticBalance.current) || 0);
+        const life = Math.max(dbLife, Number(optimisticTaps.current) || 0);
+        const season = Math.max(dbSeason, Number(optimisticSeason.current) || 0);
         const maxU = Number(row.max_unlocked_level) || 4;
 
         optimisticBalance.current = shards;
@@ -3896,7 +3984,7 @@ const GiftTapGame = () => {
         optimisticSeason.current = season;
         optimisticDaily.current = nextDaily;
         optimisticEnergy.current = nextEnergy;
-        serverProgressRef.current = { b: shards, ltt: life, s: season, dt: nextDaily };
+        serverProgressRef.current = { b: dbShards, ltt: dbLife, s: dbSeason, dt: nextDaily };
 
         setBalance(shards);
         setLifetimeTaps(life);

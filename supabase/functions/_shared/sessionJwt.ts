@@ -139,8 +139,29 @@ export function bearerFromRequest(req: Request): string | null {
   return m ? m[1].trim() : null;
 }
 
+/** Game session JWT (custom) — not the Supabase anon key */
+export function sessionTokenFromRequest(req: Request): string | null {
+  const custom =
+    req.headers.get("x-gift-session") ||
+    req.headers.get("X-Gift-Session") ||
+    req.headers.get("x-session-token") ||
+    req.headers.get("X-Session-Token");
+  if (custom && custom.trim()) return custom.trim();
+  return bearerFromRequest(req);
+}
+
 export async function requirePlayerFromRequest(req: Request): Promise<SessionClaims> {
-  const token = bearerFromRequest(req);
-  if (!token) throw new Error("Not authenticated (missing Bearer token)");
-  return verifySessionJwt(token);
+  // Prefer x-gift-session — Authorization is often the Supabase anon key for gateway
+  const custom =
+    req.headers.get("x-gift-session") ||
+    req.headers.get("X-Gift-Session") ||
+    req.headers.get("x-session-token") ||
+    req.headers.get("X-Session-Token");
+  if (custom && String(custom).trim()) {
+    return verifySessionJwt(String(custom).trim());
+  }
+  const bearer = bearerFromRequest(req);
+  if (!bearer) throw new Error("Not authenticated (missing session token)");
+  // Legacy: game JWT still sent as Bearer
+  return verifySessionJwt(bearer);
 }
