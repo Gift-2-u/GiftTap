@@ -1,7 +1,7 @@
 /**
  * Hard-security API helpers — Edge Functions with session JWT.
  */
-import { getSessionToken, authHeaders, getPlayerId } from './playerIdentity';
+import { getSessionToken, setSessionToken, isSessionTokenStale, authHeaders, getPlayerId, isLoggedIn } from './playerIdentity';
 
 function baseUrl() {
   return (import.meta.env.VITE_SUPABASE_URL || '').replace(/\/$/, '');
@@ -60,6 +60,40 @@ export async function fetchPlayerState() {
 export function hasSecureSession() {
   return !!getSessionToken() && !!getPlayerId();
 }
+
+/**
+ * Silent session keep-alive for close/reopen.
+ * - If JWT present (even near/just expired), call auth-refresh → new 90-day token.
+ * - No password. No logout. Safe to call on every app open / tab focus.
+ * Returns true when hasSecureSession() is usable for commit-taps.
+ */
+export async function ensureSecureSession() {
+  if (!getPlayerId()) return false;
+  const tok = getSessionToken();
+  if (!tok) {
+    // Logged into old client without JWT — cannot silent-mint without password
+    return false;
+  }
+  // Fresh enough → nothing to do
+  if (!isSessionTokenStale(60 * 60 * 1000)) {
+    return true;
+  }
+  try {
+    const data = await callSecureFunction('auth-refresh', {});
+    if (data?.session_token) {
+      setSessionToken(data.session_token, data.expires_at);
+      return true;
+    }
+  } catch (e) {
+    // Token may still be valid for commit-taps even if refresh failed
+    console.warn('auth-refresh', e?.message || e);
+    // If not stale past hard expiry, still allow mining with existing token
+    if (!isSessionTokenStale(0)) return true;
+    return !!getSessionToken() && !isSessionTokenStale(0);
+  }
+  return hasSecureSession();
+}
+
 
 /** Secure shard shop buy (requires JWT). */
 export async function secureShopBuy(itemId) {

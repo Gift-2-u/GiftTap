@@ -176,6 +176,7 @@ import {
 import { ensureWeeklySeasonRollover } from './weeklySeasonRollover';
 import {
   hasSecureSession,
+  ensureSecureSession,
   secureCommitTaps,
   secureWallClimb,
 } from './secureApi';
@@ -594,6 +595,12 @@ const GiftTapGame = () => {
   /** Hard security: accumulate valid taps, flush via commit-taps */
   const pendingTapsRef = useRef({ count: 0, batchId: null });
   const tapFlushTimerRef = useRef(null);
+  const flushInFlightRef = useRef(false);
+  const flushErrorNotifiedRef = useRef(false);
+  /** When true, only commit-taps (service_role) can change daily_taps / balances */
+  const secureEconomyRef = useRef(true);
+  /** Soft once-per-session notice if JWT missing (no password nag on every close/reopen) */
+  const sessionWarnShownRef = useRef(false);
   const [hasAccess, setHasAccess] = useState(false);
   const [dailyTaps, setDailyTaps] = useState(0);
   const [streak, setStreak] = useState(0);
@@ -2560,116 +2567,186 @@ const GiftTapGame = () => {
   // 6. SAVE PROGRESS — always persist shards; open mining past walls
 
   const flushPendingTaps = useCallback(async () => {
-    if (!playerId || !hasSecureSession()) return;
-    const pending = pendingTapsRef.current;
-    if (!pending || pending.count <= 0) return;
-    const taps = pending.count;
-    const batchId = pending.batchId || (crypto.randomUUID ? crypto.randomUUID() : `b_${Date.now()}_${Math.random()}`);
-    pendingTapsRef.current = { count: 0, batchId: null };
+    if (!playerId) return;
+    // Silent renew before commit so close/reopen never drops mining
     try {
-      const data = await secureCommitTaps({ batchId, taps });
-      const p = data?.player;
-      if (p) {
-        const b = Number(p.shard_balance);
-        const ltt = Number(p.lifetime_taps);
-        const s = Number(p.season_shards);
-        const dt = Number(p.daily_taps);
-        const en = Number(p.last_energy);
-        if (Number.isFinite(b)) {
-          optimisticBalance.current = b;
-          setBalance(b);
-          setBalances((bal) => ({ ...bal, G2Ushards: b }));
-        }
-        if (Number.isFinite(ltt)) {
-          optimisticTaps.current = ltt;
-          setLifetimeTaps(ltt);
-        }
-        if (Number.isFinite(s)) {
-          optimisticSeason.current = s;
-          setSeasonShards(s);
-        }
-        if (Number.isFinite(dt)) {
-          // Same UTC day: never let a lagging server 0 wipe a full bar (protect / flush race).
-          const serverLtd = p.last_tap_date
-            ? String(p.last_tap_date).slice(0, 10)
-            : '';
-          const todayF = utcTodayStr();
-          const localDt = Math.max(
-            Number(optimisticDaily.current) || 0,
-            Number(dailyTaps) || 0,
-          );
-          let nextDt = dt;
-          if (serverLtd && serverLtd < todayF) {
-            // Server says previous day — accept reset
-            nextDt = dt;
-          } else {
-            // Today or unknown ltd: keep the higher of client vs server
-            nextDt = Math.max(dt, localDt);
-          }
-          optimisticDaily.current = nextDt;
-          setDailyTaps(nextDt);
-          serverProgressRef.current = {
-            ...(serverProgressRef.current || {}),
-            dt: nextDt,
-          };
-        }
-        if (Number.isFinite(en)) {
-          // Prefer server timestamp so regen residual stays wall-clock accurate
-          const atMs = p.last_updated ? Date.parse(p.last_updated) : Date.now();
-          const anchor = {
-            value: en,
-            at: Number.isFinite(atMs) ? atMs : Date.now(),
-          };
-          const live = catchUpEnergyAnchor(anchor);
-          energyAnchorRef.current = live;
-          optimisticEnergy.current = live.value;
-          setEnergy(live.value);
-        }
-        if (p.last_tap_date) {
-          lastTapDateRef.current = String(p.last_tap_date).slice(0, 10);
-          setLastTapDate(lastTapDateRef.current);
-        }
-        if (p.current_streak != null) {
-          streakRef.current = Number(p.current_streak) || 0;
-          setStreak(streakRef.current);
-        }
-        if (p.inventory) {
-          inventoryRef.current = {
-            ...(inventoryRef.current || {}),
-            ...p.inventory,
-          };
-          setStats((prev) => ({
-            ...prev,
-            inventory: inventoryRef.current,
-          }));
-        }
-        if (p.weekly_shards != null) {
-          optimisticWeekly.current = Number(p.weekly_shards) || 0;
-        }
-        serverProgressRef.current = {
-          b: Number.isFinite(b) ? b : serverProgressRef.current?.b,
-          ltt: Number.isFinite(ltt) ? ltt : serverProgressRef.current?.ltt,
-          s: Number.isFinite(s) ? s : serverProgressRef.current?.s,
-          // Prefer merged daily (optimisticDaily) — raw server dt can lag and reopen the bar
-          dt: Number(optimisticDaily.current) || (Number.isFinite(dt) ? dt : serverProgressRef.current?.dt) || 0,
-        };
-      }
-    } catch (e) {
-      // Re-queue taps so a blip does not lose earnings (legacy save may still run)
-      pendingTapsRef.current = {
-        count: (pendingTapsRef.current.count || 0) + taps,
-        batchId: pendingTapsRef.current.batchId || batchId,
-      };
-      console.warn('commit-taps failed', e?.message || e);
+      await ensureSecureSession();
+    } catch {
+      /* ignore */
     }
-  }, [playerId]);
+    if (!hasSecureSession()) return;
+    if (flushInFlightRef.current) return;
+    flushInFlightRef.current = true;
+    try {
+      // Drain queue in chunks (server max 500 taps per batch)
+      while (pendingTapsRef.current.count > 0) {
+        if (!hasSecureSession()) break;
+        const pending = pendingTapsRef.current;
+        const taps = Math.min(Math.max(0, Math.floor(pending.count)), 500);
+        if (taps <= 0) break;
+        const batchId =
+          pending.batchId ||
+          (crypto.randomUUID
+            ? crypto.randomUUID()
+            : `b_${Date.now()}_${Math.random().toString(36).slice(2)}`);
+        // Reserve this chunk; new taps during await land in the leftover count
+        pendingTapsRef.current = {
+          count: pending.count - taps,
+          batchId:
+            pending.count - taps > 0
+              ? crypto.randomUUID
+                ? crypto.randomUUID()
+                : `b_${Date.now()}_${Math.random().toString(36).slice(2)}`
+              : null,
+        };
+
+        try {
+          const data = await secureCommitTaps({ batchId, taps });
+          const p = data?.player;
+          if (p) {
+            const b = Number(p.shard_balance);
+            const ltt = Number(p.lifetime_taps);
+            const s = Number(p.season_shards);
+            const dt = Number(p.daily_taps);
+            const en = Number(p.last_energy);
+            if (Number.isFinite(b)) {
+              optimisticBalance.current = b;
+              setBalance(b);
+              setBalances((bal) => ({ ...bal, G2Ushards: b }));
+            }
+            if (Number.isFinite(ltt)) {
+              optimisticTaps.current = ltt;
+              setLifetimeTaps(ltt);
+            }
+            if (Number.isFinite(s)) {
+              optimisticSeason.current = s;
+              setSeasonShards(s);
+            }
+            if (Number.isFinite(dt)) {
+              const serverLtd = p.last_tap_date
+                ? String(p.last_tap_date).slice(0, 10)
+                : '';
+              const todayF = utcTodayStr();
+              const stillPending = pendingTapsRef.current.count > 0;
+              let nextDt = dt;
+              if (serverLtd && serverLtd < todayF) {
+                // Confirmed previous day from server
+                nextDt = dt;
+              } else if (stillPending) {
+                // Mid-burst: keep higher local so UI does not jump backward mid-flush
+                nextDt = Math.max(dt, Number(optimisticDaily.current) || 0);
+              } else {
+                // Queue empty → server is authority (fixes phone 1249 vs DB 1133)
+                nextDt = dt;
+              }
+              optimisticDaily.current = nextDt;
+              setDailyTaps(nextDt);
+            }
+            if (Number.isFinite(en)) {
+              const atMs = p.last_updated ? Date.parse(p.last_updated) : Date.now();
+              const anchor = {
+                value: en,
+                at: Number.isFinite(atMs) ? atMs : Date.now(),
+              };
+              const live = catchUpEnergyAnchor(anchor);
+              energyAnchorRef.current = live;
+              optimisticEnergy.current = live.value;
+              setEnergy(live.value);
+            }
+            if (p.last_tap_date) {
+              lastTapDateRef.current = String(p.last_tap_date).slice(0, 10);
+              setLastTapDate(lastTapDateRef.current);
+            } else if (Number.isFinite(dt) && dt > 0) {
+              const todayF = utcTodayStr();
+              lastTapDateRef.current = todayF;
+              setLastTapDate(todayF);
+            }
+            if (p.current_streak != null) {
+              streakRef.current = Number(p.current_streak) || 0;
+              setStreak(streakRef.current);
+            }
+            if (p.inventory) {
+              inventoryRef.current = {
+                ...(inventoryRef.current || {}),
+                ...p.inventory,
+              };
+              setStats((prev) => ({
+                ...prev,
+                inventory: inventoryRef.current,
+              }));
+            }
+            if (p.weekly_shards != null) {
+              optimisticWeekly.current = Number(p.weekly_shards) || 0;
+            }
+            serverProgressRef.current = {
+              b: Number.isFinite(b) ? b : serverProgressRef.current?.b,
+              ltt: Number.isFinite(ltt) ? ltt : serverProgressRef.current?.ltt,
+              s: Number.isFinite(s) ? s : serverProgressRef.current?.s,
+              dt: Number(optimisticDaily.current) || 0,
+            };
+          }
+          flushErrorNotifiedRef.current = false;
+          // Stop if server rejected further taps (daily limit / no energy)
+          if (data && Number(data.taps) === 0) {
+            pendingTapsRef.current = { count: 0, batchId: null };
+            break;
+          }
+        } catch (e) {
+          // Re-queue this chunk with same batch_id (idempotent replay on server)
+          pendingTapsRef.current = {
+            count: (pendingTapsRef.current.count || 0) + taps,
+            batchId: batchId,
+          };
+          console.warn('commit-taps failed', e?.message || e);
+          if (!flushErrorNotifiedRef.current) {
+            flushErrorNotifiedRef.current = true;
+            try {
+              notify(
+                `Mining is not saving to the server (${e?.message || 'error'}). Log out and log in again, then keep tapping.`,
+              );
+            } catch {
+              /* ignore */
+            }
+          }
+          break;
+        }
+      }
+    } finally {
+      flushInFlightRef.current = false;
+    }
+  }, [playerId, notify]);
 
   const scheduleTapFlush = useCallback(() => {
     if (tapFlushTimerRef.current) clearTimeout(tapFlushTimerRef.current);
+    // Fast flush so Supabase daily_taps stays close to the phone bar
+    const pending = pendingTapsRef.current?.count || 0;
+    const delay = pending >= 40 ? 400 : 800;
     tapFlushTimerRef.current = setTimeout(() => {
       flushPendingTaps();
-    }, 1500);
+    }, delay);
   }, [flushPendingTaps]);
+
+  // Silent JWT renew on open / return to tab — no password, no logout
+  useEffect(() => {
+    if (!playerId) return undefined;
+    let cancelled = false;
+    const run = async () => {
+      const ok = await ensureSecureSession();
+      if (!cancelled && ok) {
+        // Session ready — push any taps that queued while renewing
+        flushPendingTaps();
+      }
+    };
+    run();
+    const onVis = () => {
+      if (document.visibilityState === 'visible') run();
+    };
+    document.addEventListener('visibilitychange', onVis);
+    return () => {
+      cancelled = true;
+      document.removeEventListener('visibilitychange', onVis);
+    };
+  }, [playerId, flushPendingTaps]);
 
   useEffect(() => {
     const onHide = () => {
@@ -3060,6 +3137,20 @@ const GiftTapGame = () => {
         return;
       }
 
+      // Hard security: without a session JWT, protect freezes daily_taps — UI would lie.
+      // Players close/reopen (they do NOT re-login). ensureSecureSession() silent-renews JWT.
+      if (secureEconomyRef.current && !hasSecureSession()) {
+        // Fire-and-forget renew; if a token was stale, next taps will work
+        ensureSecureSession().catch(() => {});
+        if (!sessionWarnShownRef.current) {
+          sessionWarnShownRef.current = true;
+          notify(
+            "Mining needs a one-time sign-in to save progress (then close/reopen works for months). Open Settings → Log out → Log in once.",
+          );
+        }
+        return;
+      }
+
       // Credit sleep/background time before deciding if player can tap (keep residual)
       {
         const caught = catchUpEnergyAnchor(energyAnchorRef.current);
@@ -3276,9 +3367,16 @@ const GiftTapGame = () => {
         }
         pend.count = (pend.count || 0) + validTaps;
         scheduleTapFlush();
-      } else {
-        // Legacy: full client save of balances / lifetime
+        // Also flush immediately when queue is getting large
+        if (pend.count >= 80) {
+          flushPendingTaps();
+        }
+      } else if (!secureEconomyRef.current) {
+        // Legacy only when economy lock is OFF
         saveToDatabase(nextBalance, nextEnergy, nextDaily, today, currentStreak, nextLifetimeTaps, maxUnlockedLevel, nextSeasonShards);
+      } else {
+        // Locked + no session: should have been blocked above; do not fake-save
+        console.warn('tap not committed: secure_economy on but no session JWT');
       }
 
       // Weekly quests: 500/day, full daily limit, active days (functional state + DB)
@@ -4582,13 +4680,15 @@ const GiftTapGame = () => {
       try {
         const { data, error } = await supabase
           .from('game_settings')
-          .select('season_name, is_season_active, season_start_time, season_end_time')
+          .select('season_name, is_season_active, season_start_time, season_end_time, secure_economy')
           .eq('id', 1)
           .single();
 
         if (error) throw error;
 
         if (data) {
+          // Default true if column missing — hard security is live in production
+          secureEconomyRef.current = data.secure_economy !== false;
           setSeasonData({
             name: data.season_name,
             isActive: data.is_season_active,

@@ -52,20 +52,34 @@ export function clearSession() {
   localStorage.removeItem(SESSION_EXPIRES_KEY);
 }
 
-/** Hard-security session JWT (null if not issued yet). */
+/**
+ * Hard-security session JWT.
+ * IMPORTANT: Do NOT delete an "expired" token from localStorage here.
+ * Players close/reopen the game — we silent-refresh expired tokens within
+ * a grace window via auth-refresh. Wiping the token forced a password login.
+ */
 export function getSessionToken() {
   try {
     const tok = localStorage.getItem(SESSION_TOKEN_KEY);
-    if (!tok) return null;
-    const exp = localStorage.getItem(SESSION_EXPIRES_KEY);
-    if (exp && Date.parse(exp) < Date.now() - 5000) {
-      localStorage.removeItem(SESSION_TOKEN_KEY);
-      localStorage.removeItem(SESSION_EXPIRES_KEY);
-      return null;
-    }
-    return tok;
+    return tok || null;
   } catch {
     return null;
+  }
+}
+
+/** True if token is missing or past stored expires_at (needs silent refresh). */
+export function isSessionTokenStale(skewMs = 60 * 60 * 1000) {
+  try {
+    const tok = localStorage.getItem(SESSION_TOKEN_KEY);
+    if (!tok) return true;
+    const exp = localStorage.getItem(SESSION_EXPIRES_KEY);
+    if (!exp) return false; // have token, unknown exp — treat as ok
+    const t = Date.parse(exp);
+    if (!Number.isFinite(t)) return false;
+    // Stale if expired or expiring within skew (default 1 hour)
+    return t < Date.now() + skewMs;
+  } catch {
+    return true;
   }
 }
 

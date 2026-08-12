@@ -50,8 +50,14 @@ export function getSessionSecret(): string {
   return s;
 }
 
-/** Default session lifetime: 14 days */
-export const DEFAULT_TTL_SEC = 60 * 60 * 24 * 14;
+/** Default session lifetime: 90 days — players close/reopen, not re-login daily */
+export const DEFAULT_TTL_SEC = 60 * 60 * 24 * 90;
+
+/**
+ * After exp, still allow silent refresh for this long so a player who
+ * opens the game after a long break gets a new JWT without typing a password.
+ */
+export const REFRESH_GRACE_SEC = 60 * 60 * 24 * 30; // 30 days after exp
 
 export async function mintSessionJwt(
   playerId: string,
@@ -79,14 +85,13 @@ export async function mintSessionJwt(
   };
 }
 
-export async function verifySessionJwt(token: string): Promise<SessionClaims> {
+async function parseAndVerifySignature(token: string): Promise<SessionClaims> {
   const secret = getSessionSecret();
   const parts = String(token || "").trim().split(".");
   if (parts.length !== 3) throw new Error("Invalid session token");
   const [h, p, s] = parts;
   const body = `${h}.${p}`;
   const key = await importHmacKey(secret);
-  // reconstruct signature bytes from b64url
   const pad = s.length % 4 === 0 ? "" : "=".repeat(4 - (s.length % 4));
   const b64 = s.replace(/-/g, "+").replace(/_/g, "/") + pad;
   const bin = atob(b64);
@@ -99,8 +104,31 @@ export async function verifySessionJwt(token: string): Promise<SessionClaims> {
   const payloadJson = atob(p.replace(/-/g, "+").replace(/_/g, "/") + padP);
   const claims = JSON.parse(payloadJson) as SessionClaims;
   if (!claims?.sub) throw new Error("Session missing subject");
+  return claims;
+}
+
+export async function verifySessionJwt(token: string): Promise<SessionClaims> {
+  const claims = await parseAndVerifySignature(token);
   const now = Math.floor(Date.now() / 1000);
-  if (claims.exp && now >= claims.exp) throw new Error("Session expired — log in again");
+  if (claims.exp && now >= claims.exp) {
+    throw new Error("Session expired — log in again");
+  }
+  return claims;
+}
+
+/**
+ * Accept valid JWTs, or expired ones still inside the silent-refresh grace window.
+ * Used only by auth-refresh so close/reopen never forces a password.
+ */
+export async function verifySessionJwtForRefresh(
+  token: string,
+  graceSec: number = REFRESH_GRACE_SEC,
+): Promise<SessionClaims> {
+  const claims = await parseAndVerifySignature(token);
+  const now = Math.floor(Date.now() / 1000);
+  if (claims.exp && now >= claims.exp + Math.max(0, graceSec)) {
+    throw new Error("Session fully expired — log in once to continue");
+  }
   return claims;
 }
 
