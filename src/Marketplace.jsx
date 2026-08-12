@@ -30,7 +30,12 @@ import {
   badgeCatalogForBackpack,
 } from './weeklyBadges';
 import WeeklyBadgePanel from './WeeklyBadgePanel';
-import { hasSecureSession, secureShopBuy, secureMysteryOpen } from './secureApi';
+import {
+  hasSecureSession,
+  secureShopBuy,
+  secureMysteryOpen,
+  secureBackpackActivate,
+} from './secureApi';
 import WalletNftSection from './WalletNftSection';
 import { listGiftNfts } from './locksmith';
 
@@ -804,13 +809,55 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
 
     // NEW: Check if this item has already been used today UTC
     const todayStr = getTodayUTCString();
-    if (dailyUsage[item.id] === todayStr) {
+    if (dailyUsage[item.id] === todayStr && item.id !== 'refill' && item.id !== 'crate') {
       setTxStatus({ show: true, loading: false, message: `❌ You have already used a ${item.name} today. Wait until UTC midnight.`, success: false });
       setTimeout(() => setTxStatus(prev => ({ ...prev, show: false })), 3000);
       return;
     }
 
     setTxStatus({ show: true, loading: true, message: `Activating ${item.name}...`, success: false });
+
+    // Hard security: server activates item (crate shards / buffs cannot be faked)
+    if (hasSecureSession()) {
+      try {
+        const data = await secureBackpackActivate(item.id);
+        const inv = data.inventory || {};
+        setLocalInventory(inv);
+        if (data.daily_usage) setDailyUsage(data.daily_usage);
+        if (data.shard_balance != null) setBalance(Number(data.shard_balance));
+        if (data.last_energy != null && setEnergy) {
+          setEnergy(Number(data.last_energy));
+        }
+        if (setStats) {
+          setStats((prev) => ({
+            ...prev,
+            ...data.updates,
+            inventory: mergeInventoryWeekly(
+              prev?.inventory || {},
+              inv,
+              getUtcWeekId(),
+            ),
+          }));
+        }
+        setTxStatus({
+          show: true,
+          loading: false,
+          message: `⚡ ${item.name} is now ACTIVE!`,
+          success: true,
+        });
+        setTimeout(() => setTxStatus((prev) => ({ ...prev, show: false })), 2000);
+        return;
+      } catch (secErr) {
+        console.warn('secure activate failed', secErr?.message || secErr);
+        setTxStatus({
+          show: true,
+          loading: false,
+          message: `❌ ${secErr?.message || 'Failed to activate item.'}`,
+          success: false,
+        });
+        return;
+      }
+    }
 
     // 1. Deduct from inventory — always merge parent inventory (preserve task_limit_boost!)
     const newInventory = buildFullInventory();

@@ -40,9 +40,37 @@ function energyFromAnchor(value, atMs, nowMs = Date.now()) {
     : ENERGY_CAP;
   const at = Number(atMs);
   const t0 = Number.isFinite(at) ? at : nowMs;
-  const seconds = Math.max(0, Math.floor((nowMs - t0) / 1000));
+  const seconds = Math.max(0, (nowMs - t0) / 1000);
   const gained = Math.floor(seconds / ENERGY_SECONDS_PER_POINT);
   return Math.min(ENERGY_CAP, base + gained);
+}
+
+const ENERGY_STEP_MS = ENERGY_SECONDS_PER_POINT * 1000;
+
+/**
+ * Apply wall-clock regen, then spend energy, while keeping residual time
+ * toward the next +1 so regen continues during rapid tapping.
+ * @returns {{ value: number, at: number }}
+ */
+function spendEnergyFromAnchor(anchor, cost, nowMs = Date.now()) {
+  const stepMs = ENERGY_STEP_MS;
+  const prevVal = Number.isFinite(Number(anchor?.value))
+    ? Math.max(0, Math.min(ENERGY_CAP, Number(anchor.value)))
+    : ENERGY_CAP;
+  const prevAt = Number.isFinite(Number(anchor?.at)) ? Number(anchor.at) : nowMs;
+  const elapsed = Math.max(0, nowMs - prevAt);
+  const wholeSteps = Math.floor(elapsed / stepMs);
+  const residual = elapsed - wholeSteps * stepMs;
+  let energy = Math.min(ENERGY_CAP, prevVal + wholeSteps);
+  const spend = Math.max(0, Number(cost) || 0);
+  energy = Math.max(0, Math.min(ENERGY_CAP, energy - spend));
+  // Keep leftover ms so the next point still arrives on the 1.5s wall clock
+  return { value: energy, at: nowMs - residual };
+}
+
+/** Regen-only catch-up (no spend), preserves residual time. */
+function catchUpEnergyAnchor(anchor, nowMs = Date.now()) {
+  return spendEnergyFromAnchor(anchor, 0, nowMs);
 }
 
 /** One-time task rewards that expand daily tap limit until UTC midnight. */
@@ -146,7 +174,11 @@ import {
   badgeTierForWeeklyRank,
 } from './weeklyBadges';
 import { ensureWeeklySeasonRollover } from './weeklySeasonRollover';
-import { hasSecureSession, secureCommitTaps } from './secureApi';
+import {
+  hasSecureSession,
+  secureCommitTaps,
+  secureWallClimb,
+} from './secureApi';
 import WalletNftSection from './WalletNftSection';
 import SwapBadgeCard, { NftDetailModal, LOCKSMITH_PERKS } from './SwapBadgeCard';
 import {
@@ -2419,23 +2451,18 @@ const GiftTapGame = () => {
 
   /** Apply wall-clock regen into React state + optimistic ref. Safe after sleep. */
   const applyEnergyCatchUp = useCallback(() => {
-    const next = energyFromAnchor(
-      energyAnchorRef.current.value,
-      energyAnchorRef.current.at,
-    );
-    // Fold progress into anchor so partial seconds are not lost forever:
-    // keep residual time by advancing `at` by whole regen steps only.
-    if (next > Number(energyAnchorRef.current.value) || next !== Number(optimisticEnergy.current)) {
-      const prevVal = Math.max(0, Math.min(ENERGY_CAP, Number(energyAnchorRef.current.value) || 0));
-      const gained = next - prevVal;
-      if (gained > 0) {
-        energyAnchorRef.current = {
-          value: next,
-          at: energyAnchorRef.current.at + gained * ENERGY_SECONDS_PER_POINT * 1000,
-        };
-      }
+    const nextAnchor = catchUpEnergyAnchor(energyAnchorRef.current);
+    const next = nextAnchor.value;
+    if (
+      next !== Number(energyAnchorRef.current.value) ||
+      next !== Number(optimisticEnergy.current)
+    ) {
+      energyAnchorRef.current = nextAnchor;
       optimisticEnergy.current = next;
       setEnergy(next);
+    } else {
+      // Still fold residual into anchor even when display value unchanged
+      energyAnchorRef.current = nextAnchor;
     }
     return next;
   }, []);
@@ -2444,7 +2471,7 @@ const GiftTapGame = () => {
     // Poll often enough for UI; catch-up uses Date.now() so sleep gaps are fully credited.
     const ticker = setInterval(() => {
       applyEnergyCatchUp();
-    }, 1000);
+    }, 500); // half-second UI so +1 every 1.5s is visible while tapping
     return () => clearInterval(ticker);
   }, [applyEnergyCatchUp]);
 
@@ -2552,9 +2579,16 @@ const GiftTapGame = () => {
           setDailyTaps(dt);
         }
         if (Number.isFinite(en)) {
-          optimisticEnergy.current = en;
-          energyAnchorRef.current = { value: en, at: Date.now() };
-          setEnergy(en);
+          // Prefer server timestamp so regen residual stays wall-clock accurate
+          const atMs = p.last_updated ? Date.parse(p.last_updated) : Date.now();
+          const anchor = {
+            value: en,
+            at: Number.isFinite(atMs) ? atMs : Date.now(),
+          };
+          const live = catchUpEnergyAnchor(anchor);
+          energyAnchorRef.current = live;
+          optimisticEnergy.current = live.value;
+          setEnergy(live.value);
         }
         if (p.last_tap_date) {
           lastTapDateRef.current = String(p.last_tap_date).slice(0, 10);
@@ -2990,14 +3024,12 @@ const GiftTapGame = () => {
         return;
       }
 
-      // Credit sleep/background time before deciding if player can tap
+      // Credit sleep/background time before deciding if player can tap (keep residual)
       {
-        const caught = energyFromAnchor(
-          energyAnchorRef.current.value,
-          energyAnchorRef.current.at,
-        );
-        optimisticEnergy.current = caught;
-        if (caught !== Number(energy)) setEnergy(caught);
+        const caught = catchUpEnergyAnchor(energyAnchorRef.current);
+        energyAnchorRef.current = caught;
+        optimisticEnergy.current = caught.value;
+        if (caught.value !== Number(energy)) setEnergy(caught.value);
       }
       if ((Number(optimisticEnergy.current) || 0) <= 0 || !isDataLoaded) return;
 
@@ -3134,11 +3166,17 @@ const GiftTapGame = () => {
       }
 
       const totalCost = costMultiplier * validTaps;
-      const safeEnergy = Number(optimisticEnergy.current);
-      let nextEnergy = Math.max(0, Math.min(ENERGY_CAP, safeEnergy - totalCost));
-      optimisticEnergy.current = nextEnergy;
-      // Spending re-anchors the clock at "now" with the new value
-      energyAnchorRef.current = { value: nextEnergy, at: Date.now() };
+      // Regen continues on the 1.5s clock even while tapping (preserve residual ms)
+      {
+        const spent = spendEnergyFromAnchor(
+          energyAnchorRef.current,
+          totalCost,
+          Date.now(),
+        );
+        energyAnchorRef.current = spent;
+        optimisticEnergy.current = spent.value;
+      }
+      let nextEnergy = Number(optimisticEnergy.current) || 0;
 
       const safeDaily = Number(optimisticDaily.current);
       // Prefer ref for daily progress (stale state under multi-touch)
@@ -3235,9 +3273,52 @@ const GiftTapGame = () => {
     }
   };
 
-  const finishAscensionUnlock = async (newBalance, wallData, wallKey) => {
+  const finishAscensionUnlock = async (newBalance, wallData, wallKey, opts = {}) => {
     const newCap = wallData.newCap;
     const newLevel = wallData.targetLevel;
+    const method = opts.method || 'shards';
+    const txSignature = opts.txSignature || null;
+
+    // Hard security: server deducts shards + raises max_unlocked_level
+    if (hasSecureSession()) {
+      try {
+        const data = await secureWallClimb({ method, txSignature });
+        const bal = Number(data.shard_balance);
+        const cap = Number(data.max_unlocked_level);
+        const lvl = Number(data.target_level);
+        if (Number.isFinite(bal)) {
+          optimisticBalance.current = bal;
+          setBalance(bal);
+          setBalances((b) => ({ ...b, G2Ushards: bal }));
+        }
+        if (Number.isFinite(cap)) setMaxUnlockedLevel(cap);
+        if (Number.isFinite(lvl)) setCurrentLevel(lvl);
+        setShowAscensionModal(false);
+        setWallSnoozedFor(null);
+        if (data.inventory) {
+          inventoryRef.current = {
+            ...(inventoryRef.current || {}),
+            ...data.inventory,
+          };
+          setStats((prev) => ({
+            ...prev,
+            inventory: inventoryRef.current,
+          }));
+        }
+        if (wallKey === 4) {
+          tryPayReferrerForWall5(playerId).catch((e) =>
+            console.warn('referral wall5', e?.message || e),
+          );
+        }
+        notify(`Ascended to Level ${lvl || newLevel}! Tap Power Increased.`);
+        return;
+      } catch (e) {
+        console.error('secure wall-climb', e);
+        notify(e?.message || 'Climb failed. Log out and log in, then try again.');
+        return;
+      }
+    }
+
     setBalance(newBalance);
     setBalances((b) => ({ ...b, G2Ushards: newBalance }));
     setMaxUnlockedLevel(newCap);
@@ -3297,7 +3378,7 @@ const GiftTapGame = () => {
 
       const newBalance =
         Math.round((Number(balance) - wallData.shardCost) * 1000) / 1000;
-      await finishAscensionUnlock(newBalance, wallData, wallKey);
+      await finishAscensionUnlock(newBalance, wallData, wallKey, { method: 'shards' });
       return;
     }
 
@@ -3389,7 +3470,10 @@ const GiftTapGame = () => {
           newBalance =
             Math.round((newBalance - wallData.shardCost) * 1000) / 1000;
         }
-        await finishAscensionUnlock(newBalance, wallData, wallKey);
+        await finishAscensionUnlock(newBalance, wallData, wallKey, {
+          method: method === 'both' ? 'both' : 'sol',
+          txSignature: signature,
+        });
 
       } catch (err) {
         console.error("SOL Payment Error:", err);

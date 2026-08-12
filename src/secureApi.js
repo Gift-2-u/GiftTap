@@ -96,3 +96,15 @@ export async function secureClaimWeeklyQuest(questId, rewardAmount = 100) {
 export async function secureClaimWeeklyPrize() {
   return callSecureFunction('claim-weekly-prize', {});
 }
+
+
+export async function secureBackpackActivate(itemId) {
+  return callSecureFunction('backpack-activate', { item_id: itemId });
+}
+
+export async function secureWallClimb({ method, txSignature }) {
+  return callSecureFunction('wall-climb', {
+    method,
+    tx_signature: txSignature || null,
+  });
+}
