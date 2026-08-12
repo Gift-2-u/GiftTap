@@ -17,6 +17,7 @@ import {
   applyWeeklyBoostBuy,
   getUtcWeekId,
   mergeInventoryWeekly,
+  applyServerInventoryAuthority,
   hydrateWeeklyClaimsFromLedger,
   applyTaskLimitBoostToInventory,
 } from './weeklyQuestLogic';
@@ -32,6 +33,7 @@ import {
 import WeeklyBadgePanel from './WeeklyBadgePanel';
 import {
   hasSecureSession,
+  ensureSecureSession,
   secureShopBuy,
   secureMysteryOpen,
   secureBackpackActivate,
@@ -434,7 +436,12 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
     setTxStatus({ show: true, loading: true, message: `Purchasing ${item.name}...`, success: false });
 
     try {
-      // Hard security: server deducts shards + grants item when JWT present
+      try {
+        await ensureSecureSession();
+      } catch {
+        /* ignore */
+      }
+      // Server buy when JWT present (client cannot mint refill into inventory under protect)
       if (hasSecureSession()) {
         const data = await secureShopBuy(item.id);
         const nextBalance = Number(data.shard_balance);
@@ -832,38 +839,90 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
 
     setTxStatus({ show: true, loading: true, message: `Activating ${item.name}...`, success: false });
 
-    // Hard security: server activates item (crate shards / buffs cannot be faked)
+    // Prefer server activate (inventory + energy/buffs must match Supabase)
+    try {
+      await ensureSecureSession();
+    } catch {
+      /* ignore */
+    }
+
     if (hasSecureSession()) {
       try {
         const data = await secureBackpackActivate(item.id);
-        const inv = data.inventory || {};
-        setLocalInventory(inv);
+        let inv = { ...(data.inventory || {}) };
+        const prevQty = Math.max(0, Math.floor(Number(localInventory[item.id]) || 0));
+        const serverQty = Math.max(0, Math.floor(Number(inv[item.id]) || 0));
+        let nextQty = serverQty;
+        if (serverQty >= prevQty && prevQty > 0) nextQty = prevQty - 1;
+        if (nextQty <= 0) delete inv[item.id];
+        else inv[item.id] = nextQty;
+
+        const weekId = getUtcWeekId();
+        const authInv = applyServerInventoryAuthority(
+          stats?.inventory || localInventory || {},
+          inv,
+          weekId,
+        );
+        if (nextQty <= 0) delete authInv[item.id];
+        else authInv[item.id] = nextQty;
+
+        setLocalInventory({ ...authInv });
         if (data.daily_usage) setDailyUsage(data.daily_usage);
         if (data.shard_balance != null) setBalance(Number(data.shard_balance));
-        if (data.last_energy != null && setEnergy) {
-          setEnergy(Number(data.last_energy));
+        if (item.id === 'refill' || data.last_energy != null) {
+          const en =
+            data.last_energy != null ? Number(data.last_energy) : 500;
+          if (setEnergy) setEnergy(Math.min(500, Math.max(0, en)));
         }
         if (setStats) {
           setStats((prev) => ({
             ...prev,
             ...data.updates,
-            inventory: mergeInventoryWeekly(
-              prev?.inventory || {},
-              inv,
-              getUtcWeekId(),
-            ),
+            last_energy:
+              data.last_energy != null
+                ? Number(data.last_energy)
+                : prev.last_energy,
+            inventory: { ...authInv },
           }));
         }
+
         setTxStatus({
           show: true,
           loading: false,
-          message: `⚡ ${item.name} is now ACTIVE!`,
+          message:
+            item.id === 'refill'
+              ? '⚡ Battery refilled to 500/500!'
+              : `⚡ ${item.name} is now ACTIVE!`,
           success: true,
         });
         setTimeout(() => setTxStatus((prev) => ({ ...prev, show: false })), 2000);
         return;
       } catch (secErr) {
         console.warn('secure activate failed', secErr?.message || secErr);
+        // Resync backpack from Supabase — local UI often lies after failed buys
+        try {
+          const { data: row } = await supabase
+            .from('players')
+            .select('inventory, last_energy, daily_usage')
+            .eq(DB_PLAYER_ID, String(user.id))
+            .maybeSingle();
+          if (row?.inventory) {
+            setLocalInventory(row.inventory);
+            if (setStats) {
+              setStats((prev) => ({
+                ...prev,
+                inventory: mergeInventoryWeekly(
+                  prev?.inventory || {},
+                  row.inventory,
+                  getUtcWeekId(),
+                ),
+              }));
+            }
+          }
+          if (row?.daily_usage) setDailyUsage(row.daily_usage);
+        } catch {
+          /* ignore */
+        }
         setTxStatus({
           show: true,
           loading: false,
@@ -901,8 +960,8 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
     if (item.id === 'battery') dbUpdates.energy_boost_expires = midnightUtcTonight.toISOString();
     if (item.id === 'heavy') dbUpdates.efficiency_expires = midnightUtcTonight.toISOString();
     if (item.id === 'refill') {
-      dbUpdates.last_energy = 1000;
-      if (setEnergy) setEnergy(1000);
+      dbUpdates.last_energy = 500; // ENERGY_CAP battery pool
+      if (setEnergy) setEnergy(500);
     }
    
     // Premium SOL Items
@@ -935,18 +994,24 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
       const { error } = await supabase.from('players').update(dbUpdates).eq(DB_PLAYER_ID, String(user.id));
       if (error) throw error;
 
-      setLocalInventory(newInventory);
+      const weekIdL = getUtcWeekId();
+      const authInvL = applyServerInventoryAuthority(
+        stats?.inventory || {},
+        newInventory,
+        weekIdL,
+      );
+      const qL = Math.max(0, Math.floor(Number(newInventory[item.id]) || 0));
+      if (qL <= 0) delete authInvL[item.id];
+      else authInvL[item.id] = qL;
+
+      setLocalInventory({ ...authInvL });
       setDailyUsage(newDailyUsage);
       if (setStats) {
         setStats((prev) => ({
           ...prev,
           ...stats,
           ...dbUpdates,
-          inventory: mergeInventoryWeekly(
-            prev?.inventory || {},
-            newInventory,
-            getUtcWeekId(),
-          ),
+          inventory: { ...authInvL },
         }));
       }
 

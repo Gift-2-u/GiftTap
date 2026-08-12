@@ -811,6 +811,17 @@ const GiftTapGame = () => {
     [playerId],
   );
 
+  /** Shop/backpack must update energy AND the regen anchor — setEnergy alone snaps back. */
+  const setEnergySyncedForShop = useCallback((valueOrUpdater) => {
+    const cur = Number(optimisticEnergy.current);
+    const raw =
+      typeof valueOrUpdater === 'function' ? valueOrUpdater(cur) : valueOrUpdater;
+    const next = Math.max(0, Math.min(ENERGY_CAP, Number(raw) || 0));
+    energyAnchorRef.current = { value: next, at: Date.now() };
+    optimisticEnergy.current = next;
+    setEnergy(next);
+  }, []);
+
   // Keep inventoryRef aligned when shop/backpack/badges update stats.inventory
   useEffect(() => {
     if (!stats?.inventory) return;
@@ -2888,33 +2899,25 @@ const GiftTapGame = () => {
       }
       spendGuardRef.current = false;
 
-      // Under secure_economy, balances are frozen on client writes — never push UI money
-      // down to a stale server value here (that caused 61727 → 61717 after every tap).
+      // Mining is one bundle — always keep UI on max(client write, optimistic).
       const secureLock = !!secureEconomyRef.current;
-      const liveB = Math.max(writeB, Number(optimisticBalance.current) || 0);
-      const liveLtt = Math.max(writeLtt, Number(optimisticTaps.current) || 0);
-      const liveS = Math.max(writeS, Number(optimisticSeason.current) || 0);
-      if (!secureLock) {
-        optimisticBalance.current = liveB;
-        optimisticTaps.current = liveLtt;
-        optimisticSeason.current = liveS;
-        setBalance(liveB);
-        setLifetimeTaps(liveLtt);
-        setSeasonShards(liveS);
-        setBalances((bal) => ({ ...bal, G2Ushards: liveB }));
-        setCurrentLevel((prev) => {
-          const maxU = Number(maxUnlockedLevel) || 4;
-          return Math.min(calculateLevel(liveLtt), maxU);
-        });
-      } else {
-        // Keep whatever the player just earned on screen; commit-taps is authority
-        writeB = Number(optimisticBalance.current) || writeB;
-        writeLtt = Number(optimisticTaps.current) || writeLtt;
-        writeS = Number(optimisticSeason.current) || writeS;
-      }
-      optimisticDaily.current = Math.max(writeDt, Number(optimisticDaily.current) || 0);
-      writeDt = optimisticDaily.current;
+      writeB = Math.max(writeB, Number(optimisticBalance.current) || 0);
+      writeLtt = Math.max(writeLtt, Number(optimisticTaps.current) || 0);
+      writeS = Math.max(writeS, Number(optimisticSeason.current) || 0);
+      writeDt = Math.max(writeDt, Number(optimisticDaily.current) || 0);
+      optimisticBalance.current = writeB;
+      optimisticTaps.current = writeLtt;
+      optimisticSeason.current = writeS;
+      optimisticDaily.current = writeDt;
+      setBalance(writeB);
+      setLifetimeTaps(writeLtt);
+      setSeasonShards(writeS);
       setDailyTaps(writeDt);
+      setBalances((bal) => ({ ...bal, G2Ushards: writeB }));
+      setCurrentLevel(() => {
+        const maxU = Number(maxUnlockedLevel) || 4;
+        return Math.min(calculateLevel(writeLtt), maxU);
+      });
       pendingSaveRef.current = {
         ...p,
         b: writeB,
@@ -2964,41 +2967,29 @@ const GiftTapGame = () => {
         weekly_lb: nextInventory.weekly_lb,
       };
 
-      // Mining counters dual-write (protect allows monotonic +cap increases).
-      // Daily rules unchanged. Edge commit-taps still preferred when JWT works.
-      // Do NOT send last_energy under lock (still frozen) — avoids energy desync.
-      const baseRow = secureLock
-        ? {
-            shard_balance: writeB,
-            season_shards: writeS,
-            weekly_shards: writeWeekly,
-            weekly_week_id: weekIdSave,
-            lifetime_taps: writeLtt,
-            daily_taps: writeDt,
-            last_tap_date: saveLtd,
-            current_streak: p.strk,
-            inventory: nextInventory,
-            last_updated: new Date().toISOString(),
-          }
-        : {
-            [DB_PLAYER_ID]: playerId,
-            username: player.username || player.first_name || 'Player',
-            shard_balance: writeB,
-            season_shards: writeS,
-            weekly_shards: writeWeekly,
-            weekly_week_id: weekIdSave,
-            last_energy: p.e,
-            daily_taps: writeDt,
-            last_tap_date: saveLtd,
-            current_streak: p.strk,
-            lifetime_taps: writeLtt,
-            max_unlocked_level: p.mul,
-            max_daily_limit: maxDailyLimit,
-            limit_boost_amount: stats.limit_boost_amount,
-            limit_boost_expires: stats.limit_boost_expires,
-            inventory: nextInventory,
-            last_updated: new Date().toISOString(),
-          };
+      // ONE mining snapshot = game truth:
+      // tap → daily_taps + lifetime_taps + season_shards + weekly + shard_balance together.
+      // Protect allows that whole bundle to rise (cannot lower money / cannot raise walls).
+      const baseRow = {
+        [DB_PLAYER_ID]: playerId,
+        username: player.username || player.first_name || 'Player',
+        shard_balance: writeB,
+        season_shards: writeS,
+        weekly_shards: writeWeekly,
+        weekly_week_id: weekIdSave,
+        last_energy: p.e,
+        daily_taps: writeDt,
+        last_tap_date: saveLtd,
+        current_streak: p.strk,
+        lifetime_taps: writeLtt,
+        // max_unlocked_level only when not locked path — protect freezes client wall raises
+        ...(secureLock ? {} : { max_unlocked_level: p.mul }),
+        max_daily_limit: maxDailyLimit,
+        limit_boost_amount: stats.limit_boost_amount,
+        limit_boost_expires: stats.limit_boost_expires,
+        inventory: nextInventory,
+        last_updated: new Date().toISOString(),
+      };
 
       const doUpdate = async (row) =>
         supabase.from('players').update(row).eq(DB_PLAYER_ID, savePlayerId).select();
@@ -3413,8 +3404,7 @@ const GiftTapGame = () => {
             .catch(() => {});
         }
       }
-      // ALWAYS persist daily_taps via client save (protect allows monotonic same-day increase).
-      // This is what keeps phone bar in sync with Supabase when JWT/commit-taps is missing.
+      // Persist full mining bundle (daily + all-time + season + shards) — same as game math.
       saveToDatabase(
         nextBalance,
         nextEnergy,
@@ -3425,10 +3415,14 @@ const GiftTapGame = () => {
         maxUnlockedLevel,
         nextSeasonShards,
       );
-      // Lightweight direct daily write (faster than debounced full save; ignore errors)
-      if (playerId && nextDaily > 0) {
+      // Immediate write so Supabase tracks every tap burst (debounced save is backup)
+      if (playerId && (nextDaily > 0 || nextBalance > 0)) {
         lastLocalSaveAtRef.current = Date.now();
-        // Dual-write mining counters + daily (protect: only increases, +500 cap per field)
+        const weekIdTap = getUtcWeekId();
+        const weekScore = Math.max(
+          0,
+          Number(optimisticWeekly.current) || 0,
+        );
         supabase
           .from('players')
           .update({
@@ -3437,11 +3431,14 @@ const GiftTapGame = () => {
             shard_balance: nextBalance,
             lifetime_taps: nextLifetimeTaps,
             season_shards: nextSeasonShards,
+            weekly_shards: weekScore,
+            weekly_week_id: weekIdTap,
+            last_energy: nextEnergy,
             last_updated: new Date().toISOString(),
           })
           .eq(DB_PLAYER_ID, playerId)
           .then(({ error }) => {
-            if (error) console.warn('mining counters sync', error.message);
+            if (error) console.warn('mining bundle sync', error.message);
           });
       }
 
@@ -5477,7 +5474,7 @@ const GiftTapGame = () => {
               <Marketplace 
                 balance={balance} 
                 setBalance={setBalanceSynced}
-                setEnergy={setEnergy} 
+                setEnergy={setEnergySyncedForShop} 
                 stats={stats}
                 setStats={setStats}
                 player={player}

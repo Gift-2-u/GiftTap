@@ -400,6 +400,30 @@ export function applyWeeklyClaimToInventory(inv, weekId, questId) {
 }
 
 /** Merge two inventory objects without dropping weekly claims / progress / claim_log. */
+
+/** Shop / boost item quantity keys — counts must never stick after consume. */
+export const SHOP_INVENTORY_QTY_KEYS = [
+  'frenzy', 'battery', 'heavy', 'refill', 'bot', 'grinder', 'whale', 'crate',
+  'x2_boost', 'x3_boost', 'exclusive_nft_voucher',
+];
+
+/**
+ * Merge weekly/task metadata, but treat serverInv as authority for shop item counts.
+ * If server omitted a key (item used up), it must disappear.
+ * Plain {...prev, ...server} keeps prev qty when server key is missing — that was the exploit.
+ */
+export function applyServerInventoryAuthority(prevInv, serverInv, weekId = getUtcWeekId()) {
+  const prev = prevInv && typeof prevInv === 'object' ? prevInv : {};
+  const server = serverInv && typeof serverInv === 'object' ? serverInv : {};
+  const merged = mergeInventoryWeekly(prev, server, weekId);
+  for (const k of SHOP_INVENTORY_QTY_KEYS) {
+    const n = Math.max(0, Math.floor(Number(server[k]) || 0));
+    if (n <= 0) delete merged[k];
+    else merged[k] = n;
+  }
+  return merged;
+}
+
 export function mergeInventoryWeekly(a, b, weekId = getUtcWeekId()) {
   const A = a && typeof a === 'object' ? a : {};
   const B = b && typeof b === 'object' ? b : {};
@@ -483,10 +507,24 @@ export function mergeWeeklyStates(a, b, weekId = getUtcWeekId()) {
   };
 }
 
-/** Claims that count toward the weekly prize (energy quests only, not the prize itself) */
+/** Official weekly quest ids (board only — used for prize progress). */
+export function weeklyQuestIdSet() {
+  return new Set(WEEKLY_QUEST_LIST.map((q) => q.id));
+}
+
+/**
+ * Claims that count toward the weekly prize.
+ * Only counts real board quest ids (WEEKLY_QUEST_LIST).
+ * Ignores prize id, legacy junk, and phantom keys from old merges / localStorage.
+ */
 export function countWeeklyQuestsClaimed(state) {
   const s = ensureWeeklyState(state);
-  return s.claimed.filter((id) => id && id !== WEEKLY_PRIZE.id).length;
+  const valid = weeklyQuestIdSet();
+  const seen = new Set();
+  for (const id of s.claimed || []) {
+    if (id && valid.has(id)) seen.add(id);
+  }
+  return seen.size;
 }
 
 export function weeklyPrizeProgress(state) {
@@ -499,4 +537,19 @@ export function weeklyPrizeProgress(state) {
     ready: !claimed && current >= need,
     claimed,
   };
+}
+
+/** Drop unknown quest ids from claimed[] so UI counts match DONE checkmarks. */
+export function sanitizeWeeklyClaimedList(claimed) {
+  const valid = weeklyQuestIdSet();
+  const out = [];
+  const seen = new Set();
+  for (const id of claimed || []) {
+    if (!id || seen.has(id)) continue;
+    if (id === WEEKLY_PRIZE.id || valid.has(id)) {
+      seen.add(id);
+      out.push(id);
+    }
+  }
+  return out;
 }

@@ -29,6 +29,7 @@ import {
   mergeInventoryWeekly,
   hydrateWeeklyClaimsFromLedger,
   claimedIdsFromInventory,
+  sanitizeWeeklyClaimedList,
 } from './weeklyQuestLogic';
 
 /**
@@ -153,10 +154,16 @@ export default function WeeklyQuests({
     if (inventory) {
       for (const id of claimedIdsFromInventory(inventory, weekId)) extra.add(id);
     }
-    if (!extra.size) return base;
+    const mergedClaimed = sanitizeWeeklyClaimedList([
+      ...(base.claimed || []),
+      ...extra,
+    ]);
+    if (!extra.size && mergedClaimed.length === (base.claimed || []).length) {
+      return { ...base, claimed: mergedClaimed };
+    }
     return {
       ...base,
-      claimed: [...new Set([...(base.claimed || []), ...extra])],
+      claimed: mergedClaimed,
     };
   }, [weeklyState, weekId, dailyTaps, inventory, claimedTick, readStoredClaims]);
 
