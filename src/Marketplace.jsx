@@ -35,6 +35,7 @@ import {
   secureShopBuy,
   secureMysteryOpen,
   secureBackpackActivate,
+  securePremiumGrant,
 } from './secureApi';
 import WalletNftSection from './WalletNftSection';
 import { listGiftNfts } from './locksmith';
@@ -672,9 +673,29 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
       // 6. Send and Confirm
       const signature = await sendAndConfirmTransaction(connection, transaction, [playerKeypair]);
 
-      // --- 🚨 UNIFIED LEDGER UPDATE: INVENTORY + TASK COMPLETION + REWARD PAYS ---
-      
-      // Update Inventory Object Locally
+      // Hard security: server grants item after SOL payment signature
+      if (hasSecureSession()) {
+        const data = await securePremiumGrant(item.id, signature);
+        const newInventory = data.inventory || {};
+        setLocalInventory(newInventory);
+        if (setStats) {
+          setStats({
+            ...stats,
+            inventory: newInventory,
+            has_made_purchase: true,
+          });
+        }
+        setTxStatus({
+          show: true,
+          loading: false,
+          message: `✅ Success! ${item.name} purchased. Check Backpack!`,
+          success: true,
+        });
+        setTimeout(() => setTxStatus((prev) => ({ ...prev, show: false })), 3000);
+        return;
+      }
+
+      // Legacy client grant
       const newInventory = { ...localInventory };
       newInventory[item.id] = (newInventory[item.id] || 0) + 1;
       newInventory.weekly_quests = applyWeeklyBoostBuy(
@@ -682,17 +703,15 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
         getUtcWeekId(),
       );
 
-      // Single atomic payload execution to ensure consistency
       const { error: updateError } = await supabase.from('players')
         .update({ 
           inventory: newInventory,
-          has_made_purchase: true,       // Complete the purchase task permanently
+          has_made_purchase: true,
         })
         .eq(DB_PLAYER_ID, String(user.id));
         
       if (updateError) throw updateError;
 
-      // Update Local State Components for Immediate UI Updates
       setLocalInventory(newInventory);
       
       if (setStats) {
@@ -702,10 +721,6 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
           has_made_purchase: true,
         });
       }
-
-      // Also call individual setters if your app uses them alongside stats state:
-      // if (setLifetimeTotal) setLifetimeTotal(updatedLifetime);
-      // if (setSeasonTotal) setSeasonTotal(updatedSeason);
 
       setTxStatus({ show: true, loading: false, message: `✅ Success! ${item.name} purchased. Check your Tasks to claim your reward!`, success: true });
       setTimeout(() => setTxStatus(prev => ({ ...prev, show: false })), 3000);

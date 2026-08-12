@@ -990,7 +990,19 @@ const GiftTapGame = () => {
 
   /** +max daily limit (1000 bar), NOT the 500 Energy battery. */
   const grantTaskEnergy = useCallback(
-    async ({ amount, preserveWeeklyQuests, preserveClaimKeys } = {}) => {
+    async ({ amount, preserveWeeklyQuests, preserveClaimKeys, forceInventory } = {}) => {
+      // Sync inventory from secure task-claim without double-granting boost
+      if (forceInventory && typeof forceInventory === 'object') {
+        inventoryRef.current = {
+          ...(inventoryRef.current || {}),
+          ...forceInventory,
+        };
+        setStats((prev) => ({
+          ...prev,
+          inventory: inventoryRef.current,
+        }));
+        return 0;
+      }
       const add = Math.max(0, Number(amount) || 0);
       if (add <= 0) return 0;
 

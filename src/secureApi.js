@@ -108,3 +108,19 @@ export async function secureWallClimb({ method, txSignature }) {
     tx_signature: txSignature || null,
   });
 }
+
+
+export async function secureReferralCredit(kind) {
+  return callSecureFunction('referral-credit', { kind });
+}
+
+export async function secureTaskClaim(taskId) {
+  return callSecureFunction('task-claim', { task_id: taskId });
+}
+
+export async function securePremiumGrant(itemId, txSignature) {
+  return callSecureFunction('premium-grant', {
+    item_id: itemId,
+    tx_signature: txSignature,
+  });
+}

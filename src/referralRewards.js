@@ -8,6 +8,7 @@
  */
 import { supabase } from './supabaseClient';
 import { DB_PLAYER_ID } from './playerIdentity';
+import { hasSecureSession, secureReferralCredit } from './secureApi';
 
 export const REFERRAL = {
   JOINER_ON_JOIN: 500,
@@ -61,6 +62,14 @@ async function creditReferrer(referrerId, amount, reason) {
 export async function tryPayReferrerForTaps1000(inviteePlayerId, lifetimeTaps) {
   if (!inviteePlayerId) return;
   if (!reachedTaps1000(lifetimeTaps)) return;
+  if (hasSecureSession()) {
+    try {
+      await secureReferralCredit('taps1000');
+      return;
+    } catch (e) {
+      console.warn('secure referral taps1000', e?.message || e);
+    }
+  }
 
   const { data: claimed, error } = await supabase
     .from('players')
@@ -94,15 +103,18 @@ export async function tryPayReferrerForTaps1000(inviteePlayerId, lifetimeTaps) {
   );
 }
 
-/**
- * Call after invitee progress save when lifetime taps imply level >= 1.
- * Pays referrer once (flag referral_lvl1_paid on invitee).
- */
 export async function tryPayReferrerForLevel1(inviteePlayerId, lifetimeTaps) {
   if (!inviteePlayerId) return;
   if (!reachedLevel1(lifetimeTaps)) return;
+  if (hasSecureSession()) {
+    try {
+      await secureReferralCredit('lvl1');
+      return;
+    } catch (e) {
+      console.warn('secure referral lvl1', e?.message || e);
+    }
+  }
 
-  // Claim milestone atomically (only first claim wins)
   const { data: claimed, error } = await supabase
     .from('players')
     .update({ referral_lvl1_paid: true })
@@ -113,7 +125,6 @@ export async function tryPayReferrerForLevel1(inviteePlayerId, lifetimeTaps) {
     .maybeSingle();
 
   if (error) {
-    // Columns missing: log once; game still works
     if (error.message?.includes('referral_lvl1_paid') || error.code === 'PGRST204') {
       console.warn(
         'Add columns: alter table players add column if not exists referral_lvl1_paid boolean default false;',
@@ -129,11 +140,16 @@ export async function tryPayReferrerForLevel1(inviteePlayerId, lifetimeTaps) {
   await creditReferrer(claimed.referred_by, REFERRAL.REFERRER_LVL1, 'lvl1');
 }
 
-/**
- * Call after invitee successfully ascends wall 4 → 5.
- */
 export async function tryPayReferrerForWall5(inviteePlayerId) {
   if (!inviteePlayerId) return;
+  if (hasSecureSession()) {
+    try {
+      await secureReferralCredit('wall5');
+      return;
+    } catch (e) {
+      console.warn('secure referral wall5', e?.message || e);
+    }
+  }
 
   const { data: claimed, error } = await supabase
     .from('players')

@@ -5,6 +5,7 @@ import { DB_PLAYER_ID } from './playerIdentity';
 import AppNotice from './AppNotice';
 import { IDEAS_EMAIL, openIdeasEmail, copyIdeasEmail } from './contactIdeas';
 import WeeklyQuests from './WeeklyQuests';
+import { hasSecureSession, secureTaskClaim } from './secureApi';
 
 /**
  * Existing tasks kept as-is (shards / social / purchase).
@@ -234,6 +235,21 @@ const Tasks = ({
 
     setClaimingId(task.id);
     try {
+      if (hasSecureSession()) {
+        const data = await secureTaskClaim(task.id);
+        if (data.shard_balance != null) setBalance(Number(data.shard_balance));
+        if (Array.isArray(data.completed_tasks)) setCompletedTasks(data.completed_tasks);
+        setReadyToClaim((prev) => prev.filter((id) => id !== task.id));
+        setAppNotice({
+          show: true,
+          message: data.already
+            ? 'Already claimed ✓'
+            : `You earned ${task.reward.toLocaleString()} Shards!`,
+          success: true,
+        });
+        return;
+      }
+
       const { data: row, error: selErr } = await supabase
         .from('players')
         .select('completed_tasks, shard_balance')
@@ -306,6 +322,27 @@ const Tasks = ({
     setClaimingId(task.id);
     try {
       const amount = Number(task.energyReward) || 0;
+
+      if (hasSecureSession()) {
+        const data = await secureTaskClaim(task.id);
+        if (Array.isArray(data.completed_tasks)) setCompletedTasks(data.completed_tasks);
+        setReadyToClaim((prev) => prev.filter((id) => id !== task.id));
+        if (typeof grantTaskEnergy === 'function' && data.inventory) {
+          try {
+            await grantTaskEnergy({ forceInventory: data.inventory });
+          } catch {
+            /* ignore */
+          }
+        }
+        setAppNotice({
+          show: true,
+          message: data.already
+            ? 'Already claimed ✓'
+            : `⚡ +${amount} Daily limit claimed (for today UTC)!`,
+          success: true,
+        });
+        return;
+      }
 
       // Re-read server so we never double-grant if already claimed
       const { data: row, error: selErr } = await supabase
