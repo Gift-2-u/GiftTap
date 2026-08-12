@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import AppNotice from './AppNotice';
 import { IDEAS_EMAIL, openIdeasEmail, copyIdeasEmail } from './contactIdeas';
+import { SOCIAL_LINKS, openSocial } from './socialLinks';
 
 // We store the massive arrays here to keep the main game file clean!
 const ALL_CURRENCIES = [
@@ -607,14 +608,77 @@ const Menu = ({
                 <span style={{ color: '#888' }}>{'❯'}</span>
               </button>
 
+              {/* Socials — X, Telegram, Discord */}
+              <div
+                style={{
+                  marginTop: '18px',
+                  borderTop: '1px solid #333',
+                  paddingTop: '14px',
+                }}
+              >
+                <div
+                  style={{
+                    color: '#888',
+                    fontSize: 11,
+                    fontWeight: 'bold',
+                    letterSpacing: 0.6,
+                    textTransform: 'uppercase',
+                    marginBottom: 10,
+                    textAlign: 'center',
+                  }}
+                >
+                  Community
+                </div>
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'center',
+                    gap: 10,
+                    flexWrap: 'wrap',
+                  }}
+                >
+                  {SOCIAL_LINKS.map((s) => (
+                    <a
+                      key={s.id}
+                      href={s.href}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        openSocial(s.href);
+                      }}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 8,
+                        padding: '10px 14px',
+                        borderRadius: 12,
+                        border: '1px solid #333',
+                        background: '#111',
+                        color: s.color || '#fff',
+                        textDecoration: 'none',
+                        fontWeight: 'bold',
+                        fontSize: 13,
+                        minWidth: 100,
+                        justifyContent: 'center',
+                      }}
+                    >
+                      <span style={{ fontSize: 16 }} aria-hidden>
+                        {s.glyph}
+                      </span>
+                      {s.label}
+                    </a>
+                  ))}
+                </div>
+              </div>
+
               <div
                 style={{
                   display: 'flex',
                   justifyContent: 'center',
                   gap: '20px',
-                  marginTop: '20px',
-                  borderTop: '1px solid #333',
-                  paddingTop: '15px',
+                  marginTop: '16px',
+                  paddingTop: '12px',
                   paddingBottom: '8px',
                 }}
               >
