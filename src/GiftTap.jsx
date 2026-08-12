@@ -1823,10 +1823,12 @@ const GiftTapGame = () => {
         setStreak(loadedStreak);
         streakRef.current = loadedStreak;
 
-        // Same UTC day if last_tap is today, OR missing last_tap but daily progress + last_updated today
-        // (prevents refresh wiping the bar when last_tap_date lagged behind daily_taps)
+        // Same UTC day if last_tap is today, OR last activity (last_updated) is today.
+        // Under secure_economy, last_tap_date often lags; never treat "missing ltd" as new day
+        // when last_updated is still today (that wiped full bars and allowed another 1000 taps).
         const isSameUtcDay =
           ltd === today ||
+          lastUpdatedDay === today ||
           (!ltd && dbDaily > 0 && lastUpdatedDay === today);
 
         if (
@@ -2587,8 +2589,29 @@ const GiftTapGame = () => {
           setSeasonShards(s);
         }
         if (Number.isFinite(dt)) {
-          optimisticDaily.current = dt;
-          setDailyTaps(dt);
+          // Same UTC day: never let a lagging server 0 wipe a full bar (protect / flush race).
+          const serverLtd = p.last_tap_date
+            ? String(p.last_tap_date).slice(0, 10)
+            : '';
+          const todayF = utcTodayStr();
+          const localDt = Math.max(
+            Number(optimisticDaily.current) || 0,
+            Number(dailyTaps) || 0,
+          );
+          let nextDt = dt;
+          if (serverLtd && serverLtd < todayF) {
+            // Server says previous day — accept reset
+            nextDt = dt;
+          } else {
+            // Today or unknown ltd: keep the higher of client vs server
+            nextDt = Math.max(dt, localDt);
+          }
+          optimisticDaily.current = nextDt;
+          setDailyTaps(nextDt);
+          serverProgressRef.current = {
+            ...(serverProgressRef.current || {}),
+            dt: nextDt,
+          };
         }
         if (Number.isFinite(en)) {
           // Prefer server timestamp so regen residual stays wall-clock accurate
@@ -2624,10 +2647,11 @@ const GiftTapGame = () => {
           optimisticWeekly.current = Number(p.weekly_shards) || 0;
         }
         serverProgressRef.current = {
-          b: Number.isFinite(b) ? b : serverProgressRef.current.b,
-          ltt: Number.isFinite(ltt) ? ltt : serverProgressRef.current.ltt,
-          s: Number.isFinite(s) ? s : serverProgressRef.current.s,
-          dt: Number.isFinite(dt) ? dt : serverProgressRef.current.dt,
+          b: Number.isFinite(b) ? b : serverProgressRef.current?.b,
+          ltt: Number.isFinite(ltt) ? ltt : serverProgressRef.current?.ltt,
+          s: Number.isFinite(s) ? s : serverProgressRef.current?.s,
+          // Prefer merged daily (optimisticDaily) — raw server dt can lag and reopen the bar
+          dt: Number(optimisticDaily.current) || (Number.isFinite(dt) ? dt : serverProgressRef.current?.dt) || 0,
         };
       }
     } catch (e) {
@@ -3099,9 +3123,16 @@ const GiftTapGame = () => {
       }
 
       // --- STREAK: only on first VALID tap of a new UTC day ---
+      // CRITICAL: empty last_tap_date must NOT wipe daily progress (protect freezes ltd writes).
+      // Only reset when we know the previous play day was a different UTC date.
       {
         const prevLtd = (lastTapDateRef.current || lastTapDate || '').slice(0, 10);
-        if (prevLtd !== today) {
+        const localDailyNow = Math.max(
+          Number(currentDailyTaps) || 0,
+          Number(optimisticDaily.current) || 0,
+        );
+        if (prevLtd && prevLtd !== today) {
+          // Confirmed previous UTC day → real day-roll
           const nextStreak = streakAfterPlayDay(prevLtd, currentStreak, today);
           currentStreak = nextStreak;
           currentDailyTaps = 0;
@@ -3111,7 +3142,6 @@ const GiftTapGame = () => {
           streakRef.current = nextStreak;
           setLastTapDate(today);
           setStreak(nextStreak);
-          // Immediate write so debounce / shards-only cannot drop streak
           supabase
             .from('players')
             .update({
@@ -3123,7 +3153,20 @@ const GiftTapGame = () => {
             .then(({ error }) => {
               if (error) console.warn('streak day-roll save failed', error.message);
             });
+        } else if (!prevLtd) {
+          // Missing ltd (common under secure_economy client freezes): keep daily progress
+          lastTapDateRef.current = today;
+          setLastTapDate(today);
+          if (localDailyNow <= 0) {
+            // First play ever / no progress — streak starts at 1
+            const nextStreak = streakAfterPlayDay('', currentStreak, today);
+            currentStreak = nextStreak;
+            streakRef.current = nextStreak;
+            setStreak(nextStreak);
+          }
+          // Do NOT zero optimisticDaily / dailyTaps
         }
+        // prevLtd === today: already playing today — no-op
       }
 
       // Any valid tap counts as played today for device streak notice
@@ -3528,12 +3571,33 @@ const GiftTapGame = () => {
               optimisticBalance.current = incomingShards;
               optimisticTaps.current = incomingTaps;
               optimisticSeason.current = incSeason;
-              optimisticDaily.current = incDaily;
+              // Daily limit: max with local same-day progress so echo/lag cannot reopen the bar
+              {
+                const todayRt = utcTodayStr();
+                const rtLtd = payload.new.last_tap_date
+                  ? String(payload.new.last_tap_date).slice(0, 10)
+                  : '';
+                const localDtRt = Math.max(
+                  Number(optimisticDaily.current) || 0,
+                  Number(dailyTaps) || 0,
+                );
+                const localLtdRt = (lastTapDateRef.current || '').slice(0, 10);
+                let mergedDaily = incDaily;
+                if (rtLtd && rtLtd < todayRt && localLtdRt !== todayRt) {
+                  mergedDaily = incDaily; // real new day from server
+                } else {
+                  mergedDaily = Math.max(incDaily, localDtRt);
+                }
+                optimisticDaily.current = mergedDaily;
+                if (localLtdRt !== todayRt && (rtLtd === todayRt || mergedDaily > 0)) {
+                  lastTapDateRef.current = todayRt;
+                }
+              }
               serverProgressRef.current = {
                 b: incomingShards,
                 ltt: incomingTaps,
                 s: incSeason,
-                dt: incDaily,
+                dt: Number(optimisticDaily.current) || 0,
               };
               // Drop pending save built on old wrong stats
               pendingSaveRef.current = null;
@@ -3545,7 +3609,7 @@ const GiftTapGame = () => {
               setBalance(incomingShards);
               setLifetimeTaps(incomingTaps);
               setSeasonShards(incSeason);
-              setDailyTaps(incDaily);
+              setDailyTaps(Number(optimisticDaily.current) || 0);
               setBalances((b) => ({ ...b, G2Ushards: incomingShards }));
               {
                 const maxU = Number(
@@ -3683,15 +3747,28 @@ const GiftTapGame = () => {
         const ltd = row.last_tap_date ? String(row.last_tap_date).slice(0, 10) : null;
         const lastUpdatedDay = row.last_updated ? String(row.last_updated).slice(0, 10) : null;
         const dbDaily = Number(row.daily_taps) || 0;
+        const localLtd = (lastTapDateRef.current || '').slice(0, 10);
+        const localDaily = Math.max(
+          Number(optimisticDaily.current) || 0,
+          Number(dailyTaps) || 0,
+        );
         const isSameUtcDay =
-          ltd === today || (!ltd && dbDaily > 0 && lastUpdatedDay === today);
+          ltd === today ||
+          lastUpdatedDay === today ||
+          localLtd === today ||
+          (!ltd && dbDaily > 0 && lastUpdatedDay === today);
 
         let nextDaily = dbDaily;
         if (
           !isSameUtcDay &&
-          ((ltd && ltd < today) || (!ltd && lastUpdatedDay && lastUpdatedDay < today))
+          ((ltd && ltd < today) || (!ltd && lastUpdatedDay && lastUpdatedDay < today)) &&
+          localLtd !== today
         ) {
+          // Confirmed new UTC day and this device is not already counting today
           nextDaily = 0;
+        } else {
+          // Same day / ambiguous: never drop local progress below what player already mined
+          nextDaily = Math.max(dbDaily, localDaily);
         }
 
         // Energy: recover from last_energy + last_updated (0 is valid).

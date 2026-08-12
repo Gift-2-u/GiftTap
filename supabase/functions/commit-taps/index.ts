@@ -168,9 +168,17 @@ serve(async (req) => {
     maxLimit += taskLimitBoost(inv, now);
 
     const prevLtd = String(row.last_tap_date || "").slice(0, 10);
+    const lastUpdatedDay = row.last_updated
+      ? String(row.last_updated).slice(0, 10)
+      : "";
     let dailyTaps = Number(row.daily_taps) || 0;
     let streak = Math.max(0, Number(row.current_streak) || 0);
+    // Only reset on a confirmed previous play day.
+    // Missing last_tap_date + same-day last_updated must KEEP daily_taps
+    // (otherwise a full bar freezes at 0 and players get another 1000).
     if (prevLtd && prevLtd !== today) {
+      dailyTaps = 0;
+    } else if (!prevLtd && lastUpdatedDay && lastUpdatedDay !== today) {
       dailyTaps = 0;
     }
 
@@ -204,6 +212,14 @@ serve(async (req) => {
     const validTaps = Math.min(requestedTaps, byEnergy, byDaily);
 
     if (validTaps <= 0) {
+      // Heal missing last_tap_date when daily progress already exists today
+      // so subsequent client day-roll logic does not wipe the bar.
+      if (dailyTaps > 0 && prevLtd !== today) {
+        await sb
+          .from("players")
+          .update({ last_tap_date: today, last_updated: now.toISOString() })
+          .eq("telegram_id", playerId);
+      }
       return jsonResponse({
         success: true,
         taps: 0,
@@ -218,7 +234,8 @@ serve(async (req) => {
           weekly_week_id: row.weekly_week_id,
           daily_taps: dailyTaps,
           last_energy: energy,
-          last_tap_date: prevLtd || null,
+          // If they already have today's progress, always surface today so client won't day-roll wipe
+          last_tap_date: dailyTaps > 0 ? today : (prevLtd || null),
           current_streak: streak,
           max_unlocked_level: maxU,
           inventory: inv,
