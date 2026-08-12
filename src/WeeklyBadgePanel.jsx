@@ -14,6 +14,7 @@ import {
 } from './weeklyBadges';
 import { mergeInventoryWeekly, hydrateWeeklyClaimsFromLedger } from './weeklyQuestLogic';
 import { ensureWeeklySeasonRollover } from './weeklySeasonRollover';
+import { hasSecureSession, secureBadgeClaim } from './secureApi';
 
 /**
  * Compact: claim last week's top-10 badge only (no essay UI).
@@ -88,6 +89,21 @@ export default function WeeklyBadgePanel({
     setBusy(true);
     setNotice(null);
     try {
+      // Hard security path: server validates snapshot + grants badge once
+      if (hasSecureSession()) {
+        const data = await secureBadgeClaim(prevWeekId);
+        const inv = data.inventory || inventory || {};
+        if (typeof onInventoryChange === 'function') onInventoryChange(inv);
+        const meta = BADGE_TIERS[data.tier] || BADGE_TIERS[prevSnap.tier];
+        setNotice({
+          ok: true,
+          msg: data.already
+            ? `Already claimed for ${prevWeekId}.`
+            : `${meta?.emoji || '🏅'} ${meta?.name || data.tier} claimed for ${prevWeekId}`,
+        });
+        return;
+      }
+
       const { data: row, error: selErr } = await supabase
         .from('players')
         .select('inventory')

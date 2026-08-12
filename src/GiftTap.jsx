@@ -146,6 +146,7 @@ import {
   badgeTierForWeeklyRank,
 } from './weeklyBadges';
 import { ensureWeeklySeasonRollover } from './weeklySeasonRollover';
+import { hasSecureSession, secureCommitTaps } from './secureApi';
 import WalletNftSection from './WalletNftSection';
 import SwapBadgeCard, { NftDetailModal, LOCKSMITH_PERKS } from './SwapBadgeCard';
 import {
@@ -558,6 +559,9 @@ const GiftTapGame = () => {
   /** Weekly board: your rank this UTC week */
   const [weeklyYouRank, setWeeklyYouRank] = useState(null);
   const optimisticWeekly = useRef(0);
+  /** Hard security: accumulate valid taps, flush via commit-taps */
+  const pendingTapsRef = useRef({ count: 0, batchId: null });
+  const tapFlushTimerRef = useRef(null);
   const [hasAccess, setHasAccess] = useState(false);
   const [dailyTaps, setDailyTaps] = useState(0);
   const [streak, setStreak] = useState(0);
@@ -2513,6 +2517,106 @@ const GiftTapGame = () => {
   };
 
   // 6. SAVE PROGRESS — always persist shards; open mining past walls
+
+  const flushPendingTaps = useCallback(async () => {
+    if (!playerId || !hasSecureSession()) return;
+    const pending = pendingTapsRef.current;
+    if (!pending || pending.count <= 0) return;
+    const taps = pending.count;
+    const batchId = pending.batchId || (crypto.randomUUID ? crypto.randomUUID() : `b_${Date.now()}_${Math.random()}`);
+    pendingTapsRef.current = { count: 0, batchId: null };
+    try {
+      const data = await secureCommitTaps({ batchId, taps });
+      const p = data?.player;
+      if (p) {
+        const b = Number(p.shard_balance);
+        const ltt = Number(p.lifetime_taps);
+        const s = Number(p.season_shards);
+        const dt = Number(p.daily_taps);
+        const en = Number(p.last_energy);
+        if (Number.isFinite(b)) {
+          optimisticBalance.current = b;
+          setBalance(b);
+          setBalances((bal) => ({ ...bal, G2Ushards: b }));
+        }
+        if (Number.isFinite(ltt)) {
+          optimisticTaps.current = ltt;
+          setLifetimeTaps(ltt);
+        }
+        if (Number.isFinite(s)) {
+          optimisticSeason.current = s;
+          setSeasonShards(s);
+        }
+        if (Number.isFinite(dt)) {
+          optimisticDaily.current = dt;
+          setDailyTaps(dt);
+        }
+        if (Number.isFinite(en)) {
+          optimisticEnergy.current = en;
+          energyAnchorRef.current = { value: en, at: Date.now() };
+          setEnergy(en);
+        }
+        if (p.last_tap_date) {
+          lastTapDateRef.current = String(p.last_tap_date).slice(0, 10);
+          setLastTapDate(lastTapDateRef.current);
+        }
+        if (p.current_streak != null) {
+          streakRef.current = Number(p.current_streak) || 0;
+          setStreak(streakRef.current);
+        }
+        if (p.inventory) {
+          inventoryRef.current = {
+            ...(inventoryRef.current || {}),
+            ...p.inventory,
+          };
+          setStats((prev) => ({
+            ...prev,
+            inventory: inventoryRef.current,
+          }));
+        }
+        if (p.weekly_shards != null) {
+          optimisticWeekly.current = Number(p.weekly_shards) || 0;
+        }
+        serverProgressRef.current = {
+          b: Number.isFinite(b) ? b : serverProgressRef.current.b,
+          ltt: Number.isFinite(ltt) ? ltt : serverProgressRef.current.ltt,
+          s: Number.isFinite(s) ? s : serverProgressRef.current.s,
+          dt: Number.isFinite(dt) ? dt : serverProgressRef.current.dt,
+        };
+      }
+    } catch (e) {
+      // Re-queue taps so a blip does not lose earnings (legacy save may still run)
+      pendingTapsRef.current = {
+        count: (pendingTapsRef.current.count || 0) + taps,
+        batchId: pendingTapsRef.current.batchId || batchId,
+      };
+      console.warn('commit-taps failed', e?.message || e);
+    }
+  }, [playerId]);
+
+  const scheduleTapFlush = useCallback(() => {
+    if (tapFlushTimerRef.current) clearTimeout(tapFlushTimerRef.current);
+    tapFlushTimerRef.current = setTimeout(() => {
+      flushPendingTaps();
+    }, 1500);
+  }, [flushPendingTaps]);
+
+  useEffect(() => {
+    const onHide = () => {
+      if (document.visibilityState === 'hidden') flushPendingTaps();
+    };
+    document.addEventListener('visibilitychange', onHide);
+    window.addEventListener('pagehide', onHide);
+    return () => {
+      document.removeEventListener('visibilitychange', onHide);
+      window.removeEventListener('pagehide', onHide);
+      if (tapFlushTimerRef.current) clearTimeout(tapFlushTimerRef.current);
+      flushPendingTaps();
+    };
+  }, [flushPendingTaps]);
+
+
+
   const saveToDatabase = (b, e, dt, ltd, strk, ltt, mul, s) => {
     if (!playerId) return;
 
@@ -3069,7 +3173,20 @@ const GiftTapGame = () => {
 
       // Send the trigger to save (No absolute totals passed anymore)
       // Make sure this exact line is at the bottom of handleTap:
-      saveToDatabase(nextBalance, nextEnergy, nextDaily, today, currentStreak, nextLifetimeTaps, maxUnlockedLevel, nextSeasonShards);
+      // Hard security: queue taps for commit-taps (server is authority for shards/lifetime)
+      if (hasSecureSession() && validTaps > 0) {
+        const pend = pendingTapsRef.current;
+        if (!pend.batchId) {
+          pend.batchId = crypto.randomUUID
+            ? crypto.randomUUID()
+            : `b_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+        }
+        pend.count = (pend.count || 0) + validTaps;
+        scheduleTapFlush();
+      } else {
+        // Legacy: full client save of balances / lifetime
+        saveToDatabase(nextBalance, nextEnergy, nextDaily, today, currentStreak, nextLifetimeTaps, maxUnlockedLevel, nextSeasonShards);
+      }
 
       // Weekly quests: 500/day, full daily limit, active days (functional state + DB)
       recordWeeklyDailyProgress(nextDaily, currentMaxLimit, now);

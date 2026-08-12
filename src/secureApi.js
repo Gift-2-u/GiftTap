@@ -1,6 +1,5 @@
 /**
  * Hard-security API helpers — Edge Functions with session JWT.
- * Use for economy after cutover; safe to call earlier (player-state).
  */
 import { getSessionToken, authHeaders, getPlayerId } from './playerIdentity';
 
@@ -14,8 +13,6 @@ function anonKey() {
 
 /**
  * Call a Supabase Edge Function with Bearer session JWT (and apikey).
- * @param {string} name function name e.g. 'player-state'
- * @param {object} [body]
  */
 export async function callSecureFunction(name, body = {}) {
   const base = baseUrl();
@@ -25,7 +22,6 @@ export async function callSecureFunction(name, body = {}) {
   const headers = authHeaders({
     apikey: anon,
   });
-  // Always send apikey; Authorization is session JWT when present, else anon
   if (!headers.Authorization) {
     headers.Authorization = `Bearer ${anon}`;
   }
@@ -45,7 +41,6 @@ export async function callSecureFunction(name, body = {}) {
   return data;
 }
 
-/** Load authoritative player row (requires session JWT). */
 export async function fetchPlayerState() {
   if (!getSessionToken()) {
     return { success: false, error: 'no_session', player: null, secure_economy: false };
@@ -64,4 +59,40 @@ export async function fetchPlayerState() {
 
 export function hasSecureSession() {
   return !!getSessionToken() && !!getPlayerId();
+}
+
+/** Secure shard shop buy (requires JWT). */
+export async function secureShopBuy(itemId) {
+  return callSecureFunction('shop-buy', { item_id: itemId });
+}
+
+/** Secure mystery gift open (requires JWT). */
+export async function secureMysteryOpen(tier) {
+  return callSecureFunction('mystery-open', { tier });
+}
+
+/** Secure weekly badge claim (requires JWT). */
+export async function secureBadgeClaim(weekId) {
+  const body = weekId ? { week_id: weekId } : {};
+  return callSecureFunction('badge-claim-weekly', body);
+}
+
+/** Server-authoritative mining credit (requires JWT). */
+export async function secureCommitTaps({ batchId, taps }) {
+  return callSecureFunction('commit-taps', {
+    batch_id: batchId,
+    taps,
+  });
+}
+
+
+export async function secureClaimWeeklyQuest(questId, rewardAmount = 100) {
+  return callSecureFunction('claim-weekly-quest', {
+    quest_id: questId,
+    reward_amount: rewardAmount,
+  });
+}
+
+export async function secureClaimWeeklyPrize() {
+  return callSecureFunction('claim-weekly-prize', {});
 }

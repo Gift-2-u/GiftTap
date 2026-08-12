@@ -30,6 +30,7 @@ import {
   badgeCatalogForBackpack,
 } from './weeklyBadges';
 import WeeklyBadgePanel from './WeeklyBadgePanel';
+import { hasSecureSession, secureShopBuy, secureMysteryOpen } from './secureApi';
 import WalletNftSection from './WalletNftSection';
 import { listGiftNfts } from './locksmith';
 
@@ -426,26 +427,50 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
 
     setTxStatus({ show: true, loading: true, message: `Purchasing ${item.name}...`, success: false });
 
-    // Merge with parent inventory so we never wipe task_limit_boost / weekly claims
-    const newInventory = buildFullInventory({
-      [item.id]: (Number(localInventory[item.id]) || 0) + 1,
-    });
-    // Weekly quest: count shop boost purchase
-    newInventory.weekly_quests = applyWeeklyBoostBuy(
-      newInventory.weekly_quests || stats?.inventory?.weekly_quests,
-      getUtcWeekId(),
-    );
-    const nextBalance = Math.max(0, Math.round((have - cost) * 1000) / 1000);
-
     try {
-      // Deduct shards + add backpack item together
-      const { error } = await supabase.from('players')
+      // Hard security: server deducts shards + grants item when JWT present
+      if (hasSecureSession()) {
+        const data = await secureShopBuy(item.id);
+        const nextBalance = Number(data.shard_balance);
+        const newInventory = data.inventory || {};
+        setBalance(nextBalance);
+        setLocalInventory(newInventory);
+        if (setStats) {
+          setStats((prev) => ({
+            ...prev,
+            inventory: mergeInventoryWeekly(
+              prev?.inventory || {},
+              newInventory,
+              getUtcWeekId(),
+            ),
+          }));
+        }
+        setTxStatus({
+          show: true,
+          loading: false,
+          message: `✅ ${item.name} added to Backpack! (−${cost.toLocaleString()} G2Ushards)`,
+          success: true,
+        });
+        setTimeout(() => setTxStatus((prev) => ({ ...prev, show: false })), 2000);
+        return;
+      }
+
+      // Legacy client write (until full cutover / if no session JWT)
+      const newInventory = buildFullInventory({
+        [item.id]: (Number(localInventory[item.id]) || 0) + 1,
+      });
+      newInventory.weekly_quests = applyWeeklyBoostBuy(
+        newInventory.weekly_quests || stats?.inventory?.weekly_quests,
+        getUtcWeekId(),
+      );
+      const nextBalance = Math.max(0, Math.round((have - cost) * 1000) / 1000);
+
+      const { error } = await supabase
+        .from('players')
         .update({ shard_balance: nextBalance, inventory: newInventory })
         .eq(DB_PLAYER_ID, String(user.id));
-       
       if (error) throw error;
 
-      // Parent setBalanceSynced also patches pending cloud-save so taps cannot refund this spend
       setBalance(nextBalance);
       setLocalInventory(newInventory);
       if (setStats) {
@@ -460,12 +485,21 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
         }));
       }
 
-      setTxStatus({ show: true, loading: false, message: `✅ ${item.name} added to Backpack! (−${cost.toLocaleString()} G2Ushards)`, success: true });
-      setTimeout(() => setTxStatus(prev => ({ ...prev, show: false })), 2000);
-
+      setTxStatus({
+        show: true,
+        loading: false,
+        message: `✅ ${item.name} added to Backpack! (−${cost.toLocaleString()} G2Ushards)`,
+        success: true,
+      });
+      setTimeout(() => setTxStatus((prev) => ({ ...prev, show: false })), 2000);
     } catch (err) {
-      console.error("Purchase Error:", err.message);
-      setTxStatus({ show: true, loading: false, message: "❌ Failed to process purchase.", success: false });
+      console.error('Purchase Error:', err?.message || err);
+      setTxStatus({
+        show: true,
+        loading: false,
+        message: `❌ ${err?.message || 'Failed to process purchase.'}`,
+        success: false,
+      });
     }
   };
 
@@ -866,7 +900,7 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
 
   // --- Mystery Gift: burn badges for weighted prize ---
   const handleOpenMystery = async (tier) => {
-    if (mysteryBusy) return;
+    if (!user?.id) return;
     if (!canOpenMysteryWith(localInventory, tier)) {
       const need = MYSTERY_BOX_COSTS[tier];
       const name = BADGE_TIERS[tier]?.name || tier;
@@ -881,51 +915,58 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
     setMysteryBusy(true);
     setTxStatus({ show: true, loading: true, message: 'Opening Mystery Gift...', success: false });
     try {
-      const baseInv = buildFullInventory();
-      const bal = Number(balance) || 0;
-      const result = openMysteryGift(baseInv, tier, bal);
-      if (result.error) throw new Error(result.error);
-
-      let inv = result.inv;
-      let nextBal = bal + (Number(result.balanceDelta) || 0);
-      if (result.reward?.type === 'task_limit') {
-        inv = applyTaskLimitBoostToInventory(
-          inv,
-          Number(result.reward.amount) || 100,
-        );
+      if (hasSecureSession()) {
+        const data = await secureMysteryOpen(tier);
+        const inv = data.inventory || {};
+        if (data.shard_balance != null) setBalance(Number(data.shard_balance));
+        setLocalInventory(inv);
+        if (setStats) {
+          setStats((prev) => ({
+            ...prev,
+            inventory: mergeInventoryWeekly(prev?.inventory || {}, inv, getUtcWeekId()),
+          }));
+        }
+        setTxStatus({
+          show: true,
+          loading: false,
+          message: `🎁 Mystery Gift: ${data.reward?.label || 'opened'}`,
+          success: true,
+        });
+        setTimeout(() => setTxStatus((p) => ({ ...p, show: false })), 3500);
+        return;
       }
 
+      const bal = Number(balance) || 0;
+      const baseInv = buildFullInventory({});
+      const result = openMysteryGift(baseInv, tier, bal);
+      if (result.error) throw new Error(result.error);
+      let inv = result.inv;
+      let nextBal = bal;
+      if (result.balanceDelta) {
+        nextBal = Math.round((bal + Number(result.balanceDelta)) * 1000) / 1000;
+      }
       const updates = {
         inventory: inv,
         last_updated: new Date().toISOString(),
       };
-      if (result.balanceDelta) {
-        updates.shard_balance = nextBal;
-      }
-
+      if (result.balanceDelta) updates.shard_balance = nextBal;
       const { error } = await supabase
         .from('players')
         .update(updates)
         .eq(DB_PLAYER_ID, String(user.id));
       if (error) throw error;
-
+      if (result.balanceDelta) setBalance(nextBal);
       setLocalInventory(inv);
-      if (result.balanceDelta && setBalance) setBalance(nextBal);
       if (setStats) {
         setStats((prev) => ({
           ...prev,
-          inventory: mergeInventoryWeekly(
-            prev?.inventory || {},
-            inv,
-            getUtcWeekId(),
-          ),
+          inventory: mergeInventoryWeekly(prev?.inventory || {}, inv, getUtcWeekId()),
         }));
       }
-
       setTxStatus({
         show: true,
         loading: false,
-        message: `🎁 Mystery Gift: ${result.reward.label}`,
+        message: `🎁 Mystery Gift: ${result.reward?.label || 'opened'}`,
         success: true,
       });
       setTimeout(() => setTxStatus((p) => ({ ...p, show: false })), 3500);

@@ -1,6 +1,11 @@
 import React, { useEffect, useMemo, useState, useRef, useCallback } from 'react';
 import { supabase } from './supabaseClient';
 import { DB_PLAYER_ID } from './playerIdentity';
+import {
+  hasSecureSession,
+  secureClaimWeeklyQuest,
+  secureClaimWeeklyPrize,
+} from './secureApi';
 import AppNotice from './AppNotice';
 import {
   WEEKLY_QUEST_LIST,
@@ -279,6 +284,31 @@ export default function WeeklyQuests({
     markClaimedLocal(quest.id);
 
     try {
+      // Hard security: Edge wrapper (JWT) → SQL RPC with service_role
+      if (hasSecureSession()) {
+        const data = await secureClaimWeeklyQuest(quest.id, WEEKLY_ENERGY_REWARD);
+        const inv = data.inventory || null;
+        markClaimedLocal(quest.id);
+        if (inv && typeof onWeeklyStateChange === 'function') {
+          onWeeklyStateChange(
+            inv.weekly_quests || markQuestClaimed(ensureWeeklyState(state, weekId), weekId, quest.id),
+            inv,
+          );
+        } else if (typeof onWeeklyStateChange === 'function') {
+          onWeeklyStateChange(
+            markQuestClaimed(ensureWeeklyState(state, weekId), weekId, quest.id),
+          );
+        }
+        setAppNotice({
+          show: true,
+          message: data.already
+            ? 'Already claimed this week ✓'
+            : `⚡ +${WEEKLY_ENERGY_REWARD} max Daily Limit. DONE — cannot claim again this week.`,
+          success: true,
+        });
+        return;
+      }
+
       const { data, error } = await supabase.rpc('claim_weekly_quest', {
         p_telegram_id: String(userId),
         p_quest_id: quest.id,
@@ -408,6 +438,22 @@ export default function WeeklyQuests({
     markClaimedLocal(WEEKLY_PRIZE.id);
 
     try {
+      if (hasSecureSession()) {
+        const data = await secureClaimWeeklyPrize();
+        markClaimedLocal(WEEKLY_PRIZE.id);
+        if (data.inventory && typeof onWeeklyStateChange === 'function') {
+          onWeeklyStateChange(data.inventory.weekly_quests, data.inventory);
+        }
+        setAppNotice({
+          show: true,
+          message: data.already
+            ? 'Weekly prize already claimed ✓'
+            : `🎁 Weekly prize claimed! +1 ${WEEKLY_PRIZE.rewardLabel} in Pack.`,
+          success: true,
+        });
+        return;
+      }
+
       const { data, error } = await supabase.rpc('claim_weekly_prize', {
         p_telegram_id: String(userId),
       });
