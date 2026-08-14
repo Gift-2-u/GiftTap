@@ -695,6 +695,9 @@ const GiftTapGame = () => {
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [itemToBuy, setItemToBuy] = useState(null);
   const touchLock = useRef(false);
+  const touchLockTimerRef = useRef(null);
+  const lastTapGateMsRef = useRef(0);
+  const lastTapPointerIdRef = useRef(null);
   const optimisticTaps = useRef(lifetimeTaps);
   /** Shard balance / season — same instant-update pattern as lifetime (rapid multi-touch safe) */
   const optimisticBalance = useRef(0);
@@ -1841,12 +1844,10 @@ const GiftTapGame = () => {
         setStreak(loadedStreak);
         streakRef.current = loadedStreak;
 
-        // Same UTC day if last_tap is today, OR last activity (last_updated) is today.
-        // Under secure_economy, last_tap_date often lags; never treat "missing ltd" as new day
-        // when last_updated is still today (that wiped full bars and allowed another 1000 taps).
+        // Same UTC day for *daily limit* only uses last_tap_date (and local progress).
+        // Do NOT use last_updated — heartbeats stamp it every load and blocked UTC day-roll.
         const isSameUtcDay =
           ltd === today ||
-          lastUpdatedDay === today ||
           (!ltd && dbDaily > 0 && lastUpdatedDay === today);
 
         if (
@@ -2037,15 +2038,66 @@ const GiftTapGame = () => {
                     }, 1000);
                 } else {
                     // Bot active but mined 0 (daily limit maxed before they left) — no forced wall modal
-                    supabase.from('players').update({ last_updated: new Date().toISOString() }).eq(DB_PLAYER_ID, userId).then();
+                    {
+              const _enNow = energyFromAnchor(
+                Number.isFinite(Number(playerRow.last_energy))
+                  ? Number(playerRow.last_energy)
+                  : ENERGY_CAP,
+                playerRow.last_updated
+                  ? new Date(playerRow.last_updated).getTime()
+                  : Date.now(),
+              );
+              supabase
+                .from('players')
+                .update({
+                  last_energy: _enNow,
+                  last_updated: new Date().toISOString(),
+                })
+                .eq(DB_PLAYER_ID, userId)
+                .then();
+            }
                 }
             } else {
               // Bot active but mined 0 (Limit was maxed before they left)
-              supabase.from('players').update({ last_updated: new Date().toISOString() }).eq(DB_PLAYER_ID, userId).then();
+              {
+              const _enNow = energyFromAnchor(
+                Number.isFinite(Number(playerRow.last_energy))
+                  ? Number(playerRow.last_energy)
+                  : ENERGY_CAP,
+                playerRow.last_updated
+                  ? new Date(playerRow.last_updated).getTime()
+                  : Date.now(),
+              );
+              supabase
+                .from('players')
+                .update({
+                  last_energy: _enNow,
+                  last_updated: new Date().toISOString(),
+                })
+                .eq(DB_PLAYER_ID, userId)
+                .then();
+            }
             }
         } else {
             // No bot active or expired before last login (THE HEARTBEAT SYNC)
-            supabase.from('players').update({ last_updated: new Date().toISOString() }).eq(DB_PLAYER_ID, userId).then();
+            {
+              const _enNow = energyFromAnchor(
+                Number.isFinite(Number(playerRow.last_energy))
+                  ? Number(playerRow.last_energy)
+                  : ENERGY_CAP,
+                playerRow.last_updated
+                  ? new Date(playerRow.last_updated).getTime()
+                  : Date.now(),
+              );
+              supabase
+                .from('players')
+                .update({
+                  last_energy: _enNow,
+                  last_updated: new Date().toISOString(),
+                })
+                .eq(DB_PLAYER_ID, userId)
+                .then();
+            }
         }
 
         // 🚨 THE DECRYPTION FIX: Load the wallet into the UI from the Cloud
@@ -2526,6 +2578,101 @@ const GiftTapGame = () => {
     }, 500); // half-second UI so +1 every 1.5s is visible while tapping
     return () => clearInterval(ticker);
   }, [applyEnergyCatchUp]);
+
+  // UTC midnight + dormant energy: no manual refresh required
+  const utcDayWatchRef = useRef(utcTodayStr());
+  const lastEnergyPersistRef = useRef(0);
+  useEffect(() => {
+    if (!isDataLoaded || !playerId) return undefined;
+
+    const rollUtcDayIfNeeded = () => {
+      const today = utcTodayStr();
+      if (utcDayWatchRef.current === today) return false;
+      utcDayWatchRef.current = today;
+      // New UTC day — reset daily UI immediately (server catches up on next save)
+      optimisticDaily.current = 0;
+      setDailyTaps(0);
+      setDailyAdsWatched(0);
+      lastTapDateRef.current = '';
+      setLastTapDate('');
+      serverProgressRef.current = {
+        ...(serverProgressRef.current || {}),
+        dt: 0,
+      };
+      // UI reset is enough here. Server daily resets on first tap of the new UTC day
+      // (protect allows fresh-day writes). Ads counter is local until next ad claim.
+      try {
+        // Best-effort: clear ad count for new UTC day (not mining counters)
+        supabase
+          .from('players')
+          .update({
+            daily_ads_watched: 0,
+            last_ad_date: today,
+          })
+          .eq(DB_PLAYER_ID, playerId)
+          .then(({ error }) => {
+            if (error) console.warn('UTC day-roll ads', error.message);
+          });
+      } catch {
+        /* ignore */
+      }
+      console.log('🕛 UTC day rolled → daily limit reset (no refresh)');
+      return true;
+    };
+
+    const persistEnergyCatchUp = (force = false) => {
+      const live = applyEnergyCatchUp();
+      const now = Date.now();
+      // Persist every 60s, or when full, or on force (wake)
+      if (
+        !force &&
+        live < ENERGY_CAP &&
+        now - (lastEnergyPersistRef.current || 0) < 60000
+      ) {
+        return live;
+      }
+      lastEnergyPersistRef.current = now;
+      supabase
+        .from('players')
+        .update({
+          last_energy: live,
+          last_updated: new Date().toISOString(),
+        })
+        .eq(DB_PLAYER_ID, playerId)
+        .then(({ error }) => {
+          if (error) console.warn('energy persist', error.message);
+        });
+      return live;
+    };
+
+    const tick = () => {
+      rollUtcDayIfNeeded();
+      persistEnergyCatchUp(false);
+    };
+
+    // Every 15s while open (incl. dormant but not background-killed)
+    const id = setInterval(tick, 15000);
+    tick();
+
+    const onWake = () => {
+      rollUtcDayIfNeeded();
+      applyEnergyCatchUp();
+      persistEnergyCatchUp(true);
+    };
+    const onVis = () => {
+      if (document.visibilityState === 'visible') onWake();
+    };
+    document.addEventListener('visibilitychange', onVis);
+    window.addEventListener('focus', onWake);
+    window.addEventListener('pageshow', onWake);
+
+    return () => {
+      clearInterval(id);
+      document.removeEventListener('visibilitychange', onVis);
+      window.removeEventListener('focus', onWake);
+      window.removeEventListener('pageshow', onWake);
+    };
+  }, [isDataLoaded, playerId, applyEnergyCatchUp]);
 
   // Inside your main GiftTap component:
   useEffect(() => {
@@ -3092,14 +3239,53 @@ const GiftTapGame = () => {
   };
 
   const handleTap = (e) => {
-      // 🚨 DOUBLE LOCK: Stop execution if React hasn't finished fetching Supabase data
       if (!isDataLoaded) return;
-      // 🚨 THE DEFINITIVE GHOST CLICK ASSASSIN
-      if (e.type === 'touchstart') {
-        touchLock.current = true;
-        setTimeout(() => { touchLock.current = false; }, 500);
-      } else if ((e.type === 'mousedown' || e.type === 'click') && touchLock.current) {
-        return; 
+
+      // One real press = one credit. Block only:
+      //  - non-primary pointers
+      //  - the synthetic mouse event that follows a touch (same gesture)
+      // Do NOT use an empty/undefined ref (that crashed all taps).
+      try {
+        if (e && e.isPrimary === false) return;
+
+        const pType = (e && e.pointerType) || '';
+        const isTouch =
+          (e && e.type === 'touchstart') || pType === 'touch' || pType === 'pen';
+
+        if (isTouch) {
+          touchLock.current = true;
+          if (e.pointerId != null) lastTapPointerIdRef.current = e.pointerId;
+          if (touchLockTimerRef.current) clearTimeout(touchLockTimerRef.current);
+          touchLockTimerRef.current = setTimeout(() => {
+            touchLock.current = false;
+            lastTapPointerIdRef.current = null;
+            touchLockTimerRef.current = null;
+          }, 400);
+        } else if (touchLock.current) {
+          // mouse/click after touch — ignore
+          return;
+        }
+
+        // Same pointer id double-fire within 80ms
+        const nowMsGate = Date.now();
+        if (
+          e &&
+          e.pointerId != null &&
+          lastTapPointerIdRef.current === e.pointerId &&
+          nowMsGate - (lastTapGateMsRef.current || 0) < 80 &&
+          !isTouch
+        ) {
+          return;
+        }
+        // Very short debounce for identical double dispatch (not for rapid multi-tap)
+        if (!isTouch && nowMsGate - (lastTapGateMsRef.current || 0) < 30) {
+          return;
+        }
+        lastTapGateMsRef.current = nowMsGate;
+        if (e && e.pointerId != null) lastTapPointerIdRef.current = e.pointerId;
+      } catch (gateErr) {
+        console.warn('tap gate', gateErr);
+        // Fall through — never block mining if gate misbehaves
       }
 
       // 🚨 FIX: Define 'now' immediately so buffs don't crash the function
@@ -3382,28 +3568,9 @@ const GiftTapGame = () => {
       setDailyTaps(nextDaily);
       setBalances((bal) => ({ ...bal, G2Ushards: nextBalance }));
 
-      // Send the trigger to save (No absolute totals passed anymore)
-      // Make sure this exact line is at the bottom of handleTap:
-      // Queue taps for commit-taps (shards/lifetime) when JWT available.
-      if (validTaps > 0) {
-        const pend = pendingTapsRef.current;
-        if (!pend.batchId) {
-          pend.batchId = crypto.randomUUID
-            ? crypto.randomUUID()
-            : `b_${Date.now()}_${Math.random().toString(36).slice(2)}`;
-        }
-        pend.count = (pend.count || 0) + validTaps;
-        if (hasSecureSession()) {
-          scheduleTapFlush();
-          if (pend.count >= 80) flushPendingTaps();
-        } else {
-          ensureSecureSession()
-            .then((ok) => {
-              if (ok) flushPendingTaps();
-            })
-            .catch(() => {});
-        }
-      }
+      // Persist mining ONCE via client save (protect allows monotonic climb).
+      // Do NOT also queue commit-taps — that re-added the same taps ~0.5s later
+      // (tap 3× → stop → 3 more appear). Client write is the live path.
       // Persist full mining bundle (daily + all-time + season + shards) — same as game math.
       saveToDatabase(
         nextBalance,
@@ -3931,9 +4098,9 @@ const GiftTapGame = () => {
           Number(optimisticDaily.current) || 0,
           Number(dailyTaps) || 0,
         );
+        // Daily limit day-roll: last_tap_date / local only — not last_updated heartbeats
         const isSameUtcDay =
           ltd === today ||
-          lastUpdatedDay === today ||
           localLtd === today ||
           (!ltd && dbDaily > 0 && lastUpdatedDay === today);
 

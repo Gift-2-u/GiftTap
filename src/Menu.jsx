@@ -633,7 +633,7 @@ const Menu = ({
                   style={{
                     display: 'flex',
                     justifyContent: 'center',
-                    gap: 10,
+                    gap: 14,
                     flexWrap: 'wrap',
                   }}
                 >
@@ -643,30 +643,36 @@ const Menu = ({
                       href={s.href}
                       target="_blank"
                       rel="noopener noreferrer"
+                      title={s.label}
+                      aria-label={s.label}
                       onClick={(e) => {
                         e.preventDefault();
                         openSocial(s.href);
                       }}
                       style={{
-                        display: 'flex',
+                        display: 'inline-flex',
                         alignItems: 'center',
-                        gap: 8,
-                        padding: '10px 14px',
-                        borderRadius: 12,
+                        justifyContent: 'center',
+                        width: 48,
+                        height: 48,
+                        borderRadius: 14,
                         border: '1px solid #333',
                         background: '#111',
-                        color: s.color || '#fff',
                         textDecoration: 'none',
-                        fontWeight: 'bold',
-                        fontSize: 13,
-                        minWidth: 100,
-                        justifyContent: 'center',
+                        color: s.color || '#fff',
                       }}
                     >
-                      <span style={{ fontSize: 16 }} aria-hidden>
-                        {s.glyph}
-                      </span>
-                      {s.label}
+                      <span
+                        aria-hidden
+                        style={{
+                          display: 'block',
+                          width: 24,
+                          height: 24,
+                          backgroundColor: 'currentColor',
+                          WebkitMask: `url(${s.icon}) center / contain no-repeat`,
+                          mask: `url(${s.icon}) center / contain no-repeat`,
+                        }}
+                      />
                     </a>
                   ))}
                 </div>

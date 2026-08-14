@@ -154,10 +154,20 @@ const SiteFooter = () => {
             href={s.href}
             target="_blank"
             rel="noopener noreferrer"
-            className="hover:text-white font-semibold inline-flex items-center gap-1.5"
+            title={s.label}
+            aria-label={s.label}
+            className="inline-flex items-center justify-center w-9 h-9 rounded-full border border-white/10 bg-white/5 hover:bg-white/15 transition"
+            style={{ color: s.color }}
           >
-            <span aria-hidden>{s.glyph}</span>
-            {s.label}
+            <span
+              aria-hidden
+              className="block w-[18px] h-[18px]"
+              style={{
+                backgroundColor: 'currentColor',
+                WebkitMask: `url(${s.icon}) center / contain no-repeat`,
+                mask: `url(${s.icon}) center / contain no-repeat`,
+              }}
+            />
           </a>
         ))}
       </div>
@@ -209,23 +219,6 @@ const Navigation = () => {
               <span className="sm:hidden">Play</span>
               <span className="hidden sm:inline">Play Game</span>
             </Link>
-            <div className="flex items-center gap-2 sm:gap-3">
-              {SOCIAL_LINKS.map((s) => (
-                <a
-                  key={s.id}
-                  href={s.href}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  title={s.label}
-                  aria-label={s.label}
-                  className="hover:opacity-90 text-base sm:text-lg font-bold whitespace-nowrap"
-                  style={{ color: s.color }}
-                >
-                  <span className="sm:hidden">{s.glyph}</span>
-                  <span className="hidden sm:inline">{s.glyph} {s.label}</span>
-                </a>
-              ))}
-            </div>
             <button
               type="button"
               onClick={() => setWalletHubOpen(true)}
@@ -812,18 +805,27 @@ const HomePage = () => {
           See our roadmap →
         </Link>
       </p>
-      <div className="mt-10 flex flex-wrap items-center justify-center gap-3">
+      <div className="mt-10 flex flex-wrap items-center justify-center gap-4">
         {SOCIAL_LINKS.map((s) => (
           <a
             key={s.id}
             href={s.href}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/5 px-5 py-2.5 text-sm font-bold hover:bg-white/10 transition"
+            title={s.label}
+            aria-label={s.label}
+            className="inline-flex items-center justify-center w-12 h-12 rounded-full border border-white/15 bg-white/5 hover:bg-white/15 transition"
             style={{ color: s.color }}
           >
-            <span aria-hidden>{s.glyph}</span>
-            {s.label}
+            <span
+              aria-hidden
+              className="block w-6 h-6"
+              style={{
+                backgroundColor: 'currentColor',
+                WebkitMask: `url(${s.icon}) center / contain no-repeat`,
+                mask: `url(${s.icon}) center / contain no-repeat`,
+              }}
+            />
           </a>
         ))}
       </div>
