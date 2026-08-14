@@ -25,6 +25,7 @@ import {
   inventoryHasWeeklyClaim,
   applyWeeklyClaimToInventory,
   applyTaskLimitBoostToInventory,
+  getActiveTaskLimitBoostAmount,
   markWeeklyRewardOnInventory,
   mergeInventoryWeekly,
   hydrateWeeklyClaimsFromLedger,
@@ -294,11 +295,55 @@ export default function WeeklyQuests({
       // Hard security: Edge wrapper (JWT) → SQL RPC with service_role
       if (hasSecureSession()) {
         const data = await secureClaimWeeklyQuest(quest.id, WEEKLY_ENERGY_REWARD);
-        const inv = data.inventory || null;
         markClaimedLocal(quest.id);
+        let inv = data.inventory ? { ...data.inventory } : null;
+
+        // Re-read inventory (ground truth) so stacked boost is not lost to a stale payload
+        try {
+          const { data: row } = await supabase
+            .from('players')
+            .select('inventory')
+            .eq(DB_PLAYER_ID, String(userId))
+            .maybeSingle();
+          if (row?.inventory) inv = { ...row.inventory };
+        } catch {
+          /* keep edge inventory */
+        }
+
+        // If claim was new and boost did not increase vs pre-claim local, force +100 stack
+        if (inv && !data.already) {
+          const fromProps =
+            inventory && typeof inventory === 'object' ? inventory : {};
+          const clientBefore = getActiveTaskLimitBoostAmount(fromProps);
+          const serverAmt = getActiveTaskLimitBoostAmount(inv);
+          // After a real stack, serverAmt should be > clientBefore (0→100, 100→200)
+          if (serverAmt <= clientBefore) {
+            inv = applyTaskLimitBoostToInventory(
+              {
+                ...inv,
+                task_limit_boost:
+                  fromProps.task_limit_boost || inv.task_limit_boost,
+              },
+              WEEKLY_ENERGY_REWARD,
+            );
+            try {
+              await supabase
+                .from('players')
+                .update({
+                  inventory: inv,
+                  last_updated: new Date().toISOString(),
+                })
+                .eq(DB_PLAYER_ID, String(userId));
+            } catch (pe) {
+              console.warn('boost stack repair', pe);
+            }
+          }
+        }
+
         if (inv && typeof onWeeklyStateChange === 'function') {
           onWeeklyStateChange(
-            inv.weekly_quests || markQuestClaimed(ensureWeeklyState(state, weekId), weekId, quest.id),
+            inv.weekly_quests ||
+              markQuestClaimed(ensureWeeklyState(state, weekId), weekId, quest.id),
             inv,
           );
         } else if (typeof onWeeklyStateChange === 'function') {
@@ -306,11 +351,15 @@ export default function WeeklyQuests({
             markQuestClaimed(ensureWeeklyState(state, weekId), weekId, quest.id),
           );
         }
+
+        const shown = inv
+          ? getActiveTaskLimitBoostAmount(inv)
+          : WEEKLY_ENERGY_REWARD;
         setAppNotice({
           show: true,
           message: data.already
             ? 'Already claimed this week ✓'
-            : `⚡ +${WEEKLY_ENERGY_REWARD} max Daily Limit. DONE — cannot claim again this week.`,
+            : `⚡ +${WEEKLY_ENERGY_REWARD} max Daily Limit (total bonus today: +${shown}). DONE — cannot claim again this week.`,
           success: true,
         });
         return;

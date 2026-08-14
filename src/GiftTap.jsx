@@ -153,6 +153,7 @@ import {
   isDailyLimitDrained,
   WEEKLY_BASE_DAILY_LIMIT,
   mergeInventoryWeekly,
+  applyServerInventoryAuthority,
   mergeWeeklyClaimKeys,
   hydrateWeeklyClaimsFromLedger,
 } from './weeklyQuestLogic';
@@ -826,10 +827,11 @@ const GiftTapGame = () => {
   }, []);
 
   // Keep inventoryRef aligned when shop/backpack/badges update stats.inventory
+  // MUST use server authority for shop qty keys or used boosts reappear and get saved back.
   useEffect(() => {
     if (!stats?.inventory) return;
     const weekId = getUtcWeekId();
-    inventoryRef.current = mergeInventoryWeekly(
+    inventoryRef.current = applyServerInventoryAuthority(
       inventoryRef.current || {},
       stats.inventory,
       weekId,
@@ -858,19 +860,24 @@ const GiftTapGame = () => {
           weekId,
         );
       }
-      // Prefer explicit task_limit_boost from claim payload (daily max, not 500 pool)
-      if (nextInv?.task_limit_boost) {
-        const n = nextInv.task_limit_boost;
+      // task_limit_boost stacks (100 + 100 = 200). Never keep the lower of two active boosts.
+      if (nextInv?.task_limit_boost || inv.task_limit_boost) {
+        const n = nextInv?.task_limit_boost;
         const cur = inv.task_limit_boost;
         const nAmt =
-          n.expires && new Date(n.expires).getTime() > Date.now()
+          n && n.expires && new Date(n.expires).getTime() > Date.now()
             ? Number(n.amount) || 0
             : 0;
         const cAmt =
           cur && cur.expires && new Date(cur.expires).getTime() > Date.now()
             ? Number(cur.amount) || 0
             : 0;
-        if (nAmt >= cAmt) inv.task_limit_boost = n;
+        if (nAmt > cAmt && n) inv.task_limit_boost = { amount: nAmt, expires: n.expires };
+        else if (cAmt > nAmt && cur)
+          inv.task_limit_boost = { amount: cAmt, expires: cur.expires };
+        else if (nAmt > 0 && n) inv.task_limit_boost = { amount: nAmt, expires: n.expires };
+        else if (cAmt > 0 && cur)
+          inv.task_limit_boost = { amount: cAmt, expires: cur.expires };
       }
       inv = hydrateWeeklyClaimsFromLedger(inv, weekId);
       inventoryRef.current = inv;
@@ -3078,9 +3085,15 @@ const GiftTapGame = () => {
       delete inv.wall_fee_progress;
       delete inv.wall_fee_wall;
       const saveWeekId = getUtcWeekId();
-      let nextInventory = mergeInventoryWeekly(
+      let nextInventory = applyServerInventoryAuthority(
+        stats.inventory || {},
         inv,
-        inventoryRef.current || {},
+        saveWeekId,
+      );
+      // inventoryRef is authority for shop item counts (consumed items stay gone)
+      nextInventory = applyServerInventoryAuthority(
+        nextInventory,
+        inventoryRef.current || inv,
         saveWeekId,
       );
       nextInventory = hydrateWeeklyClaimsFromLedger(nextInventory, saveWeekId);

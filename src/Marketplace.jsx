@@ -167,8 +167,25 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
   }, [playerWallet, activeTab, backpackCat, walletNftRefresh]);
 
   useEffect(() => {
-    if (stats?.inventory) setLocalInventory(stats.inventory);
-    if (stats?.daily_usage) setDailyUsage(stats.daily_usage);
+    if (stats?.inventory) {
+      // Authority merge so a parent re-render cannot put consumed boosts back
+      setLocalInventory((prev) =>
+        applyServerInventoryAuthority(prev || {}, stats.inventory, getUtcWeekId()),
+      );
+    }
+    const fromStats = stats?.daily_usage;
+    const fromInv =
+      stats?.inventory?.daily_usage &&
+      typeof stats.inventory.daily_usage === 'object'
+        ? stats.inventory.daily_usage
+        : null;
+    if (fromStats || fromInv) {
+      setDailyUsage((prev) => ({
+        ...(prev || {}),
+        ...(fromInv || {}),
+        ...(fromStats || {}),
+      }));
+    }
   }, [stats?.inventory, stats?.daily_usage]);
 
   // Refresh SOL when player opens NFTs tab (or wallet address changes)
@@ -866,8 +883,20 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
         if (nextQty <= 0) delete authInv[item.id];
         else authInv[item.id] = nextQty;
 
+        // Always force-consume this item in UI (even if server lag)
+        delete authInv[item.id];
+        const todayUse = getTodayUTCString();
+        const nextDailyUsage = {
+          ...(data.daily_usage || dailyUsage || {}),
+          ...(item.id !== 'refill' && item.id !== 'crate'
+            ? { [item.id]: todayUse }
+            : {}),
+        };
+        // Keep usage inside inventory too (survives if column missing)
+        authInv.daily_usage = nextDailyUsage;
+
         setLocalInventory({ ...authInv });
-        if (data.daily_usage) setDailyUsage(data.daily_usage);
+        setDailyUsage(nextDailyUsage);
         if (data.shard_balance != null) setBalance(Number(data.shard_balance));
         if (item.id === 'refill' || data.last_energy != null) {
           const en =
@@ -883,7 +912,53 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
                 ? Number(data.last_energy)
                 : prev.last_energy,
             inventory: { ...authInv },
+            daily_usage: nextDailyUsage,
           }));
+        }
+
+        // Re-fetch ground truth so logout/login cannot restore a ghost boost
+        try {
+          const { data: row } = await supabase
+            .from('players')
+            .select('inventory, daily_usage, last_energy, energy_boost_expires')
+            .eq(DB_PLAYER_ID, String(user.id))
+            .maybeSingle();
+          if (row?.inventory) {
+            const cleaned = applyServerInventoryAuthority(
+              {},
+              row.inventory,
+              getUtcWeekId(),
+            );
+            // Item must stay consumed
+            delete cleaned[item.id];
+            const du = {
+              ...(typeof row.daily_usage === 'object' && row.daily_usage
+                ? row.daily_usage
+                : {}),
+              ...(typeof cleaned.daily_usage === 'object' && cleaned.daily_usage
+                ? cleaned.daily_usage
+                : {}),
+              ...nextDailyUsage,
+            };
+            cleaned.daily_usage = du;
+            setLocalInventory({ ...cleaned });
+            setDailyUsage(du);
+            if (setStats) {
+              setStats((prev) => ({
+                ...prev,
+                inventory: { ...cleaned },
+                daily_usage: du,
+                energy_boost_expires:
+                  row.energy_boost_expires ?? prev.energy_boost_expires,
+                last_energy:
+                  row.last_energy != null
+                    ? Number(row.last_energy)
+                    : prev.last_energy,
+              }));
+            }
+          }
+        } catch (syncErr) {
+          console.warn('post-activate resync', syncErr);
         }
 
         setTxStatus({

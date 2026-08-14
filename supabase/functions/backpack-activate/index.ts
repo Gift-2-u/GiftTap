@@ -74,22 +74,28 @@ serve(async (req) => {
     const have = Math.max(0, Math.floor(Number(inv[itemId]) || 0));
     if (have <= 0) throw new Error(`No ${itemId} in backpack`);
 
-    // daily_usage may be column or inventory key
+    // daily_usage: column and/or inventory.daily_usage
     let dailyUsage: Record<string, string> = {};
     if (row.daily_usage && typeof row.daily_usage === "object") {
       dailyUsage = { ...(row.daily_usage as Record<string, string>) };
-    } else if (inv.daily_usage && typeof inv.daily_usage === "object") {
-      dailyUsage = { ...(inv.daily_usage as Record<string, string>) };
+    }
+    if (inv.daily_usage && typeof inv.daily_usage === "object") {
+      dailyUsage = {
+        ...dailyUsage,
+        ...(inv.daily_usage as Record<string, string>),
+      };
     }
     const today = utcToday();
     if (dailyUsage[itemId] === today && itemId !== "refill" && itemId !== "crate") {
-      // refill/crate are consumable anytime; timed boosts once per UTC day
       throw new Error(`Already used ${itemId} today (UTC). Wait until midnight.`);
     }
 
-    // Deduct charge
-    if (have <= 1) delete inv[itemId];
-    else inv[itemId] = have - 1;
+    // Deduct charge — force remove key when 0
+    if (have <= 1) {
+      delete inv[itemId];
+    } else {
+      inv[itemId] = have - 1;
+    }
 
     if (itemId !== "refill" && itemId !== "crate") {
       dailyUsage[itemId] = today;
@@ -101,8 +107,6 @@ serve(async (req) => {
       inventory: inv,
       last_updated: new Date().toISOString(),
     };
-    // Prefer column if it exists
-    updates.daily_usage = dailyUsage;
 
     let shard_balance = Number(row.shard_balance) || 0;
     let last_energy = Number(row.last_energy);
@@ -136,29 +140,58 @@ serve(async (req) => {
       updates.premium_multiplier_expires = endOfUtcDay(6);
     }
 
-    const { error: upErr } = await sb
-      .from("players")
-      .update(updates)
-      .eq("telegram_id", playerId);
+    // Try with daily_usage column; if column missing, retry inventory-only
+    let upErr = (await sb.from("players").update({ ...updates, daily_usage: dailyUsage }).eq("telegram_id", playerId)).error;
+    if (upErr && /daily_usage|column/i.test(String(upErr.message || ""))) {
+      upErr = (await sb.from("players").update(updates).eq("telegram_id", playerId)).error;
+    }
     if (upErr) throw upErr;
+
+    // Re-read ground truth so client cannot keep a ghost qty
+    const { data: verified } = await sb
+      .from("players")
+      .select("inventory, shard_balance, last_energy, daily_usage")
+      .eq("telegram_id", playerId)
+      .maybeSingle();
+
+    const outInv = invObj(verified?.inventory ?? inv);
+    // Ensure consumed item is gone if still present due to race
+    const still = Math.max(0, Math.floor(Number(outInv[itemId]) || 0));
+    if (still >= have) {
+      if (have <= 1) delete outInv[itemId];
+      else outInv[itemId] = have - 1;
+      await sb.from("players").update({ inventory: outInv, last_updated: new Date().toISOString() }).eq("telegram_id", playerId);
+    }
+    // Merge daily_usage into inventory for clients that only read inventory
+    let outDaily = dailyUsage;
+    if (verified?.daily_usage && typeof verified.daily_usage === "object") {
+      outDaily = { ...outDaily, ...(verified.daily_usage as Record<string, string>) };
+    }
+    if (outInv.daily_usage && typeof outInv.daily_usage === "object") {
+      outDaily = { ...outDaily, ...(outInv.daily_usage as Record<string, string>) };
+    }
+    if (itemId !== "refill" && itemId !== "crate") {
+      outDaily[itemId] = today;
+    }
+    outInv.daily_usage = outDaily;
 
     await logEconomy(sb, {
       player_id: playerId,
       kind: "backpack_activate",
       delta: itemId === "crate" ? 50000 : 0,
-      balance_after: shard_balance,
+      balance_after: Number(verified?.shard_balance) || shard_balance,
       ref: itemId,
-      meta: { dailyUsage: dailyUsage[itemId] || null },
+      meta: { dailyUsage: outDaily[itemId] || null },
     });
 
     return jsonResponse({
       success: true,
       item_id: itemId,
-      inventory: inv,
-      shard_balance,
-      last_energy: updates.last_energy ?? last_energy,
-      updates,
-      daily_usage: dailyUsage,
+      inventory: outInv,
+      shard_balance: Number(verified?.shard_balance) || shard_balance,
+      last_energy: Number(verified?.last_energy) || last_energy,
+      updates: { ...updates, inventory: outInv },
+      daily_usage: outDaily,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

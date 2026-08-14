@@ -350,6 +350,13 @@ export function utcMidnightTonightIso(date = new Date()) {
  * Stack +amount onto inventory.task_limit_boost until UTC midnight.
  * Used by weekly quest claims (atomic with claim write).
  */
+export function getActiveTaskLimitBoostAmount(inv, now = new Date()) {
+  const b = inv && inv.task_limit_boost;
+  if (!b || !b.expires) return 0;
+  if (new Date(b.expires).getTime() <= now.getTime()) return 0;
+  return Math.max(0, Number(b.amount) || 0);
+}
+
 export function applyTaskLimitBoostToInventory(inv, amount, now = new Date()) {
   const base = inv && typeof inv === 'object' ? { ...inv } : {};
   const add = Math.max(0, Number(amount) || 0);
@@ -434,8 +441,9 @@ export function mergeInventoryWeekly(a, b, weekId = getUtcWeekId()) {
       if (typeof k === 'string' && k) claimLog.add(k);
     }
   }
-  // Prefer higher active task_limit_boost when merging races
-  let taskBoost = B.task_limit_boost || A.task_limit_boost;
+  // Active task_limit_boost: always keep the HIGHER amount (claims stack on server;
+  // client merges must never wipe 200 down to 100).
+  let taskBoost = null;
   const aB = A.task_limit_boost;
   const bB = B.task_limit_boost;
   const nowMs = Date.now();
@@ -448,8 +456,19 @@ export function mergeInventoryWeekly(a, b, weekId = getUtcWeekId()) {
       ? Number(bB.amount) || 0
       : 0;
   if (aOk > 0 || bOk > 0) {
-    if (bOk >= aOk && bB) taskBoost = bB;
-    else if (aB) taskBoost = aB;
+    if (bOk > aOk) taskBoost = { amount: bOk, expires: bB.expires };
+    else if (aOk > bOk) taskBoost = { amount: aOk, expires: aB.expires };
+    else {
+      // Equal amounts — keep whichever expires later
+      const aExp = aB?.expires ? new Date(aB.expires).getTime() : 0;
+      const bExp = bB?.expires ? new Date(bB.expires).getTime() : 0;
+      taskBoost =
+        bExp >= aExp
+          ? { amount: bOk, expires: bB.expires }
+          : { amount: aOk, expires: aB.expires };
+    }
+  } else {
+    taskBoost = bB || aB || undefined;
   }
 
   return {
