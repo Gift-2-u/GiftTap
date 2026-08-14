@@ -696,8 +696,8 @@ const GiftTapGame = () => {
   const [itemToBuy, setItemToBuy] = useState(null);
   const touchLock = useRef(false);
   const touchLockTimerRef = useRef(null);
-  const lastTapGateMsRef = useRef(0);
-  const lastTapPointerIdRef = useRef(null);
+  /** pointerIds currently down that already scored (multi-finger safe) */
+  const activeTapPointersRef = useRef(new Set());
   const optimisticTaps = useRef(lifetimeTaps);
   /** Shard balance / season — same instant-update pattern as lifetime (rapid multi-touch safe) */
   const optimisticBalance = useRef(0);
@@ -3238,67 +3238,77 @@ const GiftTapGame = () => {
     }, 500);
   };
 
+
+  /** Free finger slot so the same finger can tap again after lift */
+  const releaseTapPointer = useCallback((e) => {
+    try {
+      if (e && e.pointerId != null) {
+        activeTapPointersRef.current.delete(e.pointerId);
+      }
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
   const handleTap = (e) => {
       if (!isDataLoaded) return;
 
-      // One real press = one credit. Block only:
-      //  - non-primary pointers
-      //  - the synthetic mouse event that follows a touch (same gesture)
-      // Do NOT use an empty/undefined ref (that crashed all taps).
+      // Multi-finger: each finger gets its own pointerdown (primary AND non-primary).
+      // Only block: synthetic mouse after touch, and the same finger scored twice while down.
       try {
-        if (e && e.isPrimary === false) return;
-
         const pType = (e && e.pointerType) || '';
         const isTouch =
           (e && e.type === 'touchstart') || pType === 'touch' || pType === 'pen';
+        const isMouse =
+          pType === 'mouse' ||
+          e?.type === 'mousedown' ||
+          e?.type === 'click';
+
+        // After a real touch, browsers fire a delayed mouse event — ignore that only
+        if (isMouse && touchLock.current) return;
 
         if (isTouch) {
           touchLock.current = true;
-          if (e.pointerId != null) lastTapPointerIdRef.current = e.pointerId;
           if (touchLockTimerRef.current) clearTimeout(touchLockTimerRef.current);
+          // Keep lock long enough to swallow ghost mouse; clear dead pointer ids softly
           touchLockTimerRef.current = setTimeout(() => {
             touchLock.current = false;
-            lastTapPointerIdRef.current = null;
             touchLockTimerRef.current = null;
-          }, 400);
-        } else if (touchLock.current) {
-          // mouse/click after touch — ignore
-          return;
+          }, 450);
         }
 
-        // Same pointer id double-fire within 80ms
-        const nowMsGate = Date.now();
-        if (
-          e &&
-          e.pointerId != null &&
-          lastTapPointerIdRef.current === e.pointerId &&
-          nowMsGate - (lastTapGateMsRef.current || 0) < 80 &&
-          !isTouch
-        ) {
-          return;
+        // Same finger already counting this press (pointerdown can re-fire)
+        const pid = e && e.pointerId != null ? e.pointerId : null;
+        if (pid != null) {
+          if (activeTapPointersRef.current.has(pid)) return;
+          activeTapPointersRef.current.add(pid);
         }
-        // Very short debounce for identical double dispatch (not for rapid multi-tap)
-        if (!isTouch && nowMsGate - (lastTapGateMsRef.current || 0) < 30) {
-          return;
-        }
-        lastTapGateMsRef.current = nowMsGate;
-        if (e && e.pointerId != null) lastTapPointerIdRef.current = e.pointerId;
       } catch (gateErr) {
         console.warn('tap gate', gateErr);
-        // Fall through — never block mining if gate misbehaves
       }
 
       // 🚨 FIX: Define 'now' immediately so buffs don't crash the function
       const now = new Date(); 
       
-      // SCAN FOR MULTIPLE FINGERS
+      // Each pointerdown / touch finger = one tap point (multi-finger = multiple events)
       let tapPoints = [];
-      if (e.type === 'touchstart') {
+      if (e.type === 'touchstart' && e.changedTouches && e.changedTouches.length) {
+        // Legacy touchstart path: credit each newly pressed finger once
         for (let i = 0; i < e.changedTouches.length; i++) {
-          tapPoints.push({ x: e.changedTouches[i].clientX, y: e.changedTouches[i].clientY });
+          const t = e.changedTouches[i];
+          const tid = t.identifier;
+          if (tid != null) {
+            if (activeTapPointersRef.current.has(`t${tid}`)) continue;
+            activeTapPointersRef.current.add(`t${tid}`);
+          }
+          tapPoints.push({ x: t.clientX, y: t.clientY });
         }
+        if (tapPoints.length === 0) return;
       } else {
-        tapPoints.push({ x: e.clientX, y: e.clientY });
+        tapPoints.push({
+          x: e.clientX,
+          y: e.clientY,
+        });
       }
 
       const today = utcTodayStr(now);
@@ -5530,9 +5540,21 @@ const GiftTapGame = () => {
                   <motion.div
                     whileTap={isDataLoaded ? { scale: 0.94 } : {}} 
                     onPointerDown={isDataLoaded ? handleTap : undefined}
-                    style={{ zIndex: 5, position: 'relative', marginTop: '-60px', // 3. Optional: Dim the button and physically disable clicks while loading
+                    onPointerUp={isDataLoaded ? releaseTapPointer : undefined}
+                    onPointerCancel={isDataLoaded ? releaseTapPointer : undefined}
+                    onPointerLeave={isDataLoaded ? releaseTapPointer : undefined}
+                    style={{
+                      zIndex: 5,
+                      position: 'relative',
+                      marginTop: '-60px',
                       opacity: isDataLoaded ? 1 : 0.6,
-                      pointerEvents: isDataLoaded ? 'auto' : 'none' }}
+                      pointerEvents: isDataLoaded ? 'auto' : 'none',
+                      // Allow multi-touch (default can be pan-y only on some browsers)
+                      touchAction: 'none',
+                      userSelect: 'none',
+                      WebkitUserSelect: 'none',
+                      WebkitTouchCallout: 'none',
+                    }}
                   >
                     <img 
                       src="/Gift2u_logo.png" 
