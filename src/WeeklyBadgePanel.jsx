@@ -11,6 +11,7 @@ import {
   badgeTierForWeeklyRank,
   hasClaimedWeeklyBadgeDurable,
   applyWeeklyBadgeAward,
+  getWeeklyBadgeAward,
 } from './weeklyBadges';
 import { mergeInventoryWeekly, hydrateWeeklyClaimsFromLedger } from './weeklyQuestLogic';
 import { ensureWeeklySeasonRollover } from './weeklySeasonRollover';
@@ -166,6 +167,9 @@ export default function WeeklyBadgePanel({
   }
 
   if (claimedPrev) {
+    const claimedTier =
+      getWeeklyBadgeAward(inventory, prevWeekId)?.tier || prevSnap?.tier || null;
+    const claimedMeta = claimedTier ? BADGE_TIERS[claimedTier] : null;
     return (
       <div
         style={{
@@ -174,10 +178,33 @@ export default function WeeklyBadgePanel({
           borderRadius: 12,
           padding: 10,
           marginBottom: 10,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 10,
         }}
       >
+        {claimedMeta?.image ? (
+          <img
+            src={claimedMeta.image}
+            alt={claimedMeta.name}
+            width={48}
+            height={48}
+            style={{
+              width: 48,
+              height: 48,
+              objectFit: 'contain',
+              borderRadius: 8,
+              flexShrink: 0,
+            }}
+          />
+        ) : null}
         <div style={{ color: '#4ade80', fontSize: 12, fontWeight: 'bold' }}>
           ✓ Last week ({prevWeekId}) badge claimed
+          {claimedMeta ? (
+            <div style={{ color: claimedMeta.color, fontWeight: 'normal', marginTop: 2 }}>
+              {claimedMeta.name}
+            </div>
+          ) : null}
         </div>
       </div>
     );
@@ -198,18 +225,44 @@ export default function WeeklyBadgePanel({
         marginBottom: 10,
       }}
     >
-      <div style={{ color: '#67e8f9', fontSize: 12, fontWeight: 'bold' }}>
-        Last week {prevWeekId} · #{prevSnap.rank}{' '}
-        <span style={{ color: meta.color }}>
-          {meta.emoji} {meta.name}
-        </span>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        {meta?.image ? (
+          <img
+            src={meta.image}
+            alt={meta.name}
+            width={72}
+            height={72}
+            style={{
+              width: 72,
+              height: 72,
+              objectFit: 'contain',
+              borderRadius: 10,
+              flexShrink: 0,
+              background: '#000',
+              border: `1px solid ${meta.color}`,
+            }}
+          />
+        ) : (
+          <div style={{ fontSize: 36 }}>{meta?.emoji || '🏅'}</div>
+        )}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ color: '#67e8f9', fontSize: 12, fontWeight: 'bold' }}>
+            Last week {prevWeekId} · #{prevSnap.rank}
+          </div>
+          <div style={{ color: meta.color, fontSize: 15, fontWeight: 'bold', marginTop: 4 }}>
+            {meta.name}
+          </div>
+          <div style={{ color: '#888', fontSize: 11, marginTop: 2 }}>
+            Weekly season prize — claim into your backpack
+          </div>
+        </div>
       </div>
       <button
         type="button"
         disabled={busy}
         onClick={handleClaim}
         style={{
-          marginTop: 8,
+          marginTop: 10,
           width: '100%',
           padding: '10px',
           borderRadius: 10,

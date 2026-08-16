@@ -415,6 +415,21 @@ export const SHOP_INVENTORY_QTY_KEYS = [
 ];
 
 /**
+ * Copy shop item counts from `authority` onto `target` (mutate + return).
+ * Missing / 0 on authority deletes the key — used items stay gone.
+ */
+export function applyShopQtyAuthority(target, authority) {
+  const out = target && typeof target === 'object' ? target : {};
+  const src = authority && typeof authority === 'object' ? authority : {};
+  for (const k of SHOP_INVENTORY_QTY_KEYS) {
+    const n = Math.max(0, Math.floor(Number(src[k]) || 0));
+    if (n <= 0) delete out[k];
+    else out[k] = n;
+  }
+  return out;
+}
+
+/**
  * Merge weekly/task metadata, but treat serverInv as authority for shop item counts.
  * If server omitted a key (item used up), it must disappear.
  * Plain {...prev, ...server} keeps prev qty when server key is missing — that was the exploit.
@@ -423,8 +438,23 @@ export function applyServerInventoryAuthority(prevInv, serverInv, weekId = getUt
   const prev = prevInv && typeof prevInv === 'object' ? prevInv : {};
   const server = serverInv && typeof serverInv === 'object' ? serverInv : {};
   const merged = mergeInventoryWeekly(prev, server, weekId);
+  return applyShopQtyAuthority(merged, server);
+}
+
+/**
+ * Merge two *full* inventory snapshots without resurrecting consumed boosts.
+ * For shop qty keys takes MIN(a,b) so used (0) always beats stale owned (1).
+ * Do NOT use for partial patches that omit shop keys — use applyServerInventoryAuthority
+ * when one side is the server/full post-buy/post-use inventory instead.
+ */
+export function mergeInventoriesPreferConsumed(a, b, weekId = getUtcWeekId()) {
+  const A = a && typeof a === 'object' ? a : {};
+  const B = b && typeof b === 'object' ? b : {};
+  const merged = mergeInventoryWeekly(A, B, weekId);
   for (const k of SHOP_INVENTORY_QTY_KEYS) {
-    const n = Math.max(0, Math.floor(Number(server[k]) || 0));
+    const aN = Math.max(0, Math.floor(Number(A[k]) || 0));
+    const bN = Math.max(0, Math.floor(Number(B[k]) || 0));
+    const n = Math.min(aN, bN);
     if (n <= 0) delete merged[k];
     else merged[k] = n;
   }
@@ -471,7 +501,15 @@ export function mergeInventoryWeekly(a, b, weekId = getUtcWeekId()) {
     taskBoost = bB || aB || undefined;
   }
 
-  return {
+  // daily_usage: union (used-today flags must not drop on merge)
+  let dailyUsage;
+  const aDu = A.daily_usage && typeof A.daily_usage === 'object' ? A.daily_usage : null;
+  const bDu = B.daily_usage && typeof B.daily_usage === 'object' ? B.daily_usage : null;
+  if (aDu || bDu) {
+    dailyUsage = { ...(aDu || {}), ...(bDu || {}) };
+  }
+
+  const result = {
     ...A,
     ...B,
     weekly_quests: mergeWeeklyStates(A.weekly_quests, B.weekly_quests, weekId),
@@ -486,6 +524,11 @@ export function mergeInventoryWeekly(a, b, weekId = getUtcWeekId()) {
       : A.claim_log || B.claim_log || undefined,
     task_limit_boost: taskBoost,
   };
+  if (dailyUsage) result.daily_usage = dailyUsage;
+  // NOTE: shop qty keys (battery/frenzy/…) stay as {...A,...B} here.
+  // Call applyServerInventoryAuthority / mergeInventoriesPreferConsumed when a
+  // consume or server snapshot must win — plain merge resurrects used items.
+  return result;
 }
 
 /** Sync weekly_quests.claimed from durable ledger (repair after wipe). */

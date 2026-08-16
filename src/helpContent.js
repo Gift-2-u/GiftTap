@@ -107,7 +107,9 @@ export const HELP_TIPS = {
   weekly_badges: {
     title: 'Weekly badges',
     body:
-      'Ranks → Weekly is a normal leaderboard (UTC week score). Top 10 at week end get one badge: Diamond #1, Gold #2, Silver #3, Bronze #4–10.\n\n' +
+      'Ranks → Weekly uses the same 15% activity idea as Season.\n\n' +
+      'Main board floor = 15% × 1,000 × day of the UTC week (day 1 Mon = 150 … day 7 = 1,050).\n\n' +
+      'At week end, only players with ≥ 1,050 weekly score are badge-eligible. Top 10 eligible get one badge: Diamond #1, Gold #2, Silver #3, Bronze #4–10.\n\n' +
       'Claim finished-week badges in Shop → Pack → Badges. Burn badges there for Mystery Gift.\n\n' +
       'Full rules: Menu → Game Guide → Leaderboards.',
   },

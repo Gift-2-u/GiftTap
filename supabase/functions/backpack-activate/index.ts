@@ -90,8 +90,9 @@ serve(async (req) => {
       throw new Error(`Already used ${itemId} today (UTC). Wait until midnight.`);
     }
 
-    // Deduct charge — force remove key when 0
+    // Deduct charge — set 0 then delete so clients never re-merge a ghost qty
     if (have <= 1) {
+      inv[itemId] = 0;
       delete inv[itemId];
     } else {
       inv[itemId] = have - 1;
@@ -155,12 +156,23 @@ serve(async (req) => {
       .maybeSingle();
 
     const outInv = invObj(verified?.inventory ?? inv);
-    // Ensure consumed item is gone if still present due to race
+    // Ensure consumed item is gone if still present due to race / stale write
     const still = Math.max(0, Math.floor(Number(outInv[itemId]) || 0));
-    if (still >= have) {
-      if (have <= 1) delete outInv[itemId];
-      else outInv[itemId] = have - 1;
-      await sb.from("players").update({ inventory: outInv, last_updated: new Date().toISOString() }).eq("telegram_id", playerId);
+    const expect = have <= 1 ? 0 : have - 1;
+    if (still > expect) {
+      if (expect <= 0) {
+        outInv[itemId] = 0;
+        delete outInv[itemId];
+      } else {
+        outInv[itemId] = expect;
+      }
+      await sb
+        .from("players")
+        .update({ inventory: outInv, last_updated: new Date().toISOString() })
+        .eq("telegram_id", playerId);
+    } else if (still <= 0) {
+      outInv[itemId] = 0;
+      delete outInv[itemId];
     }
     // Merge daily_usage into inventory for clients that only read inventory
     let outDaily = dailyUsage;
@@ -174,6 +186,16 @@ serve(async (req) => {
       outDaily[itemId] = today;
     }
     outInv.daily_usage = outDaily;
+    // Never return a ghost charge for the item just activated
+    if (expect <= 0) {
+      outInv[itemId] = 0;
+      delete outInv[itemId];
+    } else {
+      outInv[itemId] = Math.min(
+        Math.max(0, Math.floor(Number(outInv[itemId]) || 0)),
+        expect,
+      );
+    }
 
     await logEconomy(sb, {
       player_id: playerId,

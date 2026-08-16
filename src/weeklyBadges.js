@@ -11,6 +11,9 @@
 import { getUtcWeekId } from './weeklyQuestLogic';
 import { claimKey } from './claimOnce';
 
+/** Public PNG art for weekly season prizes (Shop → Pack → Badges). */
+export const BADGE_IMAGE_BASE = '/shop/weekly-badges';
+
 export const BADGE_TIERS = {
   bronze: {
     id: 'bronze',
@@ -18,6 +21,7 @@ export const BADGE_TIERS = {
     name: 'Bronze Badge',
     emoji: '🥉',
     color: '#cd7f32',
+    image: `${BADGE_IMAGE_BASE}/badge_bronze.png`,
   },
   silver: {
     id: 'silver',
@@ -25,6 +29,7 @@ export const BADGE_TIERS = {
     name: 'Silver Badge',
     emoji: '🥈',
     color: '#c0c0c0',
+    image: `${BADGE_IMAGE_BASE}/badge_silver.png`,
   },
   gold: {
     id: 'gold',
@@ -32,6 +37,7 @@ export const BADGE_TIERS = {
     name: 'Gold Badge',
     emoji: '🥇',
     color: '#ffd700',
+    image: `${BADGE_IMAGE_BASE}/badge_gold.png`,
   },
   diamond: {
     id: 'diamond',
@@ -39,8 +45,18 @@ export const BADGE_TIERS = {
     name: 'Diamond Badge',
     emoji: '💎',
     color: '#67e8f9',
+    image: `${BADGE_IMAGE_BASE}/badge_diamond.png`,
   },
 };
+
+/** Resolve badge PNG for a tier id (bronze/silver/gold/diamond). */
+export function badgeImageForTier(tier) {
+  if (!tier) return null;
+  const meta =
+    BADGE_TIERS[tier] ||
+    Object.values(BADGE_TIERS).find((t) => t.itemId === tier || t.id === tier);
+  return meta?.image || null;
+}
 
 /** Burn cost to open mystery gift (one tier only per open) */
 export const MYSTERY_BOX_COSTS = {
@@ -53,8 +69,47 @@ export const MYSTERY_BOX_COSTS = {
 export const BADGE_ITEM_IDS = Object.values(BADGE_TIERS).map((t) => t.itemId);
 
 /**
+ * Weekly main-board / badge floor (same spirit as season 15% rule).
+ *
+ * Reference pace: 1000 score/day.
+ * Live board floor = 15% × 1000 × ISO weekday (Mon=1 … Sun=7)
+ *   → day 1 = 150 … day 7 = 1050
+ * Badge floor at week end (finished week) = 15% × 1000 × 7 = 1050
+ * Only players at/above the badge floor can win Diamond/Gold/Silver/Bronze.
+ */
+export const WEEKLY_DAILY_REFERENCE = 1000;
+export const WEEKLY_FLOOR_PCT = 0.15;
+export const WEEKLY_DAYS = 7;
+
+/** Full-week badge eligibility floor (end of UTC week). */
+export function getWeeklyBadgeFloor() {
+  return Math.floor(WEEKLY_DAILY_REFERENCE * WEEKLY_FLOOR_PCT * WEEKLY_DAYS);
+}
+
+/**
+ * ISO weekday in UTC: Monday = 1 … Sunday = 7.
+ */
+export function getUtcIsoWeekDayNumber(date = new Date()) {
+  return date.getUTCDay() || 7;
+}
+
+/**
+ * Live Weekly main-board floor (grows through the week).
+ * @param {number} [dayOfWeek] 1–7 (Mon–Sun UTC); default today UTC
+ */
+export function getWeeklyBoardFloor(dayOfWeek = getUtcIsoWeekDayNumber()) {
+  const day = Math.max(1, Math.min(WEEKLY_DAYS, Math.floor(Number(dayOfWeek) || 1)));
+  return Math.floor(WEEKLY_DAILY_REFERENCE * WEEKLY_FLOOR_PCT * day);
+}
+
+export function isWeeklyFloorEligible(score, floor) {
+  const f = Math.max(0, Number(floor) || 0);
+  return Math.max(0, Number(score) || 0) >= f;
+}
+
+/**
  * Rank → badge tier for the Weekly leaderboard (resets every UTC week).
- * Fight for top 10 — only one badge per player per week when claimed.
+ * Rank is among floor-eligible players only.
  *  #1 Diamond · #2 Gold · #3 Silver · #4–10 Bronze · #11+ none
  */
 export function badgeTierForWeeklyRank(rank, _totalPlayers) {
@@ -65,6 +120,22 @@ export function badgeTierForWeeklyRank(rank, _totalPlayers) {
   if (r === 3) return 'silver';
   if (r >= 4 && r <= 10) return 'bronze';
   return null;
+}
+
+/**
+ * Filter to main-board (score ≥ floor), sort desc, cap list.
+ * Does not change scores — only who is on the main board.
+ */
+export function filterWeeklyMainBoard(rows, floor, limit = 50) {
+  const f = Math.max(0, Number(floor) || 0);
+  return (rows || [])
+    .filter((r) => isWeeklyFloorEligible(r.weekly_score ?? r.score ?? 0, f))
+    .sort(
+      (a, b) =>
+        (Number(b.weekly_score ?? b.score) || 0) -
+        (Number(a.weekly_score ?? a.score) || 0),
+    )
+    .slice(0, limit);
 }
 
 /** inventory.weekly_lb: { weekId, score } — this UTC week's mining score */
@@ -102,29 +173,82 @@ export function weeklyScoreFromPlayerRow(row, weekId = getUtcWeekId()) {
   return getWeeklyLbState(row.inventory, weekId).score;
 }
 
-export function sortWeeklyLeaderboard(rows, weekId = getUtcWeekId(), limit = 50) {
-  return (rows || [])
+/**
+ * Sort all weekly scores (no floor). Pass floor to return main-board only.
+ * @param {object} [opts]
+ * @param {number} [opts.floor] if set, only score ≥ floor (main board)
+ * @param {number} [opts.limit]
+ */
+export function sortWeeklyLeaderboard(rows, weekId = getUtcWeekId(), limitOrOpts = 50) {
+  const opts =
+    typeof limitOrOpts === 'object' && limitOrOpts != null
+      ? limitOrOpts
+      : { limit: limitOrOpts };
+  const limit = opts.limit != null ? opts.limit : 50;
+  const floor = opts.floor;
+  let list = (rows || [])
     .map((r) => ({
       ...r,
       weekly_score: weeklyScoreFromPlayerRow(r, weekId),
     }))
     .filter((r) => r.weekly_score > 0)
-    .sort((a, b) => b.weekly_score - a.weekly_score)
-    .slice(0, limit);
+    .sort((a, b) => b.weekly_score - a.weekly_score);
+  if (floor != null && Number(floor) > 0) {
+    list = filterWeeklyMainBoard(list, floor, limit);
+  } else {
+    list = list.slice(0, limit);
+  }
+  return list;
 }
 
-export function rankOnWeeklyBoard(sortedRows, playerId, dbPlayerIdCol = 'telegram_id') {
-  if (!playerId || !sortedRows?.length) return null;
+/**
+ * Rank on weekly board. If `floor` is set, rank is among eligible only;
+ * under-floor players get onMain: false and no badge tier.
+ */
+export function rankOnWeeklyBoard(
+  sortedRows,
+  playerId,
+  dbPlayerIdCol = 'telegram_id',
+  floor = null,
+) {
+  if (!playerId) return null;
   const pid = String(playerId);
-  const idx = sortedRows.findIndex(
-    (r) => String(r[dbPlayerIdCol] || r.id || '') === pid,
+  const all = sortedRows || [];
+  const f = floor != null ? Math.max(0, Number(floor) || 0) : null;
+  const main =
+    f != null && f > 0
+      ? all.filter((r) => isWeeklyFloorEligible(r.weekly_score ?? r.score ?? 0, f))
+      : all;
+
+  const inMain = main.findIndex(
+    (r) => String(r[dbPlayerIdCol] || r.telegram_id || r.id || '') === pid,
   );
-  if (idx < 0) return null;
+  if (inMain >= 0) {
+    return {
+      rank: inMain + 1,
+      score: main[inMain].weekly_score ?? main[inMain].score ?? 0,
+      total: main.length,
+      tier: badgeTierForWeeklyRank(inMain + 1, main.length),
+      onMain: true,
+      floor: f,
+      need: 0,
+    };
+  }
+
+  // Not on main board — find score from full list or null
+  const any = all.find(
+    (r) => String(r[dbPlayerIdCol] || r.telegram_id || r.id || '') === pid,
+  );
+  if (!any && f == null) return null;
+  const score = any ? Number(any.weekly_score ?? any.score) || 0 : 0;
   return {
-    rank: idx + 1,
-    score: sortedRows[idx].weekly_score,
-    total: sortedRows.length,
-    tier: badgeTierForWeeklyRank(idx + 1, sortedRows.length),
+    rank: null,
+    score,
+    total: main.length,
+    tier: null,
+    onMain: false,
+    floor: f,
+    need: f != null ? Math.max(0, f - score) : 0,
   };
 }
 
@@ -449,6 +573,7 @@ export function badgeCatalogForBackpack() {
     name: t.name,
     emoji: t.emoji,
     color: t.color,
+    image: t.image,
     category: 'badge',
     desc: 'Weekly leaderboard prize · burn for Mystery Gift',
   }));

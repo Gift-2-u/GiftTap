@@ -153,7 +153,9 @@ import {
   isDailyLimitDrained,
   WEEKLY_BASE_DAILY_LIMIT,
   mergeInventoryWeekly,
+  mergeInventoriesPreferConsumed,
   applyServerInventoryAuthority,
+  applyShopQtyAuthority,
   mergeWeeklyClaimKeys,
   hydrateWeeklyClaimsFromLedger,
 } from './weeklyQuestLogic';
@@ -173,6 +175,14 @@ import {
   sortWeeklyLeaderboard,
   rankOnWeeklyBoard,
   badgeTierForWeeklyRank,
+  BADGE_TIERS,
+  getWeeklyBoardFloor,
+  getWeeklyBadgeFloor,
+  getUtcIsoWeekDayNumber,
+  filterWeeklyMainBoard,
+  WEEKLY_FLOOR_PCT,
+  WEEKLY_DAILY_REFERENCE,
+  isWeeklyFloorEligible,
 } from './weeklyBadges';
 import { ensureWeeklySeasonRollover } from './weeklySeasonRollover';
 import {
@@ -592,6 +602,10 @@ const GiftTapGame = () => {
   const [seasonEligibleCount, setSeasonEligibleCount] = useState(0);
   /** Weekly board: your rank this UTC week */
   const [weeklyYouRank, setWeeklyYouRank] = useState(null);
+  /** Live weekly main-board floor (15% × 1000 × ISO weekday) */
+  const [weeklyBoardFloor, setWeeklyBoardFloor] = useState(() => getWeeklyBoardFloor());
+  const [weeklyBoardDay, setWeeklyBoardDay] = useState(() => getUtcIsoWeekDayNumber());
+  const [weeklyEligibleCount, setWeeklyEligibleCount] = useState(0);
   const optimisticWeekly = useRef(0);
   /** Hard security: accumulate valid taps, flush via commit-taps */
   const pendingTapsRef = useRef({ count: 0, batchId: null });
@@ -827,11 +841,12 @@ const GiftTapGame = () => {
   }, []);
 
   // Keep inventoryRef aligned when shop/backpack/badges update stats.inventory
-  // MUST use server authority for shop qty keys or used boosts reappear and get saved back.
+  // Prefer lower shop qty so a stale stats.inventory (battery:1) cannot restore a
+  // charge that backpack already consumed (Expanded Battery ghost owned:1).
   useEffect(() => {
     if (!stats?.inventory) return;
     const weekId = getUtcWeekId();
-    inventoryRef.current = applyServerInventoryAuthority(
+    inventoryRef.current = mergeInventoriesPreferConsumed(
       inventoryRef.current || {},
       stats.inventory,
       weekId,
@@ -930,16 +945,22 @@ const GiftTapGame = () => {
                   .select('inventory')
                   .eq(DB_PLAYER_ID, String(playerId))
                   .maybeSingle();
-                let merged = mergeInventoryWeekly(
+                let merged = mergeInventoriesPreferConsumed(
                   hydrateWeeklyClaimsFromLedger(row?.inventory || {}, weekId),
                   nextInv,
                   weekId,
                 );
+                // nextInv (local progress) is authority for shop qty after USE
+                merged = applyShopQtyAuthority(merged, nextInv);
                 merged = hydrateWeeklyClaimsFromLedger(merged, weekId);
-                inventoryRef.current = mergeInventoryWeekly(
+                inventoryRef.current = mergeInventoriesPreferConsumed(
                   inventoryRef.current || {},
                   merged,
                   weekId,
+                );
+                inventoryRef.current = applyShopQtyAuthority(
+                  inventoryRef.current,
+                  nextInv,
                 );
                 const { error } = await supabase
                   .from('players')
@@ -1288,15 +1309,20 @@ const GiftTapGame = () => {
         await ensureWeeklySeasonRollover();
         const weekId = getUtcWeekId();
         const liveW = Number(optimisticWeekly.current) || 0;
+        const day = getUtcIsoWeekDayNumber();
+        const floor = getWeeklyBoardFloor(day);
+        setWeeklyBoardDay(day);
+        setWeeklyBoardFloor(floor);
 
         // Prefer dedicated view (fast). Fallback to players columns / inventory.
+        // Pull a wider pool then apply 15% floor client-side (main board).
         let rows = [];
         let { data, error } = await supabase
           .from('leaderboard_weekly')
           .select('*')
           .eq('weekly_week_id', weekId)
           .order('weekly_shards', { ascending: false })
-          .limit(50);
+          .limit(200);
 
         if (error) {
           console.warn('leaderboard_weekly view:', error.message);
@@ -1307,7 +1333,7 @@ const GiftTapGame = () => {
             .eq('weekly_week_id', weekId)
             .gt('weekly_shards', 0)
             .order('weekly_shards', { ascending: false })
-            .limit(50));
+            .limit(200));
           if (error) {
             console.warn('weekly players fallback:', error.message);
             // Last resort: inventory.weekly_lb parse
@@ -1316,7 +1342,7 @@ const GiftTapGame = () => {
               .select(`${DB_PLAYER_ID}, username, inventory`)
               .limit(1000));
             if (error) throw error;
-            rows = sortWeeklyLeaderboard(data || [], weekId, 50);
+            rows = sortWeeklyLeaderboard(data || [], weekId, { limit: 200 });
           } else {
             rows = (data || []).map((r) => ({
               ...r,
@@ -1332,7 +1358,7 @@ const GiftTapGame = () => {
           }));
         }
 
-        // Inject live self (device may be ahead of last save)
+        // Inject live self (device may be ahead of last save) into full pool first
         if (playerId && liveW > 0) {
           const ix = rows.findIndex(
             (r) => String(r[DB_PLAYER_ID] || r.telegram_id || '') === String(playerId),
@@ -1353,31 +1379,37 @@ const GiftTapGame = () => {
                 weekly_week_id: weekId,
               },
               ...rows,
-            ]
-              .sort((a, b) => (b.weekly_score || 0) - (a.weekly_score || 0))
-              .slice(0, 50);
+            ].sort((a, b) => (b.weekly_score || 0) - (a.weekly_score || 0));
           }
         }
 
-        setLeaderboard(rows);
+        const allRows = rows;
+        const mainRows = filterWeeklyMainBoard(allRows, floor, 50);
+        setWeeklyEligibleCount(mainRows.length);
+        setLeaderboard(mainRows);
         setSeasonYouRank(null);
-        setSeasonEligibleCount(rows.length);
-        const me = rankOnWeeklyBoard(rows, playerId, DB_PLAYER_ID);
-        if (me) {
+        setSeasonEligibleCount(0);
+
+        const me = rankOnWeeklyBoard(allRows, playerId, DB_PLAYER_ID, floor);
+        if (me && playerId) {
+          const inList = mainRows.some(
+            (r) =>
+              String(r[DB_PLAYER_ID] || r.telegram_id || '') === String(playerId),
+          );
           setWeeklyYouRank({
             ...me,
-            inList: rows.some(
-              (r) =>
-                String(r[DB_PLAYER_ID] || r.telegram_id || '') ===
-                String(playerId),
-            ),
+            score: Math.max(liveW, Number(me.score) || 0),
+            inList,
           });
         } else if (playerId) {
           setWeeklyYouRank({
             rank: null,
             score: liveW,
-            total: rows.length,
+            total: mainRows.length,
             tier: null,
+            onMain: isWeeklyFloorEligible(liveW, floor),
+            floor,
+            need: Math.max(0, floor - liveW),
             inList: false,
           });
         } else {
@@ -1387,6 +1419,7 @@ const GiftTapGame = () => {
         console.warn('weekly leaderboard', e?.message || e);
         setLeaderboard([]);
         setWeeklyYouRank(null);
+        setWeeklyEligibleCount(0);
       } finally {
         setLeaderboardLoading(false);
       }
@@ -3085,16 +3118,15 @@ const GiftTapGame = () => {
       delete inv.wall_fee_progress;
       delete inv.wall_fee_wall;
       const saveWeekId = getUtcWeekId();
-      let nextInventory = applyServerInventoryAuthority(
+      // Shop qty: inventoryRef wins (and prefer lower vs stale stats so USE sticks)
+      let nextInventory = mergeInventoriesPreferConsumed(
         stats.inventory || {},
-        inv,
-        saveWeekId,
-      );
-      // inventoryRef is authority for shop item counts (consumed items stay gone)
-      nextInventory = applyServerInventoryAuthority(
-        nextInventory,
         inventoryRef.current || inv,
         saveWeekId,
+      );
+      nextInventory = applyShopQtyAuthority(
+        nextInventory,
+        inventoryRef.current || inv,
       );
       nextInventory = hydrateWeeklyClaimsFromLedger(nextInventory, saveWeekId);
       nextInventory.wall_snooze_level =
@@ -3209,12 +3241,24 @@ const GiftTapGame = () => {
         };
         lastLocalSaveAtRef.current = Date.now();
         setStats((prev) => {
-          // Never drop weekly claims if a concurrent claim added them
+          // Never drop weekly claims if a concurrent claim added them.
+          // Shop qty: prefer consumed (min) so Expanded Battery owned:1 cannot
+          // resurrect after USE when a stale prev.inventory still has the charge.
           const wk = getUtcWeekId();
-          let mergedInv = mergeInventoryWeekly(
-            mergeInventoryWeekly(nextInventory, prev.inventory || {}, wk),
+          let mergedInv = mergeInventoriesPreferConsumed(
+            mergeInventoriesPreferConsumed(
+              nextInventory,
+              prev.inventory || {},
+              wk,
+            ),
             inventoryRef.current || {},
             wk,
+          );
+          // What we just wrote is authority for shop item counts
+          mergedInv = applyShopQtyAuthority(mergedInv, nextInventory);
+          mergedInv = applyShopQtyAuthority(
+            mergedInv,
+            inventoryRef.current || nextInventory,
           );
           mergedInv = hydrateWeeklyClaimsFromLedger(mergedInv, wk);
           inventoryRef.current = mergedInv;
@@ -4008,13 +4052,19 @@ const GiftTapGame = () => {
               }
               setStats((prev) => {
                 const wk = getUtcWeekId();
-                let nextInv = mergeInventoryWeekly(
+                // Realtime row is shop-qty authority (used items must stay gone)
+                let nextInv = applyServerInventoryAuthority(
                   mergeInventoryWeekly(
                     prev.inventory || {},
                     inventoryRef.current || {},
                     wk,
                   ),
                   inv || {},
+                  wk,
+                );
+                nextInv = mergeInventoriesPreferConsumed(
+                  inventoryRef.current || {},
+                  nextInv,
                   wk,
                 );
                 nextInv = hydrateWeeklyClaimsFromLedger(nextInv, wk);
@@ -4031,13 +4081,18 @@ const GiftTapGame = () => {
               // Still refresh inventory / buffs — never wipe weekly claims
               setStats((prev) => {
                 const wk = getUtcWeekId();
-                let nextInv = mergeInventoryWeekly(
+                let nextInv = applyServerInventoryAuthority(
                   mergeInventoryWeekly(
                     prev.inventory || {},
                     inventoryRef.current || {},
                     wk,
                   ),
                   inv || {},
+                  wk,
+                );
+                nextInv = mergeInventoriesPreferConsumed(
+                  inventoryRef.current || {},
+                  nextInv,
                   wk,
                 );
                 nextInv = hydrateWeeklyClaimsFromLedger(nextInv, wk);
@@ -5818,6 +5873,67 @@ const GiftTapGame = () => {
                   </div>
                 ) : null}
 
+                {leaderboardType === 'Weekly' ? (
+                  <div style={{ marginBottom: 12 }}>
+                    <div style={{ textAlign: 'center', color: '#888', fontSize: 11, marginBottom: 6, lineHeight: 1.4 }}>
+                      Day {weeklyBoardDay}/7 · Main board ≥{' '}
+                      <span style={{ color: '#67e8f9', fontWeight: 'bold' }}>
+                        {Number(weeklyBoardFloor).toLocaleString()}
+                      </span>
+                      {' '}({Math.round(WEEKLY_FLOOR_PCT * 100)}% ×{' '}
+                      {WEEKLY_DAILY_REFERENCE.toLocaleString()}/day)
+                      {weeklyEligibleCount > 0 ? (
+                        <span style={{ color: '#4ade80' }}> · {weeklyEligibleCount} eligible</span>
+                      ) : null}
+                    </div>
+                    <div style={{ textAlign: 'center', color: '#666', fontSize: 10, marginBottom: 8, lineHeight: 1.35 }}>
+                      Badge floor at week end: ≥ {getWeeklyBadgeFloor().toLocaleString()} · Top 10 eligible · claim in Shop → Pack → Badges
+                    </div>
+                    <div
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'center',
+                        gap: 10,
+                        flexWrap: 'wrap',
+                      }}
+                    >
+                      {[
+                        ['diamond', '#1'],
+                        ['gold', '#2'],
+                        ['silver', '#3'],
+                        ['bronze', '#4–10'],
+                      ].map(([tier, rankLabel]) => {
+                        const m = BADGE_TIERS[tier];
+                        return (
+                          <div
+                            key={tier}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: 6,
+                              background: '#1c1e22',
+                              border: `1px solid ${m.color}55`,
+                              borderRadius: 10,
+                              padding: '4px 8px',
+                            }}
+                          >
+                            <img
+                              src={m.image}
+                              alt={m.name}
+                              width={28}
+                              height={28}
+                              style={{ width: 28, height: 28, objectFit: 'contain' }}
+                            />
+                            <span style={{ color: m.color, fontSize: 10, fontWeight: 'bold' }}>
+                              {rankLabel}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ) : null}
+
 <div style={{ background: '#1c1e22', borderRadius: '16px', border: '1px solid #333', overflow: 'hidden' }}>
                   {leaderboardLoading ? (
                     <p style={{ color: '#888', textAlign: 'center', padding: '28px' }}>Loading ranks…</p>
@@ -5830,6 +5946,11 @@ const GiftTapGame = () => {
                         No one has reached the main-board floor yet ({Number(seasonBoardFloor).toLocaleString()}).
                       </p>
                     ) : null}
+                    {leaderboard.length === 0 && leaderboardType === 'Weekly' ? (
+                      <p style={{ color: '#666', textAlign: 'center', padding: '16px 14px 8px', fontSize: 12, margin: 0 }}>
+                        No one has reached the weekly main-board floor yet ({Number(weeklyBoardFloor).toLocaleString()}).
+                      </p>
+                    ) : null}
                     {leaderboard.map((row, index) => {
                       const name = row.username || (row[DB_PLAYER_ID] ? `ID:..${String(row[DB_PLAYER_ID]).slice(-4)}` : 'Anon');
                       const score = leaderboardType === 'all_time'
@@ -5838,6 +5959,11 @@ const GiftTapGame = () => {
                           ? (row.weekly_score ?? row.score ?? 0)
                           : (row.score ?? row.season_shards ?? row.lifetime_taps ?? 0);
                       const isYou = playerId && String(row[DB_PLAYER_ID] || row.id || '') === String(playerId);
+                      const weeklyTier =
+                        leaderboardType === 'Weekly'
+                          ? badgeTierForWeeklyRank(index + 1)
+                          : null;
+                      const weeklyBadge = weeklyTier ? BADGE_TIERS[weeklyTier] : null;
                       return (
                         <div
                           key={row.id || row[DB_PLAYER_ID] || index}
@@ -5848,16 +5974,37 @@ const GiftTapGame = () => {
                             padding: '12px 14px',
                             borderBottom: '1px solid #2a2d34',
                             background: isYou ? 'rgba(255, 215, 0, 0.08)' : 'transparent',
+                            gap: 8,
                           }}
                         >
-                          <span style={{ color: isYou ? '#ffd700' : '#fff', fontSize: '13px', fontWeight: isYou ? 'bold' : 'normal' }}>
+                          <span style={{ color: isYou ? '#ffd700' : '#fff', fontSize: '13px', fontWeight: isYou ? 'bold' : 'normal', display: 'flex', alignItems: 'center', minWidth: 0 }}>
                             <span style={{ color: '#666', marginRight: '8px', minWidth: '28px', display: 'inline-block' }}>
                               {index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `#${index + 1}`}
                             </span>
-                            {name}{isYou ? ' (you)' : ''}
+                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {name}{isYou ? ' (you)' : ''}
+                            </span>
                           </span>
-                          <span style={{ color: '#528db0', fontSize: '13px', fontWeight: 'bold' }}>
-                            {Number(score).toLocaleString()}
+                          <span style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+                            {weeklyBadge?.image ? (
+                              <img
+                                src={weeklyBadge.image}
+                                alt={weeklyBadge.name}
+                                title={`${weeklyBadge.name} if week ends here`}
+                                width={28}
+                                height={28}
+                                style={{
+                                  width: 28,
+                                  height: 28,
+                                  objectFit: 'contain',
+                                  borderRadius: 6,
+                                  background: '#000',
+                                }}
+                              />
+                            ) : null}
+                            <span style={{ color: '#528db0', fontSize: '13px', fontWeight: 'bold' }}>
+                              {Number(score).toLocaleString()}
+                            </span>
                           </span>
                         </div>
                       );
@@ -5872,14 +6019,65 @@ const GiftTapGame = () => {
                           padding: '12px 14px',
                           borderTop: '2px solid #67e8f9',
                           background: 'rgba(103, 232, 249, 0.1)',
+                          gap: 8,
                         }}
                       >
                         <span style={{ color: '#67e8f9', fontSize: '13px', fontWeight: 'bold' }}>
-                          {weeklyYouRank.rank ? `#${weeklyYouRank.rank}` : '—'}{' '}
+                          <span style={{ color: '#888', marginRight: 8, minWidth: 28, display: 'inline-block' }}>
+                            {weeklyYouRank.rank ? `#${weeklyYouRank.rank}` : '—'}
+                          </span>
                           {(player?.username || 'You')} (you)
+                          {!weeklyYouRank.onMain ? (
+                            <span
+                              style={{
+                                display: 'block',
+                                color: '#888',
+                                fontSize: 10,
+                                fontWeight: 'normal',
+                                marginTop: 4,
+                                marginLeft: 36,
+                              }}
+                            >
+                              Off main board · need{' '}
+                              {Number(weeklyYouRank.need || 0).toLocaleString()} more for floor (
+                              {Number(weeklyBoardFloor).toLocaleString()})
+                            </span>
+                          ) : (
+                            <span
+                              style={{
+                                display: 'block',
+                                color: '#888',
+                                fontSize: 10,
+                                fontWeight: 'normal',
+                                marginTop: 4,
+                                marginLeft: 36,
+                              }}
+                            >
+                              On main board · outside top shown
+                            </span>
+                          )}
                         </span>
-                        <span style={{ color: '#67e8f9', fontSize: '13px', fontWeight: 'bold' }}>
-                          {Number(weeklyYouRank.score || 0).toLocaleString()}
+                        <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          {weeklyYouRank.onMain &&
+                          weeklyYouRank.tier &&
+                          BADGE_TIERS[weeklyYouRank.tier]?.image ? (
+                            <img
+                              src={BADGE_TIERS[weeklyYouRank.tier].image}
+                              alt={BADGE_TIERS[weeklyYouRank.tier].name}
+                              width={28}
+                              height={28}
+                              style={{
+                                width: 28,
+                                height: 28,
+                                objectFit: 'contain',
+                                borderRadius: 6,
+                                background: '#000',
+                              }}
+                            />
+                          ) : null}
+                          <span style={{ color: '#67e8f9', fontSize: '13px', fontWeight: 'bold' }}>
+                            {Number(weeklyYouRank.score || 0).toLocaleString()}
+                          </span>
                         </span>
                       </div>
                     ) : null}

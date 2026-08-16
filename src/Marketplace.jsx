@@ -17,7 +17,9 @@ import {
   applyWeeklyBoostBuy,
   getUtcWeekId,
   mergeInventoryWeekly,
+  mergeInventoriesPreferConsumed,
   applyServerInventoryAuthority,
+  applyShopQtyAuthority,
   hydrateWeeklyClaimsFromLedger,
   applyTaskLimitBoostToInventory,
 } from './weeklyQuestLogic';
@@ -168,9 +170,15 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
 
   useEffect(() => {
     if (stats?.inventory) {
-      // Authority merge so a parent re-render cannot put consumed boosts back
+      // Prefer lower shop counts so a lagging parent inventory (battery:1)
+      // cannot resurrect a charge that was just USE'd (local 0).
+      // Buys still work: after buy both sides rise together via setStats.
       setLocalInventory((prev) =>
-        applyServerInventoryAuthority(prev || {}, stats.inventory, getUtcWeekId()),
+        mergeInventoriesPreferConsumed(
+          prev || {},
+          stats.inventory,
+          getUtcWeekId(),
+        ),
       );
     }
     const fromStats = stats?.daily_usage;
@@ -468,7 +476,7 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
         if (setStats) {
           setStats((prev) => ({
             ...prev,
-            inventory: mergeInventoryWeekly(
+            inventory: applyServerInventoryAuthority(
               prev?.inventory || {},
               newInventory,
               getUtcWeekId(),
@@ -507,7 +515,7 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
         setStats((prev) => ({
           ...prev,
           ...stats,
-          inventory: mergeInventoryWeekly(
+          inventory: applyServerInventoryAuthority(
             prev?.inventory || {},
             newInventory,
             getUtcWeekId(),
@@ -866,25 +874,33 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
     if (hasSecureSession()) {
       try {
         const data = await secureBackpackActivate(item.id);
-        let inv = { ...(data.inventory || {}) };
+        const weekId = getUtcWeekId();
         const prevQty = Math.max(0, Math.floor(Number(localInventory[item.id]) || 0));
+        let inv = { ...(data.inventory || {}) };
+        // Force consume: explicit 0 so later merges cannot resurrect via missing-key
         const serverQty = Math.max(0, Math.floor(Number(inv[item.id]) || 0));
         let nextQty = serverQty;
         if (serverQty >= prevQty && prevQty > 0) nextQty = prevQty - 1;
-        if (nextQty <= 0) delete inv[item.id];
-        else inv[item.id] = nextQty;
+        if (nextQty <= 0) {
+          inv[item.id] = 0;
+          delete inv[item.id];
+        } else {
+          inv[item.id] = nextQty;
+        }
 
-        const weekId = getUtcWeekId();
-        const authInv = applyServerInventoryAuthority(
+        let authInv = applyServerInventoryAuthority(
           stats?.inventory || localInventory || {},
           inv,
           weekId,
         );
-        if (nextQty <= 0) delete authInv[item.id];
-        else authInv[item.id] = nextQty;
-
-        // Always force-consume this item in UI (even if server lag)
+        // Always force-consume this charge in UI (even if server lag)
+        authInv[item.id] = 0;
         delete authInv[item.id];
+        authInv = applyShopQtyAuthority(authInv, {
+          ...authInv,
+          [item.id]: 0,
+        });
+
         const todayUse = getTodayUTCString();
         const nextDailyUsage = {
           ...(data.daily_usage || dailyUsage || {}),
@@ -892,7 +908,6 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
             ? { [item.id]: todayUse }
             : {}),
         };
-        // Keep usage inside inventory too (survives if column missing)
         authInv.daily_usage = nextDailyUsage;
 
         setLocalInventory({ ...authInv });
@@ -904,32 +919,46 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
           if (setEnergy) setEnergy(Math.min(500, Math.max(0, en)));
         }
         if (setStats) {
-          setStats((prev) => ({
-            ...prev,
-            ...data.updates,
-            last_energy:
-              data.last_energy != null
-                ? Number(data.last_energy)
-                : prev.last_energy,
-            inventory: { ...authInv },
-            daily_usage: nextDailyUsage,
-          }));
+          setStats((prev) => {
+            // Prefer consumed over any stale parent inventory
+            let next = mergeInventoriesPreferConsumed(
+              prev?.inventory || {},
+              authInv,
+              weekId,
+            );
+            next = applyShopQtyAuthority(next, authInv);
+            next.daily_usage = nextDailyUsage;
+            return {
+              ...prev,
+              ...data.updates,
+              last_energy:
+                data.last_energy != null
+                  ? Number(data.last_energy)
+                  : prev.last_energy,
+              inventory: next,
+              daily_usage: nextDailyUsage,
+            };
+          });
         }
 
-        // Re-fetch ground truth so logout/login cannot restore a ghost boost
+        // Re-fetch ground truth; still force this item consumed if server lagged
         try {
           const { data: row } = await supabase
             .from('players')
-            .select('inventory, daily_usage, last_energy, energy_boost_expires')
+            .select(
+              'inventory, daily_usage, last_energy, energy_boost_expires, frenzy_expires, efficiency_expires',
+            )
             .eq(DB_PLAYER_ID, String(user.id))
             .maybeSingle();
           if (row?.inventory) {
-            const cleaned = applyServerInventoryAuthority(
-              {},
+            let cleaned = applyServerInventoryAuthority(
+              authInv,
               row.inventory,
-              getUtcWeekId(),
+              weekId,
             );
-            // Item must stay consumed
+            // Prefer the lower of local-consumed vs server (ghost owned fix)
+            cleaned = mergeInventoriesPreferConsumed(authInv, cleaned, weekId);
+            cleaned[item.id] = 0;
             delete cleaned[item.id];
             const du = {
               ...(typeof row.daily_usage === 'object' && row.daily_usage
@@ -946,16 +975,25 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
             if (setStats) {
               setStats((prev) => ({
                 ...prev,
-                inventory: { ...cleaned },
+                inventory: mergeInventoriesPreferConsumed(
+                  prev?.inventory || {},
+                  cleaned,
+                  weekId,
+                ),
                 daily_usage: du,
                 energy_boost_expires:
                   row.energy_boost_expires ?? prev.energy_boost_expires,
+                frenzy_expires: row.frenzy_expires ?? prev.frenzy_expires,
+                efficiency_expires:
+                  row.efficiency_expires ?? prev.efficiency_expires,
                 last_energy:
                   row.last_energy != null
                     ? Number(row.last_energy)
                     : prev.last_energy,
               }));
             }
+            // If server still has the charge, push the consumed inventory via secure path
+            // is already done by backpack-activate; if ghost remains, strip key client-side only.
           }
         } catch (syncErr) {
           console.warn('post-activate resync', syncErr);
@@ -986,7 +1024,7 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
             if (setStats) {
               setStats((prev) => ({
                 ...prev,
-                inventory: mergeInventoryWeekly(
+                inventory: applyServerInventoryAuthority(
                   prev?.inventory || {},
                   row.inventory,
                   getUtcWeekId(),
@@ -1011,8 +1049,12 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
     // 1. Deduct from inventory — always merge parent inventory (preserve task_limit_boost!)
     const newInventory = buildFullInventory();
     const prevQty = Number(newInventory[item.id]) || 0;
-    if (prevQty <= 1) delete newInventory[item.id];
-    else newInventory[item.id] = prevQty - 1;
+    if (prevQty <= 1) {
+      newInventory[item.id] = 0;
+      delete newInventory[item.id];
+    } else {
+      newInventory[item.id] = prevQty - 1;
+    }
 
     // NEW: Mark item as used today
     const newDailyUsage = { ...dailyUsage, [item.id]: todayStr };
@@ -1070,14 +1112,22 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
       if (error) throw error;
 
       const weekIdL = getUtcWeekId();
-      const authInvL = applyServerInventoryAuthority(
+      let authInvL = applyServerInventoryAuthority(
         stats?.inventory || {},
         newInventory,
         weekIdL,
       );
       const qL = Math.max(0, Math.floor(Number(newInventory[item.id]) || 0));
-      if (qL <= 0) delete authInvL[item.id];
-      else authInvL[item.id] = qL;
+      if (qL <= 0) {
+        authInvL[item.id] = 0;
+        delete authInvL[item.id];
+      } else {
+        authInvL[item.id] = qL;
+      }
+      authInvL = applyShopQtyAuthority(authInvL, {
+        ...authInvL,
+        [item.id]: qL,
+      });
 
       setLocalInventory({ ...authInvL });
       setDailyUsage(newDailyUsage);
@@ -1086,7 +1136,11 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
           ...prev,
           ...stats,
           ...dbUpdates,
-          inventory: { ...authInvL },
+          inventory: mergeInventoriesPreferConsumed(
+            prev?.inventory || {},
+            authInvL,
+            weekIdL,
+          ),
         }));
       }
 
@@ -1125,7 +1179,11 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
         if (setStats) {
           setStats((prev) => ({
             ...prev,
-            inventory: mergeInventoryWeekly(prev?.inventory || {}, inv, getUtcWeekId()),
+            inventory: applyServerInventoryAuthority(
+              prev?.inventory || {},
+              inv,
+              getUtcWeekId(),
+            ),
           }));
         }
         setTxStatus({
@@ -1162,7 +1220,11 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
       if (setStats) {
         setStats((prev) => ({
           ...prev,
-          inventory: mergeInventoryWeekly(prev?.inventory || {}, inv, getUtcWeekId()),
+          inventory: applyServerInventoryAuthority(
+            prev?.inventory || {},
+            inv,
+            getUtcWeekId(),
+          ),
         }));
       }
       setTxStatus({
@@ -1864,14 +1926,37 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
                             color: ok ? '#fff' : '#555',
                             cursor: ok && !mysteryBusy ? 'pointer' : 'not-allowed',
                             textAlign: 'left',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 10,
+                            opacity: ok ? 1 : 0.55,
                           }}
                         >
-                          <div style={{ fontSize: 18 }}>{meta.emoji}</div>
-                          <div style={{ fontWeight: 'bold', fontSize: 12, color: meta.color }}>
-                            Burn {need} {meta.name.replace(' Badge', '')}
-                          </div>
-                          <div style={{ fontSize: 10, color: '#888', marginTop: 2 }}>
-                            You have {have}
+                          {meta.image ? (
+                            <img
+                              src={meta.image}
+                              alt={meta.name}
+                              width={40}
+                              height={40}
+                              style={{
+                                width: 40,
+                                height: 40,
+                                objectFit: 'contain',
+                                borderRadius: 8,
+                                flexShrink: 0,
+                                background: '#000',
+                              }}
+                            />
+                          ) : (
+                            <div style={{ fontSize: 18 }}>{meta.emoji}</div>
+                          )}
+                          <div style={{ minWidth: 0 }}>
+                            <div style={{ fontWeight: 'bold', fontSize: 12, color: meta.color }}>
+                              Burn {need} {meta.name.replace(' Badge', '')}
+                            </div>
+                            <div style={{ fontSize: 10, color: '#888', marginTop: 2 }}>
+                              You have {have}
+                            </div>
                           </div>
                         </button>
                       );
@@ -1918,12 +2003,40 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
                   Your badges
                 </div>
                 <p style={{ color: '#666', fontSize: 11, margin: '0 0 4px', lineHeight: 1.35 }}>
-                  From Ranks → Weekly (top 10). Rules: Menu → Game Guide → Leaderboards.
+                  From Ranks → Weekly (top 10 eligible · ≥1,050). Rules: Menu → Game Guide.
                 </p>
                 {badgeTotal === 0 ? (
                   <div style={{ textAlign: 'center', padding: '20px 12px', color: '#888' }}>
-                    <div style={{ fontSize: 28 }}>🏅</div>
-                    <p style={{ fontSize: 12 }}>No badges yet.</p>
+                    <div
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'center',
+                        gap: 8,
+                        marginBottom: 8,
+                        flexWrap: 'wrap',
+                      }}
+                    >
+                      {badgeCatalogForBackpack().map((b) => (
+                        <img
+                          key={b.id}
+                          src={b.image}
+                          alt={b.name}
+                          width={48}
+                          height={48}
+                          style={{
+                            width: 48,
+                            height: 48,
+                            objectFit: 'contain',
+                            opacity: 0.35,
+                            borderRadius: 8,
+                          }}
+                        />
+                      ))}
+                    </div>
+                    <p style={{ fontSize: 12, margin: 0 }}>No badges yet.</p>
+                    <p style={{ fontSize: 11, color: '#666', margin: '6px 0 0' }}>
+                      Finish top 10 eligible on Ranks → Weekly (≥1,050 score) to win one.
+                    </p>
                   </div>
                 ) : (
                   badgeCatalogForBackpack().map((b) => {
@@ -1942,7 +2055,24 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
                           gap: 12,
                         }}
                       >
-                        <div style={{ fontSize: 28 }}>{b.emoji}</div>
+                        {b.image ? (
+                          <img
+                            src={b.image}
+                            alt={b.name}
+                            width={56}
+                            height={56}
+                            style={{
+                              width: 56,
+                              height: 56,
+                              objectFit: 'contain',
+                              borderRadius: 10,
+                              flexShrink: 0,
+                              background: '#000',
+                            }}
+                          />
+                        ) : (
+                          <div style={{ fontSize: 28 }}>{b.emoji}</div>
+                        )}
                         <div style={{ flex: 1 }}>
                           <div style={{ color: '#fff', fontWeight: 'bold', fontSize: 14 }}>
                             {b.name}
