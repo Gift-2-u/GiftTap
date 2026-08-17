@@ -100,6 +100,15 @@ export async function ensureSecureSession() {
 }
 
 
+/**
+ * Create in-game Solana wallet — JWT required, server set-once only.
+ * Returns { success, publicKey, mnemonic|null, already_bound }.
+ * If already_bound, mnemonic is null (cannot re-export seed from server).
+ */
+export async function secureCreateUserWallet() {
+  return callSecureFunction('create-user-wallet', {});
+}
+
 /** Secure shard shop buy (requires JWT). */
 export async function secureShopBuy(itemId) {
   return callSecureFunction('shop-buy', { item_id: itemId });

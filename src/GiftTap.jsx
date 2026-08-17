@@ -194,6 +194,7 @@ import {
   ensureSecureSession,
   secureCommitTaps,
   secureWallClimb,
+  secureCreateUserWallet,
 } from './secureApi';
 import WalletNftSection from './WalletNftSection';
 import SwapBadgeCard, { NftDetailModal, LOCKSMITH_PERKS } from './SwapBadgeCard';
@@ -2186,49 +2187,47 @@ const GiftTapGame = () => {
         return;
       } 
       // ==========================================
-      // CASE B: Account exists (signup) but no wallet yet → create once
+      // CASE B: Account exists but no wallet yet → create ONCE via Edge (JWT)
+      // Never overwrite wallet_address / encrypted_vault if already set.
       // ==========================================
       else if (playerRow && !playerRow.wallet_address) {
-        console.log("Account without wallet — generating in-app wallet...");
-        const response = await fetch('https://ncwlbwzxfpcnxkyrmdck.supabase.co/functions/v1/create-user-wallet', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
-          },
-          body: JSON.stringify({
-            telegram_id: userId,
-            username: playerRow.username || player.username || 'Player'
-          })
-        });
-        const result = await response.json();
-        if (result && result.publicKey) {
-          let encryptedVault = null;
-          const rawSecret = result.mnemonic || result.secretKey;
-          if (rawSecret) {
-            encryptedVault = encryptWallet(rawSecret, invisibleKey);
-            setDecryptedPhrase(rawSecret);
+        console.log("Account without wallet — generating in-app wallet (secure, set-once)...");
+        try {
+          await ensureSecureSession();
+          const result = await secureCreateUserWallet();
+          if (result?.already_bound && result.publicKey) {
+            setPlayerWallet(result.publicKey);
+            setHasAccess(true);
+            setIsDataLoaded(true);
+          } else if (result && result.publicKey) {
+            // Only write vault if still empty — never replace an existing vault
+            const rawSecret = result.mnemonic || result.secretKey || null;
+            const patch = {};
+            if (!playerRow.encrypted_vault && rawSecret) {
+              patch.encrypted_vault = encryptWallet(rawSecret, invisibleKey);
+              setDecryptedPhrase(rawSecret);
+              setMustBackup(true);
+              localStorage.removeItem(`wallet_backed_up_${userId}`);
+            }
+            // wallet_address is already bound server-side; only set vault if empty
+            if (Object.keys(patch).length) {
+              await supabase.from('players').update(patch).eq(DB_PLAYER_ID, userId);
+            }
+            setPlayerWallet(result.publicKey);
+            setHasAccess(true);
+            if (!playerRow.has_beta_access) {
+              await supabase
+                .from('players')
+                .update({ has_beta_access: true })
+                .eq(DB_PLAYER_ID, userId);
+            }
+            setIsDataLoaded(true);
+          } else {
+            console.error("Wallet generation failed.", result);
+            setHasAccess(true);
           }
-          await supabase.from('players').update({
-            wallet_address: result.publicKey,
-            encrypted_vault: encryptedVault,
-            username: playerRow.username || player.username,
-          }).eq(DB_PLAYER_ID, userId);
-
-          setPlayerWallet(result.publicKey);
-          localStorage.removeItem(`wallet_backed_up_${userId}`);
-          setHasAccess(true);
-          if (!playerRow.has_beta_access) {
-            await supabase
-              .from('players')
-              .update({ has_beta_access: true })
-              .eq(DB_PLAYER_ID, userId);
-          }
-          setMustBackup(true);
-          setIsDataLoaded(true);
-        } else {
-          console.error("Wallet generation failed.", result);
-          // Keep session; they can retry wallet setup
+        } catch (wErr) {
+          console.error("Secure wallet create failed:", wErr?.message || wErr);
           setHasAccess(true);
         }
       }
@@ -2269,43 +2268,17 @@ const GiftTapGame = () => {
 
       let encryptedVault = existingPlayer?.encrypted_vault || null;
       let publicKey = existingPlayer?.wallet_address || null;
+      const hadWallet = !!(publicKey && String(publicKey).trim());
+      const hadVault = !!(encryptedVault && String(encryptedVault).trim());
 
-      // Only generate a wallet if this account does not already have one
-      if (!publicKey) {
-        const response = await fetch('https://ncwlbwzxfpcnxkyrmdck.supabase.co/functions/v1/create-user-wallet', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
-          },
-          body: JSON.stringify({ telegram_id: userId, username: userName })
-        });
-        const newWallet = await response.json();
-        if (!newWallet?.publicKey) throw new Error(newWallet?.error || 'Wallet generation failed');
-
-        publicKey = newWallet.publicKey;
-        if (newWallet.mnemonic) {
-          const invisibleKey = vaultSaltFor(userId);
-          encryptedVault = encryptWallet(newWallet.mnemonic, invisibleKey);
-          setDecryptedPhrase(newWallet.mnemonic);
-          setGeneratedSecret(newWallet.mnemonic);
-          setMustBackup(true);
-        }
-      }
-
-      const playerData = {
-        has_beta_access: true,
-        username: existingPlayer?.username || userName,
-        ...(publicKey ? { wallet_address: publicKey } : {}),
-        ...(encryptedVault ? { encrypted_vault: encryptedVault } : {}),
-      };
-
+      // Ensure player row exists BEFORE wallet Edge bind (create-user-wallet needs the row)
       if (!existingPlayer) {
         const { error: insertError } = await supabase
           .from('players')
           .insert([{
             [DB_PLAYER_ID]: userId,
-            ...playerData,
+            has_beta_access: true,
+            username: userName,
             shard_balance: startingShards,
             season_shards: 0,
             lifetime_taps: 0,
@@ -2313,17 +2286,41 @@ const GiftTapGame = () => {
           }]);
         if (insertError) throw insertError;
       } else {
-        const updates = { ...playerData };
-        // Only apply joiner bonus once if they still have 0 shards and a referrer
+        const updates = {
+          has_beta_access: true,
+          username: existingPlayer?.username || userName,
+        };
         if (referrerId && !existingPlayer.referred_by && Number(existingPlayer.shard_balance || 0) === 0) {
           updates.shard_balance = startingShards;
           updates.referred_by = String(referrerId);
         }
+        // HARD SECURITY: never touch wallet_address / encrypted_vault here
         const { error: updateError } = await supabase
           .from('players')
           .update(updates)
           .eq(DB_PLAYER_ID, userId);
         if (updateError) throw updateError;
+      }
+
+      // Generate wallet only if missing — Edge JWT, set-once (cannot replace)
+      if (!hadWallet) {
+        await ensureSecureSession();
+        const newWallet = await secureCreateUserWallet();
+        if (!newWallet?.publicKey) throw new Error(newWallet?.error || 'Wallet generation failed');
+
+        publicKey = newWallet.publicKey;
+        if (!hadVault && newWallet.mnemonic) {
+          const invisibleKey = vaultSaltFor(userId);
+          encryptedVault = encryptWallet(newWallet.mnemonic, invisibleKey);
+          setDecryptedPhrase(newWallet.mnemonic);
+          setGeneratedSecret(newWallet.mnemonic);
+          setMustBackup(true);
+          // First vault write only when empty
+          await supabase
+            .from('players')
+            .update({ encrypted_vault: encryptedVault })
+            .eq(DB_PLAYER_ID, userId);
+        }
       }
 
       if (publicKey) setPlayerWallet(publicKey);
@@ -2403,12 +2400,16 @@ const GiftTapGame = () => {
           .eq(DB_PLAYER_ID, String(row[DB_PLAYER_ID]));
       }
 
-      const invisibleKey = vaultSaltFor(String(row[DB_PLAYER_ID]));
-      const encryptedVault = encryptWallet(cleaned, invisibleKey);
-      await supabase
-        .from("players")
-        .update({ encrypted_vault: encryptedVault })
-        .eq(DB_PLAYER_ID, String(row[DB_PLAYER_ID]));
+      // HARD SECURITY: never overwrite an existing vault from the client.
+      // If vault is empty (legacy row), set once. Seed stays in this session either way.
+      if (!row.encrypted_vault) {
+        const invisibleKey = vaultSaltFor(String(row[DB_PLAYER_ID]));
+        const encryptedVault = encryptWallet(cleaned, invisibleKey);
+        await supabase
+          .from("players")
+          .update({ encrypted_vault: encryptedVault })
+          .eq(DB_PLAYER_ID, String(row[DB_PLAYER_ID]));
+      }
 
       setDecryptedPhrase(cleaned);
       setPlayerWallet(publicKey);
