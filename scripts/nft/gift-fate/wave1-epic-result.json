@@ -1,0 +1,18 @@
+{
+  "standard": "metaplex-core",
+  "class": "Fate",
+  "rarity": "Epic",
+  "rarityKey": "epic",
+  "wave": 1,
+  "itemsAvailable": 525,
+  "priceSol": 0.8,
+  "treasury": "AdvMvv6GzGvdLRtuxaso1Eubk7jmn6LCZEeEFHn22yeb",
+  "collection": "FQPYWSohCPnS57W2AWAqwmQM21KRxGi4YXcCaiXUghPD",
+  "candyMachine": "GC44BKsRbd4HVZzU9wZqZxcC9XwhwzfvrN39rVCEppfA",
+  "candyGuard": "5chT9VmQShvSmg6n6jLxP2TNSBNqaCGivW7jMPk8k4cQ",
+  "itemUri": "https://gateway.irys.xyz/Iiwphx5zFjiM_N65A8X1176Nbk2f9iiBcsGh_OtoCUE",
+  "imageUri": "https://gateway.irys.xyz/NRJ4FhUzJH6Et6Ga3IVDxkgcsbCc9WH02ReGZpCnUn4",
+  "maxPerWallet": 5,
+  "wrapTx": "2odP33rLxgSitwDLRF1TBzoGczmbKdTkJCYgX7xKpssmm1fRSmqmQB6A5B5JgmiKKR8sZyjLWAJQ8mPsxZC1hehb",
+  "cluster": "mainnet"
+}

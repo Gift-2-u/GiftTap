@@ -1,0 +1,9 @@
+{
+  "asset": "7aR6vPhkU4EKWwPFWf3UrdmZP9AGP4iFbn87vTYs8r19",
+  "collection": "FQPYWSohCPnS57W2AWAqwmQM21KRxGi4YXcCaiXUghPD",
+  "signature": "4gfdoxRksMDNdRVyyQgRDcV36j2UELGZBKekw5PTndsCrFFP59djafCBizftiSjkgjtVUk6cYmJYpv5UK4XNMhim",
+  "updateAuthorityAfter": {
+    "type": "Address",
+    "address": "AdvMvv6GzGvdLRtuxaso1Eubk7jmn6LCZEeEFHn22yeb"
+  }
+}

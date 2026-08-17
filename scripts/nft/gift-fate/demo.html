@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Gift2u Elves · Fate (Luck) — Mint Demo</title>
+  <style>
+    :root {
+      --bg: #0c0c10;
+      --card: #14141a;
+      --muted: #888;
+      --text: #eee;
+      --gold: #eab308;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      padding: 28px 20px 48px;
+    }
+    h1 {
+      margin: 0 0 6px;
+      font-size: 22px;
+      font-weight: 800;
+      letter-spacing: 0.02em;
+    }
+    .sub {
+      color: var(--muted);
+      font-size: 12px;
+      margin-bottom: 22px;
+      line-height: 1.45;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 14px;
+      max-width: 1200px;
+    }
+    @media (max-width: 900px) {
+      .grid { grid-template-columns: repeat(2, 1fr); }
+    }
+    @media (max-width: 520px) {
+      .grid { grid-template-columns: 1fr; }
+    }
+    .card {
+      background: var(--card);
+      border-radius: 12px;
+      overflow: hidden;
+      border: 2px solid #333;
+      display: flex;
+      flex-direction: column;
+    }
+    .card.common { border-color: #c0c0c0; }
+    .card.rare { border-color: #3b82f6; }
+    .card.epic { border-color: #a855f7; }
+    .card.legendary {
+      border-color: #eab308;
+      box-shadow: 0 0 18px rgba(234, 179, 8, 0.35);
+    }
+    .art-wrap {
+      position: relative;
+      aspect-ratio: 1;
+      background: #000;
+    }
+    .art-wrap img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+    .socket {
+      position: absolute;
+      right: 10px;
+      bottom: 10px;
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      border: 2px solid rgba(255,255,255,0.55);
+      background: rgba(0,0,0,0.35);
+      box-shadow: inset 0 0 0 2px rgba(0,0,0,0.4);
+    }
+    .body {
+      padding: 12px 12px 14px;
+      flex: 1;
+    }
+    .rarity {
+      font-weight: 800;
+      font-size: 14px;
+      margin-bottom: 4px;
+    }
+    .card.common .rarity { color: #d4d4d8; }
+    .card.rare .rarity { color: #60a5fa; }
+    .card.epic .rarity { color: #c084fc; }
+    .card.legendary .rarity { color: #facc15; }
+    .meta {
+      font-size: 11px;
+      color: var(--muted);
+      line-height: 1.45;
+    }
+    .meta strong { color: #ddd; font-weight: 600; }
+    .waves {
+      margin-top: 10px;
+      display: grid;
+      gap: 4px;
+      font-size: 11px;
+    }
+    .waves div {
+      display: flex;
+      justify-content: space-between;
+      background: #0a0a0e;
+      padding: 5px 8px;
+      border-radius: 6px;
+      border: 1px solid #222;
+    }
+    .waves span:last-child { color: #4ade80; font-weight: 700; }
+    .foot {
+      max-width: 1200px;
+      margin-top: 22px;
+      padding: 14px 16px;
+      border: 1px solid #2a2a32;
+      border-radius: 10px;
+      background: #101016;
+      font-size: 11px;
+      color: #aaa;
+      line-height: 1.55;
+    }
+    .foot b { color: #facc15; }
+    .pill {
+      display: inline-block;
+      margin-top: 10px;
+      padding: 4px 10px;
+      border-radius: 999px;
+      background: rgba(234,179,8,0.12);
+      border: 1px solid rgba(234,179,8,0.4);
+      color: #facc15;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+  </style>
+</head>
+<body>
+  <h1>Gift2u Elves · Fate (Luck)</h1>
+  <p class="sub">
+    Thin border · full art · rarity in description · 1 badge socket (bottom-right) · 1 Fate / wallet<br />
+    Candy Machine: Metaplex Core · 3 waves per rarity (30% / 40% / 30%) · same stack as GiftLocksmith
+  </p>
+
+  <div class="grid" id="grid"></div>
+
+  <div class="foot">
+    <b>LOCKED — Fate v1</b> · Legendary mint <b>1.75 / 3.00 / 4.50 SOL</b> (W1 / W2 / W3)<br />
+    Odds: louder ladders · stack by level · 1 jackpot/tap · jackpot replaces Frenzy<br />
+    Supply: C 17,500 · R 5,250 · E 1,750 · L 500 · Total <b>25,000</b><br />
+    Level-up SOL L1→5: C 0.28 · R 0.90 · E 2.30 · L 4.70 · G2U when live<br />
+    Mint: game wallet pays solPayment · server jackpot later · badge socket BR · 1 badge max
+    <div class="pill">Demo · not live mint</div>
+  </div>
+
+  <script>
+    const ART = './Fate.jpg';
+    const rows = [
+      {
+        key: 'common',
+        label: 'Common',
+        supply: 17500,
+        waves: [
+          { w: 1, n: 5250, p: '0.05' },
+          { w: 2, n: 7000, p: '0.10' },
+          { w: 3, n: 5250, p: '0.15' },
+        ],
+        level: '0.28',
+      },
+      {
+        key: 'rare',
+        label: 'Rare',
+        supply: 5250,
+        waves: [
+          { w: 1, n: 1575, p: '0.20' },
+          { w: 2, n: 2100, p: '0.35' },
+          { w: 3, n: 1575, p: '0.50' },
+        ],
+        level: '0.90',
+      },
+      {
+        key: 'epic',
+        label: 'Epic',
+        supply: 1750,
+        waves: [
+          { w: 1, n: 525, p: '0.80' },
+          { w: 2, n: 700, p: '1.25' },
+          { w: 3, n: 525, p: '1.75' },
+        ],
+        level: '2.30',
+      },
+      {
+        key: 'legendary',
+        label: 'Legendary',
+        supply: 500,
+        waves: [
+          { w: 1, n: 150, p: '1.75' },
+          { w: 2, n: 200, p: '3.00' },
+          { w: 3, n: 150, p: '4.50' },
+        ],
+        level: '4.70',
+      },
+    ];
+
+    const grid = document.getElementById('grid');
+    for (const r of rows) {
+      const el = document.createElement('article');
+      el.className = 'card ' + r.key;
+      el.innerHTML = `
+        <div class="art-wrap">
+          <img src="${ART}" alt="Fate ${r.label}" />
+          <div class="socket" title="Badge socket (empty)"></div>
+        </div>
+        <div class="body">
+          <div class="rarity">${r.label}</div>
+          <div class="meta">
+            Supply <strong>${r.supply.toLocaleString()}</strong> · Level 1→5 <strong>${r.level} SOL</strong>
+          </div>
+          <div class="waves">
+            ${r.waves
+              .map(
+                (x) =>
+                  `<div><span>Wave ${x.w} · ${x.n.toLocaleString()}</span><span>${x.p} SOL</span></div>`,
+              )
+              .join('')}
+          </div>
+        </div>`;
+      grid.appendChild(el);
+    }
+  </script>
+</body>
+</html>

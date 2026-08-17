@@ -1,0 +1,18 @@
+{
+  "name": "Fate",
+  "symbol": "Fate",
+  "description": "Fate is the Luck elf of Gift2u Elves. Equip 1 Fate per wallet for a chance of a jackpot multiplier on tap G2Ushards payouts (server-side). Jackpot replaces Frenzy on that tap. Rarity is shown by the border color and the Rarity attribute. Gen 1. Badge equip and Fate level live in-game (not frozen on-chain).",
+  "seller_fee_basis_points": 500,
+  "external_url": "https://gift2u.fun",
+  "attributes": [
+    { "trait_type": "Collection", "value": "Gift2u Elves" },
+    { "trait_type": "Class", "value": "Fate" },
+    { "trait_type": "Role", "value": "Luck" },
+    { "trait_type": "Generation", "value": "Gen 1" },
+    { "trait_type": "Rarity", "value": "PLACEHOLDER" },
+    { "trait_type": "Type", "value": "Utility" },
+    { "trait_type": "Utility", "value": "Tap jackpot (G2Ushards)" },
+    { "trait_type": "Badge Slot", "value": "1" },
+    { "trait_type": "Max Supply", "value": "SUPPLY" }
+  ]
+}

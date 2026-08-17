@@ -1,0 +1,18 @@
+{
+  "name": "Fate",
+  "symbol": "Fate",
+  "description": "Fate is the Luck elf of the Gift2u Elves. Equip one Fate per wallet. On each tap, Fate has a chance to hit a jackpot that multiplies that tap’s G2Ushards. Epic · Gen 1 · max supply 1,750.",
+  "seller_fee_basis_points": 500,
+  "external_url": "https://gift2u.fun",
+  "attributes": [
+    { "trait_type": "Collection", "value": "Gift2u Elves" },
+    { "trait_type": "Class", "value": "Fate" },
+    { "trait_type": "Role", "value": "Luck" },
+    { "trait_type": "Generation", "value": "Gen 1" },
+    { "trait_type": "Rarity", "value": "Epic" },
+    { "trait_type": "Type", "value": "Utility" },
+    { "trait_type": "Utility", "value": "Tap jackpot (G2Ushards)" },
+    { "trait_type": "Badge Slot", "value": "1" },
+    { "trait_type": "Max Supply", "value": "1750" }
+  ]
+}

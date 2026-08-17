@@ -1,0 +1,14 @@
+{
+  "standard": "metaplex-core",
+  "class": "Fate",
+  "rarity": "Common",
+  "asset": "6ryG27orAnTSpHNTj92ncVJYRK8kEViLWxgUak1xgRG8",
+  "owner": "AdvMvv6GzGvdLRtuxaso1Eubk7jmn6LCZEeEFHn22yeb",
+  "imageUri": "https://gateway.irys.xyz/lK4bjjfQucGttNy0RwjQR0a_F_EfJf1GhCUNPELNmAA",
+  "uri": "https://gateway.irys.xyz/Aw6MvwiSB2hDQFSg7FEdq4lCXLE0YHthT1lObt20c98",
+  "signature": "bUWrphzmHoPyXS9stZhMvVjNNVFLeDsyrmxhedYd9pewojquv82crY1uZGzcWyv2xHQCgvvVRMuvB3b8D3tWkC6",
+  "treasuryHint": "AdvMvv6GzGvdLRtuxaso1Eubk7jmn6LCZEeEFHn22yeb",
+  "cluster": "mainnet",
+  "explorer": "https://solscan.io/token/6ryG27orAnTSpHNTj92ncVJYRK8kEViLWxgUak1xgRG8",
+  "coreExplorer": "https://core.metaplex.com/explorer/6ryG27orAnTSpHNTj92ncVJYRK8kEViLWxgUak1xgRG8"
+}

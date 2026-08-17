@@ -1,0 +1,18 @@
+{
+  "standard": "metaplex-core",
+  "class": "Fate",
+  "rarity": "Common",
+  "asset": "7aR6vPhkU4EKWwPFWf3UrdmZP9AGP4iFbn87vTYs8r19",
+  "owner": "AdvMvv6GzGvdLRtuxaso1Eubk7jmn6LCZEeEFHn22yeb",
+  "collection": "FQPYWSohCPnS57W2AWAqwmQM21KRxGi4YXcCaiXUghPD",
+  "royaltiesBps": 500,
+  "royaltyReceiver": "AdvMvv6GzGvdLRtuxaso1Eubk7jmn6LCZEeEFHn22yeb",
+  "imageUri": "https://gateway.irys.xyz/MNXXVsbHEZxzGqetd7m-MLuhZjZWJj84IMsGKsZy-dw",
+  "uri": "https://gateway.irys.xyz/5JuEpDi6dfcOE0QvrshjpxAaUWl5GHhlC8ffMyEOs6s",
+  "signature": "Ybdxb261tstxEfGgxVtEDQ4SAbFC7Tbr5hiPsHG66oDJDgWj9WHYBYLqR8RGijDpEAyNcJ9GYevLgwfNJDAbA8C",
+  "treasuryHint": "AdvMvv6GzGvdLRtuxaso1Eubk7jmn6LCZEeEFHn22yeb",
+  "cluster": "mainnet",
+  "explorer": "https://solscan.io/token/7aR6vPhkU4EKWwPFWf3UrdmZP9AGP4iFbn87vTYs8r19",
+  "coreExplorer": "https://core.metaplex.com/explorer/7aR6vPhkU4EKWwPFWf3UrdmZP9AGP4iFbn87vTYs8r19",
+  "collectionExplorer": "https://core.metaplex.com/explorer/FQPYWSohCPnS57W2AWAqwmQM21KRxGi4YXcCaiXUghPD"
+}

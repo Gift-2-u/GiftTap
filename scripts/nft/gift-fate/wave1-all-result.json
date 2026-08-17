@@ -1,0 +1,42 @@
+{
+  "common": {
+    "candyMachine": "8Xsen3GEmVKfrirGrENV18We8HN3SWx4gFHxuD8USuuU",
+    "candyGuard": "4v7c2tdq9a98nHX1yKJdLVn22KTfws6mUWA8X4YuVkpb",
+    "collection": "FQPYWSohCPnS57W2AWAqwmQM21KRxGi4YXcCaiXUghPD",
+    "priceSol": 0.05,
+    "itemsAvailable": 5250,
+    "imageUri": "https://gateway.irys.xyz/cgeZtO0e0Z7rPvRKZkT5iKVKn63y_V6K2eUADJRMYq4",
+    "itemUri": "https://gateway.irys.xyz/VX1vl3nkczH7GjibtP9irTiQKyuIk2Jdi0wrFHbJ230",
+    "treasury": "AdvMvv6GzGvdLRtuxaso1Eubk7jmn6LCZEeEFHn22yeb"
+  },
+  "rare": {
+    "candyMachine": "DyqirB4Vyn5JtYAEeUm2WQN2AMaBqfzgYURW2LQCCJbQ",
+    "candyGuard": "B4LFV31ocac7edVuyMRLqhypF1WBgNQC79o1xmWD5NrQ",
+    "collection": "FQPYWSohCPnS57W2AWAqwmQM21KRxGi4YXcCaiXUghPD",
+    "priceSol": 0.2,
+    "itemsAvailable": 1575,
+    "imageUri": "https://gateway.irys.xyz/lSpSRDil7KTBEzZPs7fs4z8XrEoQCgS54LBhZ03AonM",
+    "itemUri": "https://gateway.irys.xyz/iB9zxlbNVP4hvY8FKb-9lxGwZaTnX97SAIFPilHNqrU",
+    "treasury": "AdvMvv6GzGvdLRtuxaso1Eubk7jmn6LCZEeEFHn22yeb"
+  },
+  "epic": {
+    "candyMachine": "GC44BKsRbd4HVZzU9wZqZxcC9XwhwzfvrN39rVCEppfA",
+    "candyGuard": "5chT9VmQShvSmg6n6jLxP2TNSBNqaCGivW7jMPk8k4cQ",
+    "collection": "FQPYWSohCPnS57W2AWAqwmQM21KRxGi4YXcCaiXUghPD",
+    "priceSol": 0.8,
+    "itemsAvailable": 525,
+    "imageUri": "https://gateway.irys.xyz/NRJ4FhUzJH6Et6Ga3IVDxkgcsbCc9WH02ReGZpCnUn4",
+    "itemUri": "https://gateway.irys.xyz/Iiwphx5zFjiM_N65A8X1176Nbk2f9iiBcsGh_OtoCUE",
+    "treasury": "AdvMvv6GzGvdLRtuxaso1Eubk7jmn6LCZEeEFHn22yeb"
+  },
+  "legendary": {
+    "candyMachine": "7diXaptFs4NhBatC3H8F2vXsyzAxiSSYfxs6V7a3CjhN",
+    "candyGuard": "G9iNpH2BGdZ2zCJzHAD6ygSTcjatMQa5EbZQyvq2rDpW",
+    "collection": "FQPYWSohCPnS57W2AWAqwmQM21KRxGi4YXcCaiXUghPD",
+    "priceSol": 1.75,
+    "itemsAvailable": 150,
+    "imageUri": "https://gateway.irys.xyz/vsqWsnHGvfkQBp9LIbZECwdYXEyvs_X-ZdNEPeaqEis",
+    "itemUri": "https://gateway.irys.xyz/3pOroGI4DzURetSnzSI5gNKx7oDCVgFLvilEElp9JEs",
+    "treasury": "AdvMvv6GzGvdLRtuxaso1Eubk7jmn6LCZEeEFHn22yeb"
+  }
+}
