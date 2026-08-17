@@ -6450,10 +6450,11 @@ const GiftTapGame = () => {
             </div>
           </div>
 
-          {/* Wallet hub: Game (default) | Solana — same pattern as site */}
+          {/* Game wallet only in-app. Solana (Phantom etc.) is on Gift2u web. */}
           <WalletHub
             isOpen={isModalOpen}
             hideTabs={mustBackup}
+            showSolanaTab={false}
             defaultTab="game"
             onClose={() => {
               if (!mustBackup) {

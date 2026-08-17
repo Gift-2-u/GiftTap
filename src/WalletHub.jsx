@@ -996,6 +996,7 @@ export function GameWalletPanel({ onClose }) {
  * @param {'game'|'solana'} [props.defaultTab]
  * @param {React.ReactNode} [props.gameContent] — override Game tab (e.g. full Gift Tap dashboard)
  * @param {boolean} [props.hideTabs]
+ * @param {boolean} [props.showSolanaTab] — false = game wallet only (GiftTap); site keeps both tabs
  * @param {string} [props.solanaNote]
  * @param {object} [props.overlayStyle]
  * @param {object} [props.panelStyle]
@@ -1007,6 +1008,7 @@ export default function WalletHub({
   defaultTab = 'game',
   gameContent,
   hideTabs = false,
+  showSolanaTab = true,
   solanaNote,
   overlayStyle,
   panelStyle,
@@ -1015,13 +1017,16 @@ export default function WalletHub({
   const [tab, setTab] = useState(defaultTab);
 
   useEffect(() => {
-    if (isOpen) setTab(defaultTab || 'game');
-  }, [isOpen, defaultTab]);
+    if (isOpen) setTab(showSolanaTab ? (defaultTab || 'game') : 'game');
+  }, [isOpen, defaultTab, showSolanaTab]);
 
   if (!isOpen) return null;
 
   const showSharedGame =
     useSharedGameWallet !== false && gameContent == null;
+  // GiftTap: game wallet only. Gift2u web: Game + Solana tabs.
+  const showTabBar = !hideTabs && showSolanaTab;
+  const activeTab = showSolanaTab ? tab : 'game';
 
   return (
     <div
@@ -1057,25 +1062,25 @@ export default function WalletHub({
         }}
         onClick={(e) => e.stopPropagation()}
       >
-        {!hideTabs && (
+        {showTabBar && (
           <>
             <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
-              <button type="button" style={tabBtn(tab === 'game')} onClick={() => setTab('game')}>
+              <button type="button" style={tabBtn(activeTab === 'game')} onClick={() => setTab('game')}>
                 Game
               </button>
-              <button type="button" style={tabBtn(tab === 'solana')} onClick={() => setTab('solana')}>
+              <button type="button" style={tabBtn(activeTab === 'solana')} onClick={() => setTab('solana')}>
                 Solana
               </button>
             </div>
             <p style={{ color: '#666', fontSize: '10px', margin: '0 0 14px', lineHeight: 1.35 }}>
-              {tab === 'game'
+              {activeTab === 'game'
                 ? 'Game wallet — same address as Gift Tap (shop, play balances).'
                 : 'Solana wallet — Phantom / Solflare etc. for vault and staking on the site.'}
             </p>
           </>
         )}
 
-        {hideTabs || tab === 'game' ? (
+        {activeTab === 'game' || !showSolanaTab || hideTabs ? (
           showSharedGame ? (
             <GameWalletPanel onClose={onClose} />
           ) : (
