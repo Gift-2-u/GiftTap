@@ -1,16 +1,10 @@
 /**
  * create-user-wallet — HARD SECURITY
  *
- * BEFORE (the hole that allowed wallet swap / SOL loss):
- *   - No session JWT required
- *   - Anyone with the anon key could pass any telegram_id
- *   - Always UPDATE wallet_address → overwrote a real wallet with a fresh key
- *
- * AFTER:
- *   - Requires x-gift-session (game JWT) — player can only touch their own row
- *   - SET-ONCE: if wallet_address already set, refuse to change it
- *   - Edge service_role only writes when the column is empty
- *   - Still returns mnemonic once for the CLIENT to encrypt locally (never stored plaintext server-side)
+ * - JWT required (own player only)
+ * - Default: set-once (cannot replace a bound wallet)
+ * - force_new: true → mint NEW in-game key, rebind via gift_rotate_ingame_wallet RPC
+ *   (stats untouched; vault cleared; mnemonic returned ONCE)
  */
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.7";
@@ -33,19 +27,29 @@ function json(data: unknown, status = 200) {
   });
 }
 
+function mintKeypair() {
+  const mnemonic = bip39.generateMnemonic();
+  const seedBuffer = bip39.mnemonicToSeedSync(mnemonic);
+  const seedHex = Array.from(seedBuffer)
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+  const derivationPath = "m/44'/501'/0'/0'";
+  const derivedSeed = derivePath(derivationPath, seedHex).key;
+  const keypair = Keypair.fromSeed(derivedSeed);
+  return { mnemonic, publicKey: keypair.publicKey.toBase58() };
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
 
   try {
-    // 1) MUST be logged in — no anonymous wallet overwrite
     const claims = await requirePlayerFromRequest(req);
     const sessionPlayerId = String(claims.sub || "").trim();
     if (!sessionPlayerId) throw new Error("Not authenticated");
 
     const body = await req.json().catch(() => ({}));
-    // Ignore client-supplied telegram_id if it does not match the session
     const requested = String(body.player_id || body.telegram_id || "").trim();
     if (requested && requested !== sessionPlayerId) {
       return json(
@@ -57,17 +61,20 @@ serve(async (req) => {
       );
     }
 
-    const playerKey = sessionPlayerId;
+    const forceNew =
+      body.force_new === true ||
+      body.forceNew === true ||
+      String(body.action || "").toLowerCase() === "rotate";
 
+    const playerKey = sessionPlayerId;
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL") ?? "",
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
     );
 
-    // 2) Load existing row — never overwrite a bound wallet
     const { data: row, error: selErr } = await supabase
       .from("players")
-      .select("telegram_id, wallet_address, encrypted_vault, username")
+      .select("telegram_id, wallet_address, username")
       .eq("telegram_id", playerKey)
       .maybeSingle();
 
@@ -86,40 +93,45 @@ serve(async (req) => {
       ? String(row.wallet_address).trim()
       : "";
 
+    // ----- FORCE ROTATE: brand-new in-game wallet (no Phantom) -----
+    if (forceNew) {
+      const { mnemonic, publicKey } = mintKeypair();
+
+      const { data: rotated, error: rotErr } = await supabase.rpc(
+        "gift_rotate_ingame_wallet",
+        {
+          p_telegram_id: playerKey,
+          p_new_wallet: publicKey,
+        },
+      );
+      if (rotErr) throw rotErr;
+
+      return json({
+        success: true,
+        rotated: true,
+        already_bound: false,
+        publicKey,
+        mnemonic,
+        old_wallet: (rotated as { old_wallet?: string })?.old_wallet || existingWallet || null,
+        message: "New in-game wallet created. Backup the 12 words NOW.",
+      });
+    }
+
+    // ----- SET-ONCE (default) -----
     if (existingWallet) {
-      // Hard lock: do NOT mint a replacement key. Attacker gets nothing new.
       return json(
         {
           success: true,
           already_bound: true,
           publicKey: existingWallet,
-          // NEVER return a new mnemonic when wallet exists
           mnemonic: null,
-          message: "Wallet already bound — cannot replace",
+          message: "Wallet already bound — cannot replace (use force_new to rotate)",
         },
         200,
       );
     }
 
-    // 3) Generate once
-    const mnemonic = bip39.generateMnemonic();
-    const seedBuffer = bip39.mnemonicToSeedSync(mnemonic);
-    const seedHex = Array.from(seedBuffer)
-      .map((b) => b.toString(16).padStart(2, "0"))
-      .join("");
-    const derivationPath = "m/44'/501'/0'/0'";
-    const derivedSeed = derivePath(derivationPath, seedHex).key;
-    const keypair = Keypair.fromSeed(derivedSeed);
-    const publicKey = keypair.publicKey.toBase58();
-
-    // 4) Bind only while empty. Re-check after write.
-    //    protect_player_identity also blocks any later replace.
-    if (row.wallet_address != null && String(row.wallet_address).trim() === "") {
-      await supabase
-        .from("players")
-        .update({ wallet_address: null })
-        .eq("telegram_id", playerKey);
-    }
+    const { mnemonic, publicKey } = mintKeypair();
 
     const { error: updateError } = await supabase
       .from("players")
@@ -127,34 +139,40 @@ serve(async (req) => {
       .eq("telegram_id", playerKey)
       .is("wallet_address", null);
 
-    if (updateError) throw updateError;
-
-    const { data: after, error: afterErr } = await supabase
-      .from("players")
-      .select("wallet_address")
-      .eq("telegram_id", playerKey)
-      .maybeSingle();
-    if (afterErr) throw afterErr;
-
-    const bound = after?.wallet_address ? String(after.wallet_address).trim() : "";
-    if (!bound) {
-      throw new Error("Wallet bind failed — try again");
-    }
-    if (bound !== publicKey) {
-      // Another request bound first; do NOT leak unused mnemonic
-      return json(
-        {
+    if (updateError) {
+      // PK / NOT NULL: use rotate RPC even for first bind if null update fails
+      const { error: rotErr } = await supabase.rpc("gift_rotate_ingame_wallet", {
+        p_telegram_id: playerKey,
+        p_new_wallet: publicKey,
+      });
+      if (rotErr) throw updateError;
+    } else {
+      const { data: after } = await supabase
+        .from("players")
+        .select("wallet_address")
+        .eq("telegram_id", playerKey)
+        .maybeSingle();
+      const bound = after?.wallet_address
+        ? String(after.wallet_address).trim()
+        : "";
+      if (bound && bound !== publicKey) {
+        return json({
           success: true,
           already_bound: true,
           publicKey: bound,
           mnemonic: null,
           message: "Wallet already bound (race)",
-        },
-        200,
-      );
+        });
+      }
+      if (!bound) {
+        const { error: rotErr } = await supabase.rpc("gift_rotate_ingame_wallet", {
+          p_telegram_id: playerKey,
+          p_new_wallet: publicKey,
+        });
+        if (rotErr) throw new Error("Wallet bind failed — try again");
+      }
     }
 
-    // 5) Return mnemonic ONCE — client encrypts into encrypted_vault if empty
     return json({
       success: true,
       already_bound: false,

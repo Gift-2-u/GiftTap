@@ -6371,7 +6371,8 @@ const GiftTapGame = () => {
                           </button>
                         </div>
                       )}
-                      <button onClick={() => { setShowSettings(false); setIsRevealed(false); }} style={{ width: '100%', marginTop: '20px', background: 'none', color: '#888', border: 'none', cursor: 'pointer' }}>← Back to Balances</button>
+
+<button onClick={() => { setShowSettings(false); setIsRevealed(false); }} style={{ width: '100%', marginTop: '20px', background: 'none', color: '#888', border: 'none', cursor: 'pointer' }}>← Back to Balances</button>
                     </div>
                   ) : (
                     <>

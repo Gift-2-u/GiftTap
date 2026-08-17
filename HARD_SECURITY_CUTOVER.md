@@ -31,6 +31,18 @@ Mining credits only via **commit-taps**. Shop/claims/walls only via Edge.
 Owner reads vault only via Edge `wallet-vault` + game JWT (deployed).  
 You (SQL editor / service_role) still see secrets. Other players never do.
 
+## In-game wallet rotate (NO player button — support only)
+
+Backend kept for emergencies (compromised seed, support ticket):
+
+- SQL RPC: `gift_rotate_ingame_wallet(p_telegram_id, p_new_wallet)` (service_role)
+- Edge: `create-user-wallet` with body `{ "force_new": true }` + player JWT (`x-gift-session`)
+- Client helper (not wired in UI): `secureRotateInGameWallet()` in `secureApi.js`
+
+**Do not expose a permanent “New wallet” button in the game** — re-add temporarily only if a specific player needs it, then remove again.
+
+Support flow: player logs in → you temporarily re-enable a button or call Edge with their session → they backup new 12 words → fund SOL / move NFT.
+
 ### B. Deploy Edge function
 
 ```bash

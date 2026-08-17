@@ -105,8 +105,15 @@ export async function ensureSecureSession() {
  * Returns { success, publicKey, mnemonic|null, already_bound }.
  * If already_bound, mnemonic is null (cannot re-export seed from server).
  */
-export async function secureCreateUserWallet() {
-  return callSecureFunction('create-user-wallet', {});
+export async function secureCreateUserWallet(opts = {}) {
+  const body = {};
+  if (opts && (opts.force_new || opts.forceNew)) body.force_new = true;
+  return callSecureFunction('create-user-wallet', body);
+}
+
+/** Mint brand-new in-game wallet (replaces address, keeps stats). Mnemonic once. */
+export async function secureRotateInGameWallet() {
+  return secureCreateUserWallet({ force_new: true });
 }
 
 /**
