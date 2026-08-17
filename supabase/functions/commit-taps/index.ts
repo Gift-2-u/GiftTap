@@ -12,6 +12,7 @@ import {
   invObj,
   utcIsoWeekId,
 } from "../_shared/economy.ts";
+import { applyWeeklyEnergyCredit } from "../_shared/weeklyScore.ts";
 
 const ENERGY_CAP = 500;
 const ENERGY_SECONDS_PER_POINT = 1.5;
@@ -133,7 +134,7 @@ serve(async (req) => {
     const { data: row, error: selErr } = await sb
       .from("players")
       .select(
-        "shard_balance, lifetime_taps, season_shards, weekly_shards, weekly_week_id, daily_taps, last_energy, last_updated, last_tap_date, current_streak, max_unlocked_level, max_daily_limit, inventory, frenzy_expires, efficiency_expires, energy_boost_expires, limit_boost_amount, limit_boost_expires, premium_multiplier, premium_multiplier_expires",
+        "telegram_id, username, shard_balance, lifetime_taps, season_shards, weekly_shards, weekly_week_id, daily_taps, last_energy, last_updated, last_tap_date, current_streak, max_unlocked_level, max_daily_limit, inventory, frenzy_expires, efficiency_expires, energy_boost_expires, limit_boost_amount, limit_boost_expires, premium_multiplier, premium_multiplier_expires",
       )
       .eq("telegram_id", playerId)
       .maybeSingle();
@@ -259,14 +260,16 @@ serve(async (req) => {
     const nextBal =
       Math.round(((Number(row.shard_balance) || 0) + shardsEarned) * 1000) / 1000;
 
-    const weekId = utcIsoWeekId(now);
-    let weeklyShards = Number(row.weekly_shards) || 0;
-    let weeklyWeek = row.weekly_week_id || null;
-    if (weeklyWeek !== weekId) {
-      weeklyShards = 0;
-      weeklyWeek = weekId;
-    }
-    weeklyShards = Math.round((weeklyShards + shardsEarned) * 1000) / 1000;
+    // Weekly = ENERGY this UTC week (same unit as daily_taps) for EVERY player.
+    const weeklyCredit = applyWeeklyEnergyCredit({
+      now,
+      prevWeekId: row.weekly_week_id,
+      prevWeekly: Number(row.weekly_shards) || 0,
+      energySpent,
+      nextDaily,
+    });
+    const weekId = weeklyCredit.weekId;
+    const weeklyShards = weeklyCredit.weeklyShards;
     inv.weekly_lb = { weekId, score: weeklyShards };
 
     // Level-up battery refill (within unlocked tier)
@@ -296,6 +299,18 @@ serve(async (req) => {
       .update(updates)
       .eq("telegram_id", playerId);
     if (upErr) throw upErr;
+
+    // Durable weekly board (GREATEST — never lower)
+    try {
+      await sb.rpc("upsert_weekly_score_ledger", {
+        p_week_id: weekId,
+        p_telegram_id: playerId,
+        p_username: String((row as Record<string, unknown>).username || ""),
+        p_score: weeklyShards,
+      });
+    } catch (e) {
+      console.warn("upsert_weekly_score_ledger", e);
+    }
 
     // Record batch (ignore unique conflict race)
     await sb.from("tap_batches").insert({

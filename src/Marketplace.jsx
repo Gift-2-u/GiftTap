@@ -1260,6 +1260,10 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
     badgeTotal +
     walletNftCount;
   const backpackItems = backpackBoostItems; // legacy name for boosts
+  const boostOwnedCount = backpackBoostItems.reduce(
+    (t, i) => t + (Number(localInventory[i.id]) || 0),
+    0,
+  );
   const currentTodayStr = getTodayUTCString();
 
   return (
@@ -1784,9 +1788,21 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
             <div style={{ display: 'flex', gap: 6 }}>
               {[
-                { id: 'boost', label: 'Boost', color: '#4ade80' },
-                { id: 'badges', label: 'Badges', color: '#ffd700' },
-                { id: 'nft', label: walletNftCount > 0 ? `NFT (${walletNftCount})` : 'NFT', color: '#c084fc' },
+                {
+                  id: 'boost',
+                  label: boostOwnedCount > 0 ? `Boost (${boostOwnedCount})` : 'Boost',
+                  color: '#4ade80',
+                },
+                {
+                  id: 'badges',
+                  label: badgeTotal > 0 ? `Badges (${badgeTotal})` : 'Badges',
+                  color: '#ffd700',
+                },
+                {
+                  id: 'nft',
+                  label: walletNftCount > 0 ? `NFT (${walletNftCount})` : 'NFT',
+                  color: '#c084fc',
+                },
               ].map((tab) => (
                 <button
                   key={tab.id}

@@ -233,3 +233,17 @@ export async function secureBadgeMarketMyListings() {
 export async function secureNftMarket(action, payload = {}) {
   return callSecureFunction('nft-market', { action, ...payload });
 }
+
+
+/**
+ * Live weekly board (service_role reconcile for ALL players this week).
+ * Energy units; heals weekly lagging daily/batches for everyone on each call.
+ */
+export async function fetchWeeklyBoard(limit = 200) {
+  return callSecureFunction('weekly-board', { limit });
+}
+
+/** Force reconcile all weekly scores (same logic as weekly-board). */
+export async function reconcileWeeklyScores(limit = 500) {
+  return callSecureFunction('reconcile-weekly', { limit });
+}

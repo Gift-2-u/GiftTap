@@ -12,10 +12,11 @@ import {
   hasClaimedWeeklyBadgeDurable,
   applyWeeklyBadgeAward,
   getWeeklyBadgeAward,
+  getBadgeCounts,
 } from './weeklyBadges';
 import { mergeInventoryWeekly, hydrateWeeklyClaimsFromLedger } from './weeklyQuestLogic';
 import { ensureWeeklySeasonRollover } from './weeklySeasonRollover';
-import { hasSecureSession, secureBadgeClaim } from './secureApi';
+import { hasSecureSession, ensureSecureSession, secureBadgeClaim } from './secureApi';
 
 /**
  * Compact: claim last week's top-10 badge only (no essay UI).
@@ -79,75 +80,39 @@ export default function WeeklyBadgePanel({
     };
   }, [playerId, prevWeekId]);
 
+  const invBadgeCount = useMemo(() => {
+    const c = getBadgeCounts(inventory || {});
+    return Object.values(c).reduce((a, b) => a + b, 0);
+  }, [inventory]);
+
+  // Claim if not claimed yet, OR claimed/ledger but backpack still has 0 badges (Edge re-sync)
   const canClaimPrev =
-    !claimedPrev &&
     prevSnap &&
     prevSnap.tier &&
-    isUtcWeekClosed(prevWeekId);
+    isUtcWeekClosed(prevWeekId) &&
+    (!claimedPrev || invBadgeCount < 1);
 
   const handleClaim = async () => {
     if (!playerId || busy || !canClaimPrev) return;
     setBusy(true);
     setNotice(null);
     try {
-      // Hard security path: server validates snapshot + grants badge once
-      if (hasSecureSession()) {
-        const data = await secureBadgeClaim(prevWeekId);
-        const inv = data.inventory || inventory || {};
-        if (typeof onInventoryChange === 'function') onInventoryChange(inv);
-        const meta = BADGE_TIERS[data.tier] || BADGE_TIERS[prevSnap.tier];
-        setNotice({
-          ok: true,
-          msg: data.already
-            ? `Already claimed for ${prevWeekId}.`
-            : `${meta?.emoji || '🏅'} ${meta?.name || data.tier} claimed for ${prevWeekId}`,
-        });
-        return;
+      // Always server-side: client cannot write inventory under hard security
+      await ensureSecureSession();
+      if (!hasSecureSession()) {
+        throw new Error('Log in again to claim weekly badges (secure session required).');
       }
-
-      const { data: row, error: selErr } = await supabase
-        .from('players')
-        .select('inventory')
-        .eq(DB_PLAYER_ID, String(playerId))
-        .maybeSingle();
-      if (selErr) throw selErr;
-
-      let inv = hydrateWeeklyClaimsFromLedger(
-        { ...(row?.inventory || inventory || {}) },
-        liveWeekId,
-      );
-      const result = applyWeeklyBadgeAward(inv, prevSnap.tier, prevWeekId);
-      inv = result.inv;
-
-      if (result.already) {
-        setNotice({
-          ok: true,
-          msg: `Already claimed for ${prevWeekId}.`,
-        });
-        if (typeof onInventoryChange === 'function') onInventoryChange(inv);
-        return;
-      }
-      if (!result.tier) {
-        setNotice({ ok: false, msg: 'No badge for that week.' });
-        return;
-      }
-
-      const { error } = await supabase
-        .from('players')
-        .update({
-          inventory: inv,
-          last_updated: new Date().toISOString(),
-        })
-        .eq(DB_PLAYER_ID, String(playerId));
-      if (error) throw error;
-
-      if (typeof onInventoryChange === 'function') {
-        onInventoryChange(mergeInventoryWeekly(inventory || {}, inv, liveWeekId));
-      }
-      const meta = BADGE_TIERS[result.tier];
+      const data = await secureBadgeClaim(prevWeekId);
+      const inv = data.inventory || inventory || {};
+      if (typeof onInventoryChange === 'function') onInventoryChange(inv);
+      const meta = BADGE_TIERS[data.tier] || BADGE_TIERS[prevSnap?.tier];
       setNotice({
         ok: true,
-        msg: `${meta.emoji} ${meta.name} claimed for ${prevWeekId}`,
+        msg: data.already
+          ? (data.repaired
+              ? `${meta?.emoji || '🏅'} ${meta?.name || data.tier} restored to backpack.`
+              : `Already claimed for ${prevWeekId}.`)
+          : `${meta?.emoji || '🏅'} ${meta?.name || data.tier} claimed for ${prevWeekId}`,
       });
     } catch (e) {
       console.error('weekly badge', e);

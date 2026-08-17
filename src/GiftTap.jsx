@@ -198,6 +198,7 @@ import {
   secureGetVault,
   secureSetVaultIfEmpty,
   secureVaultStatus,
+  fetchWeeklyBoard,
 } from './secureApi';
 import WalletNftSection from './WalletNftSection';
 import SwapBadgeCard, { NftDetailModal, LOCKSMITH_PERKS } from './SwapBadgeCard';
@@ -615,6 +616,8 @@ const GiftTapGame = () => {
   const [weeklyBoardDay, setWeeklyBoardDay] = useState(() => getUtcIsoWeekDayNumber());
   const [weeklyEligibleCount, setWeeklyEligibleCount] = useState(0);
   const optimisticWeekly = useRef(0);
+  /** Keep ranks tab type for live weekly score patches while mining */
+  const leaderboardTypeRef = useRef(leaderboardType);
   /** Hard security: accumulate valid taps, flush via commit-taps */
   const pendingTapsRef = useRef({ count: 0, batchId: null });
   const tapFlushTimerRef = useRef(null);
@@ -1343,6 +1346,12 @@ const GiftTapGame = () => {
     // --- WEEKLY board from Supabase (weekly_shards + snapshots) ---
     if (targetType === 'Weekly') {
       try {
+        // Push any pending taps so weekly_shards is current for ALL players using commit-taps
+        try {
+          await flushPendingTaps();
+        } catch {
+          /* ignore */
+        }
         // Freeze any finished week before reading live / claim UI
         await ensureWeeklySeasonRollover();
         const weekId = getUtcWeekId();
@@ -1352,49 +1361,125 @@ const GiftTapGame = () => {
         setWeeklyBoardDay(day);
         setWeeklyBoardFloor(floor);
 
-        // Prefer dedicated view (fast). Fallback to players columns / inventory.
-        // Pull a wider pool then apply 15% floor client-side (main board).
-        let rows = [];
-        let { data, error } = await supabase
-          .from('leaderboard_weekly')
-          .select('*')
-          .eq('weekly_week_id', weekId)
-          .order('weekly_shards', { ascending: false })
-          .limit(200);
-
-        if (error) {
-          console.warn('leaderboard_weekly view:', error.message);
-          // Fallback: players table columns
-          ({ data, error } = await supabase
-            .from('players')
-            .select(`${DB_PLAYER_ID}, username, weekly_shards, weekly_week_id, inventory`)
-            .eq('weekly_week_id', weekId)
-            .gt('weekly_shards', 0)
-            .order('weekly_shards', { ascending: false })
-            .limit(200));
-          if (error) {
-            console.warn('weekly players fallback:', error.message);
-            // Last resort: inventory.weekly_lb parse
-            ({ data, error } = await supabase
-              .from('players')
-              .select(`${DB_PLAYER_ID}, username, inventory`)
-              .limit(1000));
-            if (error) throw error;
-            rows = sortWeeklyLeaderboard(data || [], weekId, { limit: 200 });
-          } else {
-            rows = (data || []).map((r) => ({
+        // SYSTEM board: Edge reconciles EVERY miner this week (energy units),
+        // then we still merge public sources as backup. No per-player patches.
+        const byId = new Map();
+        const absorb = (list) => {
+          for (const r of list || []) {
+            const id = String(r.telegram_id || r[DB_PLAYER_ID] || r.id || '').trim();
+            if (!id) continue;
+            const rowWeek = String(r.weekly_week_id || r.week_id || '').trim();
+            // Strict: this UTC week only
+            if (rowWeek && rowWeek !== weekId) continue;
+            // Edge rows always current week; allow missing week_id from board API
+            if (!rowWeek && r.weekly_shards == null && r.score == null && r.weekly_score == null) {
+              continue;
+            }
+            let score = Math.max(
+              0,
+              Number(r.weekly_shards ?? r.score ?? r.weekly_score) || 0,
+            );
+            const daily = Math.max(0, Number(r.daily_taps) || 0);
+            // Energy floor: week total >= today's daily
+            if (daily > score) score = daily;
+            if (score <= 0) continue;
+            // If week missing, treat as current only when from weekly-board
+            const effectiveWeek = rowWeek || weekId;
+            if (effectiveWeek !== weekId) continue;
+            const prev = byId.get(id);
+            if (prev && score <= (Number(prev.weekly_score) || 0)) {
+              if ((!prev.username || prev.username === 'Player') && r.username) {
+                byId.set(id, { ...prev, username: r.username });
+              }
+              continue;
+            }
+            byId.set(id, {
+              ...prev,
               ...r,
-              weekly_score: Number(r.weekly_shards) || 0,
-              score: Number(r.weekly_shards) || 0,
-            }));
+              telegram_id: id,
+              [DB_PLAYER_ID]: id,
+              username: r.username || prev?.username || 'Player',
+              weekly_shards: score,
+              weekly_score: score,
+              score,
+              weekly_week_id: weekId,
+            });
           }
-        } else {
-          rows = (data || []).map((r) => ({
-            ...r,
-            weekly_score: Number(r.weekly_shards ?? r.score) || 0,
-            score: Number(r.weekly_shards ?? r.score) || 0,
-          }));
+        };
+
+        // 0) Canonical: weekly-board Edge (reconcile ALL + return live scores)
+        try {
+          const board = await fetchWeeklyBoard(500);
+          if (board?.rows?.length) {
+            absorb(
+              board.rows.map((r) => ({
+                ...r,
+                weekly_week_id: board.week_id || weekId,
+                week_id: board.week_id || weekId,
+              })),
+            );
+          } else if (board?.error) {
+            console.warn('weekly-board:', board.error);
+          }
+        } catch (e) {
+          console.warn('weekly-board', e?.message || e);
         }
+
+        // 1) Fallbacks if Edge unavailable
+        if (byId.size === 0) {
+          try {
+            const rpc = await supabase.rpc('get_weekly_leaderboard_live', {
+              p_limit: 500,
+            });
+            if (!rpc.error && rpc.data?.length) absorb(rpc.data);
+          } catch (e) {
+            console.warn('weekly rpc', e?.message || e);
+          }
+          {
+            const v = await supabase
+              .from('leaderboard_weekly')
+              .select('*')
+              .eq('weekly_week_id', weekId)
+              .gt('weekly_shards', 0)
+              .order('weekly_shards', { ascending: false })
+              .limit(500);
+            if (!v.error) absorb(v.data);
+          }
+          {
+            const led = await supabase
+              .from('weekly_score_ledger')
+              .select('telegram_id, username, score, week_id, updated_at')
+              .eq('week_id', weekId)
+              .gt('score', 0)
+              .order('score', { ascending: false })
+              .limit(500);
+            if (!led.error) {
+              absorb(
+                (led.data || []).map((r) => ({
+                  telegram_id: r.telegram_id,
+                  username: r.username,
+                  weekly_shards: Number(r.score) || 0,
+                  weekly_week_id: r.week_id,
+                })),
+              );
+            }
+          }
+          {
+            const pl = await supabase
+              .from('players')
+              .select(
+                `${DB_PLAYER_ID}, username, weekly_shards, weekly_week_id, daily_taps, last_tap_date, inventory`,
+              )
+              .eq('weekly_week_id', weekId)
+              .or('weekly_shards.gt.0,daily_taps.gt.0')
+              .limit(500);
+            if (!pl.error) absorb(pl.data);
+          }
+        }
+
+        let rows = [...byId.values()].sort(
+          (a, b) => (Number(b.weekly_score) || 0) - (Number(a.weekly_score) || 0),
+        );
 
         // Inject live self (device may be ahead of last save) into full pool first
         if (playerId && liveW > 0) {
@@ -1562,6 +1647,16 @@ const GiftTapGame = () => {
       setLeaderboardLoading(false);
     }
   };
+
+  // Live pull other miners while Weekly ranks is open (commit-taps is per-device)
+  useEffect(() => {
+    if (currentPage !== 'leaderboard' || leaderboardType !== 'Weekly') return undefined;
+    const id = setInterval(() => {
+      fetchFullLeaderboard('Weekly');
+    }, 12000);
+    return () => clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentPage, leaderboardType, playerId]);
 
   /** Open Ranks page always landing on Season tab */
   const openLeaderboardPage = () => {
@@ -1796,14 +1891,29 @@ const GiftTapGame = () => {
           }
           const invW = getWeeklyLbState(inv, weekIdNow).score;
           wScore = Math.max(wScore, invW);
-          // Mid-week feature seed: if already tapping today, count today's daily_taps toward the week
+          // Same-week energy floor: weekly cannot lag today's daily (1300 daily / 656 weekly)
           const ltd = String(playerRow.last_tap_date || '').slice(0, 10);
           const today = utcTodayStr();
-          if (ltd === today) {
+          if (ltd === today || String(playerRow.weekly_week_id || '') === weekIdNow) {
             wScore = Math.max(wScore, Number(playerRow.daily_taps) || 0);
           }
           optimisticWeekly.current = wScore;
           inv.weekly_lb = { weekId: weekIdNow, score: wScore };
+          // Seed you weekly row so Ranks shows score before first re-fetch
+          {
+            const fl = getWeeklyBoardFloor();
+            setWeeklyYouRank((prev) => ({
+              ...(prev && typeof prev === 'object' ? prev : {}),
+              score: wScore,
+              onMain: isWeeklyFloorEligible(wScore, fl),
+              floor: fl,
+              need: Math.max(0, fl - wScore),
+              rank: prev?.rank ?? null,
+              tier: prev?.tier ?? null,
+              inList: !!prev?.inList,
+              total: prev?.total ?? 0,
+            }));
+          }
           // Auto-freeze last week's winners (idempotent; also covered by pg_cron)
           ensureWeeklySeasonRollover();
           // Persist seed so this week shows on the board after first save
@@ -2846,6 +2956,58 @@ const GiftTapGame = () => {
 
   // 6. SAVE PROGRESS — always persist shards; open mining past walls
 
+  // Sync weekly score into React state so Ranks -> Weekly moves while tapping.
+  // optimisticWeekly alone is a ref and never re-renders the board / you row.
+  const bumpWeeklyLiveUi = useCallback((scoreRaw) => {
+    const score = Math.max(0, Math.round((Number(scoreRaw) || 0) * 1000) / 1000);
+    optimisticWeekly.current = score;
+    const floor = getWeeklyBoardFloor();
+    setWeeklyYouRank((prev) => {
+      const base = prev && typeof prev === "object" ? prev : {};
+      const fl = Number(base.floor) > 0 ? Number(base.floor) : floor;
+      return {
+        ...base,
+        score,
+        onMain: isWeeklyFloorEligible(score, fl),
+        floor: fl,
+        need: Math.max(0, fl - score),
+        rank: base.rank ?? null,
+        tier: base.tier ?? null,
+        inList: !!base.inList,
+        total: base.total ?? 0,
+      };
+    });
+    // Only patch the open Weekly board (Season/all-time rows use different score fields)
+    if (leaderboardTypeRef.current === "Weekly" && playerId) {
+      setLeaderboard((rows) => {
+        if (!Array.isArray(rows) || rows.length === 0) return rows;
+        const id = String(playerId);
+        const ix = rows.findIndex(
+          (r) => String(r[DB_PLAYER_ID] || r.telegram_id || "") === id,
+        );
+        if (ix < 0) return rows;
+        const next = rows.slice();
+        next[ix] = {
+          ...next[ix],
+          weekly_score: score,
+          score,
+          weekly_shards: score,
+        };
+        next.sort(
+          (a, b) =>
+            (Number(b.weekly_score ?? b.score) || 0) -
+            (Number(a.weekly_score ?? a.score) || 0),
+        );
+        return next;
+      });
+    }
+  }, [playerId]);
+
+  // Keep tab type for live weekly patches (avoid stale closure in tap path)
+  useEffect(() => {
+    leaderboardTypeRef.current = leaderboardType;
+  }, [leaderboardType]);
+
   const flushPendingTaps = useCallback(async () => {
     if (!playerId) return;
     // Silent renew before commit so close/reopen never drops mining
@@ -2913,10 +3075,10 @@ const GiftTapGame = () => {
                 // Confirmed previous day from server
                 nextDt = dt;
               } else if (stillPending) {
-                // Mid-burst: keep higher local so UI does not jump backward mid-flush
+                // Mid-burst only: allow local ahead until this flush drains
                 nextDt = Math.max(dt, Number(optimisticDaily.current) || 0);
               } else {
-                // Queue empty → server is authority (fixes phone 1249 vs DB 1133)
+                // Queue empty → server is sole authority for daily + weekly
                 nextDt = dt;
               }
               optimisticDaily.current = nextDt;
@@ -2957,20 +3119,26 @@ const GiftTapGame = () => {
             }
             if (p.weekly_shards != null) {
               const ws = Number(p.weekly_shards) || 0;
-              optimisticWeekly.current = ws;
+              const stillPendingW = pendingTapsRef.current.count > 0;
+              // Mid-burst: local optimistic may be ahead of this committed batch
+              const nextW = stillPendingW
+                ? Math.max(ws, Number(optimisticWeekly.current) || 0)
+                : ws;
+              optimisticWeekly.current = nextW;
+              bumpWeeklyLiveUi(nextW);
               const wId =
                 p.weekly_week_id ||
                 getUtcWeekId();
               inventoryRef.current = {
                 ...(inventoryRef.current || {}),
-                weekly_lb: { weekId: wId, score: ws },
+                weekly_lb: { weekId: wId, score: nextW },
               };
               setStats((prev) => ({
                 ...prev,
                 inventory: {
                   ...(prev?.inventory || {}),
                   ...(inventoryRef.current || {}),
-                  weekly_lb: { weekId: wId, score: ws },
+                  weekly_lb: { weekId: wId, score: nextW },
                 },
               }));
             }
@@ -2985,7 +3153,8 @@ const GiftTapGame = () => {
           lastLocalSaveAtRef.current = Date.now();
           // Stop if server rejected further taps (daily limit / no energy)
           if (data && Number(data.taps) === 0) {
-            pendingTapsRef.current = { count: 0, batchId: null };
+            // Server could not credit this batch (energy/limit). Keep other pending
+            // only if we still have energy-ish room; otherwise stop the loop.
             break;
           }
         } catch (e) {
@@ -3007,13 +3176,13 @@ const GiftTapGame = () => {
     } finally {
       flushInFlightRef.current = false;
     }
-  }, [playerId, notify]);
+  }, [playerId, notify, bumpWeeklyLiveUi]);
 
   const scheduleTapFlush = useCallback(() => {
     if (tapFlushTimerRef.current) clearTimeout(tapFlushTimerRef.current);
-    // Fast flush so Supabase daily_taps stays close to the phone bar
+    // Fast flush so weekly leaders + daily bar track real mining
     const pending = pendingTapsRef.current?.count || 0;
-    const delay = pending >= 20 ? 250 : 500;
+    const delay = pending >= 40 ? 200 : pending >= 10 ? 350 : 450;
     tapFlushTimerRef.current = setTimeout(() => {
       flushPendingTaps();
     }, delay);
@@ -3672,19 +3841,22 @@ const GiftTapGame = () => {
       optimisticSeason.current = Math.round((safeSeason + shardsEarned) * 1000) / 1000;
       const nextSeasonShards = optimisticSeason.current;
 
-      // Weekly leaderboard score (resets each UTC week)
+      const totalCost = costMultiplier * validTaps;
+
+      // Weekly leaderboard (UTC week) — same units as daily_taps (energy spent)
       {
         const wId = getUtcWeekId();
         const invW = addWeeklyLbScore(
           inventoryRef.current || stats.inventory || {},
-          shardsEarned,
+          totalCost,
           wId,
         );
         inventoryRef.current = invW;
-        optimisticWeekly.current = getWeeklyLbState(invW, wId).score;
+        const wScore = getWeeklyLbState(invW, wId).score;
+        optimisticWeekly.current = wScore;
+        // Live Ranks -> Weekly you score (ref alone never re-renders)
+        bumpWeeklyLiveUi(wScore);
       }
-
-      const totalCost = costMultiplier * validTaps;
       // Regen continues on the 1.5s clock even while tapping (preserve residual ms)
       {
         const spent = spendEnergyFromAnchor(

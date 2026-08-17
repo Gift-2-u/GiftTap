@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.7";
 import { requirePlayerFromRequest } from "../_shared/sessionJwt.ts";
+import { healPlayerWeekly } from "../_shared/weeklyScore.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -54,7 +55,7 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
     );
 
-    const { data: player, error } = await supabase
+    let { data: player, error } = await supabase
       .from("players")
       .select(PLAYER_SELECT)
       .eq("telegram_id", playerId)
@@ -62,6 +63,13 @@ serve(async (req) => {
 
     if (error) throw error;
     if (!player) throw new Error("Player not found");
+
+    // System weekly heal (energy units, batches + daily floor) — every login
+    try {
+      player = await healPlayerWeekly(supabase, playerId, player as Record<string, unknown>);
+    } catch (e) {
+      console.warn("weekly heal", e);
+    }
 
     // Secrets only as booleans — from player_secrets (never on players table)
     let has_password = false;
