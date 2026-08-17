@@ -784,6 +784,64 @@ const HomePage = () => {
       <h2 className="text-3xl sm:text-5xl md:text-6xl font-black mb-6 bg-gradient-to-r from-purple-400 to-pink-500 bg-clip-text text-transparent italic leading-tight max-w-full">
         THE GIFT THAT KEEPS GIVING
       </h2>
+
+      {/* Big G2U Airdrop banner — site homepage CTA */}
+      <Link
+        to="/airdrop"
+        className="group relative w-full max-w-3xl mb-10 block rounded-3xl overflow-hidden border-2 border-purple-400/50 shadow-[0_0_40px_rgba(168,85,247,0.35)] hover:border-yellow-300/70 hover:shadow-[0_0_50px_rgba(251,239,67,0.25)] transition-all duration-300"
+      >
+        <div
+          className="absolute inset-0 opacity-95"
+          style={{
+            background:
+              'linear-gradient(120deg, #4c1d95 0%, #1e3a8a 40%, #0f172a 75%, #312e81 100%)',
+          }}
+        />
+        <div
+          className="absolute -top-16 -right-10 w-56 h-56 rounded-full pointer-events-none"
+          style={{
+            background: 'radial-gradient(circle, rgba(251,239,67,0.28) 0%, transparent 70%)',
+          }}
+        />
+        <div
+          className="absolute -bottom-20 -left-10 w-48 h-48 rounded-full pointer-events-none"
+          style={{
+            background: 'radial-gradient(circle, rgba(103,232,249,0.2) 0%, transparent 70%)',
+          }}
+        />
+        <div className="relative z-10 flex flex-col sm:flex-row items-center gap-5 sm:gap-8 px-6 py-8 sm:px-10 sm:py-10 text-left">
+          <div
+            className="flex-shrink-0 w-20 h-20 sm:w-24 sm:h-24 rounded-2xl flex items-center justify-center shadow-lg overflow-hidden"
+            style={{
+              background: 'linear-gradient(145deg, rgba(192,132,252,0.35), rgba(103,232,249,0.25))',
+            }}
+          >
+            <img
+              src="/g2u-airdrop-gift.png"
+              alt="G2U Airdrop"
+              className="w-[72px] h-[72px] sm:w-[88px] sm:h-[88px] object-contain drop-shadow-lg"
+            />
+          </div>
+          <div className="flex-1 min-w-0 text-center sm:text-left">
+            <p className="text-purple-200 text-xs sm:text-sm font-black tracking-[0.2em] uppercase mb-1">
+              Q4 launch · Community allocation
+            </p>
+            <h3 className="text-3xl sm:text-4xl md:text-5xl font-black leading-tight mb-2 bg-gradient-to-r from-fuchsia-300 via-yellow-200 to-cyan-300 bg-clip-text text-transparent">
+              G2U Airdrop
+            </h3>
+            <p className="text-slate-200 text-sm sm:text-base max-w-xl mx-auto sm:mx-0 leading-relaxed">
+              Clear Level 5 in Gift Tap to qualify. Stack bonuses with levels, lifetime taps,
+              streaks, IAP, GiftLocksmith NFT, and real friends.
+            </p>
+          </div>
+          <div className="flex-shrink-0 flex flex-col items-center gap-2">
+            <span className="inline-flex items-center justify-center rounded-full px-6 py-3.5 text-base sm:text-lg font-black text-slate-950 bg-gradient-to-r from-yellow-300 to-purple-400 group-hover:from-yellow-200 group-hover:to-fuchsia-300 shadow-lg transition">
+              View board →
+            </span>
+            <span className="text-[11px] text-slate-400 font-semibold">Play · qualify · boost</span>
+          </div>
+        </div>
+      </Link>
       
       {/* If this tag is missing, the box will never show up */}
       <DailyGiftBox wallet={wallet} connection={connection} />

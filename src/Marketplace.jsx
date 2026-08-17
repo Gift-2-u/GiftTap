@@ -33,6 +33,8 @@ import {
   badgeCatalogForBackpack,
 } from './weeklyBadges';
 import WeeklyBadgePanel from './WeeklyBadgePanel';
+import BadgeMarket from './BadgeMarket';
+import NftMarket from './NftMarket';
 import {
   hasSecureSession,
   ensureSecureSession,
@@ -1766,8 +1768,14 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
               ))}
             </div>
             <p style={{ color: '#555', fontSize: 9, textAlign: 'center', margin: '8px 0 0' }}>
-              More NFTs as they go on sale
+              Mint new above · trade owned NFTs below
             </p>
+            <NftMarket
+              decryptedPhrase={decryptedPhrase}
+              playerWallet={playerWallet}
+              onStatus={setTxStatus}
+              onNftChange={() => setWalletNftRefresh((n) => n + 1)}
+            />
           </>
         )}
 
@@ -2003,7 +2011,7 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
                   Your badges
                 </div>
                 <p style={{ color: '#666', fontSize: 11, margin: '0 0 4px', lineHeight: 1.35 }}>
-                  From Ranks → Weekly (top 10 eligible · ≥1,050). Rules: Menu → Game Guide.
+                  From Ranks → Weekly (top 10 eligible · ≥1,050). Sell in Badge market below.
                 </p>
                 {badgeTotal === 0 ? (
                   <div style={{ textAlign: 'center', padding: '20px 12px', color: '#888' }}>
@@ -2086,6 +2094,19 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
                     );
                   })
                 )}
+
+                <div style={{ marginTop: 8 }}>
+                  <BadgeMarket
+                    inventory={localInventory}
+                    balance={balance}
+                    setBalance={setBalance}
+                    setStats={setStats}
+                    setLocalInventory={setLocalInventory}
+                    decryptedPhrase={decryptedPhrase}
+                    playerWallet={playerWallet}
+                    onStatus={setTxStatus}
+                  />
+                </div>
               </>
             )}
 
@@ -2141,6 +2162,12 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
                     <p style={{ fontSize: 12 }}>No game wallet yet. Finish account setup first.</p>
                   </div>
                 )}
+                <NftMarket
+                  decryptedPhrase={decryptedPhrase}
+                  playerWallet={playerWallet}
+                  onStatus={setTxStatus}
+                  onNftChange={() => setWalletNftRefresh((n) => n + 1)}
+                />
                 <button
                   type="button"
                   onClick={() => setActiveTab('nft')}

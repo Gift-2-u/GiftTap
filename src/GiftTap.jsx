@@ -144,7 +144,11 @@ import {
 
 import { hasLocksmith } from './locksmith';
 import AirdropBoard from './AirdropBoard';
-import { computeAirdropProgress, fetchAirdropInputs } from './airdropProgress';
+import {
+  computeAirdropProgress,
+  fetchAirdropInputs,
+  AIRDROP_META,
+} from './airdropProgress';
 import {
   getUtcWeekId,
   utcDayStr as weeklyUtcDayStr,
@@ -992,21 +996,17 @@ const GiftTapGame = () => {
     recordWeeklyDailyProgress(taps, WEEKLY_BASE_DAILY_LIMIT, new Date());
   }, [dailyTaps, isDataLoaded, currentPage, recordWeeklyDailyProgress]);
 
-  const openAirdropBoard = async () => {
-    setShowAirdropBoard(true);
-    setAirdropLoading(true);
+  const refreshAirdropProgress = useCallback(async () => {
     try {
       const raw = playerId
         ? await fetchAirdropInputs(supabase, playerId, DB_PLAYER_ID)
         : null;
-      // Prefer live game state for streak / taps (matches Tasks claim readiness now)
       const lifetime = Number(lifetimeTaps) || Number(raw?.lifetimeTaps) || 0;
       const maxU = Number(maxUnlockedLevel) || Number(raw?.maxUnlockedLevel) || 0;
       const st = Math.max(
         0,
         Number(streakRef.current) || Number(streak) || Number(raw?.streak) || 0,
       );
-      // Always re-check NFT so board % matches the checkmark
       let hasNft = !!hasLocksmithNft;
       const nftWallet = playerWallet || raw?.walletAddress;
       if (nftWallet) {
@@ -1021,7 +1021,6 @@ const GiftTapGame = () => {
         maxUnlockedLevel: maxU,
         currentLevel,
         streak: st,
-        // Same as Tasks first_purchase claim ready / claimed
         hasIap: !!(raw && raw.hasIap),
         completedTasks: raw?.completedTasks || [],
         hasNft,
@@ -1029,13 +1028,48 @@ const GiftTapGame = () => {
         friendsL5: raw?.friendsL5 || 0,
       });
       setAirdropProgress(progress);
+      return progress;
     } catch (e) {
       console.warn('airdrop board', e?.message || e);
       setAirdropProgress(null);
+      return null;
+    }
+  }, [
+    playerId,
+    lifetimeTaps,
+    maxUnlockedLevel,
+    streak,
+    hasLocksmithNft,
+    playerWallet,
+    currentLevel,
+  ]);
+
+  const openAirdropBoard = async () => {
+    setShowAirdropBoard(true);
+    setAirdropLoading(true);
+    try {
+      await refreshAirdropProgress();
     } finally {
       setAirdropLoading(false);
     }
   };
+
+  // Prefetch airdrop stats for the home banner (no modal)
+  useEffect(() => {
+    if (!isDataLoaded || currentPage !== 'home' || !playerId) return undefined;
+    let cancelled = false;
+    (async () => {
+      try {
+        await refreshAirdropProgress();
+      } catch {
+        /* ignore */
+      }
+      if (cancelled) return;
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isDataLoaded, currentPage, playerId, refreshAirdropProgress]);
 
   /** +max daily limit (1000 bar), NOT the 500 Energy battery. */
   const grantTaskEnergy = useCallback(
@@ -5524,17 +5558,18 @@ const GiftTapGame = () => {
                     <HelpTip tipKey="how_to_play" size={18} onOpenPlaybook={() => setIsWhitepaperOpen(true)} />
                   </div>
 
-                  {/* Left chips: Airdrop + Weekly quest (gift blue, spaced) */}
+                  {/* Left side: G2U Airdrop card + Weekly quest */}
                   <div
                     style={{
                       position: 'absolute',
                       top: 8,
-                      left: 12,
+                      left: 8,
                       zIndex: 20,
                       display: 'flex',
                       flexDirection: 'column',
                       alignItems: 'flex-start',
                       gap: 8,
+                      maxWidth: 118,
                     }}
                   >
                     <button
@@ -5544,29 +5579,91 @@ const GiftTapGame = () => {
                         openAirdropBoard();
                       }}
                       style={{
+                        width: '100%',
                         display: 'flex',
-                        alignItems: 'center',
-                        background: 'rgba(50, 100, 255, 0.22)',
-                        border: '1px solid rgba(50, 100, 255, 0.55)',
-                        borderRadius: 20,
-                        padding: '6px 12px',
+                        flexDirection: 'column',
+                        alignItems: 'stretch',
+                        gap: 6,
+                        background:
+                          'linear-gradient(160deg, rgba(88,28,135,0.92) 0%, rgba(30,64,175,0.88) 55%, rgba(15,23,42,0.95) 100%)',
+                        border: '1.5px solid rgba(192,132,252,0.7)',
+                        borderRadius: 14,
+                        padding: '10px 10px 9px',
                         cursor: 'pointer',
                         outline: 'none',
                         WebkitTapHighlightColor: 'transparent',
-                        boxShadow: '0 0 12px rgba(50, 100, 255, 0.25)',
+                        boxShadow:
+                          '0 0 18px rgba(168,85,247,0.4), 0 4px 14px rgba(0,0,0,0.35)',
+                        textAlign: 'left',
                       }}
                     >
-                      <span
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <img
+                          src="/g2u-airdrop-gift.png"
+                          alt=""
+                          width={28}
+                          height={28}
+                          style={{
+                            width: 28,
+                            height: 28,
+                            objectFit: 'contain',
+                            flexShrink: 0,
+                            filter: 'drop-shadow(0 2px 6px rgba(0,0,0,0.45))',
+                          }}
+                        />
+                        <span
+                          style={{
+                            color: '#f0abfc',
+                            fontSize: 9,
+                            fontWeight: 800,
+                            letterSpacing: '0.06em',
+                            textTransform: 'uppercase',
+                          }}
+                        >
+                          {AIRDROP_META.season || 'Q4'}
+                        </span>
+                      </div>
+                      <div
                         style={{
-                          color: '#8eb4ff',
-                          fontSize: 11,
-                          fontWeight: 'bold',
-                          whiteSpace: 'nowrap',
-                          letterSpacing: '0.02em',
+                          color: '#fff',
+                          fontSize: 13,
+                          fontWeight: 900,
+                          lineHeight: 1.15,
+                          letterSpacing: '-0.01em',
                         }}
                       >
-                        G2U Airdrop
-                      </span>
+                        G2U
+                        <br />
+                        Airdrop
+                      </div>
+                      <div style={{ color: '#c4b5fd', fontSize: 9, lineHeight: 1.3, fontWeight: 600 }}>
+                        {airdropProgress?.qualified
+                          ? `✓ +${Number(airdropProgress.totalBonus) || 0}%`
+                          : 'Tap to open'}
+                      </div>
+                      {airdropProgress && Number(airdropProgress.l5TapsProgress) >= 0 ? (
+                        <div
+                          style={{
+                            height: 4,
+                            borderRadius: 4,
+                            background: 'rgba(0,0,0,0.4)',
+                            overflow: 'hidden',
+                          }}
+                        >
+                          <div
+                            style={{
+                              height: '100%',
+                              width: `${Math.min(
+                                100,
+                                Math.floor((Number(airdropProgress.l5TapsProgress) || 0) * 100),
+                              )}%`,
+                              background: airdropProgress.qualified
+                                ? 'linear-gradient(90deg,#4ade80,#fbef43)'
+                                : 'linear-gradient(90deg,#a855f7,#67e8f9)',
+                            }}
+                          />
+                        </div>
+                      ) : null}
                     </button>
                     <button
                       type="button"
@@ -7137,7 +7234,16 @@ const GiftTapGame = () => {
                 onClick={(e) => e.stopPropagation()}
               >
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                  <h3 style={{ margin: 0, color: '#67e8f9', fontSize: 18 }}>🪂 G2U Airdrop</h3>
+                  <h3 style={{ margin: 0, color: '#67e8f9', fontSize: 18, display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <img
+                      src="/g2u-airdrop-gift.png"
+                      alt=""
+                      width={28}
+                      height={28}
+                      style={{ width: 28, height: 28, objectFit: 'contain' }}
+                    />
+                    G2U Airdrop
+                  </h3>
                   <button
                     type="button"
                     onClick={() => {

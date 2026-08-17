@@ -163,3 +163,35 @@ export async function securePremiumGrant(itemId, txSignature) {
     tx_signature: txSignature,
   });
 }
+
+/** In-game badge marketplace (list / buy / cancel / browse). */
+export async function secureBadgeMarket(action, payload = {}) {
+  return callSecureFunction('badge-market', { action, ...payload });
+}
+
+export async function secureBadgeMarketBrowse(filters = {}) {
+  return secureBadgeMarket('browse', filters);
+}
+
+export async function secureBadgeMarketList({ tier, qty, currency, unit_price }) {
+  return secureBadgeMarket('list', { tier, qty, currency, unit_price });
+}
+
+export async function secureBadgeMarketCancel(listingId) {
+  return secureBadgeMarket('cancel', { listing_id: listingId });
+}
+
+export async function secureBadgeMarketBuy(listingId, txSignature = null) {
+  const body = { listing_id: listingId };
+  if (txSignature) body.tx_signature = txSignature;
+  return secureBadgeMarket('buy', body);
+}
+
+export async function secureBadgeMarketMyListings() {
+  return secureBadgeMarket('my_listings', {});
+}
+
+/** In-game NFT marketplace (owned GiftLocksmith P2P). */
+export async function secureNftMarket(action, payload = {}) {
+  return callSecureFunction('nft-market', { action, ...payload });
+}

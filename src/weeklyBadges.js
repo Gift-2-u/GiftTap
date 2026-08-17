@@ -575,6 +575,6 @@ export function badgeCatalogForBackpack() {
     color: t.color,
     image: t.image,
     category: 'badge',
-    desc: 'Weekly leaderboard prize · burn for Mystery Gift',
+    desc: 'Weekly prize · burn for Mystery Gift · sell on Badge market',
   }));
 }

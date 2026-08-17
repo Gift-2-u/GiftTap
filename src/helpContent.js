@@ -111,6 +111,8 @@ export const HELP_TIPS = {
       'Main board floor = 15% × 1,000 × day of the UTC week (day 1 Mon = 150 … day 7 = 1,050).\n\n' +
       'At week end, only players with ≥ 1,050 weekly score are badge-eligible. Top 10 eligible get one badge: Diamond #1, Gold #2, Silver #3, Bronze #4–10.\n\n' +
       'Claim finished-week badges in Shop → Pack → Badges. Burn badges there for Mystery Gift.\n\n' +
+      'In-game Badge market: sell badges from your backpack for SOL now (G2U token after launch — not G2Ushards). Listing escrows the badge. 5% fee to treasury (seller receives 95%). No external marketplaces.\n\n' +
+      'Owned GiftLocksmith NFTs: Shop → NFTs or Pack → NFT → NFT market. List for SOL, buyer pays 95% to you + 5% treasury, then you tap Send NFT to transfer on-chain.\n\n' +
       'Full rules: Menu → Game Guide → Leaderboards.',
   },
 };
