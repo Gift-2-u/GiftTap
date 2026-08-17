@@ -1,14 +1,17 @@
 import React, { useEffect, useState } from 'react';
 import { listGiftNfts } from './locksmith';
+import { transferCoreNft } from './nftTransfer';
 
 /**
- * In-game wallet: show Gift2u Elves / GiftLocksmith NFTs on this address.
- * View opens an in-app detail popup (image + metadata), not Solscan.
+ * In-game wallet NFTs. Detail popup: Send (free transfer) + Sell (marketplace).
  */
 export default function WalletNftSection({
   walletAddress,
+  walletSecret = '',
   refreshKey = 0,
   onOpenShopNfts,
+  onSellNft,
+  notify,
 }) {
   const [nfts, setNfts] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -16,8 +19,17 @@ export default function WalletNftSection({
   const [selected, setSelected] = useState(null);
   const [copied, setCopied] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [sendOpen, setSendOpen] = useState(false);
+  const [sendTo, setSendTo] = useState('');
+  const [sending, setSending] = useState(false);
+  const [listKey, setListKey] = useState(0);
 
-  // When opening a card, pull full metadata JSON if DAS only had partial fields
+  const toast = (msg, ok = true) => {
+    if (typeof notify === 'function') notify(msg, ok);
+    else if (!ok) console.warn(msg);
+    else console.log(msg);
+  };
+
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -54,7 +66,7 @@ export default function WalletNftSection({
           };
         });
       } catch {
-        /* offline / CORS — show DAS fields only */
+        /* offline */
       } finally {
         if (!cancelled) setDetailLoading(false);
       }
@@ -89,7 +101,7 @@ export default function WalletNftSection({
     return () => {
       cancelled = true;
     };
-  }, [walletAddress, refreshKey]);
+  }, [walletAddress, refreshKey, listKey]);
 
   const copyMint = async (id) => {
     try {
@@ -98,6 +110,55 @@ export default function WalletNftSection({
       setTimeout(() => setCopied(false), 1500);
     } catch {
       /* ignore */
+    }
+  };
+
+  const closeDetail = () => {
+    setSelected(null);
+    setSendOpen(false);
+    setSendTo('');
+    setSending(false);
+  };
+
+  const handleSell = () => {
+    if (!selected) return;
+    const nft = selected;
+    closeDetail();
+    if (typeof onSellNft === 'function') {
+      onSellNft(nft);
+    } else if (typeof onOpenShopNfts === 'function') {
+      onOpenShopNfts(nft);
+    } else {
+      toast('Open Shop → NFTs → Sell to list this NFT', true);
+    }
+  };
+
+  const handleSend = async () => {
+    if (!selected) return;
+    const to = String(sendTo || '').trim();
+    if (to.length < 32) {
+      toast('Enter a valid Solana wallet address', false);
+      return;
+    }
+    if (walletAddress && to === walletAddress) {
+      toast('Cannot send to the same wallet', false);
+      return;
+    }
+    const secret = String(walletSecret || '').trim();
+    if (!secret) {
+      toast('Unlock your game wallet first (log in / restore phrase)', false);
+      return;
+    }
+    setSending(true);
+    try {
+      const { signature } = await transferCoreNft(secret, selected.id, to);
+      toast(`NFT sent! ${String(signature).slice(0, 12)}…`, true);
+      closeDetail();
+      setListKey((k) => k + 1);
+    } catch (e) {
+      toast(e?.message || 'Send failed', false);
+    } finally {
+      setSending(false);
     }
   };
 
@@ -142,7 +203,7 @@ export default function WalletNftSection({
             {typeof onOpenShopNfts === 'function' ? (
               <button
                 type="button"
-                onClick={onOpenShopNfts}
+                onClick={() => onOpenShopNfts()}
                 style={{
                   width: '100%',
                   background: 'rgba(153,69,255,0.2)',
@@ -167,6 +228,8 @@ export default function WalletNftSection({
                 type="button"
                 onClick={() => {
                   setCopied(false);
+                  setSendOpen(false);
+                  setSendTo('');
                   setSelected(nft);
                 }}
                 style={{
@@ -253,13 +316,12 @@ export default function WalletNftSection({
         )}
       </div>
 
-      {/* NFT detail popup */}
       {selected && (
         <div
           role="dialog"
           aria-modal="true"
           aria-label={selected.name}
-          onClick={() => setSelected(null)}
+          onClick={closeDetail}
           style={{
             position: 'fixed',
             inset: 0,
@@ -307,7 +369,7 @@ export default function WalletNftSection({
               </div>
               <button
                 type="button"
-                onClick={() => setSelected(null)}
+                onClick={closeDetail}
                 style={{
                   background: 'none',
                   border: 'none',
@@ -341,11 +403,7 @@ export default function WalletNftSection({
                 <img
                   src={selected.image}
                   alt={selected.name}
-                  style={{
-                    width: '100%',
-                    height: '100%',
-                    objectFit: 'cover',
-                  }}
+                  style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                   onError={(e) => {
                     e.currentTarget.style.display = 'none';
                   }}
@@ -484,49 +542,135 @@ export default function WalletNftSection({
               </button>
             </div>
 
-            <div style={{ display: 'flex', gap: '8px' }}>
-              <button
-                type="button"
-                onClick={() => setSelected(null)}
+            {sendOpen ? (
+              <div
                 style={{
-                  flex: 1,
-                  background: '#ffd700',
-                  color: '#000',
-                  border: 'none',
-                  borderRadius: '10px',
-                  padding: '12px',
-                  fontWeight: 'bold',
-                  cursor: 'pointer',
-                  fontSize: '13px',
-                }}
-              >
-                Close
-              </button>
-              <a
-                href={`https://solscan.io/token/${selected.id}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                style={{
-                  flex: 1,
-                  background: 'transparent',
-                  color: '#888',
+                  background: '#0c0c0c',
                   border: '1px solid #444',
-                  borderRadius: '10px',
+                  borderRadius: '12px',
                   padding: '12px',
-                  fontWeight: 'bold',
-                  cursor: 'pointer',
-                  fontSize: '12px',
-                  textAlign: 'center',
-                  textDecoration: 'none',
-                  boxSizing: 'border-box',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
+                  marginBottom: '12px',
                 }}
               >
-                Solscan ↗
-              </a>
-            </div>
+                <div
+                  style={{
+                    color: '#ffd700',
+                    fontWeight: 'bold',
+                    fontSize: '13px',
+                    marginBottom: '8px',
+                  }}
+                >
+                  Send NFT to wallet
+                </div>
+                <p style={{ color: '#888', fontSize: '11px', margin: '0 0 8px', lineHeight: 1.4 }}>
+                  Free transfer on Solana. Needs a little SOL in this game wallet for fees.
+                  Destination must be a Solana address you control (e.g. new Phantom).
+                </p>
+                <input
+                  type="text"
+                  value={sendTo}
+                  onChange={(e) => setSendTo(e.target.value)}
+                  placeholder="Destination wallet (base58)"
+                  disabled={sending}
+                  style={{
+                    width: '100%',
+                    boxSizing: 'border-box',
+                    background: '#1a1a1a',
+                    border: '1px solid #444',
+                    borderRadius: '8px',
+                    color: '#fff',
+                    padding: '10px',
+                    fontSize: '12px',
+                    fontFamily: 'monospace',
+                    marginBottom: '10px',
+                  }}
+                />
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button
+                    type="button"
+                    disabled={sending}
+                    onClick={() => {
+                      setSendOpen(false);
+                      setSendTo('');
+                    }}
+                    style={{
+                      flex: 1,
+                      background: 'transparent',
+                      color: '#aaa',
+                      border: '1px solid #444',
+                      borderRadius: '10px',
+                      padding: '12px',
+                      fontWeight: 'bold',
+                      cursor: 'pointer',
+                      fontSize: '13px',
+                    }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    disabled={sending}
+                    onClick={handleSend}
+                    style={{
+                      flex: 1,
+                      background: sending ? '#555' : '#22c55e',
+                      color: '#000',
+                      border: 'none',
+                      borderRadius: '10px',
+                      padding: '12px',
+                      fontWeight: 'bold',
+                      cursor: sending ? 'wait' : 'pointer',
+                      fontSize: '13px',
+                    }}
+                  >
+                    {sending ? 'Sending…' : 'Confirm send'}
+                  </button>
+                </div>
+              </div>
+            ) : null}
+
+            {!sendOpen ? (
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button
+                  type="button"
+                  onClick={() => setSendOpen(true)}
+                  style={{
+                    flex: 1,
+                    background: '#22c55e',
+                    color: '#000',
+                    border: 'none',
+                    borderRadius: '10px',
+                    padding: '12px',
+                    fontWeight: 'bold',
+                    cursor: 'pointer',
+                    fontSize: '13px',
+                  }}
+                >
+                  Send
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSell}
+                  style={{
+                    flex: 1,
+                    background: '#ffd700',
+                    color: '#000',
+                    border: 'none',
+                    borderRadius: '10px',
+                    padding: '12px',
+                    fontWeight: 'bold',
+                    cursor: 'pointer',
+                    fontSize: '13px',
+                  }}
+                >
+                  Sell
+                </button>
+              </div>
+            ) : null}
+
+            <p style={{ color: '#555', fontSize: '10px', margin: '10px 0 0', textAlign: 'center' }}>
+              Send = free to any wallet · Sell = list on in-game market (SOL/G2U)
+            </p>
           </div>
         </div>
       )}

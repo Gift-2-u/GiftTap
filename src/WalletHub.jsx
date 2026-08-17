@@ -913,6 +913,12 @@ export function GameWalletPanel({ onClose }) {
           <WalletNftSection
             walletAddress={address}
             refreshKey={sessionTick}
+            onOpenShopNfts={() => {
+              if (typeof window !== 'undefined') window.location.href = '/play';
+            }}
+            onSellNft={() => {
+              if (typeof window !== 'undefined') window.location.href = '/play';
+            }}
           />
 
           {/* Same actions as in-game — all stay on the main site */}

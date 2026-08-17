@@ -2152,10 +2152,13 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
                 </div>
                 {playerWallet ? (
                   <WalletNftSection
-                    walletAddress={playerWallet}
-                    refreshKey={walletNftRefresh}
-                    onOpenShopNfts={() => setActiveTab('nft')}
-                  />
+                  walletAddress={playerWallet}
+                  walletSecret={decryptedPhrase || ''}
+                  refreshKey={walletNftRefresh}
+                  notify={(msg) => window.alert?.(msg)}
+                  onOpenShopNfts={() => setActiveTab('nft')}
+                  onSellNft={() => setActiveTab('nft')}
+                />
                 ) : (
                   <div style={{ textAlign: 'center', padding: '28px 16px', color: '#888' }}>
                     <div style={{ fontSize: 36, marginBottom: 8 }}>🔑</div>

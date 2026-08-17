@@ -6383,10 +6383,19 @@ const GiftTapGame = () => {
                       />
                       <WalletNftSection
                         walletAddress={playerWallet}
+                        walletSecret={decryptedPhrase || generatedSecret || ''}
                         refreshKey={isModalOpen ? 1 : 0}
+                        notify={notify}
                         onOpenShopNfts={() => {
                           setIsModalOpen(false);
                           setShowSettings(false);
+                          setShopFocusTab('nft');
+                          setCurrentPage('shop');
+                        }}
+                        onSellNft={() => {
+                          setIsModalOpen(false);
+                          setShowSettings(false);
+                          setShopFocusTab('nft');
                           setCurrentPage('shop');
                         }}
                       />
