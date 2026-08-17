@@ -2956,7 +2956,23 @@ const GiftTapGame = () => {
               }));
             }
             if (p.weekly_shards != null) {
-              optimisticWeekly.current = Number(p.weekly_shards) || 0;
+              const ws = Number(p.weekly_shards) || 0;
+              optimisticWeekly.current = ws;
+              const wId =
+                p.weekly_week_id ||
+                getUtcWeekId();
+              inventoryRef.current = {
+                ...(inventoryRef.current || {}),
+                weekly_lb: { weekId: wId, score: ws },
+              };
+              setStats((prev) => ({
+                ...prev,
+                inventory: {
+                  ...(prev?.inventory || {}),
+                  ...(inventoryRef.current || {}),
+                  weekly_lb: { weekId: wId, score: ws },
+                },
+              }));
             }
             serverProgressRef.current = {
               b: Number.isFinite(b) ? b : serverProgressRef.current?.b,
@@ -3712,45 +3728,32 @@ const GiftTapGame = () => {
       setDailyTaps(nextDaily);
       setBalances((bal) => ({ ...bal, G2Ushards: nextBalance }));
 
-      // Persist mining ONCE via client save (protect allows monotonic climb).
-      // Do NOT also queue commit-taps — that re-added the same taps ~0.5s later
-      // (tap 3× → stop → 3 more appear). Client write is the live path.
-      // Persist full mining bundle (daily + all-time + season + shards) — same as game math.
-      saveToDatabase(
-        nextBalance,
-        nextEnergy,
-        nextDaily,
-        today,
-        currentStreak,
-        nextLifetimeTaps,
-        maxUnlockedLevel,
-        nextSeasonShards,
-      );
-      // Immediate write so Supabase tracks every tap burst (debounced save is backup)
-      if (playerId && (nextDaily > 0 || nextBalance > 0)) {
-        lastLocalSaveAtRef.current = Date.now();
-        const weekIdTap = getUtcWeekId();
-        const weekScore = Math.max(
-          0,
-          Number(optimisticWeekly.current) || 0,
+      // HARD SECURITY: client cannot write weekly_shards / daily_taps / balances.
+      // Queue taps for commit-taps (service_role) — sole authority for weekly season score.
+      if (playerId && validTaps > 0) {
+        const prevQ = pendingTapsRef.current || { count: 0, batchId: null };
+        pendingTapsRef.current = {
+          count: (Number(prevQ.count) || 0) + validTaps,
+          batchId:
+            prevQ.batchId ||
+            (crypto.randomUUID
+              ? crypto.randomUUID()
+              : `b_${Date.now()}_${Math.random().toString(36).slice(2)}`),
+        };
+        scheduleTapFlush();
+      }
+      // Local heartbeat only (no mining columns) — keeps last_updated fresh
+      if (playerId) {
+        saveToDatabase(
+          nextBalance,
+          nextEnergy,
+          nextDaily,
+          today,
+          currentStreak,
+          nextLifetimeTaps,
+          maxUnlockedLevel,
+          nextSeasonShards,
         );
-        supabase
-          .from('players')
-          .update({
-            daily_taps: nextDaily,
-            last_tap_date: today,
-            shard_balance: nextBalance,
-            lifetime_taps: nextLifetimeTaps,
-            season_shards: nextSeasonShards,
-            weekly_shards: weekScore,
-            weekly_week_id: weekIdTap,
-            last_energy: nextEnergy,
-            last_updated: new Date().toISOString(),
-          })
-          .eq(DB_PLAYER_ID, playerId)
-          .then(({ error }) => {
-            if (error) console.warn('mining bundle sync', error.message);
-          });
       }
 
       // Weekly quests: 500/day, full daily limit, active days (functional state + DB)

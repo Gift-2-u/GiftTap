@@ -38,13 +38,41 @@ serve(async (req) => {
         .select("inventory, shard_balance")
         .eq("telegram_id", playerId)
         .maybeSingle();
+      // Re-sync backpack if grant exists but badge count missing (hard security freeze left UI empty)
+      let inv = invObj(player?.inventory);
+      const tier = String(existing.tier || "");
+      const itemId = BADGE_ITEM[tier] || (tier ? `badge_${tier}` : "");
+      let repaired = false;
+      if (itemId) {
+        const have = Math.max(0, Math.floor(Number(inv[itemId]) || 0));
+        if (have < 1) {
+          inv[itemId] = 1;
+          inv.weekly_badge_award = {
+            weekId,
+            tier,
+            rank: existing.rank,
+            claimedAt: new Date().toISOString(),
+            repaired: true,
+          };
+          const log = Array.isArray(inv.claim_log) ? [...(inv.claim_log as string[])] : [];
+          const claimKey = `weekly_badge:${weekId}:award`;
+          if (!log.includes(claimKey)) log.push(claimKey);
+          inv.claim_log = log.sort();
+          await sb
+            .from("players")
+            .update({ inventory: inv, last_updated: new Date().toISOString() })
+            .eq("telegram_id", playerId);
+          repaired = true;
+        }
+      }
       return jsonResponse({
         success: true,
         already: true,
         week_id: weekId,
         tier: existing.tier,
         rank: existing.rank,
-        inventory: player?.inventory || {},
+        inventory: inv,
+        repaired,
       });
     }
 
