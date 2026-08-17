@@ -5,10 +5,11 @@ import { requirePlayerFromRequest } from "../_shared/sessionJwt.ts";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type",
+    "authorization, x-client-info, apikey, content-type, x-gift-session, x-session-token",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
+/** Public game fields only — never password_hash / encrypted_vault in this payload */
 const PLAYER_SELECT = [
   "telegram_id",
   "username",
@@ -62,24 +63,41 @@ serve(async (req) => {
     if (error) throw error;
     if (!player) throw new Error("Player not found");
 
-    // Optional secure_economy flag
-    let secure_economy = false;
+    // Secrets only as booleans — from player_secrets (never on players table)
+    let has_password = false;
+    let has_vault = false;
+    try {
+      const { data: sec } = await supabase
+        .from("player_secrets")
+        .select("password_hash, encrypted_vault")
+        .eq("telegram_id", playerId)
+        .maybeSingle();
+      has_password = !!(sec?.password_hash && String(sec.password_hash).trim());
+      const v = sec?.encrypted_vault ? String(sec.encrypted_vault).trim() : "";
+      has_vault = v.length > 20 && v !== "probe";
+    } catch {
+      /* ignore */
+    }
+
+    let secure_economy = true;
     try {
       const { data: gs } = await supabase
         .from("game_settings")
         .select("secure_economy")
         .eq("id", 1)
         .maybeSingle();
-      secure_economy = !!gs?.secure_economy;
+      secure_economy = gs?.secure_economy !== false;
     } catch {
-      /* column may not exist yet */
+      secure_economy = true;
     }
 
     return new Response(
       JSON.stringify({
         success: true,
         player,
-        secure_economy,
+        has_password,
+        has_vault,
+        secure_economy: true,
         session: {
           player_id: playerId,
           username: claims.username,

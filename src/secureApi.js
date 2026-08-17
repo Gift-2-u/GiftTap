@@ -109,6 +109,28 @@ export async function secureCreateUserWallet() {
   return callSecureFunction('create-user-wallet', {});
 }
 
+/**
+ * Owner-only vault access (encrypted_vault is NOT readable via anon PostgREST).
+ * get → { encrypted_vault|null, has_vault }
+ * set_if_empty → store once
+ * status → { has_vault, has_password } without secrets
+ */
+export async function secureWalletVault(action = 'get', payload = {}) {
+  return callSecureFunction('wallet-vault', { action, ...payload });
+}
+
+export async function secureGetVault() {
+  return secureWalletVault('get');
+}
+
+export async function secureSetVaultIfEmpty(encryptedVault) {
+  return secureWalletVault('set_if_empty', { encrypted_vault: encryptedVault });
+}
+
+export async function secureVaultStatus() {
+  return secureWalletVault('status');
+}
+
 /** Secure shard shop buy (requires JWT). */
 export async function secureShopBuy(itemId) {
   return callSecureFunction('shop-buy', { item_id: itemId });

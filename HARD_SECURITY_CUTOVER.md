@@ -1,48 +1,35 @@
 # Hard security — truth vs gaps (post-hack)
 
-## What you thought we locked last week
+## What failed before (recon dump proof)
 
-**Economy only** when `game_settings.secure_economy = true`:
+Old "protect" **allowed client to RAISE** shards/taps by +500/+2000 per UPDATE.
+Spam updates → 149k shards. Inventory / premium / boosts / walls were free.
+`encrypted_vault: "probe"` = client write. That was **not** hard security.
 
-- shard_balance, lifetime_taps, season/weekly shards  
-- daily taps, energy, streak  
-- sol_balance / usdc_balance **columns in DB** (in-game balances)
+## What TOTAL FREEZE does NOW
 
-Edge + JWT for shop, taps, badges, etc.
+Run: **`20260817e_TOTAL_FREEZE.sql`** (supersedes 17d for economy)
 
-## What was NOT locked (why SOL could be stolen)
+| Layer | Effect |
+|-------|--------|
+| `protect_player_economy` | Client **cannot change** shards, taps, energy, inventory, boosts, premium, walls, sol/usdc, flags |
+| `protect_player_identity` | Wallet/vault/password/username set-once |
+| `protect_player_insert` | New client rows cannot start rich |
+| Edge `create-user-wallet` | JWT + set-once (deployed) |
+| Edge `claim-weekly-quest` | Server reward table only (deployed) |
+| Client save | Under secure mode only writes `last_updated` — no dual-write money |
 
-| Hole | Effect |
-|------|--------|
-| `wallet_address` client-writable | Attacker could rebind your in-game wallet |
-| `create-user-wallet` no JWT + always UPDATE | Anyone with anon key could pass your player id and **overwrite** wallet with a new key |
-| `encrypted_vault` client-writable + readable | Seed ciphertext in DB |
-| Vault AES password = `playerId + public salt` | If vault is readable, seed can be decrypted **without your login password** → drain SOL on-chain |
-
-NFT can stay on the same address if they only transferred SOL.
-
-## What this lockdown does NOW
-
-1. **SQL** `20260817d_HARD_IDENTITY_NOW.sql`  
-   - Trigger `protect_player_identity` — client cannot change wallet/vault/password/username/referrer once set  
-   - Even `service_role` cannot **replace** a bound wallet/vault unless you set  
-     `gift.admin_wallet_override` / `gift.admin_vault_override` (recovery only)
-
-2. **Edge** `create-user-wallet`  
-   - Requires `x-gift-session` (your game JWT)  
-   - Only binds **your** player id  
-   - **Set-once** — if wallet exists, returns it and **no new mnemonic**
-
-3. **Client** GiftTap  
-   - Never overwrites `wallet_address` / `encrypted_vault` when already set  
-   - Wallet create only via `secureCreateUserWallet()`  
-   - Mnemonic restore does not replace an existing vault
+Mining credits only via **commit-taps**. Shop/claims/walls only via Edge.
 
 ## YOU MUST DO (live project)
 
-### A. Run SQL (Supabase → SQL Editor) — paste entire file
+### A. Run SQL (Supabase → SQL Editor) — both files
 
-`gift_secure/20260817d_HARD_IDENTITY_NOW.sql`
+1. `gift_secure/20260817e_TOTAL_FREEZE.sql` — freeze money/inventory/identity + ban recon  
+2. `gift_secure/20260817f_SECRETS_UNREADABLE.sql` — **anon cannot SELECT `encrypted_vault` / `password_hash`**
+
+Owner reads vault only via Edge `wallet-vault` + game JWT (deployed).  
+You (SQL editor / service_role) still see secrets. Other players never do.
 
 ### B. Deploy Edge function
 

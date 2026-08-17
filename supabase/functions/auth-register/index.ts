@@ -51,7 +51,6 @@ serve(async (req) => {
     const body = await req.json();
     const cleanName = String(body.username || "").trim();
     const pass = String(body.password || "");
-    // Optional wallet from client (preferred — matches existing GiftTap wallet flow)
     const wallet_address = body.wallet_address
       ? String(body.wallet_address)
       : null;
@@ -89,10 +88,10 @@ serve(async (req) => {
     const playerId = crypto.randomUUID();
     const password_hash = await hashPassword(pass);
 
+    // Public row — NO password / vault columns
     const insertRow: Record<string, unknown> = {
       telegram_id: playerId,
       username: cleanName,
-      password_hash,
       has_beta_access: true,
       shard_balance: 0,
       season_shards: 0,
@@ -101,10 +100,8 @@ serve(async (req) => {
       usdc_balance: 0,
     };
     if (wallet_address) insertRow.wallet_address = wallet_address;
-    if (encrypted_vault) insertRow.encrypted_vault = encrypted_vault;
 
     const { error: insertError } = await supabase.from("players").insert(insertRow);
-
     if (insertError) {
       if (
         insertError.message?.includes("players_username") ||
@@ -112,12 +109,27 @@ serve(async (req) => {
       ) {
         throw new Error("That username is already taken. Choose another.");
       }
-      const msg =
+      throw new Error(
         insertError.message ||
-        insertError.details ||
-        insertError.hint ||
-        JSON.stringify(insertError);
-      throw new Error(msg);
+          insertError.details ||
+          insertError.hint ||
+          JSON.stringify(insertError),
+      );
+    }
+
+    // Secrets row — Edge only table
+    const { error: secErr } = await supabase.from("player_secrets").upsert({
+      telegram_id: playerId,
+      password_hash,
+      encrypted_vault: encrypted_vault && String(encrypted_vault).length > 20
+        ? encrypted_vault
+        : null,
+      updated_at: new Date().toISOString(),
+    });
+    if (secErr) {
+      // rollback player row
+      await supabase.from("players").delete().eq("telegram_id", playerId);
+      throw new Error(secErr.message || "Could not store account secrets");
     }
 
     let session_token: string | null = null;
@@ -142,6 +154,7 @@ serve(async (req) => {
         player_id: playerId,
         username: cleanName,
         wallet_address,
+        has_vault: !!(encrypted_vault && String(encrypted_vault).length > 20),
         session_token,
         expires_at,
       }),

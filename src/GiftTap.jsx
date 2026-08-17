@@ -195,6 +195,9 @@ import {
   secureCommitTaps,
   secureWallClimb,
   secureCreateUserWallet,
+  secureGetVault,
+  secureSetVaultIfEmpty,
+  secureVaultStatus,
 } from './secureApi';
 import WalletNftSection from './WalletNftSection';
 import SwapBadgeCard, { NftDetailModal, LOCKSMITH_PERKS } from './SwapBadgeCard';
@@ -1673,9 +1676,14 @@ const GiftTapGame = () => {
             .catch(() => {});
         }
         setPlayerWallet(playerRow.wallet_address);
-        // TG / restored accounts without password → prompt to set credentials
-        const missingPw = !playerRow.password_hash;
-        setNeedsPassword(missingPw);
+        // password_hash is NOT readable via anon — status via Edge
+        try {
+          await ensureSecureSession();
+          const st = await secureVaultStatus();
+          setNeedsPassword(st?.has_password === false);
+        } catch {
+          setNeedsPassword(false);
+        }
         
         setBalances({ 
           sol: playerRow.sol_balance || 0, 
@@ -2175,12 +2183,19 @@ const GiftTapGame = () => {
             }
         }
 
-        // 🚨 THE DECRYPTION FIX: Load the wallet into the UI from the Cloud
-        if (playerRow.encrypted_vault) {
-          const unlockedSecret = decryptWallet(playerRow.encrypted_vault, invisibleKey);
-          if (unlockedSecret) {
-            setDecryptedPhrase(unlockedSecret); // Session unlocked silently!
+        // HARD SECURITY: vault NOT readable via anon select('*').
+        // Owner-only via Edge wallet-vault + JWT.
+        try {
+          await ensureSecureSession();
+          const vaultRes = await secureGetVault();
+          if (vaultRes?.encrypted_vault) {
+            const unlockedSecret = decryptWallet(vaultRes.encrypted_vault, invisibleKey);
+            if (unlockedSecret) {
+              setDecryptedPhrase(unlockedSecret);
+            }
           }
+        } catch (vaultErr) {
+          console.warn('secure vault load', vaultErr?.message || vaultErr);
         }
 
         setIsDataLoaded(true);
@@ -2200,18 +2215,18 @@ const GiftTapGame = () => {
             setHasAccess(true);
             setIsDataLoaded(true);
           } else if (result && result.publicKey) {
-            // Only write vault if still empty — never replace an existing vault
+            // Vault set-once via Edge only (anon cannot read/write encrypted_vault)
             const rawSecret = result.mnemonic || result.secretKey || null;
-            const patch = {};
-            if (!playerRow.encrypted_vault && rawSecret) {
-              patch.encrypted_vault = encryptWallet(rawSecret, invisibleKey);
+            if (rawSecret) {
+              const enc = encryptWallet(rawSecret, invisibleKey);
+              try {
+                await secureSetVaultIfEmpty(enc);
+              } catch (ve) {
+                console.warn('vault set_if_empty', ve?.message || ve);
+              }
               setDecryptedPhrase(rawSecret);
               setMustBackup(true);
               localStorage.removeItem(`wallet_backed_up_${userId}`);
-            }
-            // wallet_address is already bound server-side; only set vault if empty
-            if (Object.keys(patch).length) {
-              await supabase.from('players').update(patch).eq(DB_PLAYER_ID, userId);
             }
             setPlayerWallet(result.publicKey);
             setHasAccess(true);
@@ -2266,10 +2281,18 @@ const GiftTapGame = () => {
         .eq(DB_PLAYER_ID, userId)
         .maybeSingle();
 
-      let encryptedVault = existingPlayer?.encrypted_vault || null;
+      let encryptedVault = null;
       let publicKey = existingPlayer?.wallet_address || null;
       const hadWallet = !!(publicKey && String(publicKey).trim());
-      const hadVault = !!(encryptedVault && String(encryptedVault).trim());
+      // encrypted_vault not on anon select — ask Edge
+      let hadVault = false;
+      try {
+        await ensureSecureSession();
+        const st = await secureVaultStatus();
+        hadVault = !!st?.has_vault;
+      } catch {
+        hadVault = false;
+      }
 
       // Ensure player row exists BEFORE wallet Edge bind (create-user-wallet needs the row)
       if (!existingPlayer) {
@@ -2315,11 +2338,7 @@ const GiftTapGame = () => {
           setDecryptedPhrase(newWallet.mnemonic);
           setGeneratedSecret(newWallet.mnemonic);
           setMustBackup(true);
-          // First vault write only when empty
-          await supabase
-            .from('players')
-            .update({ encrypted_vault: encryptedVault })
-            .eq(DB_PLAYER_ID, userId);
+          await secureSetVaultIfEmpty(encryptedVault);
         }
       }
 
@@ -2400,15 +2419,17 @@ const GiftTapGame = () => {
           .eq(DB_PLAYER_ID, String(row[DB_PLAYER_ID]));
       }
 
-      // HARD SECURITY: never overwrite an existing vault from the client.
-      // If vault is empty (legacy row), set once. Seed stays in this session either way.
-      if (!row.encrypted_vault) {
-        const invisibleKey = vaultSaltFor(String(row[DB_PLAYER_ID]));
-        const encryptedVault = encryptWallet(cleaned, invisibleKey);
-        await supabase
-          .from("players")
-          .update({ encrypted_vault: encryptedVault })
-          .eq(DB_PLAYER_ID, String(row[DB_PLAYER_ID]));
+      // HARD SECURITY: vault write only via Edge set_if_empty (never client column)
+      try {
+        await ensureSecureSession();
+        const st = await secureVaultStatus();
+        if (!st?.has_vault) {
+          const invisibleKey = vaultSaltFor(String(row[DB_PLAYER_ID]));
+          const encryptedVault = encryptWallet(cleaned, invisibleKey);
+          await secureSetVaultIfEmpty(encryptedVault);
+        }
+      } catch (ve) {
+        console.warn('restore vault edge', ve?.message || ve);
       }
 
       setDecryptedPhrase(cleaned);
@@ -2421,7 +2442,13 @@ const GiftTapGame = () => {
           .eq(DB_PLAYER_ID, String(row[DB_PLAYER_ID]));
       }
 
-      const missingPw = !row.password_hash;
+      let missingPw = false;
+      try {
+        const st = await secureVaultStatus();
+        missingPw = st?.has_password === false;
+      } catch {
+        missingPw = false;
+      }
       setNeedsPassword(missingPw);
       if (missingPw) {
         setShowClaimAccount(true);
@@ -3194,35 +3221,50 @@ const GiftTapGame = () => {
         weekly_lb: nextInventory.weekly_lb,
       };
 
-      // ONE mining snapshot = game truth:
-      // tap → daily_taps + lifetime_taps + season_shards + weekly + shard_balance together.
-      // Protect allows that whole bundle to rise (cannot lower money / cannot raise walls).
-      const baseRow = {
-        [DB_PLAYER_ID]: playerId,
-        username: player.username || player.first_name || 'Player',
-        shard_balance: writeB,
-        season_shards: writeS,
-        weekly_shards: writeWeekly,
-        weekly_week_id: weekIdSave,
-        last_energy: p.e,
-        daily_taps: writeDt,
-        last_tap_date: saveLtd,
-        current_streak: p.strk,
-        lifetime_taps: writeLtt,
-        // max_unlocked_level only when not locked path — protect freezes client wall raises
-        ...(secureLock ? {} : { max_unlocked_level: p.mul }),
-        max_daily_limit: maxDailyLimit,
-        limit_boost_amount: stats.limit_boost_amount,
-        limit_boost_expires: stats.limit_boost_expires,
-        inventory: nextInventory,
-        last_updated: new Date().toISOString(),
-      };
+      // HARD SECURITY (TOTAL FREEZE):
+      // Client must NEVER write money / taps / inventory / boosts / walls.
+      // Only Edge (commit-taps, shop-buy, claim-*, wall-climb) may change those.
+      // Under secureLock we only touch last_updated (harmless heartbeat).
+      // Local UI still uses optimisticBalance / inventoryRef for feel.
+      const baseRow = secureLock
+        ? {
+            last_updated: new Date().toISOString(),
+          }
+        : {
+            [DB_PLAYER_ID]: playerId,
+            username: player.username || player.first_name || 'Player',
+            shard_balance: writeB,
+            season_shards: writeS,
+            weekly_shards: writeWeekly,
+            weekly_week_id: weekIdSave,
+            last_energy: p.e,
+            daily_taps: writeDt,
+            last_tap_date: saveLtd,
+            current_streak: p.strk,
+            lifetime_taps: writeLtt,
+            max_unlocked_level: p.mul,
+            max_daily_limit: maxDailyLimit,
+            limit_boost_amount: stats.limit_boost_amount,
+            limit_boost_expires: stats.limit_boost_expires,
+            inventory: nextInventory,
+            last_updated: new Date().toISOString(),
+          };
 
       const doUpdate = async (row) =>
         supabase.from('players').update(row).eq(DB_PLAYER_ID, savePlayerId).select();
 
       lastLocalSaveAtRef.current = Date.now();
       let { data, error } = await doUpdate(baseRow);
+
+      // Under total freeze, treat heartbeat as success for local optimistic state
+      if (secureLock && !error) {
+        serverProgressRef.current = {
+          b: writeB,
+          ltt: writeLtt,
+          s: writeS,
+          dt: writeDt,
+        };
+      }
 
       // Legacy PAYWALL trigger still blocks lifetime_taps past wall until you drop it in SQL.
       // Retry keeps the SAME field name (lifetime_taps) at wall cap so shards still save.
@@ -3878,17 +3920,17 @@ const GiftTapGame = () => {
         // --- 1. ZERO-DELAY INSTANT DECRYPTION ---
         let storedSecret = decryptedPhrase || generatedSecret;
         
-        // Failsafe: If React memory is lagging, fetch and unlock straight from the Supabase vault
+        // Failsafe: owner-only Edge vault (anon cannot SELECT encrypted_vault)
         if (!storedSecret) {
-          const { data, error } = await supabase
-            .from('players')
-            .select('encrypted_vault')
-            .eq(DB_PLAYER_ID, playerId)
-            .single();
-
-          if (data && data.encrypted_vault) {
-            const invisibleKey = vaultSaltFor(playerId);
-            storedSecret = decryptWallet(data.encrypted_vault, invisibleKey);
+          try {
+            await ensureSecureSession();
+            const vaultRes = await secureGetVault();
+            if (vaultRes?.encrypted_vault) {
+              const invisibleKey = vaultSaltFor(playerId);
+              storedSecret = decryptWallet(vaultRes.encrypted_vault, invisibleKey);
+            }
+          } catch (ve) {
+            console.warn('wall vault edge', ve?.message || ve);
           }
         }
 
@@ -5053,7 +5095,8 @@ const GiftTapGame = () => {
 
         if (data) {
           // Default true if column missing — hard security is live in production
-          secureEconomyRef.current = data.secure_economy !== false;
+          // Always hard-secure — never allow client dual-write path even if flag missing
+          secureEconomyRef.current = true;
           setSeasonData({
             name: data.season_name,
             isActive: data.is_season_active,

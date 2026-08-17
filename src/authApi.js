@@ -145,82 +145,94 @@ export async function registerAccount(username, password) {
     throw new Error('Username "Player" is reserved. Pick a unique name.');
   }
 
-  const { data: existing, error: checkErr } = await supabase
-    .from('players')
-    .select('telegram_id')
-    .ilike('username', cleanName)
-    .maybeSingle();
+  const base = (import.meta.env.VITE_SUPABASE_URL || '').replace(/\/$/, '');
+  const anon = import.meta.env.VITE_SUPABASE_ANON_KEY;
+  if (!base || !anon) {
+    throw new Error('App is missing Supabase config.');
+  }
 
-  if (checkErr) throw new Error(formatAuthError(checkErr));
-  if (existing) throw new Error('That username is already taken. Choose another.');
-
-  const playerId = crypto.randomUUID();
-
-  let password_hash;
+  // Create wallet locally first (Edge create-user-wallet needs JWT after account exists)
+  const playerIdPreview = crypto.randomUUID
+    ? crypto.randomUUID()
+    : `web_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+  let wallet;
   try {
-    password_hash = await hashPassword(pass);
+    wallet = await createSolanaWallet(playerIdPreview, cleanName);
   } catch {
-    throw new Error('Could not secure password. Use a modern browser (or HTTPS).');
+    wallet = null;
+  }
+  if (!wallet?.publicKey) {
+    const { Keypair } = await import('@solana/web3.js');
+    const bs58mod = await import('bs58');
+    const kp = Keypair.generate();
+    wallet = {
+      publicKey: kp.publicKey.toBase58(),
+      secret: bs58mod.default.encode(kp.secretKey),
+    };
   }
 
-  // REQUIRED: wallet before insert (DB not-null on wallet_address)
-  const wallet = await createSolanaWallet(playerId, cleanName);
-  if (!wallet.publicKey) {
-    throw new Error('Could not create wallet. Try again.');
+  // Encrypt vault for optional pass-through to auth-register (stored in player_secrets)
+  // player_id is assigned by Edge — re-encrypt after we know final id if needed.
+  // auth-register will store vault under final playerId; client may re-set via wallet-vault.
+
+  const res = await fetch(`${base}/functions/v1/auth-register`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${anon}`,
+      apikey: anon,
+    },
+    body: JSON.stringify({
+      username: cleanName,
+      password: pass,
+      wallet_address: wallet.publicKey,
+      // vault re-keyed after we know player_id — send null for now if salt uses id
+    }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(data.error || data.message || `Sign up failed (${res.status})`);
   }
 
+  const playerId = data.player_id;
   const encrypted_vault = encryptVault(wallet.secret, playerId);
 
-  const row = {
-    telegram_id: playerId,
-    username: cleanName,
-    password_hash,
-    wallet_address: wallet.publicKey,
-    encrypted_vault,
-    has_beta_access: true, // public launch — open to everyone
-    shard_balance: 0,
-    season_shards: 0,
-    lifetime_taps: 0,
-    sol_balance: 0,
-    usdc_balance: 0,
-  };
-
-  const { error: insertError } = await supabase.from('players').insert(row);
-
-  if (insertError) {
-    const msg = formatAuthError(insertError);
-    if (msg.includes('password_hash') || insertError.message?.includes('password_hash')) {
-      throw new Error(
-        'Database missing password_hash column. In Supabase SQL run: alter table players add column if not exists password_hash text;',
-      );
-    }
-    if (insertError.code === '23505' || /unique|duplicate/i.test(msg)) {
-      throw new Error('That username is already taken. Choose another.');
-    }
-    throw new Error(msg);
+  // Store vault via temporary: login then set_if_empty
+  if (data.session_token) {
+    setSessionToken(data.session_token, data.expires_at);
   }
+  applyAuthSession({
+    playerId,
+    username: data.username || cleanName,
+    sessionToken: data.session_token,
+    expiresAt: data.expires_at,
+  });
 
-  // Issue session JWT via edge login when available
-  let session_token = null;
-  let expires_at = null;
+  // Put vault in player_secrets via wallet-vault Edge
   try {
-    const logged = await loginAccount(cleanName, pass);
-    session_token = logged.session_token || null;
-    expires_at = logged.expires_at || null;
+    const vaultRes = await fetch(`${base}/functions/v1/wallet-vault`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${anon}`,
+        apikey: anon,
+        'x-gift-session': data.session_token || '',
+      },
+      body: JSON.stringify({ action: 'set_if_empty', encrypted_vault }),
+    });
+    await vaultRes.json().catch(() => ({}));
   } catch (e) {
-    console.warn('post-register session:', e?.message || e);
-    applyAuthSession({ playerId, username: cleanName });
+    console.warn('post-register vault:', e?.message || e);
   }
 
   return {
     success: true,
     player_id: playerId,
-    username: cleanName,
-    wallet_address: wallet.publicKey,
-    /** Pass to UI so user can back up (12 words or base58 secret) */
+    username: data.username || cleanName,
+    wallet_address: data.wallet_address || wallet.publicKey,
     mnemonic: wallet.secret,
-    session_token,
-    expires_at,
+    session_token: data.session_token || null,
+    expires_at: data.expires_at || null,
   };
 }
 
@@ -234,88 +246,49 @@ export async function loginAccount(username, password) {
 
   const base = (import.meta.env.VITE_SUPABASE_URL || '').replace(/\/$/, '');
   const anon = import.meta.env.VITE_SUPABASE_ANON_KEY;
-
-  // Prefer Edge auth-login (issues session JWT for hard security)
-  if (base && anon) {
-    try {
-      const res = await fetch(`${base}/functions/v1/auth-login`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${anon}`,
-          apikey: anon,
-        },
-        body: JSON.stringify({ username: cleanName, password: pass }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        throw new Error(data.error || data.message || `Login failed (${res.status})`);
-      }
-      if (data.session_token) {
-        setSessionToken(data.session_token, data.expires_at);
-      }
-      applyAuthSession({
-        playerId: data.player_id,
-        username: data.username,
-        sessionToken: data.session_token,
-        expiresAt: data.expires_at,
-      });
-      return {
-        success: true,
-        player_id: data.player_id,
-        username: data.username,
-        wallet_address: data.wallet_address,
-        has_beta_access: !!data.has_beta_access,
-        has_vault: !!data.has_vault,
-        session_token: data.session_token || null,
-        expires_at: data.expires_at || null,
-      };
-    } catch (e) {
-      // Fall through to client verify if edge unavailable
-      console.warn('auth-login edge:', e?.message || e);
-    }
+  if (!base || !anon) {
+    throw new Error('App is missing Supabase config. Check VITE_SUPABASE_URL / ANON_KEY.');
   }
 
-  const { data: row, error } = await supabase
-    .from('players')
-    .select('telegram_id, username, password_hash, wallet_address, has_beta_access, encrypted_vault')
-    .ilike('username', cleanName)
-    .maybeSingle();
-
-  if (error) throw new Error(formatAuthError(error));
-  if (!row) throw new Error('No account with that username.');
-  if (!row.password_hash) {
-    throw new Error(
-      'This account has no password. Use the "12 words" tab once, or create a new account.',
-    );
-  }
-
-  const ok = await verifyPassword(pass, row.password_hash);
-  if (!ok) throw new Error('Wrong password.');
-
-  // No Edge JWT — still bind identity and CLEAR any previous account session token
-  applyAuthSession({
-    playerId: row.telegram_id,
-    username: row.username,
-    sessionToken: null,
+  // HARD SECURITY: password is in player_secrets — only Edge can verify.
+  // Never select password_hash from the client (column removed / unreadable).
+  const res = await fetch(`${base}/functions/v1/auth-login`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${anon}`,
+      apikey: anon,
+    },
+    body: JSON.stringify({ username: cleanName, password: pass }),
   });
-
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(data.error || data.message || `Login failed (${res.status})`);
+  }
+  if (!data.player_id) {
+    throw new Error(data.error || 'Login failed — no player returned.');
+  }
+  if (data.session_token) {
+    setSessionToken(data.session_token, data.expires_at);
+  }
+  applyAuthSession({
+    playerId: data.player_id,
+    username: data.username,
+    sessionToken: data.session_token,
+    expiresAt: data.expires_at,
+  });
   return {
     success: true,
-    player_id: row.telegram_id,
-    username: row.username,
-    wallet_address: row.wallet_address,
-    has_beta_access: !!row.has_beta_access,
-    has_vault: !!row.encrypted_vault,
-    session_token: null,
-    expires_at: null,
+    player_id: data.player_id,
+    username: data.username,
+    wallet_address: data.wallet_address,
+    has_beta_access: data.has_beta_access !== false,
+    has_vault: !!data.has_vault,
+    session_token: data.session_token || null,
+    expires_at: data.expires_at || null,
   };
 }
 
-/**
- * For Telegram / 12-word restored accounts:
- * keep or change username + set password so they can log in on any device.
- */
 export async function claimAccountCredentials({ playerId, username, password }) {
   const cleanName = String(username || '').trim();
   const pass = String(password || '');
@@ -378,11 +351,25 @@ export async function claimAccountCredentials({ playerId, username, password }) 
 /** Check if this player still needs to set a password (TG restore). */
 export async function playerNeedsPassword(playerId) {
   if (!playerId) return false;
-  const { data, error } = await supabase
-    .from('players')
-    .select('password_hash')
-    .eq('telegram_id', String(playerId))
-    .maybeSingle();
-  if (error || !data) return false;
-  return !data.password_hash;
+  try {
+    const base = (import.meta.env.VITE_SUPABASE_URL || '').replace(/\/$/, '');
+    const anon = import.meta.env.VITE_SUPABASE_ANON_KEY;
+    const tok = localStorage.getItem('gift2u_session_token');
+    if (!base || !anon || !tok) return false;
+    const res = await fetch(`${base}/functions/v1/wallet-vault`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${anon}`,
+        apikey: anon,
+        'x-gift-session': tok,
+      },
+      body: JSON.stringify({ action: 'status' }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) return false;
+    return data.has_password === false;
+  } catch {
+    return false;
+  }
 }

@@ -72,21 +72,47 @@ serve(async (req) => {
 
     const { data: row, error } = await supabase
       .from("players")
-      .select(
-        "telegram_id, username, password_hash, wallet_address, has_beta_access, encrypted_vault",
-      )
+      .select("telegram_id, username, wallet_address, has_beta_access")
       .ilike("username", cleanName)
       .maybeSingle();
 
     if (error) throw error;
     if (!row) throw new Error("No account with that username.");
-    if (!row.password_hash) {
+
+    const { data: sec, error: secErr } = await supabase
+      .from("player_secrets")
+      .select("password_hash, encrypted_vault")
+      .eq("telegram_id", String(row.telegram_id))
+      .maybeSingle();
+
+    if (secErr) throw secErr;
+
+    // Legacy fallback: if secrets row missing, try old columns (pre-migrate)
+    let password_hash = sec?.password_hash || null;
+    let encrypted_vault = sec?.encrypted_vault || null;
+    if (!password_hash) {
+      try {
+        const { data: legacy } = await supabase
+          .from("players")
+          .select("password_hash, encrypted_vault")
+          .eq("telegram_id", String(row.telegram_id))
+          .maybeSingle();
+        if (legacy) {
+          password_hash = (legacy as { password_hash?: string }).password_hash || null;
+          encrypted_vault = (legacy as { encrypted_vault?: string }).encrypted_vault || null;
+        }
+      } catch {
+        /* columns gone — ok */
+      }
+    }
+
+    if (!password_hash) {
       throw new Error(
         "This account has no password yet. Use Restore with 12 words once, then set a password — or create a new account.",
       );
     }
 
-    const ok = await verifyPassword(pass, row.password_hash);
+    const ok = await verifyPassword(pass, password_hash);
     if (!ok) throw new Error("Wrong password.");
 
     let session_token: string | null = null;
@@ -103,9 +129,11 @@ serve(async (req) => {
         user_agent: req.headers.get("user-agent")?.slice(0, 200) || null,
       });
     } catch (jwtErr) {
-      // Session secret not configured yet — still allow login, client keeps legacy mode
       console.warn("session jwt:", jwtErr);
     }
+
+    const vault = encrypted_vault ? String(encrypted_vault).trim() : "";
+    const has_vault = vault.length > 20 && vault !== "probe";
 
     return new Response(
       JSON.stringify({
@@ -113,8 +141,8 @@ serve(async (req) => {
         player_id: row.telegram_id,
         username: row.username,
         wallet_address: row.wallet_address,
-        has_beta_access: !!row.has_beta_access,
-        has_vault: !!row.encrypted_vault,
+        has_beta_access: row.has_beta_access !== false,
+        has_vault,
         session_token,
         expires_at,
       }),
