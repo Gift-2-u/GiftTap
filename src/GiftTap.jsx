@@ -157,7 +157,6 @@ import {
   isDailyLimitDrained,
   WEEKLY_BASE_DAILY_LIMIT,
   mergeInventoryWeekly,
-  mergeInventoriesPreferConsumed,
   applyServerInventoryAuthority,
   applyShopQtyAuthority,
   mergeWeeklyClaimKeys,
@@ -853,13 +852,13 @@ const GiftTapGame = () => {
     setEnergy(next);
   }, []);
 
-  // Keep inventoryRef aligned when shop/backpack/badges update stats.inventory
-  // Prefer lower shop qty so a stale stats.inventory (battery:1) cannot restore a
-  // charge that backpack already consumed (Expanded Battery ghost owned:1).
+  // Keep inventoryRef aligned when shop/backpack/badges update stats.inventory.
+  // stats is shop authority (buy/use). preferConsumed(MIN) wiped purchases
+  // (ref 0 vs buy 1 → 0) and left saves writing stale owned counts.
   useEffect(() => {
     if (!stats?.inventory) return;
     const weekId = getUtcWeekId();
-    inventoryRef.current = mergeInventoriesPreferConsumed(
+    inventoryRef.current = applyServerInventoryAuthority(
       inventoryRef.current || {},
       stats.inventory,
       weekId,
@@ -958,22 +957,22 @@ const GiftTapGame = () => {
                   .select('inventory')
                   .eq(DB_PLAYER_ID, String(playerId))
                   .maybeSingle();
-                let merged = mergeInventoriesPreferConsumed(
+                // Weekly progress must not touch shop qty. Server row is shop
+                // authority — preferConsumed(MIN) + local nextInv wiped buys to DB.
+                let merged = mergeInventoryWeekly(
                   hydrateWeeklyClaimsFromLedger(row?.inventory || {}, weekId),
                   nextInv,
                   weekId,
                 );
-                // nextInv (local progress) is authority for shop qty after USE
-                merged = applyShopQtyAuthority(merged, nextInv);
+                merged = applyShopQtyAuthority(
+                  merged,
+                  row?.inventory || {},
+                );
                 merged = hydrateWeeklyClaimsFromLedger(merged, weekId);
-                inventoryRef.current = mergeInventoriesPreferConsumed(
+                inventoryRef.current = applyServerInventoryAuthority(
                   inventoryRef.current || {},
                   merged,
                   weekId,
-                );
-                inventoryRef.current = applyShopQtyAuthority(
-                  inventoryRef.current,
-                  nextInv,
                 );
                 const { error } = await supabase
                   .from('players')
@@ -3378,15 +3377,17 @@ const GiftTapGame = () => {
       delete inv.wall_fee_progress;
       delete inv.wall_fee_wall;
       const saveWeekId = getUtcWeekId();
-      // Shop qty: inventoryRef wins (and prefer lower vs stale stats so USE sticks)
-      let nextInventory = mergeInventoriesPreferConsumed(
-        stats.inventory || {},
+      // Shop qty: stats wins (shop buy/use write there first; inventoryRef follows).
+      // Applying inventoryRef as authority restored used charges when ref was stale high,
+      // and wiped buys when ref was still 0.
+      let nextInventory = mergeInventoryWeekly(
         inventoryRef.current || inv,
+        stats.inventory || {},
         saveWeekId,
       );
       nextInventory = applyShopQtyAuthority(
         nextInventory,
-        inventoryRef.current || inv,
+        stats.inventory || {},
       );
       nextInventory = hydrateWeeklyClaimsFromLedger(nextInventory, saveWeekId);
       nextInventory.wall_snooze_level =
@@ -3517,24 +3518,15 @@ const GiftTapGame = () => {
         lastLocalSaveAtRef.current = Date.now();
         setStats((prev) => {
           // Never drop weekly claims if a concurrent claim added them.
-          // Shop qty: prefer consumed (min) so Expanded Battery owned:1 cannot
-          // resurrect after USE when a stale prev.inventory still has the charge.
+          // What we just wrote (nextInventory) is shop-qty authority — do not
+          // re-apply a stale inventoryRef on top (that restored used boosts).
           const wk = getUtcWeekId();
-          let mergedInv = mergeInventoriesPreferConsumed(
-            mergeInventoriesPreferConsumed(
-              nextInventory,
-              prev.inventory || {},
-              wk,
-            ),
-            inventoryRef.current || {},
+          let mergedInv = mergeInventoryWeekly(
+            prev.inventory || {},
+            nextInventory,
             wk,
           );
-          // What we just wrote is authority for shop item counts
           mergedInv = applyShopQtyAuthority(mergedInv, nextInventory);
-          mergedInv = applyShopQtyAuthority(
-            mergedInv,
-            inventoryRef.current || nextInventory,
-          );
           mergedInv = hydrateWeeklyClaimsFromLedger(mergedInv, wk);
           inventoryRef.current = mergedInv;
           return { ...prev, inventory: mergedInv };
@@ -3751,9 +3743,10 @@ const GiftTapGame = () => {
       // 3. CALCULATE VALID FINGERS
       const availableByEnergy = Math.floor(Number(optimisticEnergy.current) / costMultiplier);
       const dailyUsed = Math.max(Number(currentDailyTaps) || 0, Number(optimisticDaily.current) || 0);
-      // daily_taps is payout-weighted (frenzy/x2/x3) — limit by payoutMultiplier
-      const availableByDailyLimit = Math.floor(
-        (currentMaxLimit - dailyUsed) / Math.max(1, payoutMultiplier),
+      // Daily limit = raw taps. Frenzy gives 2x shards/boards without burning the bar 2x.
+      const availableByDailyLimit = Math.max(
+        0,
+        Math.floor(currentMaxLimit - dailyUsed),
       );
       const validTaps = Math.min(tapPoints.length, availableByEnergy, availableByDailyLimit);
 
@@ -3874,10 +3867,11 @@ const GiftTapGame = () => {
       const nextSeasonShards = optimisticSeason.current;
 
       const totalCost = costMultiplier * validTaps;
-      // Daily/weekly progress counts frenzy & premium x2/x3 (same as commit-taps scoreCredit)
+      // Boards/balance: Frenzy/premium/Echo payout-weighted. Daily bar: raw taps only.
       const scoreCredit = Math.round(validTaps * payoutMultiplier * 1000) / 1000;
+      const limitCredit = validTaps;
 
-      // Weekly leaderboard (UTC week) — same payout-weighted units as daily_taps
+      // Weekly leaderboard (UTC week) — payout-weighted (Frenzy 10 taps → 20 board)
       {
         const wId = getUtcWeekId();
         const invW = addWeeklyLbScore(
@@ -3906,7 +3900,8 @@ const GiftTapGame = () => {
       const safeDaily = Number(optimisticDaily.current);
       // Prefer ref for daily progress (stale state under multi-touch)
       const baseDaily = Math.max(Number(currentDailyTaps) || 0, safeDaily);
-      const nextDaily = baseDaily + scoreCredit;
+      // Daily limit bar: +1 per tap (not +2 under Frenzy)
+      const nextDaily = baseDaily + limitCredit;
       optimisticDaily.current = nextDaily;
 
       // Level-ups only inside unlocked tier (climbing wall is paid / optional)
@@ -4338,7 +4333,8 @@ const GiftTapGame = () => {
               }
               setStats((prev) => {
                 const wk = getUtcWeekId();
-                // Realtime row is shop-qty authority (used items must stay gone)
+                // Realtime row is shop-qty authority (buy + use). Do not MIN with
+                // inventoryRef afterward — that wiped purchases (ref 0 vs server 1).
                 let nextInv = applyServerInventoryAuthority(
                   mergeInventoryWeekly(
                     prev.inventory || {},
@@ -4346,11 +4342,6 @@ const GiftTapGame = () => {
                     wk,
                   ),
                   inv || {},
-                  wk,
-                );
-                nextInv = mergeInventoriesPreferConsumed(
-                  inventoryRef.current || {},
-                  nextInv,
                   wk,
                 );
                 nextInv = hydrateWeeklyClaimsFromLedger(nextInv, wk);
@@ -4374,11 +4365,6 @@ const GiftTapGame = () => {
                     wk,
                   ),
                   inv || {},
-                  wk,
-                );
-                nextInv = mergeInventoriesPreferConsumed(
-                  inventoryRef.current || {},
-                  nextInv,
                   wk,
                 );
                 nextInv = hydrateWeeklyClaimsFromLedger(nextInv, wk);

@@ -94,6 +94,11 @@ const assetToCard = (asset) => {
   const rarity =
     attributes.find((a) => a.trait_type.toLowerCase() === 'rarity')?.value ||
     (kind === 'locksmith' ? 'Rare' : '');
+  const levelRaw = attributes.find(
+    (a) => ['level', 'lvl', 'lv'].includes(a.trait_type.toLowerCase()),
+  )?.value;
+  let level = Math.floor(Number(levelRaw) || 0);
+  if (level < 1 || level > 5) level = 1;
   return {
     id,
     name: String(name),
@@ -113,6 +118,7 @@ const assetToCard = (asset) => {
     collection: 'Gift2u Elves',
     kind,
     rarity,
+    level,
     attributes,
     jsonUri: asset?.content?.json_uri ? String(asset.content.json_uri) : null,
   };

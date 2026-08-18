@@ -444,8 +444,9 @@ export function applyServerInventoryAuthority(prevInv, serverInv, weekId = getUt
 /**
  * Merge two *full* inventory snapshots without resurrecting consumed boosts.
  * For shop qty keys takes MIN(a,b) so used (0) always beats stale owned (1).
- * Do NOT use for partial patches that omit shop keys — use applyServerInventoryAuthority
- * when one side is the server/full post-buy/post-use inventory instead.
+ * WARNING: MIN also blocks buys (0 vs 1 → 0). Prefer applyServerInventoryAuthority
+ * when one side is a post-buy / post-use / server snapshot. Only use this when BOTH
+ * sides are full snapshots and you know a consume must win (never for shop↔ref sync).
  */
 export function mergeInventoriesPreferConsumed(a, b, weekId = getUtcWeekId()) {
   const A = a && typeof a === 'object' ? a : {};

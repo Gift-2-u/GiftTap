@@ -216,10 +216,10 @@ serve(async (req) => {
     const baseRate = getLevelMultiplier(level);
 
     const byEnergy = Math.floor(energy / costMultiplier);
-    // Limit uses base payout (no Fate jackpot) so luck doesn't shrink the bar mid-batch
-    const byDaily = Math.floor(
-      Math.max(0, maxLimit - dailyTaps) / Math.max(1, basePayoutMulti),
-    );
+    // Daily limit = raw taps (1 tap = 1 bar). Frenzy/premium/Echo must NOT burn the
+    // 1000 bar 2x — they only multiply shards + weekly/season boards.
+    // (Heavy Hands still drains 2x battery via costMultiplier above.)
+    const byDaily = Math.max(0, Math.floor(maxLimit - dailyTaps));
     const validTaps = Math.min(requestedTaps, byEnergy, byDaily);
 
     if (validTaps <= 0) {
@@ -301,14 +301,16 @@ serve(async (req) => {
     }
     const energySpent = costMultiplier * validTaps;
     const nextEnergy = Math.max(0, Math.min(ENERGY_CAP, energy - energySpent));
-    const nextDaily = dailyTaps + scoreCredit;
+    // Daily bar tracks taps; boards/balance use shards + scoreCredit (Frenzy 2x etc.)
+    const limitCredit = validTaps;
+    const nextDaily = dailyTaps + limitCredit;
     const nextLife = Math.round((lifetime + shardsEarned) * 1000) / 1000;
     const nextSeason =
       Math.round(((Number(row.season_shards) || 0) + shardsEarned) * 1000) / 1000;
     const nextBal =
       Math.round(((Number(row.shard_balance) || 0) + shardsEarned) * 1000) / 1000;
 
-    // Weekly = same payout-weighted units as daily_taps for EVERY player.
+    // Weekly board = payout-weighted (Frenzy/x2/x3/Echo/Fate). Daily bar stays raw taps.
     const weeklyCredit = applyWeeklyEnergyCredit({
       now,
       prevWeekId: row.weekly_week_id,
@@ -367,7 +369,7 @@ serve(async (req) => {
       taps: validTaps,
       energy_spent: energySpent,
       shards: shardsEarned,
-      result: { baseRate, payoutMultiplier, costMultiplier, level, scoreCredit, echoMulti, jackpotHits, jackpotBestMulti, jackpotLog },
+      result: { baseRate, payoutMultiplier, costMultiplier, level, scoreCredit, limitCredit, echoMulti, jackpotHits, jackpotBestMulti, jackpotLog },
     });
 
     await logEconomy(sb, {
@@ -376,7 +378,7 @@ serve(async (req) => {
       delta: shardsEarned,
       balance_after: nextBal,
       ref: batchId,
-      meta: { taps: validTaps, energySpent, scoreCredit, level, baseRate, payoutMultiplier, echoMulti, jackpotHits, jackpotBestMulti },
+      meta: { taps: validTaps, energySpent, scoreCredit, limitCredit, level, baseRate, payoutMultiplier, echoMulti, jackpotHits, jackpotBestMulti },
     });
 
     return jsonResponse({

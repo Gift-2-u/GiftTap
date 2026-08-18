@@ -1,11 +1,14 @@
 /**
- * Canonical WEEKLY leaderboard score = payout-weighted taps this UTC ISO week.
- * Same unit as daily_taps: taps × payoutMultiplier (frenzy / premium x2/x3).
- * Energy cost still drains separately; efficiency raises cost AND payout together.
+ * Canonical WEEKLY leaderboard score = payout-weighted taps this UTC ISO week
+ * (taps × payoutMultiplier: frenzy / premium x2/x3 / Echo / Fate).
+ *
+ * daily_taps is RAW tap count toward the daily limit bar (Frenzy does NOT burn it 2x).
+ * Weekly/season/balance still get the payout-weighted credit so 10 frenzy taps → 20 board.
+ * Battery energy drains separately; Heavy Hands (efficiency) raises cost AND payout.
  *
  * Invariants (current week):
  *   weekly_shards >= sum(batch scoreCredit) this week
- *   weekly_shards >= daily_taps   (daily is "today only", always <= week total)
+ *   weekly_shards >= daily_taps   (daily is raw taps today; week is payout-weighted)
  */
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.39.7";
 import { utcIsoWeekId } from "./economy.ts";

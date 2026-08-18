@@ -53,7 +53,6 @@ import {
   applyWeeklyBoostBuy,
   getUtcWeekId,
   mergeInventoryWeekly,
-  mergeInventoriesPreferConsumed,
   applyServerInventoryAuthority,
   applyShopQtyAuthority,
   hydrateWeeklyClaimsFromLedger,
@@ -77,6 +76,13 @@ import {
 import WeeklyBadgePanel from './WeeklyBadgePanel';
 import BadgeMarket from './BadgeMarket';
 import NftMarket from './NftMarket';
+import {
+  NFT_RARITY_OPTS,
+  NFT_ROLE_OPTS,
+  NFT_LEVEL_OPTS,
+  NFT_SORT_OPTS,
+  filterAndSortNfts,
+} from './nftMarketFilters';
 import {
   hasSecureSession,
   ensureSecureSession,
@@ -168,6 +174,11 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
   const [itemToBuy, setItemToBuy] = useState(null);
   /** NFT marketplace: grid card click → detail popup */
   const [nftDetail, setNftDetail] = useState(null);
+  /** Mint catalog filters — rarity / role / level / sort */
+  const [nftRarityFilter, setNftRarityFilter] = useState('all');
+  const [nftRoleFilter, setNftRoleFilter] = useState('all');
+  const [nftLevelFilter, setNftLevelFilter] = useState('all');
+  const [nftSort, setNftSort] = useState('default');
 
   // Custom Pop-up State
   const [txStatus, setTxStatus] = useState({ show: false, loading: false, message: '', success: false });
@@ -258,11 +269,10 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
 
   useEffect(() => {
     if (stats?.inventory) {
-      // Prefer lower shop counts so a lagging parent inventory (battery:1)
-      // cannot resurrect a charge that was just USE'd (local 0).
-      // Buys still work: after buy both sides rise together via setStats.
+      // stats.inventory is shop authority (buy/use write there first).
+      // preferConsumed(MIN) wiped buys: local 0 vs purchased 1 → 0.
       setLocalInventory((prev) =>
-        mergeInventoriesPreferConsumed(
+        applyServerInventoryAuthority(
           prev || {},
           stats.inventory,
           getUtcWeekId(),
@@ -769,6 +779,13 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
     ...rushListings,
     ...shadowListings,
   ];
+
+  const filteredNftListings = filterAndSortNfts(nftListings, {
+    rarity: nftRarityFilter,
+    role: nftRoleFilter,
+    level: nftLevelFilter,
+    sort: nftSort,
+  });
 
   const allItems = [...shardListings, ...premiumListings];
   const filteredListings = premiumListings.filter(item => marketFilter === 'All' || item.type === marketFilter);
@@ -1515,9 +1532,10 @@ Daily claim active · Pack → NFT to see it.`,
         const weekId = getUtcWeekId();
         const prevQty = Math.max(0, Math.floor(Number(localInventory[item.id]) || 0));
         let inv = { ...(data.inventory || {}) };
-        // Force consume: explicit 0 so later merges cannot resurrect via missing-key
+        // Decrement one charge (keep remaining stack). Do NOT force to 0 when qty > 1.
         const serverQty = Math.max(0, Math.floor(Number(inv[item.id]) || 0));
         let nextQty = serverQty;
+        // If server lagged and still shows full stack, drop exactly one locally
         if (serverQty >= prevQty && prevQty > 0) nextQty = prevQty - 1;
         if (nextQty <= 0) {
           inv[item.id] = 0;
@@ -1531,13 +1549,16 @@ Daily claim active · Pack → NFT to see it.`,
           inv,
           weekId,
         );
-        // Always force-consume this charge in UI (even if server lag)
-        authInv[item.id] = 0;
-        delete authInv[item.id];
         authInv = applyShopQtyAuthority(authInv, {
           ...authInv,
-          [item.id]: 0,
+          [item.id]: nextQty > 0 ? nextQty : 0,
         });
+        if (nextQty <= 0) {
+          authInv[item.id] = 0;
+          delete authInv[item.id];
+        } else {
+          authInv[item.id] = nextQty;
+        }
 
         const todayUse = getTodayUTCString();
         const nextDailyUsage = {
@@ -1558,8 +1579,8 @@ Daily claim active · Pack → NFT to see it.`,
         }
         if (setStats) {
           setStats((prev) => {
-            // Prefer consumed over any stale parent inventory
-            let next = mergeInventoriesPreferConsumed(
+            // Post-activate inv is shop authority (keeps remaining charges after use)
+            let next = applyServerInventoryAuthority(
               prev?.inventory || {},
               authInv,
               weekId,
@@ -1579,7 +1600,7 @@ Daily claim active · Pack → NFT to see it.`,
           });
         }
 
-        // Re-fetch ground truth; still force this item consumed if server lagged
+        // Re-fetch ground truth; clamp to post-use qty if server lagged
         try {
           const { data: row } = await supabase
             .from('players')
@@ -1594,10 +1615,19 @@ Daily claim active · Pack → NFT to see it.`,
               row.inventory,
               weekId,
             );
-            // Prefer the lower of local-consumed vs server (ghost owned fix)
-            cleaned = mergeInventoriesPreferConsumed(authInv, cleaned, weekId);
-            cleaned[item.id] = 0;
-            delete cleaned[item.id];
+            // Keep post-use qty (server or local nextQty) — never force-wipe stacks
+            const syncedQty = Math.max(
+              0,
+              Math.floor(Number(cleaned[item.id]) || 0),
+            );
+            // If server still shows pre-use stack, clamp to what we just consumed to
+            const clampQty = Math.min(syncedQty, nextQty);
+            if (clampQty <= 0) {
+              cleaned[item.id] = 0;
+              delete cleaned[item.id];
+            } else {
+              cleaned[item.id] = clampQty;
+            }
             const du = {
               ...(typeof row.daily_usage === 'object' && row.daily_usage
                 ? row.daily_usage
@@ -1613,7 +1643,7 @@ Daily claim active · Pack → NFT to see it.`,
             if (setStats) {
               setStats((prev) => ({
                 ...prev,
-                inventory: mergeInventoriesPreferConsumed(
+                inventory: applyServerInventoryAuthority(
                   prev?.inventory || {},
                   cleaned,
                   weekId,
@@ -1774,7 +1804,7 @@ Daily claim active · Pack → NFT to see it.`,
           ...prev,
           ...stats,
           ...dbUpdates,
-          inventory: mergeInventoriesPreferConsumed(
+          inventory: applyServerInventoryAuthority(
             prev?.inventory || {},
             authInvL,
             weekIdL,
@@ -2329,12 +2359,131 @@ Daily claim active · Pack → NFT to see it.`,
             <p style={{ color: '#666', fontSize: 10, margin: '0 0 8px', textAlign: 'center' }}>
               NFT Marketplace · tap for details
             </p>
+            {/* Filters: rarity · role · level · sort */}
+            <div
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 6,
+                marginBottom: 10,
+                background: '#141414',
+                border: '1px solid #2a2a2a',
+                borderRadius: 12,
+                padding: 8,
+              }}
+            >
+              {[
+                {
+                  label: 'Rarity',
+                  value: nftRarityFilter,
+                  set: setNftRarityFilter,
+                  opts: NFT_RARITY_OPTS,
+                },
+                {
+                  label: 'Role',
+                  value: nftRoleFilter,
+                  set: setNftRoleFilter,
+                  opts: NFT_ROLE_OPTS,
+                },
+                {
+                  label: 'Level',
+                  value: nftLevelFilter,
+                  set: setNftLevelFilter,
+                  opts: NFT_LEVEL_OPTS,
+                },
+                {
+                  label: 'Sort',
+                  value: nftSort,
+                  set: setNftSort,
+                  opts: NFT_SORT_OPTS,
+                },
+              ].map((row) => (
+                <div key={row.label} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span
+                    style={{
+                      color: '#666',
+                      fontSize: 10,
+                      fontWeight: 'bold',
+                      width: 42,
+                      flexShrink: 0,
+                    }}
+                  >
+                    {row.label}
+                  </span>
+                  <div
+                    style={{
+                      display: 'flex',
+                      gap: 4,
+                      overflowX: 'auto',
+                      flex: 1,
+                      WebkitOverflowScrolling: 'touch',
+                    }}
+                  >
+                    {row.opts.map((opt) => (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        onClick={() => row.set(opt.id)}
+                        style={{
+                          flexShrink: 0,
+                          padding: '5px 9px',
+                          borderRadius: 999,
+                          border:
+                            row.value === opt.id
+                              ? '1px solid #c084fc'
+                              : '1px solid #333',
+                          background:
+                            row.value === opt.id
+                              ? 'rgba(192,132,252,0.15)'
+                              : '#1c1e22',
+                          color: row.value === opt.id ? '#c084fc' : '#888',
+                          fontSize: 10,
+                          fontWeight: 'bold',
+                          cursor: 'pointer',
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ))}
+              {(nftRarityFilter !== 'all' ||
+                nftRoleFilter !== 'all' ||
+                nftLevelFilter !== 'all' ||
+                nftSort !== 'default') && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setNftRarityFilter('all');
+                    setNftRoleFilter('all');
+                    setNftLevelFilter('all');
+                    setNftSort('default');
+                  }}
+                  style={{
+                    alignSelf: 'flex-end',
+                    background: 'transparent',
+                    border: 'none',
+                    color: '#888',
+                    fontSize: 10,
+                    cursor: 'pointer',
+                    textDecoration: 'underline',
+                  }}
+                >
+                  Clear filters
+                </button>
+              )}
+              <div style={{ color: '#555', fontSize: 9, textAlign: 'right' }}>
+                {filteredNftListings.length} of {nftListings.length}
+              </div>
+            </div>
             {/* Phone: 4/row · Desktop: 6/row */}
             <div
               className="grid grid-cols-4 md:grid-cols-6"
               style={{ gap: 6 }}
             >
-              {nftListings.map((item) => (
+              {filteredNftListings.map((item) => (
                 <button
                   key={item.id}
                   type="button"
@@ -2414,6 +2563,18 @@ Daily claim active · Pack → NFT to see it.`,
                 </button>
               ))}
             </div>
+            {filteredNftListings.length === 0 ? (
+              <div
+                style={{
+                  textAlign: 'center',
+                  color: '#666',
+                  fontSize: 12,
+                  padding: '16px 8px',
+                }}
+              >
+                No NFTs match these filters.
+              </div>
+            ) : null}
             <p style={{ color: '#555', fontSize: 9, textAlign: 'center', margin: '8px 0 0' }}>
               Mint new above · trade owned NFTs below
             </p>

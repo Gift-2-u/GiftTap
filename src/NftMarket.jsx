@@ -23,6 +23,15 @@ import {
   ensureSecureSession,
   callSecureFunction,
 } from './secureApi';
+import {
+  NFT_RARITY_OPTS,
+  NFT_ROLE_OPTS,
+  NFT_LEVEL_OPTS,
+  NFT_SORT_OPTS,
+  filterAndSortNfts,
+  formatNftListingTitle,
+  deriveNftFilterMeta,
+} from './nftMarketFilters';
 
 const FEE_BPS = 500;
 const TREASURY_SOL = '8G7uEcPS6dwA5wW9bGoqi98EzBunF8trjbbFJkgkvBPm';
@@ -52,6 +61,10 @@ export default function NftMarket({
   const [busyId, setBusyId] = useState(null);
   const [sellAsset, setSellAsset] = useState('');
   const [sellPrice, setSellPrice] = useState('0.1');
+  const [mRarity, setMRarity] = useState('all');
+  const [mRole, setMRole] = useState('all');
+  const [mLevel, setMLevel] = useState('all');
+  const [mSort, setMSort] = useState('default');
 
   const notify = (msg, ok = true) => {
     if (typeof onStatus === 'function') {
@@ -126,7 +139,7 @@ export default function NftMarket({
         seller_wallet: wallet,
         currency: 'sol',
         price,
-        name: nft.name,
+        name: formatNftListingTitle(nft),
         image_url: nft.image,
         collection: nft.collection || undefined,
       });
@@ -262,6 +275,17 @@ export default function NftMarket({
   const sellable = owned.filter((n) => !listedAssetIds.has(n.id));
   const pendingComplete = mine.filter((x) => x.status === 'paid');
 
+  const filteredBrowse = filterAndSortNfts(
+    listings.map((L) => ({
+      ...L,
+      // Prefer title fields; derive role/rarity/level from name for older listings
+      ...deriveNftFilterMeta(L),
+      price: Number(L.price) || 0,
+      name: L.name || 'NFT',
+    })),
+    { rarity: mRarity, role: mRole, level: mLevel, sort: mSort },
+  );
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 12 }}>
       <div
@@ -315,28 +339,111 @@ export default function NftMarket({
 
       {tab === 'market' && (
         <>
-          <button
-            type="button"
-            onClick={refresh}
+          <div
             style={{
-              alignSelf: 'flex-end',
-              background: 'transparent',
-              border: '1px solid #333',
-              color: '#888',
-              borderRadius: 8,
-              padding: '6px 10px',
-              fontSize: 11,
-              cursor: 'pointer',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 6,
+              background: '#141414',
+              border: '1px solid #2a2a2a',
+              borderRadius: 12,
+              padding: 8,
             }}
           >
-            {loading ? '…' : 'Refresh'}
-          </button>
+            {[
+              { label: 'Rarity', value: mRarity, set: setMRarity, opts: NFT_RARITY_OPTS },
+              { label: 'Role', value: mRole, set: setMRole, opts: NFT_ROLE_OPTS },
+              { label: 'Level', value: mLevel, set: setMLevel, opts: NFT_LEVEL_OPTS },
+              { label: 'Sort', value: mSort, set: setMSort, opts: NFT_SORT_OPTS },
+            ].map((row) => (
+              <div key={row.label} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span
+                  style={{
+                    color: '#666',
+                    fontSize: 10,
+                    fontWeight: 'bold',
+                    width: 42,
+                    flexShrink: 0,
+                  }}
+                >
+                  {row.label}
+                </span>
+                <div
+                  style={{
+                    display: 'flex',
+                    gap: 4,
+                    overflowX: 'auto',
+                    flex: 1,
+                    WebkitOverflowScrolling: 'touch',
+                  }}
+                >
+                  {row.opts.map((opt) => (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      onClick={() => row.set(opt.id)}
+                      style={{
+                        flexShrink: 0,
+                        padding: '5px 9px',
+                        borderRadius: 999,
+                        border:
+                          row.value === opt.id ? '1px solid #c084fc' : '1px solid #333',
+                        background:
+                          row.value === opt.id
+                            ? 'rgba(192,132,252,0.15)'
+                            : '#1c1e22',
+                        color: row.value === opt.id ? '#c084fc' : '#888',
+                        fontSize: 10,
+                        fontWeight: 'bold',
+                        cursor: 'pointer',
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+              }}
+            >
+              <span style={{ color: '#555', fontSize: 9 }}>
+                {listings.length === 0
+                  ? '0 listed'
+                  : `${filteredBrowse.length} of ${listings.length}`}
+              </span>
+              <button
+                type="button"
+                onClick={refresh}
+                style={{
+                  background: 'transparent',
+                  border: '1px solid #333',
+                  color: '#888',
+                  borderRadius: 8,
+                  padding: '4px 10px',
+                  fontSize: 11,
+                  cursor: 'pointer',
+                }}
+              >
+                {loading ? '…' : 'Refresh'}
+              </button>
+            </div>
+          </div>
           {listings.length === 0 ? (
             <div style={{ textAlign: 'center', color: '#666', padding: 20, fontSize: 13 }}>
               No NFTs for sale. List one you own under Sell NFT.
             </div>
+          ) : filteredBrowse.length === 0 ? (
+            <div style={{ textAlign: 'center', color: '#666', padding: 20, fontSize: 13 }}>
+              No listings match these filters.
+            </div>
           ) : (
-            listings.map((L) => (
+            filteredBrowse.map((L) => (
               <div
                 key={L.id}
                 style={{
@@ -465,7 +572,7 @@ export default function NftMarket({
                   <option value="">Select…</option>
                   {sellable.map((n) => (
                     <option key={n.id} value={n.id}>
-                      {n.name} ({String(n.id).slice(0, 6)}…)
+                      {formatNftListingTitle(n)} ({String(n.id).slice(0, 6)}…)
                     </option>
                   ))}
                 </select>
