@@ -166,3 +166,139 @@ export function invObj(raw: unknown): Record<string, unknown> {
   }
   return {};
 }
+
+/** Echo (Power) tap multipliers — level 1..5 per rarity */
+export const ECHO_MULTI: Record<string, number[]> = {
+  common: [1.1, 1.2, 1.3, 1.4, 1.5],
+  rare: [1.6, 1.7, 1.8, 1.9, 2.0],
+  epic: [2.1, 2.2, 2.3, 2.4, 2.5],
+  legendary: [2.6, 2.7, 2.8, 2.9, 3.0],
+};
+
+export function echoMultiplier(rarityKey: string, level = 1): number {
+  const ladder = ECHO_MULTI[String(rarityKey || "").toLowerCase()] || ECHO_MULTI.common;
+  const idx = Math.min(5, Math.max(1, Math.floor(Number(level) || 1))) - 1;
+  return ladder[idx] || 1;
+}
+
+/** Read inventory.echo_active → multiplier (1 if none). */
+export function echoMultiplierFromInv(inv: Record<string, unknown>): number {
+  const raw = inv?.echo_active;
+  if (!raw || typeof raw !== "object") return 1;
+  const row = raw as Record<string, unknown>;
+  const rarity = String(row.rarity || row.rarityKey || "").toLowerCase();
+  if (!ECHO_MULTI[rarity]) return 1;
+  return echoMultiplier(rarity, Number(row.level) || 1);
+}
+
+/** Fate (Luck) jackpot ladders — level N unlocks rungs 1..N. Chance is percent. */
+export const FATE_JACKPOT: Record<string, Array<{ chance: number; multi: number }>> = {
+  common: [
+    { chance: 2, multi: 4 },
+    { chance: 2, multi: 6 },
+    { chance: 2, multi: 8 },
+    { chance: 1.5, multi: 12 },
+    { chance: 1.5, multi: 15 },
+  ],
+  rare: [
+    { chance: 2, multi: 8 },
+    { chance: 2, multi: 12 },
+    { chance: 2, multi: 16 },
+    { chance: 1.5, multi: 22 },
+    { chance: 1.5, multi: 30 },
+  ],
+  epic: [
+    { chance: 2.5, multi: 12 },
+    { chance: 2, multi: 18 },
+    { chance: 2, multi: 25 },
+    { chance: 1.5, multi: 35 },
+    { chance: 0.3, multi: 60 },
+  ],
+  legendary: [
+    { chance: 3, multi: 15 },
+    { chance: 2.5, multi: 25 },
+    { chance: 2, multi: 35 },
+    { chance: 0.5, multi: 60 },
+    { chance: 0.15, multi: 100 },
+  ],
+};
+
+/**
+ * Roll one Fate jackpot for a tap.
+ * Checks highest unlocked rung first → first hit wins. Max 1 jackpot per tap.
+ */
+export function rollFateJackpot(
+  inv: Record<string, unknown>,
+  rng: () => number = Math.random,
+): { multi: number; rung: number; rarity: string } | null {
+  const raw = inv?.fate_power;
+  if (!raw || typeof raw !== "object") return null;
+  const row = raw as Record<string, unknown>;
+  const rarity = String(row.rarity || row.rarityKey || "").toLowerCase();
+  const ladder = FATE_JACKPOT[rarity];
+  if (!ladder) return null;
+  const level = Math.min(5, Math.max(1, Math.floor(Number(row.level) || 1)));
+  for (let i = level - 1; i >= 0; i--) {
+    const rung = ladder[i];
+    if (!rung) continue;
+    if (rng() * 100 < rung.chance) {
+      return { multi: rung.multi, rung: i + 1, rarity };
+    }
+  }
+  return null;
+}
+
+/** Rush (Energy) max daily taps — level 1..5 per rarity. Base without Rush = 1000. */
+export const RUSH_DAILY_LIMIT: Record<string, number[]> = {
+  common: [1100, 1200, 1300, 1400, 1500],
+  rare: [1600, 1700, 1800, 1900, 2000],
+  epic: [2100, 2200, 2300, 2400, 2500],
+  legendary: [2600, 2700, 2800, 2900, 3000],
+};
+
+export function rushDailyLimit(rarityKey: string, level = 1): number {
+  const ladder = RUSH_DAILY_LIMIT[String(rarityKey || "").toLowerCase()];
+  if (!ladder) return 1000;
+  const idx = Math.min(5, Math.max(1, Math.floor(Number(level) || 1))) - 1;
+  return ladder[idx] || 1000;
+}
+
+/** Rush active → daily base cap; 0 if none (caller uses 1000 / max_daily_limit). */
+export function rushDailyLimitFromInv(inv: Record<string, unknown>): number {
+  const raw = inv?.rush_active;
+  if (!raw || typeof raw !== "object") return 0;
+  const row = raw as Record<string, unknown>;
+  const rarity = String(row.rarity || row.rarityKey || "").toLowerCase();
+  if (!RUSH_DAILY_LIMIT[rarity]) return 0;
+  return rushDailyLimit(rarity, Number(row.level) || 1);
+}
+
+/** Shadow (Night) AFK hours — level 1..5. 24h = full base daily cap. */
+export const SHADOW_HOURS: Record<string, number[]> = {
+  common: [2, 3, 4, 5, 6],
+  rare: [8, 9, 10, 11, 12],
+  epic: [14, 15, 16, 17, 18],
+  legendary: [20, 21, 22, 23, 24],
+};
+
+export function shadowHours(rarityKey: string, level = 1): number {
+  const ladder = SHADOW_HOURS[String(rarityKey || "").toLowerCase()];
+  if (!ladder) return 0;
+  const idx = Math.min(5, Math.max(1, Math.floor(Number(level) || 1))) - 1;
+  return ladder[idx] || 0;
+}
+
+export function shadowYield(hours: number, baseDailyCap: number): number {
+  const h = Math.max(0, Number(hours) || 0);
+  const cap = Math.max(0, Math.floor(Number(baseDailyCap) || 0));
+  return Math.floor((h / 24) * cap);
+}
+
+/** Base daily cap for Shadow yield: Rush active or 1000 (no battery/task boosts). */
+export function shadowBaseDailyCap(inv: Record<string, unknown>, maxDailyLimitCol?: number): number {
+  const rush = rushDailyLimitFromInv(inv);
+  if (rush > 0) return rush;
+  const col = Number(maxDailyLimitCol);
+  if (Number.isFinite(col) && col > 0) return Math.floor(col);
+  return 1000;
+}

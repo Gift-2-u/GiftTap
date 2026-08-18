@@ -1,0 +1,45 @@
+{
+  "name": "Shadow",
+  "symbol": "Shadow",
+  "description": "Shadow is the Night elf of the Gift2u Elves. Equip one Shadow per wallet. Once per UTC day, Shadow grants shards without tapping equal to (hours÷24) of your base max daily taps (Rush cap or 1,000 — boosts not included). Legendary · Gen 1 · daily claim 20–24h · max supply 500.",
+  "seller_fee_basis_points": 500,
+  "external_url": "https://gift2u.fun",
+  "attributes": [
+    {
+      "trait_type": "Collection",
+      "value": "Gift2u Elves"
+    },
+    {
+      "trait_type": "Class",
+      "value": "Shadow"
+    },
+    {
+      "trait_type": "Role",
+      "value": "Night"
+    },
+    {
+      "trait_type": "Generation",
+      "value": "Gen 1"
+    },
+    {
+      "trait_type": "Rarity",
+      "value": "Legendary"
+    },
+    {
+      "trait_type": "Type",
+      "value": "Utility"
+    },
+    {
+      "trait_type": "Utility",
+      "value": "Daily claim share"
+    },
+    {
+      "trait_type": "Badge Slot",
+      "value": "1"
+    },
+    {
+      "trait_type": "Max Supply",
+      "value": "500"
+    }
+  ]
+}

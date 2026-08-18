@@ -138,9 +138,11 @@ Waves = **30% / 40% / 30%** of each rarity’s supply.
 - Scripts: gift_memecoin/scripts/nft/gift-fate/
 - Wave plan: gift-fate/WAVES.md · Demo: gift-fate/demo.html / ate-demo.html
 
-## Security / implementation notes (for later build)
+## Security / implementation notes
 
-- Jackpot roll **server-side only** (e.g. commit-taps).
+- Jackpot roll **server-side** in `commit-taps` (per tap; highest unlocked rung first).
+- Activate via `fate-activate` → `inventory.fate_power` (auto on mint + Equip Fate).
+- Fate multi **replaces Frenzy** on jackpot taps; **Echo still stacks**.
 - Active Fate = NFT owned by game wallet + equipped slot (1).
 - Badge: 1 per NFT; socket BR for all elves.
 
@@ -151,7 +153,6 @@ Waves = **30% / 40% / 30%** of each rarity’s supply.
 - Exact G2U rate for level-up
 - Final shard-badge item design (see discussion: shard image vs alternatives)
 - Rush / Echo / Shadow sheets
-- App mint UI + jackpot in commit-taps (CM scripts live under scripts/nft/gift-fate)
 
 ---
 

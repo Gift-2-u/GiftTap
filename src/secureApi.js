@@ -258,3 +258,60 @@ export async function secureFateEquip({ assetId, equip = true }) {
     equip: equip !== false,
   });
 }
+
+/**
+ * Activate / clear Echo (Power) for tap multiplier.
+ * @param {{ rarity: string, level?: number, assetId?: string, clear?: boolean }} opts
+ */
+export async function secureEchoActivate({ rarity, level = 1, assetId = null, clear = false } = {}) {
+  return callSecureFunction('echo-activate', {
+    rarity,
+    level,
+    asset_id: assetId,
+    clear: !!clear,
+  });
+}
+
+/**
+ * Activate / clear Fate (Luck) for jackpot rolls.
+ * @param {{ rarity: string, level?: number, assetId?: string, clear?: boolean }} opts
+ */
+export async function secureFateActivate({ rarity, level = 1, assetId = null, clear = false } = {}) {
+  return callSecureFunction('fate-activate', {
+    rarity,
+    level,
+    asset_id: assetId,
+    clear: !!clear,
+  });
+}
+
+/**
+ * Activate / clear Rush (Energy) for max daily taps.
+ * @param {{ rarity: string, level?: number, assetId?: string, clear?: boolean }} opts
+ */
+export async function secureRushActivate({ rarity, level = 1, assetId = null, clear = false } = {}) {
+  return callSecureFunction('rush-activate', {
+    rarity,
+    level,
+    asset_id: assetId,
+    clear: !!clear,
+  });
+}
+
+/**
+ * Activate / clear Shadow (Night) for once-per-UTC-day claim yield.
+ * @param {{ rarity: string, level?: number, assetId?: string, clear?: boolean }} opts
+ */
+export async function secureShadowActivate({ rarity, level = 1, assetId = null, clear = false } = {}) {
+  return callSecureFunction('shadow-activate', {
+    rarity,
+    level,
+    asset_id: assetId,
+    clear: !!clear,
+  });
+}
+
+/** Claim Shadow daily shards for today (UTC). Requires equipped Shadow. */
+export async function secureShadowClaim() {
+  return callSecureFunction('shadow-claim', {});
+}

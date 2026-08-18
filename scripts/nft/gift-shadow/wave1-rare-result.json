@@ -1,0 +1,17 @@
+{
+  "standard": "metaplex-core",
+  "class": "Shadow",
+  "rarity": "Rare",
+  "rarityKey": "rare",
+  "wave": 1,
+  "itemsAvailable": 1575,
+  "priceSol": 0.2,
+  "treasury": "AdvMvv6GzGvdLRtuxaso1Eubk7jmn6LCZEeEFHn22yeb",
+  "collection": "FQPYWSohCPnS57W2AWAqwmQM21KRxGi4YXcCaiXUghPD",
+  "candyMachine": "JDHEEd1G6JS11iKyG9zJkTenu4rviDiRnqMeLwNVQaFN",
+  "candyGuard": "Asp1DhQ3NQGEXsS2d44cPR2z3mBA2EKCVdZuy1nqMVWh",
+  "itemUri": "https://gateway.irys.xyz/bsipFhOajJ-qT9M_59rit4qZbI43p8ZA3vq3E4wqsRs",
+  "imageUri": "https://gateway.irys.xyz/iz8Aia5cvMETbJpAsC6u75k8EhqEiAvbZCKeCqse4Bk",
+  "maxPerWallet": 5,
+  "cluster": "mainnet"
+}

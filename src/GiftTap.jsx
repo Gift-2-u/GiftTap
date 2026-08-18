@@ -218,6 +218,8 @@ import {
   badgeLevelUpCostGft,
   hasSwapLicense,
 } from './shardSwap';
+import { echoMultiplier } from './echo';
+import { rushDailyLimit } from './rush';
 
 const TOKEN_MINTS = {
   SOL: "So11111111111111111111111111111111111111112",
@@ -3149,6 +3151,17 @@ const GiftTapGame = () => {
               dt: Number(optimisticDaily.current) || 0,
             };
           }
+          // Fate luck jackpot feedback (server-authoritative)
+          const jp = Number(data?.jackpot_hits) || 0;
+          if (jp > 0) {
+            const best = Number(data?.jackpot_best_multi) || 0;
+            notify(
+              jp === 1
+                ? `🍀 Fate jackpot! ${best}× on a tap`
+                : `🍀 Fate jackpot ×${jp}! Best ${best}×`,
+              true,
+            );
+          }
           flushErrorNotifiedRef.current = false;
           lastLocalSaveAtRef.current = Date.now();
           // Stop if server rejected further taps (daily limit / no energy)
@@ -3643,6 +3656,14 @@ const GiftTapGame = () => {
 
       // 1. CALCULATE THE TRUE LIMIT (Surgical Fix)
       let currentMaxLimit = Number(maxDailyLimit) || 1000;
+      // Rush (Energy) replaces base 1000
+      {
+        const ra = (inventoryRef.current || stats?.inventory || {}).rush_active;
+        if (ra && typeof ra === 'object') {
+          const cap = rushDailyLimit(ra.rarity || ra.rarityKey, ra.level || 1);
+          if (cap > 0) currentMaxLimit = cap;
+        }
+      }
       const clickTime = new Date();
 
       // Add the Ad Boost (+1000)
@@ -3717,6 +3738,14 @@ const GiftTapGame = () => {
       }
       if (stats.premium_multiplier_expires && now < new Date(stats.premium_multiplier_expires)) {
         payoutMultiplier *= (stats.premium_multiplier || 1); 
+      }
+      // Echo (Power) always-on multi from inventory.echo_active
+      {
+        const ea = (inventoryRef.current || stats?.inventory || {}).echo_active;
+        if (ea && typeof ea === 'object') {
+          const em = echoMultiplier(ea.rarity || ea.rarityKey, ea.level || 1);
+          if (em > 1) payoutMultiplier *= em;
+        }
       }
 
       // 3. CALCULATE VALID FINGERS
@@ -5224,6 +5253,14 @@ const GiftTapGame = () => {
   // --- CALCULATE DYNAMIC DAILY LIMIT BAR ---
   const now = new Date();
   let dynamicMaxLimit = maxDailyLimit; // Default is 1000
+  // Rush (Energy) replaces base 1000; Expanded Battery / boosts add on top
+  {
+    const ra = (inventoryRef.current || stats?.inventory || {}).rush_active;
+    if (ra && typeof ra === 'object') {
+      const cap = rushDailyLimit(ra.rarity || ra.rarityKey, ra.level || 1);
+      if (cap > 0) dynamicMaxLimit = cap;
+    }
+  }
 
   // Add 1000 if 24hr Expanded Battery is active
   if (stats.energy_boost_expires && now < new Date(stats.energy_boost_expires)) {
@@ -6568,10 +6605,29 @@ const GiftTapGame = () => {
                         walletSecret={decryptedPhrase || generatedSecret || ''}
                         refreshKey={isModalOpen ? 1 : 0}
                         inventory={stats?.inventory || inventoryRef.current || {}}
-                        onInventoryChange={(inv) => {
+                        onInventoryChange={(inv, playerPatch) => {
                           if (!inv || typeof inv !== 'object') return;
                           inventoryRef.current = inv;
-                          setStats((prev) => ({ ...prev, inventory: inv }));
+                          setStats((prev) => ({
+                            ...prev,
+                            inventory: inv,
+                            ...(playerPatch && typeof playerPatch === 'object'
+                              ? {
+                                  ...(playerPatch.shard_balance != null
+                                    ? { shard_balance: playerPatch.shard_balance }
+                                    : {}),
+                                  ...(playerPatch.season_shards != null
+                                    ? { season_shards: playerPatch.season_shards }
+                                    : {}),
+                                  ...(playerPatch.daily_taps != null
+                                    ? { daily_taps: playerPatch.daily_taps }
+                                    : {}),
+                                  ...(playerPatch.lifetime_taps != null
+                                    ? { lifetime_taps: playerPatch.lifetime_taps }
+                                    : {}),
+                                }
+                              : {}),
+                          }));
                         }}
                         notify={notify}
                         onOpenShopNfts={() => {

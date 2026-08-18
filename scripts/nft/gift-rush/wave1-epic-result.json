@@ -1,0 +1,17 @@
+{
+  "standard": "metaplex-core",
+  "class": "Rush",
+  "rarity": "Epic",
+  "rarityKey": "epic",
+  "wave": 1,
+  "itemsAvailable": 525,
+  "priceSol": 0.8,
+  "treasury": "AdvMvv6GzGvdLRtuxaso1Eubk7jmn6LCZEeEFHn22yeb",
+  "collection": "FQPYWSohCPnS57W2AWAqwmQM21KRxGi4YXcCaiXUghPD",
+  "candyMachine": "2VcyUk4utKyRb3Qrmri2AkPoxd6h8dyECzDxWsqsBQjh",
+  "candyGuard": "DRkLMNRAWDZ9tEUQxF6vyuAuvhU4XYWaVZ7mcWLpD4aC",
+  "itemUri": "https://gateway.irys.xyz/jgBJ3KR4811flIAMewrSldFQL2kFRnxKpXSjr9bPfdM",
+  "imageUri": "https://gateway.irys.xyz/hH5uV8QdYD8_INlGMEfHt4thTRzjd0uy63YJwHkFL3I",
+  "maxPerWallet": 5,
+  "cluster": "mainnet"
+}

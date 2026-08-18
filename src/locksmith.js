@@ -52,6 +52,12 @@ export function classifyElfAsset(asset) {
   if (cls === 'giftlocksmith' || cls === 'locksmith') return 'locksmith';
   const name = String(asset?.content?.metadata?.name || '').toLowerCase();
   if (name === 'fate' || name.startsWith('fate ')) return 'fate';
+  if (cls === 'echo') return 'echo';
+  if (name === 'echo' || name.startsWith('echo ')) return 'echo';
+  if (cls === 'rush') return 'rush';
+  if (name === 'rush' || name.startsWith('rush ')) return 'rush';
+  if (cls === 'shadow') return 'shadow';
+  if (name === 'shadow' || name.startsWith('shadow ')) return 'shadow';
   if (name.includes('locksmith')) return 'locksmith';
   // Default: treat unknown elves-collection assets as locksmith only if name suggests it
   return name ? 'elf' : 'elf';
@@ -63,7 +69,17 @@ const assetToCard = (asset) => {
   const kind = classifyElfAsset(asset);
   const name =
     meta.name ||
-    (kind === 'fate' ? 'Fate' : kind === 'locksmith' ? 'GiftLocksmith' : 'Gift2u Elf');
+    (kind === 'fate'
+      ? 'Fate'
+      : kind === 'echo'
+        ? 'Echo'
+        : kind === 'rush'
+          ? 'Rush'
+          : kind === 'shadow'
+            ? 'Shadow'
+            : kind === 'locksmith'
+              ? 'GiftLocksmith'
+              : 'Gift2u Elf');
   const image =
     asset?.content?.links?.image ||
     asset?.content?.files?.find((f) => f?.uri || f?.cdn_uri)?.cdn_uri ||
@@ -83,7 +99,13 @@ const assetToCard = (asset) => {
     name: String(name),
     symbol: meta.symbol
       ? String(meta.symbol)
-      : kind === 'fate'
+      : kind === 'echo'
+        ? '⚡'
+        : kind === 'rush'
+          ? '🔋'
+          : kind === 'shadow'
+            ? '🌑'
+            : kind === 'fate'
         ? 'Fate'
         : 'Locksmith',
     description: meta.description ? String(meta.description) : '',

@@ -11,6 +11,9 @@ import {
   logEconomy,
   invObj,
   utcIsoWeekId,
+  echoMultiplierFromInv,
+  rollFateJackpot,
+  rushDailyLimitFromInv,
 } from "../_shared/economy.ts";
 import { applyWeeklyEnergyCredit } from "../_shared/weeklyScore.ts";
 
@@ -152,13 +155,14 @@ serve(async (req) => {
       now.getTime(),
     );
 
-    // Daily limit
-    let maxLimit = Number(row.max_daily_limit) || 1000;
+    // Daily limit: Rush (Energy) replaces base 1000; battery / boosts add on top
+    const rushCap = rushDailyLimitFromInv(inv);
+    let maxLimit = rushCap > 0 ? rushCap : (Number(row.max_daily_limit) || 1000);
     if (
       row.energy_boost_expires &&
       now < new Date(String(row.energy_boost_expires))
     ) {
-      maxLimit += 1000;
+      maxLimit += 1000; // Expanded Battery
     }
     if (
       row.limit_boost_expires &&
@@ -183,25 +187,28 @@ serve(async (req) => {
       dailyTaps = 0;
     }
 
-    // Buffs
-    let payoutMultiplier = 1;
+    // Buffs (base — Fate jackpot rolled per tap below)
+    const frenzyOn =
+      !!(row.frenzy_expires && now < new Date(String(row.frenzy_expires)));
     let costMultiplier = 1;
-    if (row.frenzy_expires && now < new Date(String(row.frenzy_expires))) {
-      payoutMultiplier *= 2;
-    }
+    let basePayoutMulti = 1;
+    if (frenzyOn) basePayoutMulti *= 2;
     if (
       row.efficiency_expires &&
       now < new Date(String(row.efficiency_expires))
     ) {
-      payoutMultiplier *= 2;
+      basePayoutMulti *= 2;
       costMultiplier *= 2;
     }
     if (
       row.premium_multiplier_expires &&
       now < new Date(String(row.premium_multiplier_expires))
     ) {
-      payoutMultiplier *= Number(row.premium_multiplier) || 1;
+      basePayoutMulti *= Number(row.premium_multiplier) || 1;
     }
+    // Echo (Power) — always-on; stacks with Fate jackpot too
+    const echoMulti = echoMultiplierFromInv(inv);
+    if (echoMulti > 1) basePayoutMulti *= echoMulti;
 
     const lifetime = Number(row.lifetime_taps) || 0;
     const maxU = Number(row.max_unlocked_level) || 4;
@@ -209,9 +216,9 @@ serve(async (req) => {
     const baseRate = getLevelMultiplier(level);
 
     const byEnergy = Math.floor(energy / costMultiplier);
-    // daily_taps counts payout-weighted taps (frenzy/x2/x3), so limit uses payoutMultiplier
+    // Limit uses base payout (no Fate jackpot) so luck doesn't shrink the bar mid-batch
     const byDaily = Math.floor(
-      Math.max(0, maxLimit - dailyTaps) / Math.max(1, payoutMultiplier),
+      Math.max(0, maxLimit - dailyTaps) / Math.max(1, basePayoutMulti),
     );
     const validTaps = Math.min(requestedTaps, byEnergy, byDaily);
 
@@ -252,13 +259,47 @@ serve(async (req) => {
       streak = streakAfterPlayDay(prevLtd, streak, today);
     }
 
-    const shardsEarned =
-      Math.round(baseRate * payoutMultiplier * validTaps * 1000) / 1000;
+    // Per-tap payout: Fate jackpot replaces Frenzy on that tap only (Echo still stacks)
+    let shardsEarned = 0;
+    let scoreCredit = 0;
+    let jackpotHits = 0;
+    let jackpotBestMulti = 0;
+    let payoutMultiplier = basePayoutMulti; // summary / batch avg reference
+    const jackpotLog: Array<{ multi: number; rung: number; rarity: string }> = [];
+    for (let i = 0; i < validTaps; i++) {
+      const hit = rollFateJackpot(inv);
+      let tapMulti = 1;
+      if (hit) {
+        // Fate multi replaces Frenzy for this tap
+        tapMulti = hit.multi;
+        if (
+          row.efficiency_expires &&
+          now < new Date(String(row.efficiency_expires))
+        ) {
+          tapMulti *= 2;
+        }
+        if (
+          row.premium_multiplier_expires &&
+          now < new Date(String(row.premium_multiplier_expires))
+        ) {
+          tapMulti *= Number(row.premium_multiplier) || 1;
+        }
+        if (echoMulti > 1) tapMulti *= echoMulti;
+        jackpotHits += 1;
+        jackpotBestMulti = Math.max(jackpotBestMulti, hit.multi);
+        if (jackpotLog.length < 5) jackpotLog.push(hit);
+      } else {
+        tapMulti = basePayoutMulti;
+      }
+      shardsEarned += baseRate * tapMulti;
+      scoreCredit += tapMulti;
+    }
+    shardsEarned = Math.round(shardsEarned * 1000) / 1000;
+    scoreCredit = Math.round(scoreCredit * 1000) / 1000;
+    if (validTaps > 0) {
+      payoutMultiplier = Math.round((scoreCredit / validTaps) * 1000) / 1000;
+    }
     const energySpent = costMultiplier * validTaps;
-    // Daily/weekly score: count frenzy & premium x2/x3 (payout boosts), not raw energy.
-    // efficiency already raises energySpent via costMultiplier; payout/cost cancels to taps*payout.
-    const scoreCredit =
-      Math.round(validTaps * payoutMultiplier * 1000) / 1000;
     const nextEnergy = Math.max(0, Math.min(ENERGY_CAP, energy - energySpent));
     const nextDaily = dailyTaps + scoreCredit;
     const nextLife = Math.round((lifetime + shardsEarned) * 1000) / 1000;
@@ -326,7 +367,7 @@ serve(async (req) => {
       taps: validTaps,
       energy_spent: energySpent,
       shards: shardsEarned,
-      result: { baseRate, payoutMultiplier, costMultiplier, level, scoreCredit },
+      result: { baseRate, payoutMultiplier, costMultiplier, level, scoreCredit, echoMulti, jackpotHits, jackpotBestMulti, jackpotLog },
     });
 
     await logEconomy(sb, {
@@ -335,7 +376,7 @@ serve(async (req) => {
       delta: shardsEarned,
       balance_after: nextBal,
       ref: batchId,
-      meta: { taps: validTaps, energySpent, scoreCredit, level, baseRate, payoutMultiplier },
+      meta: { taps: validTaps, energySpent, scoreCredit, level, baseRate, payoutMultiplier, echoMulti, jackpotHits, jackpotBestMulti },
     });
 
     return jsonResponse({
@@ -345,6 +386,8 @@ serve(async (req) => {
       taps: validTaps,
       shards: shardsEarned,
       energy_spent: energySpent,
+      jackpot_hits: jackpotHits,
+      jackpot_best_multi: jackpotBestMulti,
       player: {
         ...updates,
         max_unlocked_level: maxU,

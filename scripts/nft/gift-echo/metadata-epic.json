@@ -1,0 +1,18 @@
+{
+  "name": "Echo",
+  "symbol": "Echo",
+  "description": "Echo is the Power elf of the Gift2u Elves. Equip one Echo per wallet. Echo multiplies every tap's G2Ushards by its rarity and level (up to 3.00x on Legendary L5). Epic · Gen 1 · multi 2.10x–2.50x · max supply 1,750.",
+  "seller_fee_basis_points": 500,
+  "external_url": "https://gift2u.fun",
+  "attributes": [
+    { "trait_type": "Collection", "value": "Gift2u Elves" },
+    { "trait_type": "Class", "value": "Echo" },
+    { "trait_type": "Role", "value": "Power" },
+    { "trait_type": "Generation", "value": "Gen 1" },
+    { "trait_type": "Rarity", "value": "Epic" },
+    { "trait_type": "Type", "value": "Utility" },
+    { "trait_type": "Utility", "value": "Tap multiplier (G2Ushards)" },
+    { "trait_type": "Badge Slot", "value": "1" },
+    { "trait_type": "Max Supply", "value": "1750" }
+  ]
+}

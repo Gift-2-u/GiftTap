@@ -1,0 +1,45 @@
+{
+  "name": "Rush",
+  "symbol": "Rush",
+  "description": "Rush is the Energy elf of the Gift2u Elves. Equip one Rush per wallet. Rush raises your max daily taps by rarity and level (up to 3,000 on Legendary L5). Rare \u00b7 Gen 1 \u00b7 daily cap 1,600\u20132,000 \u00b7 max supply 5,250.",
+  "seller_fee_basis_points": 500,
+  "external_url": "https://gift2u.fun",
+  "attributes": [
+    {
+      "trait_type": "Collection",
+      "value": "Gift2u Elves"
+    },
+    {
+      "trait_type": "Class",
+      "value": "Rush"
+    },
+    {
+      "trait_type": "Role",
+      "value": "Energy"
+    },
+    {
+      "trait_type": "Generation",
+      "value": "Gen 1"
+    },
+    {
+      "trait_type": "Rarity",
+      "value": "Rare"
+    },
+    {
+      "trait_type": "Type",
+      "value": "Utility"
+    },
+    {
+      "trait_type": "Utility",
+      "value": "Max daily taps"
+    },
+    {
+      "trait_type": "Badge Slot",
+      "value": "1"
+    },
+    {
+      "trait_type": "Max Supply",
+      "value": "5250"
+    }
+  ]
+}
