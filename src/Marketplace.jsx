@@ -41,6 +41,12 @@ import {
   openMysteryGift,
   badgeCatalogForBackpack,
 } from './weeklyBadges';
+import {
+  SHARD_BADGE,
+  getShardBadgeCount,
+  getFreeShardBadgeCount,
+  shardBadgeCatalogEntry,
+} from './shardBadge';
 import WeeklyBadgePanel from './WeeklyBadgePanel';
 import BadgeMarket from './BadgeMarket';
 import NftMarket from './NftMarket';
@@ -435,7 +441,38 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
       iconRing: 'rgba(192,132,252,0.55)',
       iconGlow: 'rgba(168,85,247,0.35)',
     },
-  ];
+    {
+      id: 'shard_badge',
+      name: 'Shard Badge',
+      type: 'Misc',
+      rarity: 'Rare',
+      boost: 'Equip on Fate NFT socket',
+      perks: [
+        'Sockets into Fate badge hole',
+        'Shows on Fate instantly (in-game)',
+        'Trade on Badge market (P2P SOL)',
+        '1 free badge per unequipped unit',
+      ],
+      attributes: [
+        { trait_type: 'Type', value: 'Shard Badge' },
+        { trait_type: 'Utility', value: 'Fate socket' },
+        { trait_type: 'Slot', value: '1 per Fate' },
+        { trait_type: 'Trade', value: 'Badge market' },
+      ],
+      description:
+        'Shard Badge fills the Fate socket. Not a weekly season prize — buy here or trade with players. Equip from Pack → NFT on a Fate you own.',
+      duration: 'Permanent · equip / unequip anytime',
+      price: 0.02,
+      currency: 'SOL',
+      iconUrl: '/shop/G2Ushard.png',
+      imageUrl: '/shop/G2Ushard.png',
+      iconFrom: '#422006',
+      iconTo: '#1c1917',
+      iconRing: 'rgba(251,191,36,0.55)',
+      iconGlow: 'rgba(251,191,36,0.3)',
+      isShardBadge: true,
+    },
+];
 
   /** Separate NFT marketplace (on-chain mints) */
   const fateListings = ['common', 'rare', 'epic', 'legendary'].map((key) => {
@@ -452,7 +489,7 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
       perks: [
         '1 Fate per wallet (equip one)',
         'Chance of jackpot multi on tap G2Ushards',
-        'Rarity border + Badge Slot (1)',
+        'Rarity border + Shard Badge socket (1)',
         live
           ? `Wave 1 live · ${c.priceSol} SOL`
           : 'Wave 1 candy machine — mint opens when live',
@@ -475,7 +512,8 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
       price: c.priceSol,
       currency: 'SOL',
       image: '🍀',
-      imageUrl: c.imageUri || c.imageUrl,
+      // Prefer local art (locked socket). Irys URI still used for on-chain mints.
+      imageUrl: c.imageUrl || c.imageUri,
       supply: c.itemsAvailable,
       maxPerWallet: c.maxPerWallet || 5,
       feeBufferSol: c.feeBufferSol || 0.02,
@@ -641,7 +679,7 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
       setTxStatus({
         show: true,
         loading: false,
-        message: `❌ Not enough SOL to mint GiftLocksmith. Need ${minMintSol.toFixed(2)} SOL (0.25 mint + fees). Game wallet has ${have} SOL. Deposit first — no transaction will be sent.`,
+        message: `Not enough SOL. Need ${minMintSol.toFixed(2)} SOL (mint + fees). You have ${have} SOL — buy more SOL for your game wallet.`,
         success: false,
       });
       return;
@@ -749,7 +787,7 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
       setTxStatus({
         show: true,
         loading: false,
-        message: `❌ Not enough SOL to mint Fate ${label}. Need ${need.toFixed(2)} SOL. Wallet has ${have} SOL.`,
+        message: `Not enough SOL. Need ${need.toFixed(2)} SOL for Fate ${label}. You have ${have} SOL — buy more SOL for your game wallet.`,
         success: false,
       });
       return;
@@ -1355,7 +1393,7 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
      
       {/* --- CUSTOM POP-UP MODAL --- */}
       {txStatus.show && (
-        <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', background: 'rgba(0,0,0,0.85)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 9999 }}>
+        <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', background: 'rgba(0,0,0,0.85)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 100050 }}>
           <div style={{ background: '#1c1e22', padding: '25px', borderRadius: '15px', border: txStatus.success ? '2px solid #4ade80' : '2px solid #ffd700', textAlign: 'center', width: '80%', maxWidth: '320px', boxShadow: '0 4px 20px rgba(0,0,0,0.5)' }}>
             <h3 style={{ color: '#fff', marginTop: 0, marginBottom: '15px' }}>
               {txStatus.loading ? '⚙️ Processing...' : txStatus.success ? '🎉 Complete!' : '⚠️ Notice'}
@@ -1777,13 +1815,10 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
             <p style={{ color: '#666', fontSize: 10, margin: '0 0 8px', textAlign: 'center' }}>
               NFT Marketplace · tap for details
             </p>
-            {/* Compact 4-col grid — smaller cards, more per row */}
+            {/* Phone: 4/row · Desktop: 6/row */}
             <div
-              style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(6, minmax(0, 1fr))',
-                gap: 6,
-              }}
+              className="grid grid-cols-4 md:grid-cols-6"
+              style={{ gap: 6 }}
             >
               {nftListings.map((item) => (
                 <button
@@ -1841,7 +1876,7 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
                     style={{
                       color: '#fff',
                       fontWeight: 'bold',
-                      fontSize: 9,
+                      fontSize: 11,
                       width: '100%',
                       whiteSpace: 'nowrap',
                       overflow: 'hidden',
@@ -1854,7 +1889,7 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
                   <div
                     style={{
                       color: '#14F195',
-                      fontSize: 9,
+                      fontSize: 10,
                       fontWeight: 'bold',
                       marginTop: 1,
                       lineHeight: 1.15,
@@ -2117,8 +2152,79 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
                   </div>
                 </div>
 
+                <div style={{ color: '#fbbf24', fontWeight: 'bold', fontSize: 13, marginTop: 4 }}>
+                  Shard Badge (Fate socket)
+                </div>
+                <p style={{ color: '#666', fontSize: 11, margin: '0 0 8px', lineHeight: 1.35 }}>
+                  Equip on Fate from Pack → NFT. Buy in Shop (SOL) or trade below.
+                </p>
+                {getShardBadgeCount(localInventory) > 0 ? (
+                  <div
+                    style={{
+                      background: '#1c1e22',
+                      borderRadius: 14,
+                      padding: '12px 14px',
+                      border: '1px solid #fbbf24',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 12,
+                      marginBottom: 12,
+                    }}
+                  >
+                    <img
+                      src={SHARD_BADGE.image}
+                      alt={SHARD_BADGE.name}
+                      width={56}
+                      height={56}
+                      style={{
+                        width: 56,
+                        height: 56,
+                        objectFit: 'contain',
+                        borderRadius: 10,
+                        flexShrink: 0,
+                        background: '#000',
+                      }}
+                    />
+                    <div style={{ flex: 1 }}>
+                      <div style={{ color: '#fff', fontWeight: 'bold', fontSize: 14 }}>
+                        {SHARD_BADGE.name}
+                      </div>
+                      <div style={{ color: '#888', fontSize: 11 }}>
+                        Owned ×{getShardBadgeCount(localInventory)} · free ×
+                        {getFreeShardBadgeCount(localInventory)} (not on Fate)
+                      </div>
+                    </div>
+                    <div style={{ color: '#fbbf24', fontWeight: 'bold', fontSize: 18 }}>
+                      ×{getShardBadgeCount(localInventory)}
+                    </div>
+                  </div>
+                ) : (
+                  <div
+                    style={{
+                      textAlign: 'center',
+                      padding: '14px 12px',
+                      color: '#888',
+                      border: '1px dashed #444',
+                      borderRadius: 12,
+                      marginBottom: 12,
+                    }}
+                  >
+                    <img
+                      src={SHARD_BADGE.image}
+                      alt=""
+                      width={40}
+                      height={40}
+                      style={{ opacity: 0.4, marginBottom: 6 }}
+                    />
+                    <p style={{ fontSize: 12, margin: 0 }}>No Shard Badge yet.</p>
+                    <p style={{ fontSize: 11, color: '#666', margin: '4px 0 0' }}>
+                      Buy in Premium / Shop or from Badge market.
+                    </p>
+                  </div>
+                )}
+
                 <div style={{ color: '#ffd700', fontWeight: 'bold', fontSize: 13, marginTop: 4 }}>
-                  Your badges
+                  Weekly season badges
                 </div>
                 <p style={{ color: '#666', fontSize: 11, margin: '0 0 4px', lineHeight: 1.35 }}>
                   From Ranks → Weekly (top 10 eligible · ≥1,050). Sell in Badge market below.
@@ -2265,6 +2371,13 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
                   walletAddress={playerWallet}
                   walletSecret={decryptedPhrase || ''}
                   refreshKey={walletNftRefresh}
+                  inventory={localInventory}
+                  onInventoryChange={(inv) => {
+                    setLocalInventory(inv);
+                    if (setStats) {
+                      setStats((prev) => ({ ...prev, inventory: inv }));
+                    }
+                  }}
                   notify={(msg) => window.alert?.(msg)}
                   onOpenShopNfts={() => setActiveTab('nft')}
                   onSellNft={() => setActiveTab('nft')}
@@ -2484,18 +2597,7 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
                   ? 'Checking SOL…'
                   : walletSol == null
                     ? 'Could not read SOL'
-                    : (() => {
-                        const need = nftDetail.isFateMint
-                          ? minSolForFateMint(nftDetail.fateRarity || 'common')
-                          : minMintSol;
-                        const ok = nftDetail.isFateMint
-                          ? canAffordFate(nftDetail.fateRarity || 'common') &&
-                            (nftDetail.mintLive || isFateMintLive(nftDetail.fateRarity))
-                          : canAffordLocksmithMint;
-                        return ok
-                          ? `Wallet ${walletSol.toFixed(4)} SOL · ready`
-                          : `Wallet ${Number(walletSol || 0).toFixed(4)} SOL · need ${need.toFixed(2)}+`;
-                      })()}
+                    : `Game wallet · ${Number(walletSol || 0).toFixed(4)} SOL`}
               </div>
               <div style={{ display: 'flex', gap: 8 }}>
                 <button
@@ -2518,25 +2620,51 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
                 <button
                   type="button"
                   disabled={(() => {
-                    if (!nftDetail.isNftMint || walletSolLoading) return !!walletSolLoading && nftDetail.isNftMint;
-                    if (nftDetail.isFateMint) {
-                      return (
-                        !nftDetail.mintLive ||
-                        !canAffordFate(nftDetail.fateRarity || 'common')
-                      );
-                    }
-                    return !canAffordLocksmithMint;
+                    if (!nftDetail.isNftMint) return false;
+                    if (walletSolLoading) return true;
+                    if (!walletUnlocked) return false;
+                    if (nftDetail.isFateMint && !nftDetail.mintLive) return true;
+                    return false;
                   })()}
                   onClick={() => {
                     if (nftDetail.isNftMint) {
-                      if (nftDetail.isFateMint) {
-                        if (
-                          !nftDetail.mintLive ||
-                          !canAffordFate(nftDetail.fateRarity || 'common') ||
-                          walletSolLoading
-                        )
-                          return;
-                      } else if (!canAffordLocksmithMint || walletSolLoading) {
+                      if (walletSolLoading) return;
+                      if (!walletUnlocked) {
+                        setTxStatus({
+                          show: true,
+                          loading: false,
+                          message: 'Unlock your game wallet first (Menu / wallet settings).',
+                          success: false,
+                        });
+                        return;
+                      }
+                      if (nftDetail.isFateMint && !nftDetail.mintLive) {
+                        setTxStatus({
+                          show: true,
+                          loading: false,
+                          message: 'Mint opens when the candy machine is live. Check back soon.',
+                          success: false,
+                        });
+                        return;
+                      }
+                      const afford = nftDetail.isFateMint
+                        ? canAffordFate(nftDetail.fateRarity || 'common')
+                        : canAffordLocksmithMint;
+                      if (!afford) {
+                        const need = nftDetail.isFateMint
+                          ? minSolForFateMint(nftDetail.fateRarity || 'common')
+                          : minMintSol;
+                        const have =
+                          walletSol != null && Number.isFinite(walletSol)
+                            ? walletSol.toFixed(4)
+                            : '0';
+                        setNftDetail(null);
+                        setTxStatus({
+                          show: true,
+                          loading: false,
+                          message: `Not enough SOL. Need ${need.toFixed(2)} SOL · you have ${have} SOL. Buy more SOL for your game wallet.`,
+                          success: false,
+                        });
                         return;
                       }
                       setNftDetail(null);
@@ -2554,27 +2682,20 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
                     background: (() => {
                       if (!nftDetail.isNftMint)
                         return 'linear-gradient(90deg, #9945FF, #14F195)';
-                      const blocked = nftDetail.isFateMint
-                        ? !nftDetail.mintLive ||
-                          !canAffordFate(nftDetail.fateRarity || 'common')
-                        : !canAffordLocksmithMint;
-                      return blocked
-                        ? '#444'
-                        : 'linear-gradient(90deg, #9945FF, #14F195)';
+                      if (nftDetail.isFateMint && !nftDetail.mintLive) return '#444';
+                      return 'linear-gradient(90deg, #9945FF, #14F195)';
                     })(),
                     color: (() => {
                       if (!nftDetail.isNftMint) return '#000';
-                      const blocked = nftDetail.isFateMint
-                        ? !nftDetail.mintLive ||
-                          !canAffordFate(nftDetail.fateRarity || 'common')
-                        : !canAffordLocksmithMint;
-                      return blocked ? '#888' : '#000';
+                      if (nftDetail.isFateMint && !nftDetail.mintLive) return '#888';
+                      return '#000';
                     })(),
                     borderRadius: 10,
                     border: 'none',
                     fontWeight: 'bold',
                     fontSize: 13,
                     cursor: 'pointer',
+                    opacity: walletSolLoading && nftDetail.isNftMint ? 0.7 : 1,
                   }}
                 >
                   {nftDetail.isNftMint
@@ -2584,13 +2705,7 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
                         ? 'Unlock wallet'
                         : nftDetail.isFateMint && !nftDetail.mintLive
                           ? 'Soon'
-                          : nftDetail.isFateMint
-                            ? canAffordFate(nftDetail.fateRarity || 'common')
-                              ? 'Mint'
-                              : 'Need SOL'
-                            : !canAffordLocksmithMint
-                              ? 'Need SOL'
-                              : 'Mint'
+                          : 'Mint'
                     : 'Buy'}
                 </button>
               </div>

@@ -6562,6 +6562,12 @@ const GiftTapGame = () => {
                         walletAddress={playerWallet}
                         walletSecret={decryptedPhrase || generatedSecret || ''}
                         refreshKey={isModalOpen ? 1 : 0}
+                        inventory={stats?.inventory || inventoryRef.current || {}}
+                        onInventoryChange={(inv) => {
+                          if (!inv || typeof inv !== 'object') return;
+                          inventoryRef.current = inv;
+                          setStats((prev) => ({ ...prev, inventory: inv }));
+                        }}
                         notify={notify}
                         onOpenShopNfts={() => {
                           setIsModalOpen(false);

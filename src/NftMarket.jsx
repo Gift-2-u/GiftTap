@@ -276,11 +276,10 @@ export default function NftMarket({
           NFT market (in-game)
         </div>
         <p style={{ color: '#888', fontSize: 11, margin: '6px 0 0', lineHeight: 1.4 }}>
-          Buy &amp; sell GiftLocksmiths you own. Pay with{' '}
+          Buy &amp; sell NFT. Pay with{' '}
           <strong style={{ color: '#67e8f9' }}>SOL</strong> now (
-          <strong style={{ color: '#4ade80' }}>G2U</strong> after launch — not G2Ushards).{' '}
-          <strong style={{ color: '#fbbf24' }}>5% treasury</strong>. After payment, the seller
-          completes the on-chain transfer to your game wallet.
+          <strong style={{ color: '#4ade80' }}>G2U</strong> after launch).{' '}
+          <strong style={{ color: '#fbbf24' }}>5% treasury</strong>.
         </p>
       </div>
 

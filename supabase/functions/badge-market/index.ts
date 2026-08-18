@@ -21,7 +21,7 @@ import {
 } from "../_shared/economy.ts";
 
 const FEE_BPS = 500; // 5%
-const TIERS = new Set(["bronze", "silver", "gold", "diamond"]);
+const TIERS = new Set(["bronze", "silver", "gold", "diamond", "shard"]);
 /** sol = live; g2u = G2U token after launch (never G2Ushards) */
 const CURRENCIES = new Set(["sol", "g2u"]);
 const MIN_SOL = 0.001;
@@ -47,7 +47,30 @@ function feeSplit(gross: number) {
 }
 
 function itemIdForTier(tier: string): string {
-  return BADGE_ITEM[tier] || `badge_${tier}`;
+  return BADGE_ITEM[tier] || (tier === "shard" ? "shard_badge" : `badge_${tier}`);
+}
+
+/** Shard badges equipped on Fate sockets (cannot list while equipped). */
+function countEquippedShard(inv: Record<string, unknown>): number {
+  const map = inv.fate_equip;
+  if (!map || typeof map !== "object") return 0;
+  let n = 0;
+  for (const row of Object.values(map as Record<string, unknown>)) {
+    if (!row || typeof row !== "object") continue;
+    const r = row as Record<string, unknown>;
+    const itemId = String(r.itemId || r.item_id || "").toLowerCase();
+    const tier = String(r.tier || "").toLowerCase();
+    if (itemId === "shard_badge" || tier === "shard" || tier === "shard_badge") n += 1;
+  }
+  return n;
+}
+
+function freeQtyForTier(inv: Record<string, unknown>, tier: string, itemId: string): number {
+  const owned = Math.max(0, Math.floor(Number(inv[itemId]) || 0));
+  if (tier === "shard") {
+    return Math.max(0, owned - countEquippedShard(inv));
+  }
+  return owned;
 }
 
 serve(async (req) => {
@@ -132,7 +155,7 @@ serve(async (req) => {
       const currency = String(body.currency || "sol").toLowerCase();
       const unit_price = Number(body.unit_price ?? body.price) || 0;
 
-      if (!TIERS.has(tier)) throw new Error("Invalid tier (bronze|silver|gold|diamond)");
+      if (!TIERS.has(tier)) throw new Error("Invalid tier (bronze|silver|gold|diamond|shard)");
       if (qty < 1) throw new Error("Quantity must be at least 1");
       if (currency === "shards" || currency === "g2ushards") {
         throw new Error("G2Ushards are not used on the badge market. Use SOL (G2U token after launch).");
@@ -165,9 +188,13 @@ serve(async (req) => {
 
       const inv = invObj(row.inventory);
       const itemId = itemIdForTier(tier);
-      const have = Math.max(0, Math.floor(Number(inv[itemId]) || 0));
+      const have = freeQtyForTier(inv, tier, itemId);
       if (have < qty) {
-        throw new Error(`Not enough ${tier} badges (have ${have}, need ${qty})`);
+        throw new Error(
+          tier === "shard"
+            ? `Not enough free Shard Badges (free ${have}, need ${qty} — unequip from Fate first)`
+            : `Not enough ${tier} badges (have ${have}, need ${qty})`,
+        );
       }
 
       // Escrow: remove from backpack

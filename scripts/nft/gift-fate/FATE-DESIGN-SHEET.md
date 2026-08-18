@@ -1,7 +1,7 @@
 # Gift2u Elves — Fate (Luck) Design Sheet v1
 
 **Status:** LOCKED  
-**Last updated:** 2026-08-17  
+**Last updated:** 2026-08-17 (socket geometry locked)  
 **Class:** Fate · Luck elf  
 **Art:** `Fate.jpg` (same image all rarities)  
 **Demo:** `fate-nft-final-demo.jpg`
@@ -27,8 +27,13 @@
 | Rarity colors | Common **silver/grey** · Rare **blue** · Epic **purple** · Legendary **gold** (rich gold, not yellow) |
 | On-card rarity text | **None** — rarity in metadata / description only |
 | Legendary | Soft gold outer glow only (not a second hard border) |
-| Badge socket | **Bottom-right** on art, **empty ring** until a badge is equipped |
+| Badge socket | **Bottom-right** on art, **empty opaque well** until a badge is equipped |
 | Socket rule | **Same position for every elf** · **1 badge max** per NFT |
+| Socket size | **LOCKED** — `SOCKET_R_FRAC = 0.028 × 1.45` (~0.0406 of art side) |
+| Socket fill | **Opaque** dark well (no street / scene bleed through the hole) |
+| Equipped badge | Fill **82%** of socket radius so tips **clear the rim** |
+| Badge blend | Darken to match NFT lighting (`BADGE_BLEND` in `socket-geometry.mjs`) |
+| Source of truth | `scripts/nft/gift-fate/socket-geometry.mjs` — Fate **and next elves** |
 
 ---
 

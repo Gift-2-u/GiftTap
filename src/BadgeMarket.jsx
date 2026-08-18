@@ -15,6 +15,12 @@ import {
 import { keypairFromMnemonic } from './solanaWallet';
 import { BADGE_TIERS, badgeCatalogForBackpack, getBadgeCounts } from './weeklyBadges';
 import {
+  SHARD_BADGE,
+  SHARD_BADGE_MARKET_TIER,
+  getFreeShardBadgeCount,
+  shardBadgeCatalogEntry,
+} from './shardBadge';
+import {
   hasSecureSession,
   ensureSecureSession,
   secureBadgeMarketBrowse,
@@ -57,6 +63,34 @@ export default function BadgeMarket({
   const [sellPrice, setSellPrice] = useState('0.01');
 
   const counts = getBadgeCounts(inventory);
+  const freeShard = getFreeShardBadgeCount(inventory);
+  const marketCatalog = [
+    ...badgeCatalogForBackpack(),
+    {
+      ...shardBadgeCatalogEntry(),
+      tier: SHARD_BADGE_MARKET_TIER,
+      free: freeShard,
+    },
+  ];
+  const freeForTier = (tier) => {
+    if (tier === SHARD_BADGE_MARKET_TIER || tier === 'shard_badge') return freeShard;
+    return counts[tier] || 0;
+  };
+  const nameForTier = (tier) => {
+    if (tier === SHARD_BADGE_MARKET_TIER || tier === 'shard_badge') return SHARD_BADGE.name;
+    return BADGE_TIERS[tier]?.name || tier;
+  };
+  const metaForTier = (tier) => {
+    if (tier === SHARD_BADGE_MARKET_TIER || tier === 'shard_badge') {
+      return {
+        name: SHARD_BADGE.name,
+        color: SHARD_BADGE.color,
+        image: SHARD_BADGE.image,
+        emoji: SHARD_BADGE.emoji,
+      };
+    }
+    return BADGE_TIERS[tier] || {};
+  };
   const notify = (msg, ok = true) => {
     if (typeof onStatus === 'function') onStatus({ show: true, loading: false, message: msg, success: ok });
   };
@@ -104,8 +138,8 @@ export default function BadgeMarket({
       notify('❌ Quantity must be ≥ 1', false);
       return;
     }
-    if (counts[sellTier] < qty) {
-      notify(`❌ Not enough ${sellTier} badges`, false);
+    if (freeForTier(sellTier) < qty) {
+      notify(`❌ Not enough free ${nameForTier(sellTier)}`, false);
       return;
     }
     if (sellCurrency === 'g2u') {
@@ -127,7 +161,7 @@ export default function BadgeMarket({
       });
       applyInv(data.inventory, data.shard_balance);
       notify(
-        `✅ Listed ${qty}× ${BADGE_TIERS[sellTier]?.name || sellTier} @ ${price} ${
+        `✅ Listed ${qty}× ${nameForTier(sellTier)} @ ${price} ${
           sellCurrency === 'g2u' ? 'G2U' : 'SOL'
         } each (escrowed)`,
       );
@@ -231,7 +265,7 @@ export default function BadgeMarket({
       const data = await secureBadgeMarketBuy(listing.id, txSig);
       applyInv(data.inventory, data.shard_balance);
       notify(
-        `✅ Bought ${listing.qty}× ${BADGE_TIERS[listing.tier]?.name || listing.tier}!`,
+        `✅ Bought ${listing.qty}× ${nameForTier(listing.tier)}!`,
       );
       await refresh();
     } catch (e) {
@@ -259,7 +293,7 @@ export default function BadgeMarket({
           Badge market (in-game)
         </div>
         <p style={{ color: '#888', fontSize: 11, margin: '6px 0 0', lineHeight: 1.4 }}>
-          Trade weekly badges in-game only. List = escrow from backpack.
+          Trade weekly badges + Shard Badges in-game. List = escrow from backpack (Shard must be unequipped from Fate).
           Pay with <strong style={{ color: '#67e8f9' }}>SOL</strong> now.
           <strong style={{ color: '#4ade80' }}> G2U</strong> token after launch
           (not G2Ushards). Fee:{' '}
@@ -319,7 +353,7 @@ export default function BadgeMarket({
             </div>
           ) : (
             listings.map((L) => {
-              const meta = BADGE_TIERS[L.tier] || {};
+              const meta = metaForTier(L.tier);
               const gross = Number(L.unit_price) * Number(L.qty);
               const curLabel = L.currency === 'g2u' ? 'G2U' : 'SOL';
               const curColor = L.currency === 'g2u' ? '#4ade80' : '#67e8f9';
@@ -418,9 +452,9 @@ export default function BadgeMarket({
                 color: '#fff',
               }}
             >
-              {badgeCatalogForBackpack().map((b) => (
+              {marketCatalog.map((b) => (
                 <option key={b.tier} value={b.tier}>
-                  {b.name} (owned {counts[b.tier] || 0})
+                  {b.name} (free {b.tier === 'shard' ? freeShard : counts[b.tier] || 0})
                 </option>
               ))}
             </select>
@@ -430,7 +464,7 @@ export default function BadgeMarket({
             <input
               type="number"
               min={1}
-              max={counts[sellTier] || 1}
+              max={freeForTier(sellTier) || 1}
               value={sellQty}
               onChange={(e) => setSellQty(e.target.value)}
               style={{
@@ -501,7 +535,7 @@ export default function BadgeMarket({
           ) : null}
           <button
             type="button"
-            disabled={busyId === 'list' || (counts[sellTier] || 0) < 1}
+            disabled={busyId === 'list' || freeForTier(sellTier) < 1}
             onClick={handleList}
             style={{
               background: 'linear-gradient(90deg, #4ade80, #ffd700)',
@@ -529,7 +563,7 @@ export default function BadgeMarket({
             mine
               .filter((x) => x.status === 'active')
               .map((L) => {
-                const meta = BADGE_TIERS[L.tier] || {};
+                const meta = metaForTier(L.tier);
                 return (
                   <div
                     key={L.id}

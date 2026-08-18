@@ -1,9 +1,16 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { listGiftNfts } from './locksmith';
 import { transferCoreNft } from './nftTransfer';
+import {
+  SHARD_BADGE,
+  getShardBadgeCount,
+  getFreeShardBadgeCount,
+  getEquippedShardBadgeOnFate,
+} from './shardBadge';
+import { secureFateEquip } from './secureApi';
 
 /**
- * In-game wallet NFTs. Detail popup: Send (free transfer) + Sell (marketplace).
+ * In-game wallet NFTs. Detail: Send / Sell + Fate Shard Badge equip (instant socket overlay).
  */
 export default function WalletNftSection({
   walletAddress,
@@ -12,6 +19,8 @@ export default function WalletNftSection({
   onOpenShopNfts,
   onSellNft,
   notify,
+  inventory = null,
+  onInventoryChange = null,
 }) {
   const [nfts, setNfts] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -23,11 +32,48 @@ export default function WalletNftSection({
   const [sendTo, setSendTo] = useState('');
   const [sending, setSending] = useState(false);
   const [listKey, setListKey] = useState(0);
+  const [equipBusy, setEquipBusy] = useState(false);
+  const [localInv, setLocalInv] = useState(inventory || {});
 
   const toast = (msg, ok = true) => {
     if (typeof notify === 'function') notify(msg, ok);
     else if (!ok) console.warn(msg);
     else console.log(msg);
+  };
+
+  useEffect(() => {
+    if (inventory && typeof inventory === 'object') {
+      setLocalInv(inventory);
+    }
+  }, [inventory]);
+
+  const shardOwned = useMemo(() => getShardBadgeCount(localInv || {}), [localInv]);
+  const shardFree = useMemo(() => getFreeShardBadgeCount(localInv || {}), [localInv]);
+  const equippedOnSelected = useMemo(() => {
+    if (!selected || selected.kind !== 'fate') return null;
+    return getEquippedShardBadgeOnFate(localInv, selected.id);
+  }, [selected, localInv]);
+
+  const handleEquipShardBadge = async (equip) => {
+    if (!selected || selected.kind !== 'fate') return;
+    setEquipBusy(true);
+    try {
+      const data = await secureFateEquip({
+        assetId: selected.id,
+        equip: !!equip,
+      });
+      const nextInv = data.inventory || localInv;
+      setLocalInv(nextInv);
+      if (typeof onInventoryChange === 'function') onInventoryChange(nextInv);
+      toast(
+        equip ? `Equipped ${SHARD_BADGE.name} on Fate` : 'Shard Badge unequipped',
+        true,
+      );
+    } catch (e) {
+      toast(e?.message || 'Equip failed', false);
+    } finally {
+      setEquipBusy(false);
+    }
   };
 
   useEffect(() => {
@@ -198,7 +244,7 @@ export default function WalletNftSection({
         {!loading && nfts.length === 0 ? (
           <div>
             <p style={{ color: '#888', fontSize: '12px', margin: '0 0 10px', lineHeight: 1.4 }}>
-              No Gift2u Elves NFTs in this game wallet yet. Mint GiftLocksmith in Shop → NFTs.
+              No Gift2u Elves NFTs in this game wallet yet. Mint Fate or GiftLocksmith in Shop → NFTs.
             </p>
             {typeof onOpenShopNfts === 'function' ? (
               <button
@@ -258,6 +304,7 @@ export default function WalletNftSection({
                     alignItems: 'center',
                     justifyContent: 'center',
                     fontSize: 20,
+                    position: 'relative',
                   }}
                 >
                   {nft.image ? (
@@ -270,8 +317,33 @@ export default function WalletNftSection({
                       }}
                     />
                   ) : (
-                    '🔑'
+                    nft.kind === 'fate' ? '🍀' : '🔑'
                   )}
+                  {nft.kind === 'fate' && (() => {
+                    const eq = getEquippedShardBadgeOnFate(localInv, nft.id);
+                    if (!eq?.image) return null;
+                    return (
+                      <div
+                        style={{
+                          position: 'absolute',
+                          right: 2,
+                          bottom: 2,
+                          width: 14,
+                          height: 14,
+                          borderRadius: '50%',
+                          border: '1px solid rgba(255,255,255,0.9)',
+                          overflow: 'hidden',
+                          background: 'rgba(0,0,0,0.5)',
+                        }}
+                      >
+                        <img
+                          src={eq.image}
+                          alt={eq.name}
+                          style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                        />
+                      </div>
+                    );
+                  })()}
                 </div>
                 <div style={{ minWidth: 0, flex: 1 }}>
                   <div
@@ -287,7 +359,17 @@ export default function WalletNftSection({
                     {nft.name}
                   </div>
                   <div style={{ color: '#a78bfa', fontSize: '11px', marginTop: 2 }}>
-                    {nft.collection} · Locksmith
+                    {nft.collection}
+                    {nft.kind === 'fate'
+                      ? ' · Fate'
+                      : nft.kind === 'locksmith'
+                        ? ' · Locksmith'
+                        : ''}
+                    {(() => {
+                      if (nft.kind !== 'fate') return '';
+                      const eq = getEquippedShardBadgeOnFate(localInv, nft.id);
+                      return eq ? ' · ' + eq.name : '';
+                    })()}
                   </div>
                   <div
                     style={{
@@ -397,6 +479,7 @@ export default function WalletNftSection({
                 alignItems: 'center',
                 justifyContent: 'center',
                 marginBottom: '14px',
+                position: 'relative',
               }}
             >
               {selected.image ? (
@@ -409,8 +492,35 @@ export default function WalletNftSection({
                   }}
                 />
               ) : (
-                <span style={{ fontSize: 64 }}>🔑</span>
+                <span style={{ fontSize: 64 }}>{selected.kind === 'fate' ? '🍀' : '🔑'}</span>
               )}
+              {/* Instant equip overlay — same corner as on-chain socket (~bottom-right) */}
+              {selected.kind === 'fate' && equippedOnSelected?.image ? (
+                <div
+                  style={{
+                    position: 'absolute',
+                    right: '4.8%',
+                    bottom: '4.8%',
+                    width: '16.5%',
+                    height: '16.5%',
+                    borderRadius: '50%',
+                    border: '2px solid rgba(255,255,255,0.9)',
+                    boxShadow: '0 0 10px rgba(0,0,0,0.55)',
+                    overflow: 'hidden',
+                    background: 'rgba(0,0,0,0.45)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                  title={equippedOnSelected.name}
+                >
+                  <img
+                    src={equippedOnSelected.image}
+                    alt={equippedOnSelected.name}
+                    style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                  />
+                </div>
+              ) : null}
             </div>
 
             {detailLoading ? (
@@ -497,6 +607,135 @@ export default function WalletNftSection({
                     </div>
                   ))}
                 </div>
+              </div>
+            ) : null}
+
+            {selected.kind === 'fate' ? (
+              <div
+                style={{
+                  background: '#0c0c12',
+                  border: '1px solid #fbbf24',
+                  borderRadius: 12,
+                  padding: 12,
+                  marginBottom: 12,
+                }}
+              >
+                <div
+                  style={{
+                    color: '#fbbf24',
+                    fontWeight: 'bold',
+                    fontSize: 12,
+                    marginBottom: 6,
+                  }}
+                >
+                  Shard Badge socket
+                </div>
+                <p style={{ color: '#888', fontSize: 11, margin: '0 0 10px', lineHeight: 1.4 }}>
+                  Socket a Shard Badge here (not weekly season badges). Buy in Shop or trade on Badge market.
+                  {equippedOnSelected
+                    ? ` Equipped: ${equippedOnSelected.name}.`
+                    : ' Empty right now.'}
+                  {' '}
+                  Owned ×{shardOwned}
+                  {shardOwned > 0 ? ` · free ×${shardFree}` : ''}.
+                </p>
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 12,
+                    marginBottom: 10,
+                  }}
+                >
+                  <div
+                    style={{
+                      width: 64,
+                      height: 64,
+                      borderRadius: 12,
+                      border: equippedOnSelected
+                        ? '2px solid #67e8f9'
+                        : '1px solid #333',
+                      background: '#1a1a1a',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      overflow: 'hidden',
+                      flexShrink: 0,
+                    }}
+                  >
+                    <img
+                      src={SHARD_BADGE.image}
+                      alt={SHARD_BADGE.name}
+                      style={{
+                        width: '88%',
+                        height: '88%',
+                        objectFit: 'contain',
+                        opacity: equippedOnSelected || shardFree > 0 ? 1 : 0.35,
+                      }}
+                    />
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ color: '#fff', fontWeight: 'bold', fontSize: 13 }}>
+                      {SHARD_BADGE.name}
+                    </div>
+                    <div style={{ color: '#888', fontSize: 11, marginTop: 2 }}>
+                      {equippedOnSelected
+                        ? 'On this Fate'
+                        : shardFree > 0
+                          ? 'Ready to equip'
+                          : shardOwned > 0
+                            ? 'All equipped on other Fates'
+                            : 'None in backpack'}
+                    </div>
+                  </div>
+                </div>
+                {equippedOnSelected ? (
+                  <button
+                    type="button"
+                    disabled={equipBusy}
+                    onClick={() => handleEquipShardBadge(false)}
+                    style={{
+                      width: '100%',
+                      background: 'transparent',
+                      border: '1px solid #555',
+                      color: '#aaa',
+                      borderRadius: 8,
+                      padding: 10,
+                      fontSize: 12,
+                      fontWeight: 'bold',
+                      cursor: equipBusy ? 'wait' : 'pointer',
+                    }}
+                  >
+                    {equipBusy ? '…' : 'Unequip Shard Badge'}
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    disabled={equipBusy || shardFree < 1}
+                    onClick={() => handleEquipShardBadge(true)}
+                    style={{
+                      width: '100%',
+                      background:
+                        shardFree > 0
+                          ? 'linear-gradient(90deg, #fbbf24, #f59e0b)'
+                          : '#222',
+                      border: 'none',
+                      color: shardFree > 0 ? '#000' : '#666',
+                      borderRadius: 8,
+                      padding: 10,
+                      fontSize: 12,
+                      fontWeight: 'bold',
+                      cursor:
+                        equipBusy || shardFree < 1 ? 'not-allowed' : 'pointer',
+                    }}
+                  >
+                    {equipBusy
+                      ? '…'
+                      : shardFree > 0
+                        ? 'Equip Shard Badge'
+                        : 'Need a free Shard Badge'}
+                  </button>
+                )}
               </div>
             ) : null}
 

@@ -578,3 +578,32 @@ export function badgeCatalogForBackpack() {
     desc: 'Weekly prize · burn for Mystery Gift · sell on Badge market',
   }));
 }
+
+/**
+ * @deprecated Fate socket uses Shard Badge only — see getEquippedShardBadgeOnFate in shardBadge.js
+ * Kept for compatibility; returns null for weekly tiers.
+ */
+export function getEquippedBadgeOnFate(inv, fateAssetId) {
+  if (!fateAssetId || !inv || typeof inv !== 'object') return null;
+  const map = inv.fate_equip;
+  if (!map || typeof map !== 'object') return null;
+  const row = map[fateAssetId];
+  if (!row || typeof row !== 'object') return null;
+  const itemId = String(row.itemId || row.item_id || '').toLowerCase();
+  const tier = String(row.tier || '').toLowerCase().replace(/^badge_/, '');
+  if (itemId === 'shard_badge' || tier === 'shard' || tier === 'shard_badge') {
+    return {
+      tier: 'shard',
+      itemId: 'shard_badge',
+      image: '/shop/G2Ushard.png',
+      name: 'Shard Badge',
+    };
+  }
+  return null;
+}
+
+/** Active Fate asset id for jackpot (optional focus). */
+export function getActiveFateId(inv) {
+  const id = inv?.fate_active;
+  return id ? String(id) : null;
+}

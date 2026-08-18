@@ -70,6 +70,8 @@ export const BADGE_ITEM: Record<string, string> = {
   silver: "badge_silver",
   gold: "badge_gold",
   diamond: "badge_diamond",
+  /** Fate socket asset — tradeable, not a weekly prize */
+  shard: "shard_badge",
 };
 
 export function tierFromRank(rank: number): string | null {

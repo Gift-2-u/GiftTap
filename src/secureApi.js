@@ -247,3 +247,14 @@ export async function fetchWeeklyBoard(limit = 200) {
 export async function reconcileWeeklyScores(limit = 500) {
   return callSecureFunction('reconcile-weekly', { limit });
 }
+
+/**
+ * Equip / unequip a Shard Badge onto a Fate NFT (inventory.fate_equip).
+ * @param {{ assetId: string, equip?: boolean }} opts — equip false = unequip
+ */
+export async function secureFateEquip({ assetId, equip = true }) {
+  return callSecureFunction('fate-equip', {
+    asset_id: assetId,
+    equip: equip !== false,
+  });
+}

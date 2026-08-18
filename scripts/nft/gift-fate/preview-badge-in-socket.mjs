@@ -7,6 +7,7 @@ import Jimp from "jimp";
 import path from "path";
 import { fileURLToPath } from "url";
 import fs from "fs";
+import { BADGE_FILL_FRAC, socketMetricsFromBorderedCard } from "./socket-geometry.mjs";
 
 const dir = path.dirname(fileURLToPath(import.meta.url));
 const rarity = (process.argv[2] || "common").toLowerCase();
@@ -23,19 +24,10 @@ const base = await Jimp.read(basePath);
 const W = base.bitmap.width;
 const H = base.bitmap.height;
 
-// Same geometry as make-borders.mjs (border + socket on art, then outer frame)
-const border = Math.max(12, Math.round(Math.min(W, H) * (17 / 1442)));
-const artSide = W - border * 2;
-const socketR = Math.max(18, Math.round(artSide * 0.028));
-const socketMargin = Math.max(14, Math.round(artSide * 0.03));
-// center of socket in FINAL (bordered) coords
-const cx = border + (artSide - socketMargin - socketR);
-const cy = border + (artSide - socketMargin - socketR);
-// Fill most of the socket (was 0.88 — too small). Leave a thin ring edge.
-const badgeR = Math.round(socketR * 1.15);
+const { border, socketR, cx, cy, badgeR } = socketMetricsFromBorderedCard(W, H);
 const badgeSize = badgeR * 2;
 
-console.log({ W, H, border, socketR, badgeR, cx, cy });
+console.log({ W, H, border, socketR, badgeR, cx, cy, fill: BADGE_FILL_FRAC });
 
 let shard = await Jimp.read(shardPath);
 // contain inside circle
