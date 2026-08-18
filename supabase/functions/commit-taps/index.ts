@@ -209,7 +209,10 @@ serve(async (req) => {
     const baseRate = getLevelMultiplier(level);
 
     const byEnergy = Math.floor(energy / costMultiplier);
-    const byDaily = Math.floor(Math.max(0, maxLimit - dailyTaps) / costMultiplier);
+    // daily_taps counts payout-weighted taps (frenzy/x2/x3), so limit uses payoutMultiplier
+    const byDaily = Math.floor(
+      Math.max(0, maxLimit - dailyTaps) / Math.max(1, payoutMultiplier),
+    );
     const validTaps = Math.min(requestedTaps, byEnergy, byDaily);
 
     if (validTaps <= 0) {
@@ -252,20 +255,24 @@ serve(async (req) => {
     const shardsEarned =
       Math.round(baseRate * payoutMultiplier * validTaps * 1000) / 1000;
     const energySpent = costMultiplier * validTaps;
+    // Daily/weekly score: count frenzy & premium x2/x3 (payout boosts), not raw energy.
+    // efficiency already raises energySpent via costMultiplier; payout/cost cancels to taps*payout.
+    const scoreCredit =
+      Math.round(validTaps * payoutMultiplier * 1000) / 1000;
     const nextEnergy = Math.max(0, Math.min(ENERGY_CAP, energy - energySpent));
-    const nextDaily = dailyTaps + energySpent;
+    const nextDaily = dailyTaps + scoreCredit;
     const nextLife = Math.round((lifetime + shardsEarned) * 1000) / 1000;
     const nextSeason =
       Math.round(((Number(row.season_shards) || 0) + shardsEarned) * 1000) / 1000;
     const nextBal =
       Math.round(((Number(row.shard_balance) || 0) + shardsEarned) * 1000) / 1000;
 
-    // Weekly = ENERGY this UTC week (same unit as daily_taps) for EVERY player.
+    // Weekly = same payout-weighted units as daily_taps for EVERY player.
     const weeklyCredit = applyWeeklyEnergyCredit({
       now,
       prevWeekId: row.weekly_week_id,
       prevWeekly: Number(row.weekly_shards) || 0,
-      energySpent,
+      energySpent: scoreCredit,
       nextDaily,
     });
     const weekId = weeklyCredit.weekId;
@@ -319,7 +326,7 @@ serve(async (req) => {
       taps: validTaps,
       energy_spent: energySpent,
       shards: shardsEarned,
-      result: { baseRate, payoutMultiplier, costMultiplier, level },
+      result: { baseRate, payoutMultiplier, costMultiplier, level, scoreCredit },
     });
 
     await logEconomy(sb, {
@@ -328,7 +335,7 @@ serve(async (req) => {
       delta: shardsEarned,
       balance_after: nextBal,
       ref: batchId,
-      meta: { taps: validTaps, energySpent, level, baseRate, payoutMultiplier },
+      meta: { taps: validTaps, energySpent, scoreCredit, level, baseRate, payoutMultiplier },
     });
 
     return jsonResponse({

@@ -1,0 +1,54 @@
+{
+  "at": "2026-08-18T03:37:43.587Z",
+  "socketVersion": "opaque-v145",
+  "uploaded": {
+    "common": {
+      "label": "Common",
+      "imageUri": "https://gateway.irys.xyz/jBoYOQeSyLbmcH5vwVupKPrUtG891pmNecuxhokS4BA",
+      "itemUri": "https://gateway.irys.xyz/AzSCVEVrDUc6N-u8gydHnFHkH-mfM5Q-MWv7NDuQDk8",
+      "candyMachine": "8Xsen3GEmVKfrirGrENV18We8HN3SWx4gFHxuD8USuuU",
+      "candyGuard": "4v7c2tdq9a98nHX1yKJdLVn22KTfws6mUWA8X4YuVkpb",
+      "itemsAvailable": 5250,
+      "priceSol": 0.05,
+      "cmUpdateTx": "4C2rUKUDXKA4gJ3fVj8EP9AQkBYgQ4pyACFM1Ey9wVjqJjLBpzf8uVpLK7qSUhbVkWyUNa819HuijgEpmSYadPaZ"
+    },
+    "rare": {
+      "label": "Rare",
+      "imageUri": "https://gateway.irys.xyz/0TqV00rUawg8wWAh_-w44Spd46LTwIE6AYzN1BIb78Y",
+      "itemUri": "https://gateway.irys.xyz/N3__sEcVCeMaeyXxnLuDUOgQghrWY-Xc1FhUPIW5k0Y",
+      "candyMachine": "DyqirB4Vyn5JtYAEeUm2WQN2AMaBqfzgYURW2LQCCJbQ",
+      "candyGuard": "B4LFV31ocac7edVuyMRLqhypF1WBgNQC79o1xmWD5NrQ",
+      "itemsAvailable": 1575,
+      "priceSol": 0.2,
+      "cmUpdateTx": "5fRDmVqfBRvYxK6cCd7hYdUmBfpVYFrhqY9SEhiT76L9utAnhamw4AgZu738jiqVD2DBc713bs2XNNTWfKajYYTq"
+    },
+    "epic": {
+      "label": "Epic",
+      "imageUri": "https://gateway.irys.xyz/iWsUCr5AHbCisUZ7Z4NfBNfsgu9ZJyImELKoW9Wb7eg",
+      "itemUri": "https://gateway.irys.xyz/w_1ws9raUvHkpI_Tff-PvxtzF0Z6xGoi8MAVqMpKWq8",
+      "candyMachine": "GC44BKsRbd4HVZzU9wZqZxcC9XwhwzfvrN39rVCEppfA",
+      "candyGuard": "5chT9VmQShvSmg6n6jLxP2TNSBNqaCGivW7jMPk8k4cQ",
+      "itemsAvailable": 525,
+      "priceSol": 0.8,
+      "cmUpdateTx": "2RCaNFPGxHYwVL7DHsBiu7ZW9Ao2W77NpUqNR86LmNYM2kLqpE4e5hsy3m6VjcE6MMGijMxXNR5FS3KZt4WHoWVL"
+    },
+    "legendary": {
+      "label": "Legendary",
+      "imageUri": "https://gateway.irys.xyz/64IDNWXfwQS4m93KQwm2hOn7dgQdVv-hemTo8RDuyjw",
+      "itemUri": "https://gateway.irys.xyz/fPmED8ogIb00_Qz1NLqhnm99zyg4cVEMDwd7kNhPtFU",
+      "candyMachine": "7diXaptFs4NhBatC3H8F2vXsyzAxiSSYfxs6V7a3CjhN",
+      "candyGuard": "G9iNpH2BGdZ2zCJzHAD6ygSTcjatMQa5EbZQyvq2rDpW",
+      "itemsAvailable": 150,
+      "priceSol": 1.75,
+      "cmUpdateTx": "35m3qSXgAYcGGxwHdxLbo1NYwzqMpupcAQiL6cSnqp8onW7BXijFK9ZXE5Yf2yUiuArLyJsJCtXgoXDKc6qCVYXA"
+    }
+  },
+  "assets": [
+    {
+      "asset": "7aR6vPhkU4EKWwPFWf3UrdmZP9AGP4iFbn87vTYs8r19",
+      "rarityKey": "common",
+      "signature": "4YXrVP6sZoKEGSa1mMy5vviqmHvRd8x4NHpwe99hdTBqQXp6FpQzvKSKsyZu4qaih5MZ1MRJXFRo9RNpPYrUjXKR",
+      "newUri": "https://gateway.irys.xyz/AzSCVEVrDUc6N-u8gydHnFHkH-mfM5Q-MWv7NDuQDk8"
+    }
+  ]
+}

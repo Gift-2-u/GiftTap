@@ -1,9 +1,10 @@
 /**
- * Canonical WEEKLY leaderboard score = ENERGY spent this UTC ISO week.
- * Same unit as daily_taps. Not shards (multipliers must not desync the board).
+ * Canonical WEEKLY leaderboard score = payout-weighted taps this UTC ISO week.
+ * Same unit as daily_taps: taps × payoutMultiplier (frenzy / premium x2/x3).
+ * Energy cost still drains separately; efficiency raises cost AND payout together.
  *
  * Invariants (current week):
- *   weekly_shards >= sum(tap_batches.energy_spent this week)
+ *   weekly_shards >= sum(batch scoreCredit) this week
  *   weekly_shards >= daily_taps   (daily is "today only", always <= week total)
  */
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.39.7";
@@ -83,6 +84,35 @@ export function computeTrueWeeklyScore(opts: {
   return Math.round(score * 1000) / 1000;
 }
 
+/** Payout-weighted tap score from a batch row (frenzy/x2/x3 aware). */
+export function batchScoreCredit(r: {
+  taps?: unknown;
+  energy_spent?: unknown;
+  shards?: unknown;
+  result?: unknown;
+}): number {
+  const taps = Math.max(0, Number(r.taps) || 0);
+  const result =
+    r.result && typeof r.result === "object"
+      ? (r.result as Record<string, unknown>)
+      : null;
+  if (result) {
+    if (result.scoreCredit != null && Number.isFinite(Number(result.scoreCredit))) {
+      return Math.max(0, Number(result.scoreCredit));
+    }
+    const pm = Math.max(1, Number(result.payoutMultiplier) || 1);
+    if (taps > 0) return Math.round(taps * pm * 1000) / 1000;
+  }
+  const shards = Number(r.shards);
+  const br = Math.max(0.0001, Number(result?.baseRate) || 1);
+  if (Number.isFinite(shards) && shards > 0) {
+    return Math.round((shards / br) * 1000) / 1000;
+  }
+  const e = Number(r.energy_spent);
+  if (Number.isFinite(e) && e > 0) return e;
+  return taps;
+}
+
 export async function sumBatchEnergyThisWeek(
   sb: SupabaseClient,
   weekStartIso: string,
@@ -93,7 +123,7 @@ export async function sumBatchEnergyThisWeek(
   for (;;) {
     const { data, error } = await sb
       .from("tap_batches")
-      .select("player_id, energy_spent, taps")
+      .select("player_id, energy_spent, taps, shards, result")
       .gte("created_at", weekStartIso)
       .range(from, from + pageSize - 1);
     if (error) {
@@ -104,8 +134,7 @@ export async function sumBatchEnergyThisWeek(
     for (const r of rows) {
       const id = String(r.player_id || "").trim();
       if (!id) continue;
-      const e = Number(r.energy_spent);
-      const add = Number.isFinite(e) && e > 0 ? e : Math.max(0, Number(r.taps) || 0);
+      const add = batchScoreCredit(r);
       map.set(id, (map.get(id) || 0) + add);
     }
     if (rows.length < pageSize) break;
@@ -116,7 +145,7 @@ export async function sumBatchEnergyThisWeek(
 
 /**
  * Reconcile EVERY player with activity this week so weekly_shards matches
- * true energy (batches + daily floor + stored). service_role only.
+ * true payout-weighted score (batches + daily floor + stored). service_role only.
  */
 export async function reconcileAllWeeklyScores(
   sb: SupabaseClient,

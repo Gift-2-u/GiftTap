@@ -3722,7 +3722,10 @@ const GiftTapGame = () => {
       // 3. CALCULATE VALID FINGERS
       const availableByEnergy = Math.floor(Number(optimisticEnergy.current) / costMultiplier);
       const dailyUsed = Math.max(Number(currentDailyTaps) || 0, Number(optimisticDaily.current) || 0);
-      const availableByDailyLimit = Math.floor((currentMaxLimit - dailyUsed) / costMultiplier);
+      // daily_taps is payout-weighted (frenzy/x2/x3) — limit by payoutMultiplier
+      const availableByDailyLimit = Math.floor(
+        (currentMaxLimit - dailyUsed) / Math.max(1, payoutMultiplier),
+      );
       const validTaps = Math.min(tapPoints.length, availableByEnergy, availableByDailyLimit);
 
       if (validTaps <= 0) {
@@ -3842,13 +3845,15 @@ const GiftTapGame = () => {
       const nextSeasonShards = optimisticSeason.current;
 
       const totalCost = costMultiplier * validTaps;
+      // Daily/weekly progress counts frenzy & premium x2/x3 (same as commit-taps scoreCredit)
+      const scoreCredit = Math.round(validTaps * payoutMultiplier * 1000) / 1000;
 
-      // Weekly leaderboard (UTC week) — same units as daily_taps (energy spent)
+      // Weekly leaderboard (UTC week) — same payout-weighted units as daily_taps
       {
         const wId = getUtcWeekId();
         const invW = addWeeklyLbScore(
           inventoryRef.current || stats.inventory || {},
-          totalCost,
+          scoreCredit,
           wId,
         );
         inventoryRef.current = invW;
@@ -3872,7 +3877,7 @@ const GiftTapGame = () => {
       const safeDaily = Number(optimisticDaily.current);
       // Prefer ref for daily progress (stale state under multi-touch)
       const baseDaily = Math.max(Number(currentDailyTaps) || 0, safeDaily);
-      const nextDaily = baseDaily + totalCost;
+      const nextDaily = baseDaily + scoreCredit;
       optimisticDaily.current = nextDaily;
 
       // Level-ups only inside unlocked tier (climbing wall is paid / optional)

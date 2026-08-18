@@ -5,9 +5,12 @@
     "collection": "FQPYWSohCPnS57W2AWAqwmQM21KRxGi4YXcCaiXUghPD",
     "priceSol": 0.05,
     "itemsAvailable": 5250,
-    "imageUri": "https://gateway.irys.xyz/cgeZtO0e0Z7rPvRKZkT5iKVKn63y_V6K2eUADJRMYq4",
-    "itemUri": "https://gateway.irys.xyz/VX1vl3nkczH7GjibtP9irTiQKyuIk2Jdi0wrFHbJ230",
-    "treasury": "AdvMvv6GzGvdLRtuxaso1Eubk7jmn6LCZEeEFHn22yeb"
+    "imageUri": "https://gateway.irys.xyz/jBoYOQeSyLbmcH5vwVupKPrUtG891pmNecuxhokS4BA",
+    "itemUri": "https://gateway.irys.xyz/AzSCVEVrDUc6N-u8gydHnFHkH-mfM5Q-MWv7NDuQDk8",
+    "treasury": "AdvMvv6GzGvdLRtuxaso1Eubk7jmn6LCZEeEFHn22yeb",
+    "socketVersion": "opaque-v145",
+    "artUpdatedAt": "2026-08-18T03:37:43.581Z",
+    "cmUpdateTx": "4C2rUKUDXKA4gJ3fVj8EP9AQkBYgQ4pyACFM1Ey9wVjqJjLBpzf8uVpLK7qSUhbVkWyUNa819HuijgEpmSYadPaZ"
   },
   "rare": {
     "candyMachine": "DyqirB4Vyn5JtYAEeUm2WQN2AMaBqfzgYURW2LQCCJbQ",
@@ -15,9 +18,12 @@
     "collection": "FQPYWSohCPnS57W2AWAqwmQM21KRxGi4YXcCaiXUghPD",
     "priceSol": 0.2,
     "itemsAvailable": 1575,
-    "imageUri": "https://gateway.irys.xyz/lSpSRDil7KTBEzZPs7fs4z8XrEoQCgS54LBhZ03AonM",
-    "itemUri": "https://gateway.irys.xyz/iB9zxlbNVP4hvY8FKb-9lxGwZaTnX97SAIFPilHNqrU",
-    "treasury": "AdvMvv6GzGvdLRtuxaso1Eubk7jmn6LCZEeEFHn22yeb"
+    "imageUri": "https://gateway.irys.xyz/0TqV00rUawg8wWAh_-w44Spd46LTwIE6AYzN1BIb78Y",
+    "itemUri": "https://gateway.irys.xyz/N3__sEcVCeMaeyXxnLuDUOgQghrWY-Xc1FhUPIW5k0Y",
+    "treasury": "AdvMvv6GzGvdLRtuxaso1Eubk7jmn6LCZEeEFHn22yeb",
+    "socketVersion": "opaque-v145",
+    "artUpdatedAt": "2026-08-18T03:37:43.581Z",
+    "cmUpdateTx": "5fRDmVqfBRvYxK6cCd7hYdUmBfpVYFrhqY9SEhiT76L9utAnhamw4AgZu738jiqVD2DBc713bs2XNNTWfKajYYTq"
   },
   "epic": {
     "candyMachine": "GC44BKsRbd4HVZzU9wZqZxcC9XwhwzfvrN39rVCEppfA",
@@ -25,9 +31,12 @@
     "collection": "FQPYWSohCPnS57W2AWAqwmQM21KRxGi4YXcCaiXUghPD",
     "priceSol": 0.8,
     "itemsAvailable": 525,
-    "imageUri": "https://gateway.irys.xyz/NRJ4FhUzJH6Et6Ga3IVDxkgcsbCc9WH02ReGZpCnUn4",
-    "itemUri": "https://gateway.irys.xyz/Iiwphx5zFjiM_N65A8X1176Nbk2f9iiBcsGh_OtoCUE",
-    "treasury": "AdvMvv6GzGvdLRtuxaso1Eubk7jmn6LCZEeEFHn22yeb"
+    "imageUri": "https://gateway.irys.xyz/iWsUCr5AHbCisUZ7Z4NfBNfsgu9ZJyImELKoW9Wb7eg",
+    "itemUri": "https://gateway.irys.xyz/w_1ws9raUvHkpI_Tff-PvxtzF0Z6xGoi8MAVqMpKWq8",
+    "treasury": "AdvMvv6GzGvdLRtuxaso1Eubk7jmn6LCZEeEFHn22yeb",
+    "socketVersion": "opaque-v145",
+    "artUpdatedAt": "2026-08-18T03:37:43.581Z",
+    "cmUpdateTx": "2RCaNFPGxHYwVL7DHsBiu7ZW9Ao2W77NpUqNR86LmNYM2kLqpE4e5hsy3m6VjcE6MMGijMxXNR5FS3KZt4WHoWVL"
   },
   "legendary": {
     "candyMachine": "7diXaptFs4NhBatC3H8F2vXsyzAxiSSYfxs6V7a3CjhN",
@@ -35,8 +44,11 @@
     "collection": "FQPYWSohCPnS57W2AWAqwmQM21KRxGi4YXcCaiXUghPD",
     "priceSol": 1.75,
     "itemsAvailable": 150,
-    "imageUri": "https://gateway.irys.xyz/vsqWsnHGvfkQBp9LIbZECwdYXEyvs_X-ZdNEPeaqEis",
-    "itemUri": "https://gateway.irys.xyz/3pOroGI4DzURetSnzSI5gNKx7oDCVgFLvilEElp9JEs",
-    "treasury": "AdvMvv6GzGvdLRtuxaso1Eubk7jmn6LCZEeEFHn22yeb"
+    "imageUri": "https://gateway.irys.xyz/64IDNWXfwQS4m93KQwm2hOn7dgQdVv-hemTo8RDuyjw",
+    "itemUri": "https://gateway.irys.xyz/fPmED8ogIb00_Qz1NLqhnm99zyg4cVEMDwd7kNhPtFU",
+    "treasury": "AdvMvv6GzGvdLRtuxaso1Eubk7jmn6LCZEeEFHn22yeb",
+    "socketVersion": "opaque-v145",
+    "artUpdatedAt": "2026-08-18T03:37:43.581Z",
+    "cmUpdateTx": "35m3qSXgAYcGGxwHdxLbo1NYwzqMpupcAQiL6cSnqp8onW7BXijFK9ZXE5Yf2yUiuArLyJsJCtXgoXDKc6qCVYXA"
   }
 }

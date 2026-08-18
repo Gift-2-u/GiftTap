@@ -1,0 +1,18 @@
+{
+  "common": {
+    "imageUri": "https://gateway.irys.xyz/jBoYOQeSyLbmcH5vwVupKPrUtG891pmNecuxhokS4BA",
+    "itemUri": "https://gateway.irys.xyz/AzSCVEVrDUc6N-u8gydHnFHkH-mfM5Q-MWv7NDuQDk8"
+  },
+  "rare": {
+    "imageUri": "https://gateway.irys.xyz/0TqV00rUawg8wWAh_-w44Spd46LTwIE6AYzN1BIb78Y",
+    "itemUri": "https://gateway.irys.xyz/N3__sEcVCeMaeyXxnLuDUOgQghrWY-Xc1FhUPIW5k0Y"
+  },
+  "epic": {
+    "imageUri": "https://gateway.irys.xyz/iWsUCr5AHbCisUZ7Z4NfBNfsgu9ZJyImELKoW9Wb7eg",
+    "itemUri": "https://gateway.irys.xyz/w_1ws9raUvHkpI_Tff-PvxtzF0Z6xGoi8MAVqMpKWq8"
+  },
+  "legendary": {
+    "imageUri": "https://gateway.irys.xyz/64IDNWXfwQS4m93KQwm2hOn7dgQdVv-hemTo8RDuyjw",
+    "itemUri": "https://gateway.irys.xyz/fPmED8ogIb00_Qz1NLqhnm99zyg4cVEMDwd7kNhPtFU"
+  }
+}

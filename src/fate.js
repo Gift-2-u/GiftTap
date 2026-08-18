@@ -24,7 +24,7 @@ export const FATE_WAVE1 = {
     imageUrl: '/nft/fate/Fate-common.jpg?v=socket145',
     /** Irys from final Common mint (on-chain reference) */
     imageUri:
-      'https://gateway.irys.xyz/cgeZtO0e0Z7rPvRKZkT5iKVKn63y_V6K2eUADJRMYq4',
+      'https://gateway.irys.xyz/jBoYOQeSyLbmcH5vwVupKPrUtG891pmNecuxhokS4BA',
   },
   rare: {
     key: 'rare',
@@ -34,7 +34,7 @@ export const FATE_WAVE1 = {
     maxSupply: 5250,
     border: '#3B82F6',
     imageUrl: '/nft/fate/Fate-rare.jpg?v=socket145',
-    imageUri: 'https://gateway.irys.xyz/lSpSRDil7KTBEzZPs7fs4z8XrEoQCgS54LBhZ03AonM',
+    imageUri: 'https://gateway.irys.xyz/0TqV00rUawg8wWAh_-w44Spd46LTwIE6AYzN1BIb78Y',
   },
   epic: {
     key: 'epic',
@@ -44,7 +44,7 @@ export const FATE_WAVE1 = {
     maxSupply: 1750,
     border: '#A855F7',
     imageUrl: '/nft/fate/Fate-epic.jpg?v=socket145',
-    imageUri: 'https://gateway.irys.xyz/NRJ4FhUzJH6Et6Ga3IVDxkgcsbCc9WH02ReGZpCnUn4',
+    imageUri: 'https://gateway.irys.xyz/iWsUCr5AHbCisUZ7Z4NfBNfsgu9ZJyImELKoW9Wb7eg',
   },
   legendary: {
     key: 'legendary',
@@ -54,7 +54,7 @@ export const FATE_WAVE1 = {
     maxSupply: 500,
     border: '#EAB308',
     imageUrl: '/nft/fate/Fate-legendary.jpg?v=socket145',
-    imageUri: 'https://gateway.irys.xyz/vsqWsnHGvfkQBp9LIbZECwdYXEyvs_X-ZdNEPeaqEis',
+    imageUri: 'https://gateway.irys.xyz/64IDNWXfwQS4m93KQwm2hOn7dgQdVv-hemTo8RDuyjw',
   },
 };
 
