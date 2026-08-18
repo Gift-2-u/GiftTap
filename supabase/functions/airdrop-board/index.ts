@@ -19,6 +19,7 @@ serve(async (req) => {
     const limit = Math.min(Math.max(Number(body.limit) || 100, 1), 300);
     const viewerId = body.viewer_id ? String(body.viewer_id) : "";
     const viewerHasNft = !!body.viewer_has_nft;
+    const viewerNfts = Array.isArray(body.viewer_nfts) ? body.viewer_nfts : [];
 
     const sb = adminClient();
 
@@ -74,16 +75,16 @@ serve(async (req) => {
         : [];
       const hasIap =
         !!r.has_made_purchase || completedTasks.includes("first_purchase");
-      // Public board: NFT detected via client for viewer only (DAS is per-wallet).
-      // Inventory may later cache flags; for now only viewer_has_nft boosts "you".
-      const hasNft = viewerId && id === viewerId ? viewerHasNft : false;
-
+      // NFT stack: viewer can send full wallet list (Locksmith + elves by rarity).
+      // Other players: no live DAS — NFT % omitted until snapshot/cache.
+      const isViewer = !!(viewerId && id === viewerId);
       const scored = scoreAirdropPlayer({
         lifetimeTaps: Number(r.lifetime_taps) || 0,
         maxUnlockedLevel: Number(r.max_unlocked_level) || 0,
         streak: Number(r.current_streak) || 0,
         hasIap,
-        hasNft,
+        hasNft: isViewer ? viewerHasNft : false,
+        nfts: isViewer ? viewerNfts : [],
         friendsTaps1000: friends1k.get(id) || 0,
         friendsL5: friendsL5.get(id) || 0,
       });
@@ -135,7 +136,7 @@ serve(async (req) => {
       rows: trimmed,
       you,
       note:
-        "Qualified = Level 5 wall cleared. % = airdrop bonus weight. NFT bonus on your row when wallet has Locksmith.",
+        "Qualified = Level 5 wall cleared. % = airdrop bonus weight. Your row includes Locksmith +25% and each other elf by rarity.",
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

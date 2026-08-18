@@ -251,10 +251,14 @@ export async function fetchAirdropBoard({
   limit = 100,
   viewerId = null,
   viewerHasNft = false,
+  viewerNfts = null,
 } = {}) {
   const body = { limit };
   if (viewerId) body.viewer_id = String(viewerId);
   if (viewerHasNft) body.viewer_has_nft = true;
+  if (Array.isArray(viewerNfts) && viewerNfts.length) {
+    body.viewer_nfts = viewerNfts.slice(0, 40);
+  }
   return callSecureFunction('airdrop-board', body);
 }
 

@@ -142,7 +142,7 @@ import {
 } from './playerIdentity';
 // DB_PLAYER_ID === 'telegram_id' (legacy Supabase column — still the player primary key)
 
-import { hasLocksmith } from './locksmith';
+import { hasLocksmith, listGiftNfts } from './locksmith';
 import AirdropBoard from './AirdropBoard';
 import {
   computeAirdropProgress,
@@ -1020,10 +1020,26 @@ const GiftTapGame = () => {
         Number(streakRef.current) || Number(streak) || Number(raw?.streak) || 0,
       );
       let hasNft = !!hasLocksmithNft;
+      let nfts = hasLocksmithNft
+        ? [{ kind: 'locksmith', rarity: 'rare' }]
+        : [];
       const nftWallet = playerWallet || raw?.walletAddress;
       if (nftWallet) {
         try {
-          hasNft = !!(await hasLocksmith(nftWallet)) || hasNft;
+          const owned = await listGiftNfts(nftWallet);
+          if (Array.isArray(owned) && owned.length) {
+            nfts = owned.map((n) => ({
+              kind: n.kind || n.name,
+              rarity: n.rarity,
+              name: n.name,
+            }));
+            hasNft = nfts.length > 0;
+          } else {
+            hasNft = !!(await hasLocksmith(nftWallet)) || hasNft;
+            if (hasNft && !nfts.length) {
+              nfts = [{ kind: 'locksmith', rarity: 'rare' }];
+            }
+          }
         } catch {
           /* keep state flag */
         }
@@ -1036,6 +1052,7 @@ const GiftTapGame = () => {
         hasIap: !!(raw && raw.hasIap),
         completedTasks: raw?.completedTasks || [],
         hasNft,
+        nfts,
         friendsTaps1000: raw?.friendsTaps1000 || 0,
         friendsL5: raw?.friendsL5 || 0,
       });
@@ -1355,10 +1372,26 @@ const GiftTapGame = () => {
         setWeeklyYouRank(null);
         setSeasonEligibleCount(0);
         setWeeklyEligibleCount(0);
+        let viewerNfts = [];
+        try {
+          if (playerWallet) {
+            const owned = await listGiftNfts(playerWallet);
+            viewerNfts = Array.isArray(owned)
+              ? owned.map((n) => ({
+                  kind: n.kind || n.name,
+                  rarity: n.rarity,
+                  name: n.name,
+                }))
+              : [];
+          }
+        } catch {
+          /* ignore */
+        }
         const board = await fetchAirdropBoard({
           limit: 100,
           viewerId: playerId || null,
-          viewerHasNft: !!hasLocksmithNft,
+          viewerHasNft: !!hasLocksmithNft || viewerNfts.length > 0,
+          viewerNfts,
         });
         const rows = Array.isArray(board?.rows) ? board.rows : [];
         setLeaderboard(
