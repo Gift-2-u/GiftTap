@@ -198,6 +198,7 @@ import {
   secureSetVaultIfEmpty,
   secureVaultStatus,
   fetchWeeklyBoard,
+  fetchAirdropBoard,
 } from './secureApi';
 import WalletNftSection from './WalletNftSection';
 import SwapBadgeCard, { NftDetailModal, LOCKSMITH_PERKS } from './SwapBadgeCard';
@@ -616,6 +617,9 @@ const GiftTapGame = () => {
   const [weeklyBoardFloor, setWeeklyBoardFloor] = useState(() => getWeeklyBoardFloor());
   const [weeklyBoardDay, setWeeklyBoardDay] = useState(() => getUtcIsoWeekDayNumber());
   const [weeklyEligibleCount, setWeeklyEligibleCount] = useState(0);
+  /** Airdrop qualified board (Ranks → Airdrop) */
+  const [airdropQualifiedCount, setAirdropQualifiedCount] = useState(0);
+  const [airdropYouRank, setAirdropYouRank] = useState(null);
   const optimisticWeekly = useRef(0);
   /** Keep ranks tab type for live weekly score patches while mining */
   const leaderboardTypeRef = useRef(leaderboardType);
@@ -1344,9 +1348,61 @@ const GiftTapGame = () => {
 
     setLeaderboardLoading(true);
 
+    // --- AIRDROP qualified board (L5+, name / lvl / %) ---
+    if (targetType === 'Airdrop') {
+      try {
+        setSeasonYouRank(null);
+        setWeeklyYouRank(null);
+        setSeasonEligibleCount(0);
+        setWeeklyEligibleCount(0);
+        const board = await fetchAirdropBoard({
+          limit: 100,
+          viewerId: playerId || null,
+          viewerHasNft: !!hasLocksmithNft,
+        });
+        const rows = Array.isArray(board?.rows) ? board.rows : [];
+        setLeaderboard(
+          rows.map((r) => ({
+            ...r,
+            [DB_PLAYER_ID]: r.telegram_id,
+            telegram_id: r.telegram_id,
+            username: r.username || 'Player',
+            score: Number(r.bonus_pct) || 0,
+            bonus_pct: Number(r.bonus_pct) || 0,
+            level: Number(r.level) || 0,
+            lifetime_taps: Number(r.lifetime_taps) || 0,
+          })),
+        );
+        setAirdropQualifiedCount(
+          Number(board?.qualified_count) || rows.length || 0,
+        );
+        if (board?.you && playerId) {
+          setAirdropYouRank({
+            rank: board.you.rank,
+            level: board.you.level,
+            bonus_pct: board.you.bonus_pct,
+            username: board.you.username,
+            inList: !!board.you.inList,
+          });
+        } else {
+          setAirdropYouRank(null);
+        }
+      } catch (e) {
+        console.warn('airdrop board', e?.message || e);
+        setLeaderboard([]);
+        setAirdropQualifiedCount(0);
+        setAirdropYouRank(null);
+      } finally {
+        setLeaderboardLoading(false);
+      }
+      return;
+    }
+
     // --- WEEKLY board from Supabase (weekly_shards + snapshots) ---
     if (targetType === 'Weekly') {
       try {
+        setAirdropYouRank(null);
+        setAirdropQualifiedCount(0);
         // Push any pending taps so weekly_shards is current for ALL players using commit-taps
         try {
           await flushPendingTaps();
@@ -1562,6 +1618,8 @@ const GiftTapGame = () => {
         setSeasonYouRank(null);
         setSeasonEligibleCount(0);
         setWeeklyYouRank(null);
+        setAirdropYouRank(null);
+        setAirdropQualifiedCount(0);
         return;
       }
 
@@ -6117,7 +6175,7 @@ const GiftTapGame = () => {
                   🏆 Leaderboard
                 </h2>
                 <p style={{ color: '#666', textAlign: 'center', fontSize: '11px', margin: '0 0 14px', lineHeight: 1.35 }}>
-                  Weekly · Season · All-time · details in Menu → Game Guide → Leaderboards
+                  Season · Weekly · Airdrop · All-time · details in Menu → Game Guide
                 </p>
 
                 {/* Season | All-time — always land on Season when opening Ranks from nav */}
@@ -6170,6 +6228,33 @@ const GiftTapGame = () => {
                     }}
                   >
                     Weekly
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setLeaderboardType('Airdrop');
+                      fetchFullLeaderboard('Airdrop');
+                    }}
+                    style={{
+                      flex: 1,
+                      padding: '12px 6px',
+                      borderRadius: '12px',
+                      border: leaderboardType === 'Airdrop' ? '2px solid #c084fc' : '1px solid #333',
+                      background: leaderboardType === 'Airdrop' ? 'rgba(192, 132, 252, 0.14)' : '#1c1e22',
+                      color: leaderboardType === 'Airdrop' ? '#c084fc' : '#888',
+                      fontWeight: 'bold',
+                      fontSize: '12px',
+                      cursor: 'pointer',
+                      outline: 'none',
+                      WebkitTapHighlightColor: 'transparent',
+                    }}
+                  >
+                    Airdrop
+                    {airdropQualifiedCount > 0 && leaderboardType === 'Airdrop' ? (
+                      <div style={{ fontSize: '10px', fontWeight: 'normal', color: '#4ade80', marginTop: '4px' }}>
+                        {airdropQualifiedCount} in
+                      </div>
+                    ) : null}
                   </button>
                   <button
                     type="button"
@@ -6278,11 +6363,32 @@ const GiftTapGame = () => {
                   </div>
                 ) : null}
 
+                {leaderboardType === 'Airdrop' ? (
+                  <div style={{ textAlign: 'center', color: '#888', fontSize: 11, marginBottom: 12, lineHeight: 1.4 }}>
+                    Clear <span style={{ color: '#c084fc', fontWeight: 'bold' }}>Level 5</span> to qualify.
+                    {' '}Board shows <span style={{ color: '#fff' }}>name</span>,{' '}
+                    <span style={{ color: '#fff' }}>lvl</span>,{' '}
+                    <span style={{ color: '#c084fc' }}>bonus %</span>.
+                    {airdropQualifiedCount > 0 ? (
+                      <span style={{ color: '#4ade80' }}>
+                        {' '}· {airdropQualifiedCount} qualified
+                      </span>
+                    ) : null}
+                    <div style={{ color: '#555', fontSize: 10, marginTop: 4 }}>
+                      Your full checklist: Menu → G2U Airdrop
+                    </div>
+                  </div>
+                ) : null}
+
 <div style={{ background: '#1c1e22', borderRadius: '16px', border: '1px solid #333', overflow: 'hidden' }}>
                   {leaderboardLoading ? (
                     <p style={{ color: '#888', textAlign: 'center', padding: '28px' }}>Loading ranks…</p>
-                  ) : leaderboard.length === 0 && !(leaderboardType === 'Season' && seasonYouRank && playerId) && !(leaderboardType === 'Weekly' && weeklyYouRank && playerId) ? (
-                    <p style={{ color: '#888', textAlign: 'center', padding: '28px' }}>No players on the main board yet. Keep mining!</p>
+                  ) : leaderboard.length === 0 && !(leaderboardType === 'Season' && seasonYouRank && playerId) && !(leaderboardType === 'Weekly' && weeklyYouRank && playerId) && !(leaderboardType === 'Airdrop' && airdropYouRank && playerId) ? (
+                    <p style={{ color: '#888', textAlign: 'center', padding: '28px' }}>
+                      {leaderboardType === 'Airdrop'
+                        ? 'No one has cleared Level 5 yet. Be first on the airdrop board!'
+                        : 'No players on the main board yet. Keep mining!'}
+                    </p>
                   ) : (
                     <>
                     {leaderboard.length === 0 && leaderboardType === 'Season' ? (
@@ -6295,19 +6401,126 @@ const GiftTapGame = () => {
                         No one has reached the weekly main-board floor yet ({Number(weeklyBoardFloor).toLocaleString()}).
                       </p>
                     ) : null}
+                    {leaderboard.length === 0 && leaderboardType === 'Airdrop' ? (
+                      <p style={{ color: '#666', textAlign: 'center', padding: '16px 14px 8px', fontSize: 12, margin: 0 }}>
+                        Clear the Level 5 wall to appear here with your bonus %.
+                      </p>
+                    ) : null}
+                    {leaderboardType === 'Airdrop' ? (
+                      <div
+                        style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          padding: '8px 14px',
+                          borderBottom: '1px solid #2a2d34',
+                          color: '#666',
+                          fontSize: 10,
+                          fontWeight: 'bold',
+                          letterSpacing: 0.3,
+                        }}
+                      >
+                        <span style={{ minWidth: 28 }}>#</span>
+                        <span style={{ flex: 1 }}>Name</span>
+                        <span style={{ width: 36, textAlign: 'right' }}>Lvl</span>
+                        <span style={{ width: 48, textAlign: 'right' }}>%</span>
+                      </div>
+                    ) : null}
                     {leaderboard.map((row, index) => {
                       const name = row.username || (row[DB_PLAYER_ID] ? `ID:..${String(row[DB_PLAYER_ID]).slice(-4)}` : 'Anon');
                       const score = leaderboardType === 'all_time'
                         ? (row.lifetime_taps ?? row.score ?? 0)
                         : leaderboardType === 'Weekly'
                           ? (row.weekly_score ?? row.score ?? 0)
+                          : leaderboardType === 'Airdrop'
+                            ? (row.bonus_pct ?? row.score ?? 0)
                           : (row.score ?? row.season_shards ?? row.lifetime_taps ?? 0);
-                      const isYou = playerId && String(row[DB_PLAYER_ID] || row.id || '') === String(playerId);
+                      const isYou = playerId && String(row[DB_PLAYER_ID] || row.telegram_id || row.id || '') === String(playerId);
                       const weeklyTier =
                         leaderboardType === 'Weekly'
                           ? badgeTierForWeeklyRank(index + 1)
                           : null;
                       const weeklyBadge = weeklyTier ? BADGE_TIERS[weeklyTier] : null;
+                      if (leaderboardType === 'Airdrop') {
+                        const lvl = Number(row.level) || 0;
+                        const pct = Number(row.bonus_pct ?? score) || 0;
+                        return (
+                          <div
+                            key={row.id || row[DB_PLAYER_ID] || row.telegram_id || index}
+                            style={{
+                              display: 'flex',
+                              justifyContent: 'space-between',
+                              alignItems: 'center',
+                              padding: '12px 14px',
+                              borderBottom: '1px solid #2a2d34',
+                              background: isYou ? 'rgba(192, 132, 252, 0.12)' : 'transparent',
+                              gap: 8,
+                            }}
+                          >
+                            <span
+                              style={{
+                                color: isYou ? '#c084fc' : '#fff',
+                                fontSize: 13,
+                                fontWeight: isYou ? 'bold' : 'normal',
+                                display: 'flex',
+                                alignItems: 'center',
+                                minWidth: 0,
+                                flex: 1,
+                              }}
+                            >
+                              <span
+                                style={{
+                                  color: '#666',
+                                  marginRight: 8,
+                                  minWidth: 28,
+                                  display: 'inline-block',
+                                }}
+                              >
+                                {index === 0
+                                  ? '🥇'
+                                  : index === 1
+                                    ? '🥈'
+                                    : index === 2
+                                      ? '🥉'
+                                      : `#${index + 1}`}
+                              </span>
+                              <span
+                                style={{
+                                  overflow: 'hidden',
+                                  textOverflow: 'ellipsis',
+                                  whiteSpace: 'nowrap',
+                                }}
+                              >
+                                {name}
+                                {isYou ? ' (you)' : ''}
+                              </span>
+                            </span>
+                            <span
+                              style={{
+                                width: 36,
+                                textAlign: 'right',
+                                color: '#ffd700',
+                                fontSize: 13,
+                                fontWeight: 'bold',
+                                flexShrink: 0,
+                              }}
+                            >
+                              {lvl}
+                            </span>
+                            <span
+                              style={{
+                                width: 48,
+                                textAlign: 'right',
+                                color: '#c084fc',
+                                fontSize: 13,
+                                fontWeight: 'bold',
+                                flexShrink: 0,
+                              }}
+                            >
+                              +{pct}%
+                            </span>
+                          </div>
+                        );
+                      }
                       return (
                         <div
                           key={row.id || row[DB_PLAYER_ID] || index}
@@ -6353,6 +6566,44 @@ const GiftTapGame = () => {
                         </div>
                       );
                     })}
+                    {leaderboardType === 'Airdrop' && airdropYouRank && playerId && !airdropYouRank.inList ? (
+                      <div
+                        style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          padding: '12px 14px',
+                          borderTop: '2px solid #c084fc',
+                          background: 'rgba(192, 132, 252, 0.12)',
+                          gap: 8,
+                        }}
+                      >
+                        <span style={{ color: '#c084fc', fontSize: 13, fontWeight: 'bold', flex: 1, minWidth: 0 }}>
+                          <span style={{ color: '#888', marginRight: 8, minWidth: 28, display: 'inline-block' }}>
+                            {airdropYouRank.rank ? `#${airdropYouRank.rank}` : '—'}
+                          </span>
+                          {(player?.username || airdropYouRank.username || 'You')} (you)
+                          <span
+                            style={{
+                              display: 'block',
+                              color: '#888',
+                              fontSize: 10,
+                              fontWeight: 'normal',
+                              marginTop: 4,
+                              marginLeft: 36,
+                            }}
+                          >
+                            Qualified · outside top shown
+                          </span>
+                        </span>
+                        <span style={{ width: 36, textAlign: 'right', color: '#ffd700', fontWeight: 'bold', fontSize: 13 }}>
+                          {Number(airdropYouRank.level) || 0}
+                        </span>
+                        <span style={{ width: 48, textAlign: 'right', color: '#c084fc', fontWeight: 'bold', fontSize: 13 }}>
+                          +{Number(airdropYouRank.bonus_pct) || 0}%
+                        </span>
+                      </div>
+                    ) : null}
                     {/* Season: if you are under the floor or outside the top list, sticky last line with your rank */}
                     {leaderboardType === 'Weekly' && weeklyYouRank && playerId && !weeklyYouRank.inList ? (
                       <div

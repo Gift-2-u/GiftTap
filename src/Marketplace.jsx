@@ -76,13 +76,8 @@ import {
 import WeeklyBadgePanel from './WeeklyBadgePanel';
 import BadgeMarket from './BadgeMarket';
 import NftMarket from './NftMarket';
-import {
-  NFT_RARITY_OPTS,
-  NFT_ROLE_OPTS,
-  NFT_LEVEL_OPTS,
-  NFT_SORT_OPTS,
-  filterAndSortNfts,
-} from './nftMarketFilters';
+import { filterAndSortNfts } from './nftMarketFilters';
+import NftFilterBar from './NftFilterBar';
 import {
   hasSecureSession,
   ensureSecureSession,
@@ -2359,125 +2354,20 @@ Daily claim active · Pack → NFT to see it.`,
             <p style={{ color: '#666', fontSize: 10, margin: '0 0 8px', textAlign: 'center' }}>
               NFT Marketplace · tap for details
             </p>
-            {/* Filters: rarity · role · level · sort */}
-            <div
-              style={{
-                display: 'flex',
-                flexDirection: 'column',
-                gap: 6,
-                marginBottom: 10,
-                background: '#141414',
-                border: '1px solid #2a2a2a',
-                borderRadius: 12,
-                padding: 8,
+            <NftFilterBar
+              rarity={nftRarityFilter}
+              role={nftRoleFilter}
+              level={nftLevelFilter}
+              sort={nftSort}
+              resultCount={filteredNftListings.length}
+              totalCount={nftListings.length}
+              onChange={(patch) => {
+                if (patch.rarity != null) setNftRarityFilter(patch.rarity);
+                if (patch.role != null) setNftRoleFilter(patch.role);
+                if (patch.level != null) setNftLevelFilter(patch.level);
+                if (patch.sort != null) setNftSort(patch.sort);
               }}
-            >
-              {[
-                {
-                  label: 'Rarity',
-                  value: nftRarityFilter,
-                  set: setNftRarityFilter,
-                  opts: NFT_RARITY_OPTS,
-                },
-                {
-                  label: 'Role',
-                  value: nftRoleFilter,
-                  set: setNftRoleFilter,
-                  opts: NFT_ROLE_OPTS,
-                },
-                {
-                  label: 'Level',
-                  value: nftLevelFilter,
-                  set: setNftLevelFilter,
-                  opts: NFT_LEVEL_OPTS,
-                },
-                {
-                  label: 'Sort',
-                  value: nftSort,
-                  set: setNftSort,
-                  opts: NFT_SORT_OPTS,
-                },
-              ].map((row) => (
-                <div key={row.label} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <span
-                    style={{
-                      color: '#666',
-                      fontSize: 10,
-                      fontWeight: 'bold',
-                      width: 42,
-                      flexShrink: 0,
-                    }}
-                  >
-                    {row.label}
-                  </span>
-                  <div
-                    style={{
-                      display: 'flex',
-                      gap: 4,
-                      overflowX: 'auto',
-                      flex: 1,
-                      WebkitOverflowScrolling: 'touch',
-                    }}
-                  >
-                    {row.opts.map((opt) => (
-                      <button
-                        key={opt.id}
-                        type="button"
-                        onClick={() => row.set(opt.id)}
-                        style={{
-                          flexShrink: 0,
-                          padding: '5px 9px',
-                          borderRadius: 999,
-                          border:
-                            row.value === opt.id
-                              ? '1px solid #c084fc'
-                              : '1px solid #333',
-                          background:
-                            row.value === opt.id
-                              ? 'rgba(192,132,252,0.15)'
-                              : '#1c1e22',
-                          color: row.value === opt.id ? '#c084fc' : '#888',
-                          fontSize: 10,
-                          fontWeight: 'bold',
-                          cursor: 'pointer',
-                          whiteSpace: 'nowrap',
-                        }}
-                      >
-                        {opt.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              ))}
-              {(nftRarityFilter !== 'all' ||
-                nftRoleFilter !== 'all' ||
-                nftLevelFilter !== 'all' ||
-                nftSort !== 'default') && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setNftRarityFilter('all');
-                    setNftRoleFilter('all');
-                    setNftLevelFilter('all');
-                    setNftSort('default');
-                  }}
-                  style={{
-                    alignSelf: 'flex-end',
-                    background: 'transparent',
-                    border: 'none',
-                    color: '#888',
-                    fontSize: 10,
-                    cursor: 'pointer',
-                    textDecoration: 'underline',
-                  }}
-                >
-                  Clear filters
-                </button>
-              )}
-              <div style={{ color: '#555', fontSize: 9, textAlign: 'right' }}>
-                {filteredNftListings.length} of {nftListings.length}
-              </div>
-            </div>
+            />
             {/* Phone: 4/row · Desktop: 6/row */}
             <div
               className="grid grid-cols-4 md:grid-cols-6"

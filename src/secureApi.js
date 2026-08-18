@@ -243,6 +243,21 @@ export async function fetchWeeklyBoard(limit = 200) {
   return callSecureFunction('weekly-board', { limit });
 }
 
+/**
+ * Public airdrop qualified board (L5+): name, level, bonus %.
+ * Optional viewer_id + viewer_has_nft so "you" includes Locksmith NFT bonus.
+ */
+export async function fetchAirdropBoard({
+  limit = 100,
+  viewerId = null,
+  viewerHasNft = false,
+} = {}) {
+  const body = { limit };
+  if (viewerId) body.viewer_id = String(viewerId);
+  if (viewerHasNft) body.viewer_has_nft = true;
+  return callSecureFunction('airdrop-board', body);
+}
+
 /** Force reconcile all weekly scores (same logic as weekly-board). */
 export async function reconcileWeeklyScores(limit = 500) {
   return callSecureFunction('reconcile-weekly', { limit });

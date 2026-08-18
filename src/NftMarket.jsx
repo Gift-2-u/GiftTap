@@ -24,14 +24,11 @@ import {
   callSecureFunction,
 } from './secureApi';
 import {
-  NFT_RARITY_OPTS,
-  NFT_ROLE_OPTS,
-  NFT_LEVEL_OPTS,
-  NFT_SORT_OPTS,
   filterAndSortNfts,
   formatNftListingTitle,
   deriveNftFilterMeta,
 } from './nftMarketFilters';
+import NftFilterBar from './NftFilterBar';
 
 const FEE_BPS = 500;
 const TREASURY_SOL = '8G7uEcPS6dwA5wW9bGoqi98EzBunF8trjbbFJkgkvBPm';
@@ -339,101 +336,38 @@ export default function NftMarket({
 
       {tab === 'market' && (
         <>
-          <div
-            style={{
-              display: 'flex',
-              flexDirection: 'column',
-              gap: 6,
-              background: '#141414',
-              border: '1px solid #2a2a2a',
-              borderRadius: 12,
-              padding: 8,
+          <NftFilterBar
+            rarity={mRarity}
+            role={mRole}
+            level={mLevel}
+            sort={mSort}
+            resultCount={listings.length === 0 ? 0 : filteredBrowse.length}
+            totalCount={listings.length}
+            onChange={(patch) => {
+              if (patch.rarity != null) setMRarity(patch.rarity);
+              if (patch.role != null) setMRole(patch.role);
+              if (patch.level != null) setMLevel(patch.level);
+              if (patch.sort != null) setMSort(patch.sort);
             }}
-          >
-            {[
-              { label: 'Rarity', value: mRarity, set: setMRarity, opts: NFT_RARITY_OPTS },
-              { label: 'Role', value: mRole, set: setMRole, opts: NFT_ROLE_OPTS },
-              { label: 'Level', value: mLevel, set: setMLevel, opts: NFT_LEVEL_OPTS },
-              { label: 'Sort', value: mSort, set: setMSort, opts: NFT_SORT_OPTS },
-            ].map((row) => (
-              <div key={row.label} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <span
-                  style={{
-                    color: '#666',
-                    fontSize: 10,
-                    fontWeight: 'bold',
-                    width: 42,
-                    flexShrink: 0,
-                  }}
-                >
-                  {row.label}
-                </span>
-                <div
-                  style={{
-                    display: 'flex',
-                    gap: 4,
-                    overflowX: 'auto',
-                    flex: 1,
-                    WebkitOverflowScrolling: 'touch',
-                  }}
-                >
-                  {row.opts.map((opt) => (
-                    <button
-                      key={opt.id}
-                      type="button"
-                      onClick={() => row.set(opt.id)}
-                      style={{
-                        flexShrink: 0,
-                        padding: '5px 9px',
-                        borderRadius: 999,
-                        border:
-                          row.value === opt.id ? '1px solid #c084fc' : '1px solid #333',
-                        background:
-                          row.value === opt.id
-                            ? 'rgba(192,132,252,0.15)'
-                            : '#1c1e22',
-                        color: row.value === opt.id ? '#c084fc' : '#888',
-                        fontSize: 10,
-                        fontWeight: 'bold',
-                        cursor: 'pointer',
-                        whiteSpace: 'nowrap',
-                      }}
-                    >
-                      {opt.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            ))}
-            <div
-              style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-              }}
-            >
-              <span style={{ color: '#555', fontSize: 9 }}>
-                {listings.length === 0
-                  ? '0 listed'
-                  : `${filteredBrowse.length} of ${listings.length}`}
-              </span>
+            trailing={
               <button
                 type="button"
                 onClick={refresh}
                 style={{
+                  flexShrink: 0,
                   background: 'transparent',
                   border: '1px solid #333',
                   color: '#888',
                   borderRadius: 8,
-                  padding: '4px 10px',
+                  padding: '6px 10px',
                   fontSize: 11,
                   cursor: 'pointer',
                 }}
               >
                 {loading ? '…' : 'Refresh'}
               </button>
-            </div>
-          </div>
+            }
+          />
           {listings.length === 0 ? (
             <div style={{ textAlign: 'center', color: '#666', padding: 20, fontSize: 13 }}>
               No NFTs for sale. List one you own under Sell NFT.
