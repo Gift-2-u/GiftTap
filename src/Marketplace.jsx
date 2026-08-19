@@ -502,7 +502,7 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
       iconGlow: 'rgba(168,85,247,0.35)',
     },
     {
-      id: 'shard_badge',
+      id: 'notyetshard_badge',
       name: 'Shard Badge',
       type: 'Misc',
       rarity: 'Rare',
