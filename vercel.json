@@ -3,6 +3,9 @@
   "outputDirectory": "dist",
   "framework": "vite",
   "rewrites": [
-    { "source": "/((?!assets/).*)", "destination": "/index.html" }
+    {
+      "source": "/((?!assets/|icons/|shop/|g2u-token\\.json|Gift2u_logo\\.png|favicon\\.ico|manifest\\.webmanifest|sw\\.js|.*\\.(?:png|jpg|jpeg|gif|svg|webp|json|txt|xml|ico|js|css|map|woff2?)).*)",
+      "destination": "/index.html"
+    }
   ]
 }

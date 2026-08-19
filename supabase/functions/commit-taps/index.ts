@@ -188,17 +188,17 @@ serve(async (req) => {
     }
 
     // Buffs (base — Fate jackpot rolled per tap below)
+    // Frenzy = 2× shards ONLY. Energy cost stays 1 unless Heavy Hands is on.
     const frenzyOn =
       !!(row.frenzy_expires && now < new Date(String(row.frenzy_expires)));
+    const heavyHandsOn =
+      !!(row.efficiency_expires && now < new Date(String(row.efficiency_expires)));
     let costMultiplier = 1;
     let basePayoutMulti = 1;
     if (frenzyOn) basePayoutMulti *= 2;
-    if (
-      row.efficiency_expires &&
-      now < new Date(String(row.efficiency_expires))
-    ) {
+    if (heavyHandsOn) {
       basePayoutMulti *= 2;
-      costMultiplier *= 2;
+      costMultiplier *= 2; // Heavy Hands only — never Frenzy
     }
     if (
       row.premium_multiplier_expires &&
@@ -369,7 +369,7 @@ serve(async (req) => {
       taps: validTaps,
       energy_spent: energySpent,
       shards: shardsEarned,
-      result: { baseRate, payoutMultiplier, costMultiplier, level, scoreCredit, limitCredit, echoMulti, jackpotHits, jackpotBestMulti, jackpotLog },
+      result: { baseRate, payoutMultiplier, costMultiplier, frenzyOn, heavyHandsOn, level, scoreCredit, limitCredit, echoMulti, jackpotHits, jackpotBestMulti, jackpotLog },
     });
 
     await logEconomy(sb, {
@@ -388,11 +388,16 @@ serve(async (req) => {
       taps: validTaps,
       shards: shardsEarned,
       energy_spent: energySpent,
+      cost_multiplier: costMultiplier,
+      frenzy_on: frenzyOn,
+      heavy_hands_on: heavyHandsOn,
       jackpot_hits: jackpotHits,
       jackpot_best_multi: jackpotBestMulti,
       player: {
         ...updates,
         max_unlocked_level: maxU,
+        frenzy_expires: row.frenzy_expires,
+        efficiency_expires: row.efficiency_expires,
       },
     });
   } catch (error) {

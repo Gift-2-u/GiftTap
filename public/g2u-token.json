@@ -1,0 +1,22 @@
+{
+  "name": "Gift2U",
+  "symbol": "G2U",
+  "description": "Gift2U ($G2U) — utility token for Gift Tap: vault, staking, markets, and ecosystem rewards.",
+  "image": "https://gift2u.fun/Gift2u_logo.png",
+  "external_url": "https://gift2u.fun",
+  "extensions": {
+    "website": "https://gift2u.fun",
+    "twitter": "https://x.com/Gift2udev",
+    "telegram": "https://t.me/Gift2u_GiftTap_official"
+  },
+  "properties": {
+    "category": "image",
+    "files": [
+      {
+        "uri": "https://gift2u.fun/Gift2u_logo.png",
+        "type": "image/png"
+      }
+    ]
+  },
+  "tags": ["utility", "gaming", "solana"]
+}

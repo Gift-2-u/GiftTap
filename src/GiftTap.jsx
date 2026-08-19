@@ -736,6 +736,13 @@ const GiftTapGame = () => {
   const optimisticEnergy = useRef(500);
   /** Wall-clock anchor for 500-energy regen (survives phone sleep; ticker only +1 is useless). */
   const energyAnchorRef = useRef({ value: 500, at: Date.now() });
+  /** Live buff expires — tap handler reads this so cost never uses stale stats */
+  const buffRef = useRef({
+    frenzyExpires: null,
+    efficiencyExpires: null,
+    premiumExpires: null,
+    premiumMult: 1,
+  });
   const optimisticDaily = useRef(0);
   const pendingSaveRef = useRef(null);
   /** Latest inventory (incl. weekly_quests) so debounced saves do not wipe quest progress */
@@ -855,6 +862,21 @@ const GiftTapGame = () => {
     optimisticEnergy.current = next;
     setEnergy(next);
   }, []);
+
+  // Keep buff timers fresh for the tap handler (Frenzy ≠ energy cost).
+  useEffect(() => {
+    buffRef.current = {
+      frenzyExpires: stats?.frenzy_expires || null,
+      efficiencyExpires: stats?.efficiency_expires || null,
+      premiumExpires: stats?.premium_multiplier_expires || null,
+      premiumMult: Number(stats?.premium_multiplier) || 1,
+    };
+  }, [
+    stats?.frenzy_expires,
+    stats?.efficiency_expires,
+    stats?.premium_multiplier_expires,
+    stats?.premium_multiplier,
+  ]);
 
   // Keep inventoryRef aligned when shop/backpack/badges update stats.inventory.
   // stats is shop authority (buy/use). preferConsumed(MIN) wiped purchases
@@ -3187,6 +3209,31 @@ const GiftTapGame = () => {
               optimisticEnergy.current = live.value;
               setEnergy(live.value);
             }
+            // Keep Frenzy / Heavy Hands timers aligned with server (cost must match)
+            if (p.frenzy_expires !== undefined || p.efficiency_expires !== undefined) {
+              setStats((prev) => ({
+                ...prev,
+                frenzy_expires:
+                  p.frenzy_expires !== undefined
+                    ? p.frenzy_expires
+                    : prev.frenzy_expires,
+                efficiency_expires:
+                  p.efficiency_expires !== undefined
+                    ? p.efficiency_expires
+                    : prev.efficiency_expires,
+              }));
+              buffRef.current = {
+                ...buffRef.current,
+                frenzyExpires:
+                  p.frenzy_expires !== undefined
+                    ? p.frenzy_expires
+                    : buffRef.current.frenzyExpires,
+                efficiencyExpires:
+                  p.efficiency_expires !== undefined
+                    ? p.efficiency_expires
+                    : buffRef.current.efficiencyExpires,
+              };
+            }
             if (p.last_tap_date) {
               lastTapDateRef.current = String(p.last_tap_date).slice(0, 10);
               setLastTapDate(lastTapDateRef.current);
@@ -3811,16 +3858,21 @@ const GiftTapGame = () => {
 
       const baseRate = getLevelMultiplier(currentLevel); 
       let payoutMultiplier = 1;
+      // Energy cost: Heavy Hands only. Frenzy never raises battery drain.
       let costMultiplier = 1;
 
-      // 2. Apply active buffs (This will no longer crash!)
-      if (stats.frenzy_expires && now < new Date(stats.frenzy_expires)) payoutMultiplier *= 2; 
-      if (stats.efficiency_expires && now < new Date(stats.efficiency_expires)) {
+      const buffs = buffRef.current || {};
+      const frenzyOn =
+        !!(buffs.frenzyExpires && now < new Date(buffs.frenzyExpires));
+      const heavyHandsOn =
+        !!(buffs.efficiencyExpires && now < new Date(buffs.efficiencyExpires));
+      if (frenzyOn) payoutMultiplier *= 2;
+      if (heavyHandsOn) {
         payoutMultiplier *= 2;
-        costMultiplier *= 2; 
+        costMultiplier *= 2;
       }
-      if (stats.premium_multiplier_expires && now < new Date(stats.premium_multiplier_expires)) {
-        payoutMultiplier *= (stats.premium_multiplier || 1); 
+      if (buffs.premiumExpires && now < new Date(buffs.premiumExpires)) {
+        payoutMultiplier *= Number(buffs.premiumMult) || 1;
       }
       // Echo (Power) always-on multi from inventory.echo_active
       {
@@ -6106,7 +6158,27 @@ const GiftTapGame = () => {
                          <HelpTip tipKey="energy_daily" size={14} onOpenPlaybook={() => setIsWhitepaperOpen(true)} />
                        </p>
                      </div>
-                     
+                     {/* Battery bar (500 pool) — separate from daily limit */}
+                     <div style={{ width: '100%', height: '6px', background: 'rgba(0, 0, 0, 0.6)', borderRadius: '4px', overflow: 'hidden', border: '1px solid #444' }}>
+                        <div style={{
+                          height: '100%',
+                          width: `${Math.min((Number(energy) / ENERGY_CAP) * 100, 100)}%`,
+                          background: Number(energy) <= 0 ? '#ff4d4d' : 'linear-gradient(90deg,#38bdf8,#4ade80)',
+                          transition: 'width 0.15s ease'
+                        }} />
+                     </div>
+                     <div style={{ display: 'flex', justifyContent: 'center', gap: 4, flexWrap: 'wrap', minHeight: 14 }}>
+                       {stats?.frenzy_expires && Date.now() < new Date(stats.frenzy_expires).getTime() ? (
+                         <span style={{ fontSize: 9, fontWeight: 800, color: '#fb923c', background: 'rgba(251,146,60,0.15)', border: '1px solid #fb923c55', borderRadius: 999, padding: '1px 6px' }}>
+                           Frenzy 2× shards
+                         </span>
+                       ) : null}
+                       {stats?.efficiency_expires && Date.now() < new Date(stats.efficiency_expires).getTime() ? (
+                         <span style={{ fontSize: 9, fontWeight: 800, color: '#f87171', background: 'rgba(248,113,113,0.15)', border: '1px solid #f8717155', borderRadius: 999, padding: '1px 6px' }}>
+                           Heavy 2× energy
+                         </span>
+                       ) : null}
+                     </div>
                      <div style={{ width: '100%', height: '6px', background: 'rgba(0, 0, 0, 0.6)', borderRadius: '4px', overflow: 'hidden', border: '1px solid #444' }}>
                         <div style={{ 
                           height: '100%', 

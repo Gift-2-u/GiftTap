@@ -1,0 +1,13 @@
+{
+  "mint": "EvFu9qKTNi3wWDbgnm5qmZjLFUHDN3o4A8HjUrqaGMBR",
+  "onChainUri": "https://gift2u.fun/g2u-token.json",
+  "irysUri": "https://gateway.irys.xyz/IOWStLVVJDOSRu3EdzyJPudJ5vmHcQaaSNq8RK68J6w",
+  "siteUri": "https://gift2u.fun/g2u-token.json",
+  "signature": "4CithVaw1XaxjTYL9ZqAqGA6vSsg2wgowqLpePTFGP1xJb2zgb5g4Cb9RSUaFqi32dV25cvGLqKywGweV9sofpdp",
+  "extensions": {
+    "website": "https://gift2u.fun",
+    "twitter": "https://x.com/Gift2udev",
+    "telegram": "https://t.me/Gift2u_GiftTap_official"
+  },
+  "updatedAt": "2026-08-19T02:45:51.020Z"
+}
