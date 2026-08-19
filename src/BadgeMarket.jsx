@@ -293,11 +293,10 @@ export default function BadgeMarket({
           Badge market (in-game)
         </div>
         <p style={{ color: '#888', fontSize: 11, margin: '6px 0 0', lineHeight: 1.4 }}>
-          Trade weekly badges + Shard Badges in-game. List = escrow from backpack (Shard must be unequipped from Fate).
+          Trade weekly badges in-game. List = escrow from backpack.
           Pay with <strong style={{ color: '#67e8f9' }}>SOL</strong> now.
-          <strong style={{ color: '#4ade80' }}> G2U</strong> token after launch
-          (not G2Ushards). Fee:{' '}
-          <strong style={{ color: '#fbbf24' }}>5% treasury</strong> (seller gets 95%).
+          <strong style={{ color: '#4ade80' }}> G2U</strong> token after launch. Fee:{' '}
+          <strong style={{ color: '#fbbf24' }}>5% treasury</strong> .
         </p>
       </div>
 

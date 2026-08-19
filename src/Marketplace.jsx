@@ -2737,10 +2737,10 @@ Daily claim active · Pack → NFT to see it.`,
                 </div>
 
                 <div style={{ color: '#fbbf24', fontWeight: 'bold', fontSize: 13, marginTop: 4 }}>
-                  Shard Badge (Fate socket)
+                  Star Badge (Elves socket)
                 </div>
                 <p style={{ color: '#666', fontSize: 11, margin: '0 0 8px', lineHeight: 1.35 }}>
-                  Equip on Fate from Pack → NFT. Buy in Shop (SOL) or trade below.
+                  Equip → NFT. Win in Mystery Gift or trade below.
                 </p>
                 {getShardBadgeCount(localInventory) > 0 ? (
                   <div
@@ -2774,8 +2774,8 @@ Daily claim active · Pack → NFT to see it.`,
                         {SHARD_BADGE.name}
                       </div>
                       <div style={{ color: '#888', fontSize: 11 }}>
-                        Owned ×{getShardBadgeCount(localInventory)} · free ×
-                        {getFreeShardBadgeCount(localInventory)} (not on Fate)
+                        Owned ×{getShardBadgeCount(localInventory)} · ×
+                        {getFreeShardBadgeCount(localInventory)} 
                       </div>
                     </div>
                     <div style={{ color: '#fbbf24', fontWeight: 'bold', fontSize: 18 }}>
@@ -2800,9 +2800,9 @@ Daily claim active · Pack → NFT to see it.`,
                       height={40}
                       style={{ opacity: 0.4, marginBottom: 6 }}
                     />
-                    <p style={{ fontSize: 12, margin: 0 }}>No Shard Badge yet.</p>
+                    <p style={{ fontSize: 12, margin: 0 }}>No Badge yet.</p>
                     <p style={{ fontSize: 11, color: '#666', margin: '4px 0 0' }}>
-                      Buy in Premium / Shop or from Badge market.
+                      Buy from Badge market or win in Mystery Gift.
                     </p>
                   </div>
                 )}
