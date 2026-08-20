@@ -25,13 +25,70 @@ const WhitepaperModal = ({ isWhitepaperOpen, setIsWhitepaperOpen, onClose }) => 
     },
     {
       id: 4,
-      title: "4. Gift2u Elves NFTs",
-      content: "NFTs are sold in the shop under the separate NFTs tab — not mixed with temporary SOL boosts.\n\nCollection: Gift2u Elves (Metaplex Core on Solana mainnet).\n\nGiftLocksmith (Gen 1 · Rare · Wave 1 of 3, max 5,000 planned):\n• Mint price Wave 1: 0.25 SOL (later waves may cost more).\n• Max 5 mints per wallet on Wave 1.\n• Permanent on-chain NFT in your game wallet.\n\nWhat GiftLocksmith unlocks:\n• Shard Swap (G2Ushards → G2U) immediately — no Level 5 + Swap Badge wait.\n• Better swap terms: 4% fee in G2U (free path is 10%).\n• Higher daily swap cap than free players.\n• Planned vault / better APY access on Gift2u (when vault launches).\n\nFree players unlock Shard Swap with Level 5+ AND a Swap Badge (25k shards; durability drains by volume, top up with G2U) — higher fees and lower daily caps than NFT holders. The NFT is an advantage, not the only way to play or ever swap.\n\nFuture Elf classes (e.g. production / luck / energy) may stack later. GiftLocksmith is the first utility class: swap access and better cash-out terms.\n\nNFTs are digital assets. Prices can go to zero. No ROI or profit is promised."
+      title: "4. Gift2u Elves NFTs (LIVE)",
+      content:
+        "Mint in Shop → NFTs (Wave 1 live on Solana mainnet). Collection: Gift2u Elves.\n" +
+        "Equip from Pack → NFT. One of each class per wallet (where applicable). Optional — you can play without minting.\n\n" +
+        "━━━━━━━━━━━━━━━━━━━━\n" +
+        "LOCKSMITH · Swap / Vault\n" +
+        "━━━━━━━━━━━━━━━━━━━━\n" +
+        "Role: unlock Shard Swap (G2Ushards → G2U).\n" +
+        "Wave 1: 0.25 SOL · Rare · max 5 / wallet.\n" +
+        "You get:\n" +
+        "• Shard Swap unlocked immediately (skip Level 5 + Swap Badge)\n" +
+        "• 4% swap fee in G2U (free path is 10%)\n" +
+        "• Higher daily swap cap\n" +
+        "• Vault access when vault launches\n\n" +
+        "━━━━━━━━━━━━━━━━━━━━\n" +
+        "FATE · Luck\n" +
+        "━━━━━━━━━━━━━━━━━━━━\n" +
+        "Role: jackpot chance on tap G2Ushards.\n" +
+        "Wave 1 prices: Common 0.05 · Rare 0.20 · Epic 0.80 · Legendary 1.75 SOL.\n" +
+        "You get:\n" +
+        "• Equip 1 Fate — chance each tap for a jackpot multi on that tap’s shards\n" +
+        "• Higher rarity = stronger luck profile\n" +
+        "• 1 Shard Badge socket\n\n" +
+        "━━━━━━━━━━━━━━━━━━━━\n" +
+        "ECHO · Power\n" +
+        "━━━━━━━━━━━━━━━━━━━━\n" +
+        "Role: always-on tap multiplier.\n" +
+        "Wave 1 prices: same ladder as Fate (0.05 → 1.75 SOL by rarity).\n" +
+        "You get (tap multi by rarity × level 1→5):\n" +
+        "• Common      1.10× → 1.50×\n" +
+        "• Rare        1.60× → 2.00×\n" +
+        "• Epic        2.10× → 2.50×\n" +
+        "• Legendary   2.60× → 3.00×\n" +
+        "• 1 Shard Badge socket\n\n" +
+        "━━━━━━━━━━━━━━━━━━━━\n" +
+        "RUSH · Energy (daily cap)\n" +
+        "━━━━━━━━━━━━━━━━━━━━\n" +
+        "Role: raises max daily taps (replaces base 1,000).\n" +
+        "Wave 1 prices: same ladder as Fate.\n" +
+        "You get (max daily taps by rarity × level 1→5):\n" +
+        "• Common      1,100 → 1,500\n" +
+        "• Rare        1,600 → 2,000\n" +
+        "• Epic        2,100 → 2,500\n" +
+        "• Legendary   2,600 → 3,000\n" +
+        "• Expanded Battery & task boosts still add on top\n" +
+        "• 1 Shard Badge socket\n\n" +
+        "━━━━━━━━━━━━━━━━━━━━\n" +
+        "SHADOW · Night (daily claim)\n" +
+        "━━━━━━━━━━━━━━━━━━━━\n" +
+        "Role: claim shards once per UTC day without tapping.\n" +
+        "Wave 1 prices: same ladder as Fate.\n" +
+        "You get (claim hours ÷ 24 of base daily cap — Rush or 1,000; boosts not included):\n" +
+        "• Common      2h → 6h\n" +
+        "• Rare        8h → 12h\n" +
+        "• Epic       14h → 18h\n" +
+        "• Legendary  20h → 24h (full base daily at L5)\n" +
+        "• 1 Shard Badge socket\n\n" +
+        "Airdrop tip: Locksmith +25% weight; each other elf adds by rarity (Common +5% · Rare +10% · Epic +20% · Legendary +30%). Clear Level 5 to appear on Ranks → Airdrop.\n\n" +
+        "NFTs are optional gameplay items. No return is promised.",
     },
     {
       id: 5,
       title: "5. Shop: Shards, Boosts & NFTs",
-      content: "Gift Shop has four areas:\n\n• Shards — temporary boosts paid with G2Ushards (Frenzy, Battery, Refill, Heavy Hands).\n• Boosts — temporary SOL boosts (bots, contracts, power multipliers). These are NOT NFTs.\n• NFTs — on-chain mints (GiftLocksmith Wave 1). Permanent utility.\n• Pack (Backpack) — activate temporary items you own. On-chain NFTs live in your wallet, not the backpack.\n\nThe core game stays free-to-play. Purchases are optional."
+      content: "Gift Shop has four areas:\n\n• Free (Shards) — temporary boosts paid with G2Ushards (Frenzy, Battery, Refill, Heavy Hands). Frenzy = 2× shards per tap, normal energy cost.\n• Premium (Boosts) — temporary SOL boosts (bots, contracts, power multipliers). These are NOT NFTs.\n• NFTs — on-chain Wave 1 mints LIVE: Locksmith · Fate · Echo · Rush · Shadow. Permanent utility.\n• Pack (Backpack) — activate temporary items; equip Elves from Pack → NFT. On-chain NFTs live in your game wallet.\n\nThe core game stays free-to-play. Purchases are optional."
     },
     {
       id: 6,
@@ -66,6 +123,10 @@ const WhitepaperModal = ({ isWhitepaperOpen, setIsWhitepaperOpen, onClose }) => 
         "• Some promotions count only main-board players.\n\n" +
         "ALL-TIME\n" +
         "• Ordered by lifetime taps. Always on — long-term prestige, no monthly reset.\n\n" +
+        "AIRDROP (Ranks → Airdrop)\n" +
+        "• Shows players who cleared Level 5 (name · level · bonus %).\n" +
+        "• Bonus % from levels, lifetime taps, streak, IAP, Elves NFTs, and referrals.\n" +
+        "• Community allocation weight — not financial advice and not a promise of $.\n\n" +
         "Fair play: multi-accounts and bots can be disqualified. See Code of Conduct.",
     },
     {

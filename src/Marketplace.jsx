@@ -745,7 +745,7 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
         'Unlocks Shard Swap immediately (skip Level 5 + Swap Badge)',
         '4% fee in G2U vs 10% free path',
         'Higher daily swap cap',
-        'Vault better APY (coming soon)',
+        'Vault access (coming soon)',
       ],
       attributes: [
         { trait_type: 'Collection', value: 'Gift2u Elves' },

@@ -232,9 +232,9 @@ export default function VaultPage() {
             G2U Vault
           </h1>
           <p className="text-sm text-slate-400 leading-relaxed">
-            Stake G2U credit for yield. GiftLocksmith holders earn{' '}
+            Lock G2U in the vault. GiftLocksmith holders get{' '}
             <span className="text-yellow-400 font-bold">
-              {VAULT_CONFIG.locksmithApyPercent}% APY
+              {VAULT_CONFIG.locksmithApyPercent}% vault bonus
             </span>
             . Deposit from your game wallet G2U balance (swap shards in Play first).
           </p>
@@ -296,7 +296,7 @@ export default function VaultPage() {
                   <p>
                     Mint <strong className="text-yellow-400">GiftLocksmith</strong> in
                     Gift Tap → Shop → <strong>NFTs</strong> (0.25 SOL Wave 1) to unlock
-                    vault deposits and {VAULT_CONFIG.locksmithApyPercent}% APY.
+                    vault deposits and {VAULT_CONFIG.locksmithApyPercent}% vault bonus.
                   </p>
                   <Link
                     to="/play"
@@ -323,7 +323,7 @@ export default function VaultPage() {
                 </p>
               </div>
               <div className={card}>
-                <p className="text-xs text-slate-500">Your APY</p>
+                <p className="text-xs text-slate-500">Vault bonus</p>
                 <p className="text-2xl font-black text-purple-300 mt-1">
                   {isLocksmith ? `${apy}%` : '—'}
                 </p>

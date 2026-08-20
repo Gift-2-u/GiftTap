@@ -1,11 +1,11 @@
 /**
- * Gift2u Vault — G2U credit staking with Locksmith APY boost.
+ * Gift2u Vault — G2U vault lock with Locksmith vault bonus.
  * Principal stored on player inventory (vault_gft); rewards accrue off-chain
  * until claim moves them to gft_token_balance.
  */
 
 export const VAULT_CONFIG = {
-  /** Base APY % if we ever open vault without NFT (0 = Locksmith-only yield) */
+  /** Base vault bonus % if we ever open vault without NFT (0 = Locksmith-only) */
   baseApyPercent: 0,
   /** GiftLocksmith holders */
   locksmithApyPercent: 36,

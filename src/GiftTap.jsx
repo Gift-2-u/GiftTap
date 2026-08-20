@@ -3159,45 +3159,17 @@ const GiftTapGame = () => {
         try {
           const data = await secureCommitTaps({ batchId, taps });
           const p = data?.player;
+          const credited = Math.max(0, Number(data?.taps) || 0);
+          const rejectReason = data?.reason || '';
+          // no_energy: keep optimistic mining + re-queue. daily_limit: snap to server.
+          const applyMining = credited > 0 || rejectReason === 'daily_limit';
           if (p) {
             const b = Number(p.shard_balance);
             const ltt = Number(p.lifetime_taps);
             const s = Number(p.season_shards);
             const dt = Number(p.daily_taps);
             const en = Number(p.last_energy);
-            if (Number.isFinite(b)) {
-              optimisticBalance.current = b;
-              setBalance(b);
-              setBalances((bal) => ({ ...bal, G2Ushards: b }));
-            }
-            if (Number.isFinite(ltt)) {
-              optimisticTaps.current = ltt;
-              setLifetimeTaps(ltt);
-            }
-            if (Number.isFinite(s)) {
-              optimisticSeason.current = s;
-              setSeasonShards(s);
-            }
-            if (Number.isFinite(dt)) {
-              const serverLtd = p.last_tap_date
-                ? String(p.last_tap_date).slice(0, 10)
-                : '';
-              const todayF = utcTodayStr();
-              const stillPending = pendingTapsRef.current.count > 0;
-              let nextDt = dt;
-              if (serverLtd && serverLtd < todayF) {
-                // Confirmed previous day from server
-                nextDt = dt;
-              } else if (stillPending) {
-                // Mid-burst only: allow local ahead until this flush drains
-                nextDt = Math.max(dt, Number(optimisticDaily.current) || 0);
-              } else {
-                // Queue empty → server is sole authority for daily + weekly
-                nextDt = dt;
-              }
-              optimisticDaily.current = nextDt;
-              setDailyTaps(nextDt);
-            }
+            // Always sync energy — server may have caught up regen on no_energy path
             if (Number.isFinite(en)) {
               const atMs = p.last_updated ? Date.parse(p.last_updated) : Date.now();
               const anchor = {
@@ -3234,59 +3206,90 @@ const GiftTapGame = () => {
                     : buffRef.current.efficiencyExpires,
               };
             }
-            if (p.last_tap_date) {
-              lastTapDateRef.current = String(p.last_tap_date).slice(0, 10);
-              setLastTapDate(lastTapDateRef.current);
-            } else if (Number.isFinite(dt) && dt > 0) {
-              const todayF = utcTodayStr();
-              lastTapDateRef.current = todayF;
-              setLastTapDate(todayF);
-            }
-            if (p.current_streak != null) {
-              streakRef.current = Number(p.current_streak) || 0;
-              setStreak(streakRef.current);
-            }
-            if (p.inventory) {
-              inventoryRef.current = {
-                ...(inventoryRef.current || {}),
-                ...p.inventory,
-              };
-              setStats((prev) => ({
-                ...prev,
-                inventory: inventoryRef.current,
-              }));
-            }
-            if (p.weekly_shards != null) {
-              const ws = Number(p.weekly_shards) || 0;
-              const stillPendingW = pendingTapsRef.current.count > 0;
-              // Mid-burst: local optimistic may be ahead of this committed batch
-              const nextW = stillPendingW
-                ? Math.max(ws, Number(optimisticWeekly.current) || 0)
-                : ws;
-              optimisticWeekly.current = nextW;
-              bumpWeeklyLiveUi(nextW);
-              const wId =
-                p.weekly_week_id ||
-                getUtcWeekId();
-              inventoryRef.current = {
-                ...(inventoryRef.current || {}),
-                weekly_lb: { weekId: wId, score: nextW },
-              };
-              setStats((prev) => ({
-                ...prev,
-                inventory: {
-                  ...(prev?.inventory || {}),
+            if (applyMining) {
+              if (Number.isFinite(b)) {
+                optimisticBalance.current = b;
+                setBalance(b);
+                setBalances((bal) => ({ ...bal, G2Ushards: b }));
+              }
+              if (Number.isFinite(ltt)) {
+                optimisticTaps.current = ltt;
+                setLifetimeTaps(ltt);
+              }
+              if (Number.isFinite(s)) {
+                optimisticSeason.current = s;
+                setSeasonShards(s);
+              }
+              if (Number.isFinite(dt)) {
+                const serverLtd = p.last_tap_date
+                  ? String(p.last_tap_date).slice(0, 10)
+                  : '';
+                const todayF = utcTodayStr();
+                const stillPending = pendingTapsRef.current.count > 0;
+                let nextDt = dt;
+                if (serverLtd && serverLtd < todayF) {
+                  nextDt = dt;
+                } else if (stillPending && credited > 0) {
+                  // Mid-burst only: allow local ahead until this flush drains
+                  nextDt = Math.max(dt, Number(optimisticDaily.current) || 0);
+                } else {
+                  nextDt = dt;
+                }
+                optimisticDaily.current = nextDt;
+                setDailyTaps(nextDt);
+              }
+              if (p.last_tap_date) {
+                lastTapDateRef.current = String(p.last_tap_date).slice(0, 10);
+                setLastTapDate(lastTapDateRef.current);
+              } else if (Number.isFinite(dt) && dt > 0) {
+                const todayF = utcTodayStr();
+                lastTapDateRef.current = todayF;
+                setLastTapDate(todayF);
+              }
+              if (p.current_streak != null) {
+                streakRef.current = Number(p.current_streak) || 0;
+                setStreak(streakRef.current);
+              }
+              if (p.inventory) {
+                inventoryRef.current = {
+                  ...(inventoryRef.current || {}),
+                  ...p.inventory,
+                };
+                setStats((prev) => ({
+                  ...prev,
+                  inventory: inventoryRef.current,
+                }));
+              }
+              if (p.weekly_shards != null) {
+                const ws = Number(p.weekly_shards) || 0;
+                const stillPendingW = pendingTapsRef.current.count > 0;
+                const nextW =
+                  stillPendingW && credited > 0
+                    ? Math.max(ws, Number(optimisticWeekly.current) || 0)
+                    : ws;
+                optimisticWeekly.current = nextW;
+                bumpWeeklyLiveUi(nextW);
+                const wId = p.weekly_week_id || getUtcWeekId();
+                inventoryRef.current = {
                   ...(inventoryRef.current || {}),
                   weekly_lb: { weekId: wId, score: nextW },
-                },
-              }));
+                };
+                setStats((prev) => ({
+                  ...prev,
+                  inventory: {
+                    ...(prev?.inventory || {}),
+                    ...(inventoryRef.current || {}),
+                    weekly_lb: { weekId: wId, score: nextW },
+                  },
+                }));
+              }
+              serverProgressRef.current = {
+                b: Number.isFinite(b) ? b : serverProgressRef.current?.b,
+                ltt: Number.isFinite(ltt) ? ltt : serverProgressRef.current?.ltt,
+                s: Number.isFinite(s) ? s : serverProgressRef.current?.s,
+                dt: Number(optimisticDaily.current) || 0,
+              };
             }
-            serverProgressRef.current = {
-              b: Number.isFinite(b) ? b : serverProgressRef.current?.b,
-              ltt: Number.isFinite(ltt) ? ltt : serverProgressRef.current?.ltt,
-              s: Number.isFinite(s) ? s : serverProgressRef.current?.s,
-              dt: Number(optimisticDaily.current) || 0,
-            };
           }
           // Fate luck jackpot feedback (server-authoritative)
           const jp = Number(data?.jackpot_hits) || 0;
@@ -3302,9 +3305,15 @@ const GiftTapGame = () => {
           flushErrorNotifiedRef.current = false;
           lastLocalSaveAtRef.current = Date.now();
           // Stop if server rejected further taps (daily limit / no energy)
-          if (data && Number(data.taps) === 0) {
-            // Server could not credit this batch (energy/limit). Keep other pending
-            // only if we still have energy-ish room; otherwise stop the loop.
+          if (credited === 0) {
+            // Chunk was reserved (dequeued) before the await. On no_energy, put it
+            // back so regen'd taps are not lost and UI numbers do not snap back.
+            if (rejectReason === 'no_energy') {
+              pendingTapsRef.current = {
+                count: (pendingTapsRef.current.count || 0) + taps,
+                batchId: batchId,
+              };
+            }
             break;
           }
         } catch (e) {
@@ -3561,13 +3570,22 @@ const GiftTapGame = () => {
       // HARD SECURITY (TOTAL FREEZE):
       // Client must NEVER write money / taps / inventory / boosts / walls.
       // Only Edge (commit-taps, shop-buy, claim-*, wall-climb) may change those.
-      // Under secureLock we only touch last_updated (harmless heartbeat).
+      // IMPORTANT: never write last_updated alone under secureLock — that field is
+      // the energy regen clock. Bumping it while last_energy stays 0 freezes regen
+      // on the server and makes post-refill taps snap numbers back.
       // Local UI still uses optimisticBalance / inventoryRef for feel.
-      const baseRow = secureLock
-        ? {
-            last_updated: new Date().toISOString(),
-          }
-        : {
+      if (secureLock) {
+        serverProgressRef.current = {
+          b: writeB,
+          ltt: writeLtt,
+          s: writeS,
+          dt: writeDt,
+        };
+        lastLocalSaveAtRef.current = Date.now();
+        return;
+      }
+
+      const baseRow = {
             [DB_PLAYER_ID]: playerId,
             username: player.username || player.first_name || 'Player',
             shard_balance: writeB,
@@ -3592,16 +3610,6 @@ const GiftTapGame = () => {
 
       lastLocalSaveAtRef.current = Date.now();
       let { data, error } = await doUpdate(baseRow);
-
-      // Under total freeze, treat heartbeat as success for local optimistic state
-      if (secureLock && !error) {
-        serverProgressRef.current = {
-          b: writeB,
-          ltt: writeLtt,
-          s: writeS,
-          dt: writeDt,
-        };
-      }
 
       // Legacy PAYWALL trigger still blocks lifetime_taps past wall until you drop it in SQL.
       // Retry keeps the SAME field name (lifetime_taps) at wall cap so shards still save.
@@ -4086,7 +4094,8 @@ const GiftTapGame = () => {
         };
         scheduleTapFlush();
       }
-      // Local heartbeat only (no mining columns) — keeps last_updated fresh
+      // Local UI sync only under secureLock (no last_updated heartbeat — that
+      // field is the energy regen clock owned by commit-taps).
       if (playerId) {
         saveToDatabase(
           nextBalance,

@@ -9,7 +9,7 @@ export const HELP_TIPS = {
     body:
       'Tap the gift to mine G2Ushards. Each tap costs Energy and counts toward your Daily Limit.\n\n' +
       'Level rises with lifetime taps and can raise your mining power. Walls (Climb / Level up) are optional — you can stay on a level and keep mining forever.\n\n' +
-      'Shop boosts and the GiftLocksmith NFT are optional power-ups. Full details: Menu → Game Guide.',
+      'Shop boosts and Gift2u Elves NFTs (Locksmith · Fate · Echo · Rush · Shadow) are optional. Mint in Shop → NFTs. Full boards: Menu → Game Guide → Gift2u Elves.',
   },
   /** Level + G2Ushards (one ? on home) */
   level_shards: {
@@ -24,8 +24,8 @@ export const HELP_TIPS = {
   energy_daily: {
     title: 'Energy & Daily Limit',
     body:
-      'Energy: each tap costs Energy (usually 1). Your pool recharges over time (about 1 every 1.5 seconds, up to the pool max). Shop items and Free Energy ads can help.\n\n' +
-      'Daily Limit: max taps for the UTC day. The bar under Energy shows progress. When full, wait for reset or use a boost.\n\n' +
+      'Energy (⚡ 500 pool): each tap costs Energy (usually 1). Recharges ~1 every 1.5s. Frenzy boosts shards 2× — it does not drain battery 2× (Heavy Hands does).\n\n' +
+      'Daily Limit: max taps for the UTC day (separate bar). When full, wait for UTC reset or use a boost.\n\n' +
       'Full details: Menu → Game Guide.',
   },
   level: {
@@ -92,9 +92,21 @@ export const HELP_TIPS = {
   locksmith: {
     title: 'GiftLocksmith NFT',
     body:
-      'Optional on-chain NFT in Shop then NFTs.\n\n' +
-      'Unlocks Shard Swap right away (no L5 + Swap Badge grind), better swap fees, higher caps, and vault access on the main site.\n\n' +
+      'Optional on-chain NFT in Shop → NFTs (Wave 1 live).\n\n' +
+      'Unlocks Shard Swap right away (no L5 + Swap Badge grind), better swap fees, higher caps, and vault access when live.\n\n' +
+      'See all Elves (Fate · Echo · Rush · Shadow): Menu → Game Guide → Gift2u Elves.\n\n' +
       'You can still play and mine without it.',
+  },
+  elves_nfts: {
+    title: 'Gift2u Elves',
+    body:
+      'Wave 1 LIVE in Shop → NFTs.\n\n' +
+      '• Locksmith — swap / vault path\n' +
+      '• Fate — luck jackpots on taps\n' +
+      '• Echo — always-on tap multi (up to 3.00×)\n' +
+      '• Rush — higher max daily taps (up to 3,000)\n' +
+      '• Shadow — daily claim without tapping\n\n' +
+      'Full boards: Menu → Game Guide → Gift2u Elves NFTs.',
   },
   mystery_gift: {
     title: 'Mystery Gift',

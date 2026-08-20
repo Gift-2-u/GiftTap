@@ -223,20 +223,30 @@ serve(async (req) => {
     const validTaps = Math.min(requestedTaps, byEnergy, byDaily);
 
     if (validTaps <= 0) {
-      // Heal missing last_tap_date when daily progress already exists today
-      // so subsequent client day-roll logic does not wipe the bar.
-      if (dailyTaps > 0 && prevLtd !== today) {
-        await sb
-          .from("players")
-          .update({ last_tap_date: today, last_updated: now.toISOString() })
-          .eq("telegram_id", playerId);
+      const reason = energy < costMultiplier ? "no_energy" : "daily_limit";
+      const storedEnergy = Number(row.last_energy);
+      const storedFinite = Number.isFinite(storedEnergy) ? storedEnergy : 0;
+      const healLtd = dailyTaps > 0 && prevLtd !== today;
+      const nowIso = now.toISOString();
+      // Persist regen'd energy WITH last_updated. Never bump last_updated alone —
+      // that resets the regen clock while last_energy stays 0 and freezes mining
+      // after a second battery / Instant Refill until the client refreshes.
+      let persistedAnchor = false;
+      if (healLtd || energy > storedFinite + 0.001) {
+        const patch: Record<string, unknown> = {
+          last_energy: energy,
+          last_updated: nowIso,
+        };
+        if (healLtd) patch.last_tap_date = today;
+        await sb.from("players").update(patch).eq("telegram_id", playerId);
+        persistedAnchor = true;
       }
       return jsonResponse({
         success: true,
         taps: 0,
         shards: 0,
         energy_spent: 0,
-        reason: energy < costMultiplier ? "no_energy" : "daily_limit",
+        reason,
         player: {
           shard_balance: Number(row.shard_balance) || 0,
           lifetime_taps: lifetime,
@@ -245,11 +255,15 @@ serve(async (req) => {
           weekly_week_id: row.weekly_week_id,
           daily_taps: dailyTaps,
           last_energy: energy,
+          // Only advance client anchor when we actually wrote the catch-up
+          last_updated: persistedAnchor ? nowIso : (row.last_updated || nowIso),
           // If they already have today's progress, always surface today so client won't day-roll wipe
           last_tap_date: dailyTaps > 0 ? today : (prevLtd || null),
           current_streak: streak,
           max_unlocked_level: maxU,
           inventory: inv,
+          frenzy_expires: row.frenzy_expires,
+          efficiency_expires: row.efficiency_expires,
         },
       });
     }

@@ -634,6 +634,6 @@ export const LOCKSMITH_PERKS = [
   { trait: 'Fee', value: '4% in G2U' },
   { trait: 'Daily cap', value: '1,000,000 shards / day' },
   { trait: 'Durability', value: 'None (permanent)' },
-  { trait: 'Vault', value: 'Improved APY access' },
+  { trait: 'Vault', value: 'Vault access' },
   { trait: 'Min swap', value: '500 shards' },
 ];
