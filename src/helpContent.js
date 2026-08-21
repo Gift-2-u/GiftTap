@@ -16,7 +16,7 @@ export const HELP_TIPS = {
     title: 'Level & G2Ushards',
     body:
       'Level comes from lifetime taps and can raise permanent mining power (more shards per tap).\n\n' +
-      'G2Ushards are what you mine by tapping. Spend them in the Shop, on climb fees, and on Swap Badge / swaps.\n\n' +
+      'G2Ushards are what you mine by tapping. Spend them in the Shop and on climb fees.\n\n' +
       'Optional Climb walls unlock higher levels and multipliers — you can stay and keep mining without climbing.\n\n' +
       'G2Ushards are not money and not a promise of profit. Full details: Menu → Game Guide.',
   },
@@ -50,7 +50,7 @@ export const HELP_TIPS = {
     title: 'G2Ushards',
     body:
       'G2Ushards are the in-game mining currency you earn by tapping the gift.\n\n' +
-      'Use them in the Shop, for climb fees, tasks, and (when unlocked) Shard Swap into G2U credit.\n\n' +
+      'Use them in the Shop, for climb fees, and for tasks.\n\n' +
       'They are not money and not a promise of profit. See Terms of Use.',
   },
   energy: {
@@ -77,23 +77,21 @@ export const HELP_TIPS = {
     title: 'Shard Swap',
     body:
       'Convert G2Ushards to G2U credit in Wallet then Shard.\n\n' +
-      'Free path: Level 5+ AND Swap Badge (durability drains by volume; top up and level up with G2U).\n' +
-      'GiftLocksmith NFT: unlock immediately with a lower fee and higher daily cap.\n\n' +
+      'Free path: Level 5+ AND Swap Badge (durability drains by volume; top up and level up with G2U).\n\n' +
       'Rates and caps can change. Not financial advice.',
   },
   swap_badge: {
     title: 'Swap Badge (free)',
     body:
-      'Free players unlock a Swap Badge at Level 5+ for 25,000 G2Ushards (Wallet then Shard).\n\n' +
+      'Unlock a Swap Badge at Level 5+ for 25,000 G2Ushards (Wallet then Shard).\n\n' +
       'Charge 0-100 percent: drains by swap volume. Higher badge level means more shards per 1 percent so the charge lasts longer. Level up with G2U. Top up charge with G2U (1 G2U gives +2 percent). Daily cap 50,000 shards.\n\n' +
-      'GiftLocksmith is the permanent on-chain NFT. On-chain mint and marketplace for free badges is planned later.\n\n' +
       'Not an investment product.',
   },
   locksmith: {
     title: 'GiftLocksmith NFT',
     body:
       'Optional on-chain NFT in Shop → NFTs (Wave 1 live).\n\n' +
-      'Unlocks Shard Swap right away (no L5 + Swap Badge grind), better swap fees, higher caps, and vault access when live.\n\n' +
+      'Unlocks free ascension wall climbs and Walk2u Common Shoes on walls 5 / 10 / 20 (L1–L3). Higher Locksmith levels unlock later walls.\n\n' +
       'See all Elves (Fate · Echo · Rush · Shadow): Menu → Game Guide → Gift2u Elves.\n\n' +
       'You can still play and mine without it.',
   },
@@ -101,7 +99,7 @@ export const HELP_TIPS = {
     title: 'Gift2u Elves',
     body:
       'Wave 1 LIVE in Shop → NFTs.\n\n' +
-      '• Locksmith — swap / vault path\n' +
+      '• Locksmith — free walls · Walk2u shoe\n' +
       '• Fate — luck jackpots on taps\n' +
       '• Echo — always-on tap multi (up to 3.00×)\n' +
       '• Rush — higher max daily taps (up to 3,000)\n' +
@@ -121,9 +119,8 @@ export const HELP_TIPS = {
     body:
       'Ranks → Weekly uses the same 15% activity idea as Season.\n\n' +
       'Main board floor = 15% × 1,000 × day of the UTC week (day 1 Mon = 150 … day 7 = 1,050).\n\n' +
-      'At week end, only players with ≥ 1,050 weekly score are badge-eligible.\n\n' +
-      'From 2026-W35 (next week): among eligible — top 10% Diamond, next 15% Gold, next 25% Silver, rest Bronze (more badges for Mystery Gift).\n' +
-      'Through 2026-W34: Diamond #1, Gold #2, Silver #3, Bronze #4–10.\n\n' +
+      'At week end, players with ≥ 1,050 weekly score are badge-eligible.\n\n' +
+      'Every eligible player wins a badge: top 10% Diamond, next 15% Gold, next 25% Silver, rest Bronze.\n\n' +
       'Claim finished-week badges in Shop → Pack → Badges. Burn badges there for Mystery Gift.\n\n' +
       'In-game Badge market: sell badges from your backpack for SOL now (G2U token after launch — not G2Ushards). Listing escrows the badge. 5% fee to treasury (seller receives 95%). No external marketplaces.\n\n' +
       'Owned GiftLocksmith NFTs: Shop → NFTs or Pack → NFT → NFT market. List for SOL, buyer pays 95% to you + 5% treasury, then you tap Send NFT to transfer on-chain.\n\n' +

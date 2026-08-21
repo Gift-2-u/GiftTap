@@ -20,7 +20,7 @@ import { hasSecureSession, ensureSecureSession, secureBadgeClaim } from './secur
 
 /**
  * Compact: claim last week's weekly badge (no essay UI).
- * From 2026-W35: %-based cuts among eligible. W34 and earlier: top-10 fixed.
+ * %-based cuts among eligible (every eligible player wins a badge).
  * Full rules: Menu → Game Guide → Leaderboards.
  */
 export default function WeeklyBadgePanel({

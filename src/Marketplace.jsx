@@ -2676,10 +2676,10 @@ Daily claim active · Pack → NFT to see it.`,
                         <thead>
                           <tr>
                             <th style={{ textAlign: 'left', padding: '2px 4px', color: '#888' }}>Prize</th>
-                            <th style={{ padding: '2px 4px', color: '#cd7f32' }}>🥉#4–10</th>
-                            <th style={{ padding: '2px 4px', color: '#c0c0c0' }}>🥈#3</th>
-                            <th style={{ padding: '2px 4px', color: '#ffd700' }}>🥇#2</th>
-                            <th style={{ padding: '2px 4px', color: '#67e8f9' }}>💎#1</th>
+                            <th style={{ padding: '2px 4px', color: '#cd7f32' }}>🥉 rest</th>
+                            <th style={{ padding: '2px 4px', color: '#c0c0c0' }}>🥈 25%</th>
+                            <th style={{ padding: '2px 4px', color: '#ffd700' }}>🥇 15%</th>
+                            <th style={{ padding: '2px 4px', color: '#67e8f9' }}>💎 10%</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -2780,7 +2780,7 @@ Daily claim active · Pack → NFT to see it.`,
                   Weekly season badges
                 </div>
                 <p style={{ color: '#666', fontSize: 11, margin: '0 0 4px', lineHeight: 1.35 }}>
-                  From Ranks → Weekly (top 10 eligible · ≥1,050). Sell in Badge market below.
+                  From Ranks → Weekly (eligible ≥1,050 — every eligible player wins a badge). Sell in Badge market below.
                 </p>
                 {badgeTotal === 0 ? (
                   <div style={{ textAlign: 'center', padding: '20px 12px', color: '#888' }}>
@@ -2812,7 +2812,7 @@ Daily claim active · Pack → NFT to see it.`,
                     </div>
                     <p style={{ fontSize: 12, margin: 0 }}>No badges yet.</p>
                     <p style={{ fontSize: 11, color: '#666', margin: '6px 0 0' }}>
-                      Finish top 10 eligible on Ranks → Weekly (≥1,050 score) to win one.
+                      Reach ≥1,050 on Ranks → Weekly to win a badge (top 10% Diamond · next 15% Gold · next 25% Silver · rest Bronze).
                     </p>
                   </div>
                 ) : (

@@ -109,8 +109,8 @@ export function isWeeklyFloorEligible(score, floor) {
 
 /**
  * First UTC ISO week that uses %-based badge cuts (this week W34 stays legacy).
- * Legacy (before): #1 Diamond · #2 Gold · #3 Silver · #4–10 Bronze
- * New: of eligible N — top 10% Diamond, next 15% Gold, next 25% Silver, rest Bronze
+ * Of eligible N — top 10% Diamond, next 15% Gold, next 25% Silver, rest Bronze
+ * (W34 and earlier used fixed #1–#10 ranks in code.)
  */
 export const WEEKLY_PERCENT_BADGES_FROM_WEEK = '2026-W35';
 
@@ -399,10 +399,9 @@ export function canOpenMysteryWith(inv, tier) {
 /**
  * Mystery Gift drop rates by badge tier burned (each column sums to 100%).
  *
- * Rank → badge: Diamond #1 · Gold #2 · Silver #3 · Bronze #4–10
- * Sheet names Gold=#1 … Blue=#4–10 map to those ranks.
+ * Weekly badges: Diamond top 10% · Gold next 15% · Silver next 25% · Bronze rest eligible.
  *
- * Prize                    Bronze#4–10  Silver#3  Gold#2  Diamond#1
+ * Prize                    Bronze(rest) Silver25% Gold15% Diamond10%
  * Exclusive NFT                 1%         2%       5%      12%
  * Bonus G2U Tokens             10%        20%      35%      50%
  * Premium Boost                14%        23%      30%      28%

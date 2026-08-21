@@ -11,7 +11,7 @@ const WhitepaperModal = ({ isWhitepaperOpen, setIsWhitepaperOpen, onClose }) => 
     {
       id: 1,
       title: "1. G2Ushards",
-      content: "G2Ushards are the core in-game currency of Gift Tap. Tap the gift to extract Shards.\n\nAll new players begin at Level 0 with 1 Shard per tap (before multipliers). Shards climb the leaderboard, pay shop items and ascension walls, and can be converted through Shard Swap into G2U credit (and later on-chain $G2U when linked).\n\nG2Ushards are not money and not a promise of profit. See Terms of Use."
+      content: "G2Ushards are the core in-game currency of Gift Tap. Tap the gift to extract Shards.\n\nAll new players begin at Level 0 with 1 Shard per tap (before multipliers). Shards climb the leaderboard, pay shop items and ascension walls.\n\nG2Ushards are not money and not a promise of profit. See Terms of Use."
     },
     {
       id: 2,
@@ -27,77 +27,90 @@ const WhitepaperModal = ({ isWhitepaperOpen, setIsWhitepaperOpen, onClose }) => 
       id: 4,
       title: "4. Gift2u Elves NFTs (LIVE)",
       content:
-        "Mint in Shop → NFTs (Wave 1 live on Solana mainnet). Collection: Gift2u Elves.\n" +
-        "Equip from Pack → NFT. One of each class per wallet (where applicable). Optional — you can play without minting.\n\n" +
+        "Mint in Shop → NFTs (Wave 1 live on Solana). Collection: Gift2u Elves.\n" +
+        "One of each class per wallet (where applicable). Optional — you can play without minting.\n\n" +
         "━━━━━━━━━━━━━━━━━━━━\n" +
-        "LOCKSMITH · Swap / Vault\n" +
+        "LOCKSMITH · Walls / Walk2u\n" +
         "━━━━━━━━━━━━━━━━━━━━\n" +
-        "Role: unlock Shard Swap (G2Ushards → G2U).\n" +
-        "Wave 1: 0.25 SOL · Rare · max 5 / wallet.\n" +
+        "Role: free ascension wall climbs + Walk2u shoes.\n" +
+        "Wave 1: 0.10 SOL · Rare ·\n" +
         "You get:\n" +
-        "• Shard Swap unlocked immediately (skip Level 5 + Swap Badge)\n" +
-        "• 4% swap fee in G2U (free path is 10%)\n" +
-        "• Higher daily swap cap\n" +
-        "• Vault access when vault launches\n\n" +
+        "• L1: free climb → Level 5 + Common Walk2u Shoe\n" +
+        "• L2 / L3: free → Level 10 / 20 + Common Shoe\n" +
+        "• Higher levels unlock later walls as they open\n" +
+        "• Opens the path to Walk2u\n\n" +
         "━━━━━━━━━━━━━━━━━━━━\n" +
         "FATE · Luck\n" +
         "━━━━━━━━━━━━━━━━━━━━\n" +
         "Role: jackpot chance on tap G2Ushards.\n" +
         "Wave 1 prices: Common 0.05 · Rare 0.20 · Epic 0.80 · Legendary 1.75 SOL.\n" +
         "You get:\n" +
-        "• Equip 1 Fate — chance each tap for a jackpot multi on that tap’s shards\n" +
-        "• Higher rarity = stronger luck profile\n" +
-        "• 1 Shard Badge socket\n\n" +
+        "• Fate in wallet — each tap can hit one jackpot (replaces Frenzy on that tap; Echo still stacks)\n" +
+        "• Level N unlocks luck rungs 1→N (higher rung checked first)\n" +
+        "• 1 Star Badge socket\n\n" +
+        "Luck board (chance % → multi on that tap):\n" +
+        "Common\n" +
+        "• L1  2% → 4×   · L2  2% → 6×   · L3  2% → 8×\n" +
+        "• L4  1.5% → 12× · L5  1.5% → 15×\n" +
+        "Rare\n" +
+        "• L1  2% → 8×   · L2  2% → 12×  · L3  2% → 16×\n" +
+        "• L4  1.5% → 22× · L5  1.5% → 30×\n" +
+        "Epic\n" +
+        "• L1  2.5% → 12× · L2  2% → 18×  · L3  2% → 25×\n" +
+        "• L4  1.5% → 35× · L5  0.3% → 60×\n" +
+        "Legendary\n" +
+        "• L1  3% → 15×  · L2  2.5% → 25× · L3  2% → 35×\n" +
+        "• L4  0.5% → 60× · L5  0.15% → 100×\n\n" +
         "━━━━━━━━━━━━━━━━━━━━\n" +
         "ECHO · Power\n" +
         "━━━━━━━━━━━━━━━━━━━━\n" +
         "Role: always-on tap multiplier.\n" +
-        "Wave 1 prices: same ladder as Fate (0.05 → 1.75 SOL by rarity).\n" +
+        "Wave 1 prices: Common 0.05 · Rare 0.20 · Epic 0.80 · Legendary 1.75 SOL.\n" +
         "You get (tap multi by rarity × level 1→5):\n" +
         "• Common      1.10× → 1.50×\n" +
         "• Rare        1.60× → 2.00×\n" +
         "• Epic        2.10× → 2.50×\n" +
         "• Legendary   2.60× → 3.00×\n" +
-        "• 1 Shard Badge socket\n\n" +
+        "• 1 Star Badge socket\n\n" +
         "━━━━━━━━━━━━━━━━━━━━\n" +
         "RUSH · Energy (daily cap)\n" +
         "━━━━━━━━━━━━━━━━━━━━\n" +
         "Role: raises max daily taps (replaces base 1,000).\n" +
-        "Wave 1 prices: same ladder as Fate.\n" +
+        "Wave 1 prices: Common 0.05 · Rare 0.20 · Epic 0.80 · Legendary 1.75 SOL.\n" +
         "You get (max daily taps by rarity × level 1→5):\n" +
         "• Common      1,100 → 1,500\n" +
         "• Rare        1,600 → 2,000\n" +
         "• Epic        2,100 → 2,500\n" +
         "• Legendary   2,600 → 3,000\n" +
         "• Expanded Battery & task boosts still add on top\n" +
-        "• 1 Shard Badge socket\n\n" +
+        "• 1 Star Badge socket\n\n" +
         "━━━━━━━━━━━━━━━━━━━━\n" +
         "SHADOW · Night (daily claim)\n" +
         "━━━━━━━━━━━━━━━━━━━━\n" +
         "Role: claim shards once per UTC day without tapping.\n" +
-        "Wave 1 prices: same ladder as Fate.\n" +
+        "Wave 1 prices: Common 0.05 · Rare 0.20 · Epic 0.80 · Legendary 1.75 SOL.\n" +
         "You get (claim hours ÷ 24 of base daily cap — Rush or 1,000; boosts not included):\n" +
         "• Common      2h → 6h\n" +
         "• Rare        8h → 12h\n" +
         "• Epic       14h → 18h\n" +
         "• Legendary  20h → 24h (full base daily at L5)\n" +
-        "• 1 Shard Badge socket\n\n" +
+        "• 1 Star Badge socket\n\n" +
         "Airdrop tip: Locksmith +25% weight; each other elf adds by rarity (Common +5% · Rare +10% · Epic +20% · Legendary +30%). Clear Level 5 to appear on Ranks → Airdrop.\n\n" +
         "NFTs are optional gameplay items. No return is promised.",
     },
     {
       id: 5,
       title: "5. Shop: Shards, Boosts & NFTs",
-      content: "Gift Shop has four areas:\n\n• Free (Shards) — temporary boosts paid with G2Ushards (Frenzy, Battery, Refill, Heavy Hands). Frenzy = 2× shards per tap, normal energy cost.\n• Premium (Boosts) — temporary SOL boosts (bots, contracts, power multipliers). These are NOT NFTs.\n• NFTs — on-chain Wave 1 mints LIVE: Locksmith · Fate · Echo · Rush · Shadow. Permanent utility.\n• Pack (Backpack) — activate temporary items; equip Elves from Pack → NFT. On-chain NFTs live in your game wallet.\n\nThe core game stays free-to-play. Purchases are optional."
+      content: "Gift Shop has four areas:\n\n• Free (Shards) — temporary boosts paid with G2Ushards (Frenzy, Battery, Refill, Heavy Hands). Frenzy = 2× shards per tap, normal energy cost.\n• Premium (Boosts) — temporary SOL boosts (bots, contracts, power multipliers). These are NOT NFTs.\n• NFTs — on-chain Wave 1 mints LIVE: Locksmith · Fate · Echo · Rush · Shadow. Permanent utility.\n• Pack (Backpack) — activate temporary items; Elves live in your game wallet.\n\nThe core game stays free-to-play. Purchases are optional."
     },
     {
       id: 6,
-      title: "6. Shard Swap (G2Ushards → G2U)",
-      content: "Open Wallet → Shard to convert G2Ushards into G2U credit on your account.\n\nHow conversion works:\n• All input shards convert at the current rate (provisional until official $G2U launch — rate may change).\n• Platform fee is taken in G2U (not by cutting shards first): free path 10%, GiftLocksmith 4%.\n• You receive net G2U credit. Fee G2U is retained by the platform.\n\nUnlock paths:\n• Free: Level 5+ AND Swap Badge / Swap Badge (both required — see in-app cost).\n• GiftLocksmith NFT: instant unlock + better fee + higher daily cap (skips Level 5 + badge).\n\nDaily caps and minimum swap sizes apply (see in-app swap screen). Caps reset at UTC midnight.\n\nG2U credit is account balance until an on-chain $G2U mint and withdrawal path are fully linked. Not an investment; no promise of market value."
+      title: "6. Wallet Swap ($G2U)",
+      content: "Open Wallet → Swap to trade SOL and other tokens for $G2U with Jupiter in your game wallet.\n\nYou sign every swap. Network fees apply. Rates move with the market.\n\nNot an investment; no promise of market value."
     },
     {
       id: 7,
-      title: "7. Wallet, $G2U & Disclaimers",
+      title: "7. Wallet & Disclaimers",
       content: "A Solana wallet is created for you in Gift Tap. You own the keys. Save your 12-word phrase in Menu — we cannot restore lost keys.\n\nPurchases (boosts, NFTs, ascension SOL) use your game wallet on mainnet. Network fees apply.\n\nIMPORTANT — NOT AN INVESTMENT:\n• G2Ushards and $G2U are not investment products. No promise of profit, yield, or price.\n• Crypto is volatile. Gift2u is not responsible for price changes of $G2U, SOL, NFTs, or any asset.\n• This is not financial advice. See Terms of Use in the Menu.\n\nComing from Telegram? Use Restore with your 12-word phrase."
     },
     {
@@ -112,8 +125,8 @@ const WhitepaperModal = ({ isWhitepaperOpen, setIsWhitepaperOpen, onClose }) => 
         "Open Ranks from the bottom nav (or Menu → Ranks). Three boards:\n\n" +
         "WEEKLY\n" +
         "• Ordered by your mining score this UTC week (resets every Monday 00:00 UTC).\n" +
-        "• Top 10 when the week freezes get one badge (claim in Shop → BackPack → Badges after the week ends):\n" +
-        "  #1 Diamond · #2 Gold · #3 Silver · #4–10 Bronze.\n" +
+        "• Eligible players (≥1,050 weekly score) each win a badge when the week freezes (claim in Shop → BackPack → Badges):\n" +
+        "  top 10% Diamond · next 15% Gold · next 25% Silver · rest Bronze.\n" +
         "• Winners freeze automatically at week end; the new week starts on its own.\n" +
         "• Burn badges in Pack for Mystery Gift (costs & full odds: § 9b Mystery Gift).\n\n" +
         "SEASON (monthly)\n" +
@@ -137,9 +150,9 @@ const WhitepaperModal = ({ isWhitepaperOpen, setIsWhitepaperOpen, onClose }) => 
         "Burn cost (single tier):\n" +
         "• 3 Diamond · 4 Gold · 5 Silver · 10 Bronze\n\n" +
         "Weekly badges (Ranks → Weekly, after week freezes):\n" +
-        "• Diamond = #1 · Gold = #2 · Silver = #3 · Bronze = #4–10\n\n" +
+        "• Diamond = top 10% · Gold = next 15% · Silver = next 25% · Bronze = rest eligible\n\n" +
         "DROP RATES by badge tier burned (each column = 100%):\n\n" +
-        "Prize                  Bronze #4–10   Silver #3   Gold #2   Diamond #1\n" +
+        "Prize                  Bronze (rest)  Silver 25%  Gold 15%  Diamond 10%\n" +
         "Exclusive NFT              1%            2%         5%         12%\n" +
         "Bonus G2U Tokens          10%           20%        35%         50%\n" +
         "Premium Boost             14%           23%        30%         28%\n" +
