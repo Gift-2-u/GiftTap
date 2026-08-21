@@ -13,6 +13,14 @@ import {
   publicKeyFromSecret,
 } from './mintLocksmith';
 import {
+  STAR_WAVE1,
+  mintStarWave1,
+  minSolForStarMint,
+  assertWalletCanMintStar,
+  isStarMintLive,
+  loadStarCmConfig,
+} from './mintStar';
+import {
   FATE_CM,
   mintFateWave1,
   minSolForFateMint,
@@ -193,10 +201,13 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
   const [walletSolLoading, setWalletSolLoading] = useState(false);
   const [fateCmReady, setFateCmReady] = useState(false);
   const [echoCmReady, setEchoCmReady] = useState(false);
+  const [starCmReady, setStarCmReady] = useState(false);
   const [rushCmReady, setRushCmReady] = useState(false);
   const [shadowCmReady, setShadowCmReady] = useState(false);
   const minMintSol = minSolForLocksmithMint();
   const walletUnlocked = Boolean(decryptedPhrase);
+  const canAffordStarMint =
+    Number.isFinite(walletSol) && walletSol >= minSolForStarMint();
   const canAffordLocksmithMint =
     walletUnlocked &&
     walletSol != null &&
@@ -227,6 +238,9 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
     });
     loadEchoCmConfig().then(() => {
       if (!cancelled) setEchoCmReady(true);
+    });
+    loadStarCmConfig().then(() => {
+      if (!cancelled) setStarCmReady(true);
     });
     loadRushCmConfig().then(() => {
       if (!cancelled) setRushCmReady(true);
@@ -518,7 +532,7 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
       perks: [
         '1 Fate per wallet (equip one)',
         'Chance of jackpot multi on tap G2Ushards',
-        'Rarity border + Star Badge socket (1)',
+        'Rarity border · Star socket in Backpack (outside art)',
         live
           ? `Wave 1 live · ${c.priceSol} SOL`
           : 'Wave 1 candy machine — mint opens when live',
@@ -568,7 +582,7 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
       perks: [
         '1 Echo per wallet (equip one)',
         `Always-on tap multiplier ${multiL1}×–${multiL5}×`,
-        'Rarity border + Star Badge socket (1)',
+        'Rarity border · Star socket in Backpack (outside art)',
         live
           ? `Wave 1 live · ${c.priceSol} SOL`
           : 'Wave 1 candy machine — mint opens when live',
@@ -618,7 +632,7 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
         '1 Rush per wallet (equip one)',
         `Max daily taps ${Number(limL1).toLocaleString()}–${Number(limL5).toLocaleString()}`,
         'Expanded Battery & task boosts add on top',
-        'Rarity border + Star Badge socket (1)',
+        'Rarity border · Star socket in Backpack (outside art)',
         live
           ? `Wave 1 live · ${c.priceSol} SOL`
           : 'Wave 1 candy machine — mint opens when live',
@@ -668,7 +682,7 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
         '1 Shadow per wallet (equip one)',
         `${h1}–${h5} hours of base daily cap (Rush or 1,000)`,
         'Claim once per UTC day · boosts not included',
-        'Rarity border + Star Badge socket (1)',
+        'Rarity border · Star socket in Backpack (outside art)',
         live
           ? `Wave 1 live · ${c.priceSol} SOL`
           : 'Wave 1 candy machine — mint opens when live',
@@ -702,7 +716,48 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
     };
   });
 
+  const starLive = starCmReady && isStarMintLive();
   const nftListings = [
+    ...(starLive
+      ? [
+          {
+            id: 'star_badge',
+            name: 'Star Badge',
+            type: 'NFT',
+            rarity: 'Special',
+            collection: 'Gift2u Elves',
+            boost: 'Socket outside Fate / Echo / Rush / Shadow art',
+            perks: [
+              '1 Star socket per elf (Backpack — outside the image)',
+              'Echo +taps · Fate Mystery odds · Rush energy 500 · Shadow claim',
+              'Level-up SOL: 0.10 / 0.15 / 0.25 / 0.40 (total 0.90)',
+              'Unequip before selling the elf',
+            ],
+            attributes: [
+              { trait_type: 'Collection', value: 'Gift2u Elves' },
+              { trait_type: 'Class', value: 'Star Badge' },
+              { trait_type: 'Generation', value: 'Gen 1' },
+              { trait_type: 'Utility', value: 'Elf socket (external)' },
+              { trait_type: 'Mint', value: `${STAR_WAVE1.priceSol} SOL` },
+              {
+                trait_type: 'Max / wallet',
+                value: String(STAR_WAVE1.maxPerWallet),
+              },
+            ],
+            duration: 'Permanent · open mint',
+            price: STAR_WAVE1.priceSol,
+            currency: 'SOL',
+            image: '⭐',
+            imageUrl: STAR_WAVE1.imageUri || STAR_WAVE1.imageUrl,
+            supply: STAR_WAVE1.itemsAvailable,
+            maxPerWallet: STAR_WAVE1.maxPerWallet,
+            feeBufferSol: STAR_WAVE1.feeBufferSol,
+            isNftMint: true,
+            isStarMint: true,
+            mintLive: true,
+          },
+        ]
+      : []),
     {
       id: 'locksmith',
       name: 'GiftLocksmith',
@@ -847,6 +902,105 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
   };
 
   /** Mint GiftLocksmith Wave 1 from Core Candy Machine (0.25 SOL). */
+  /** Mint Star Badge Wave 1 (0.10 SOL) — only when CM live. */
+  const handleStarMint = async () => {
+    if (!decryptedPhrase) {
+      setTxStatus({
+        show: true,
+        loading: false,
+        message: '❌ Unlock your game wallet first (Menu / wallet settings).',
+        success: false,
+      });
+      return;
+    }
+    if (!isStarMintLive()) {
+      setTxStatus({
+        show: true,
+        loading: false,
+        message: '❌ Star Badge mint is not live yet.',
+        success: false,
+      });
+      return;
+    }
+    if (!canAffordStarMint) {
+      const have =
+        walletSol != null && Number.isFinite(walletSol)
+          ? walletSol.toFixed(4)
+          : 'unknown';
+      setTxStatus({
+        show: true,
+        loading: false,
+        message: `Not enough SOL. Need ${minSolForStarMint().toFixed(2)} SOL (mint + fees). You have ${have} SOL.`,
+        success: false,
+      });
+      return;
+    }
+
+    setTxStatus({
+      show: true,
+      loading: true,
+      message: 'Checking game wallet SOL balance…',
+      success: false,
+    });
+
+    try {
+      let signerAddress;
+      try {
+        signerAddress = publicKeyFromSecret(decryptedPhrase);
+      } catch {
+        signerAddress = playerWallet ? String(playerWallet) : null;
+      }
+      if (!signerAddress) throw new Error('No game wallet found on this account.');
+
+      const { sol } = await assertWalletCanMintStar(signerAddress);
+      setWalletSol(sol);
+
+      setTxStatus({
+        show: true,
+        loading: true,
+        message: `Minting Star Badge for ${STAR_WAVE1.priceSol} SOL…`,
+        success: false,
+      });
+
+      const result = await mintStarWave1(decryptedPhrase);
+
+      try {
+        const after = await getWalletSolBalance(signerAddress);
+        setWalletSol(after);
+      } catch {
+        /* ignore */
+      }
+
+      setTxStatus({
+        show: true,
+        loading: false,
+        message: `✅ Star Badge minted!\nAsset: ${result.asset.slice(0, 8)}…\nOpen Backpack → NFT to socket it.`,
+        success: true,
+      });
+      setWalletNftRefresh((n) => n + 1);
+    } catch (err) {
+      console.error('Star mint error', err);
+      const msg = err?.message || String(err);
+      try {
+        const addr =
+          (decryptedPhrase && publicKeyFromSecret(decryptedPhrase)) ||
+          playerWallet;
+        if (addr) {
+          const sol = await getWalletSolBalance(String(addr));
+          setWalletSol(sol);
+        }
+      } catch {
+        /* ignore */
+      }
+      setTxStatus({
+        show: true,
+        loading: false,
+        message: `❌ Mint blocked: ${msg}`,
+        success: false,
+      });
+    }
+  };
+
   const handleLocksmithMint = async () => {
     // Block before any status that looks like a live mint — no SOL = no network call
     if (!decryptedPhrase) {
@@ -1345,6 +1499,9 @@ Daily claim active · Pack → NFT to see it.`,
     }
     if (item?.isShadowMint || String(item?.id || '').startsWith('shadow_')) {
       return handleShadowMint(item.shadowRarity || 'common');
+    }
+    if (item?.isStarMint || item?.id === 'star_badge') {
+      return handleStarMint();
     }
     if (item?.isNftMint || item?.id === 'locksmith') {
       return handleLocksmithMint();
@@ -3161,7 +3318,7 @@ Daily claim active · Pack → NFT to see it.`,
                 {nftDetail.isNftMint && (
                   <span style={{ color: '#555', fontSize: 9 }}>
                     +~{nftDetail.feeBufferSol ?? LOCKSMITH_WAVE1.feeBufferSol} fees
-                    {(nftDetail.isFateMint || nftDetail.isEchoMint || nftDetail.isRushMint || nftDetail.isShadowMint) && !nftDetail.mintLive
+                    {(nftDetail.isFateMint || nftDetail.isEchoMint || nftDetail.isRushMint || nftDetail.isShadowMint || nftDetail.isStarMint) && !nftDetail.mintLive
                       ? ' · CM soon'
                       : ''}
                   </span>
@@ -3199,7 +3356,7 @@ Daily claim active · Pack → NFT to see it.`,
                     if (walletSolLoading) return true;
                     if (!walletUnlocked) return false;
                     if (
-                      (nftDetail.isFateMint || nftDetail.isEchoMint || nftDetail.isRushMint || nftDetail.isShadowMint) &&
+                      (nftDetail.isFateMint || nftDetail.isEchoMint || nftDetail.isRushMint || nftDetail.isShadowMint || nftDetail.isStarMint) &&
                       !nftDetail.mintLive
                     )
                       return true;
@@ -3218,7 +3375,7 @@ Daily claim active · Pack → NFT to see it.`,
                         return;
                       }
                       if (
-                        (nftDetail.isFateMint || nftDetail.isEchoMint || nftDetail.isRushMint || nftDetail.isShadowMint) &&
+                        (nftDetail.isFateMint || nftDetail.isEchoMint || nftDetail.isRushMint || nftDetail.isShadowMint || nftDetail.isStarMint) &&
                         !nftDetail.mintLive
                       ) {
                         setTxStatus({
@@ -3237,7 +3394,9 @@ Daily claim active · Pack → NFT to see it.`,
                           ? canAffordEcho(nftDetail.echoRarity || 'common')
                           : nftDetail.isFateMint
                             ? canAffordFate(nftDetail.fateRarity || 'common')
-                            : canAffordLocksmithMint;
+                            : nftDetail.isStarMint
+                              ? canAffordStarMint
+                              : canAffordLocksmithMint;
                       if (!afford) {
                         const need = nftDetail.isShadowMint
                           ? minSolForShadowMint(nftDetail.shadowRarity || 'common')
@@ -3247,7 +3406,9 @@ Daily claim active · Pack → NFT to see it.`,
                             ? minSolForEchoMint(nftDetail.echoRarity || 'common')
                             : nftDetail.isFateMint
                               ? minSolForFateMint(nftDetail.fateRarity || 'common')
-                              : minMintSol;
+                              : nftDetail.isStarMint
+                                ? minSolForStarMint()
+                                : minMintSol;
                         const have =
                           walletSol != null && Number.isFinite(walletSol)
                             ? walletSol.toFixed(4)
@@ -3277,7 +3438,7 @@ Daily claim active · Pack → NFT to see it.`,
                       if (!nftDetail.isNftMint)
                         return 'linear-gradient(90deg, #9945FF, #14F195)';
                       if (
-                        (nftDetail.isFateMint || nftDetail.isEchoMint || nftDetail.isRushMint || nftDetail.isShadowMint) &&
+                        (nftDetail.isFateMint || nftDetail.isEchoMint || nftDetail.isRushMint || nftDetail.isShadowMint || nftDetail.isStarMint) &&
                         !nftDetail.mintLive
                       )
                         return '#444';
@@ -3286,7 +3447,7 @@ Daily claim active · Pack → NFT to see it.`,
                     color: (() => {
                       if (!nftDetail.isNftMint) return '#000';
                       if (
-                        (nftDetail.isFateMint || nftDetail.isEchoMint || nftDetail.isRushMint || nftDetail.isShadowMint) &&
+                        (nftDetail.isFateMint || nftDetail.isEchoMint || nftDetail.isRushMint || nftDetail.isShadowMint || nftDetail.isStarMint) &&
                         !nftDetail.mintLive
                       )
                         return '#888';
@@ -3305,7 +3466,7 @@ Daily claim active · Pack → NFT to see it.`,
                       ? '…'
                       : !walletUnlocked
                         ? 'Unlock wallet'
-                        : (nftDetail.isFateMint || nftDetail.isEchoMint || nftDetail.isRushMint || nftDetail.isShadowMint) &&
+                        : (nftDetail.isFateMint || nftDetail.isEchoMint || nftDetail.isRushMint || nftDetail.isShadowMint || nftDetail.isStarMint) &&
                             !nftDetail.mintLive
                           ? 'Soon'
                           : 'Mint'
@@ -3384,17 +3545,29 @@ Daily claim active · Pack → NFT to see it.`,
                     {!itemToBuy.mintLive ? ' · candy machine not live yet' : ''}
                   </span>
                 </>
+              ) : itemToBuy.isStarMint || itemToBuy.id === 'star_badge' ? (
+                <>
+                  Mint <strong>{itemToBuy.name}</strong> for{' '}
+                  <strong style={{ color: '#14F195' }}>{itemToBuy.price} SOL</strong>?
+                  <br />
+                  <span style={{ fontSize: 12, color: '#ffd700', fontWeight: 'bold', display: 'block', marginTop: 10 }}>
+                    Socket outside Fate / Echo / Rush / Shadow
+                  </span>
+                  <span style={{ fontSize: 11, color: '#888', display: 'block', marginTop: 6, lineHeight: 1.4 }}>
+                    Equip in Backpack → NFT · level-up 0.10–0.40 SOL · max{' '}
+                    {STAR_WAVE1.maxPerWallet}/wallet
+                  </span>
+                </>
               ) : itemToBuy.isNftMint || itemToBuy.id === 'locksmith' ? (
                 <>
                   Mint <strong>{itemToBuy.name}</strong> for{' '}
                   <strong style={{ color: '#14F195' }}>{itemToBuy.price} SOL</strong>?
                   <br />
                   <span style={{ fontSize: 12, color: '#14F195', fontWeight: 'bold', display: 'block', marginTop: 10 }}>
-                    Unlocks Shard Swap (G2Ushards → G2U)
+                    Free wall climbs + Walk2u shoes
                   </span>
                   <span style={{ fontSize: 11, color: '#888', display: 'block', marginTop: 6, lineHeight: 1.4 }}>
-                    Instant access (skip Level 5 + Swap Badge) · 4% fee vs 10% free · higher daily cap · Wave 1 · max{' '}
-                    {LOCKSMITH_WAVE1.maxPerWallet}/wallet
+                    Wave 1 · Gift2u Elves · max {LOCKSMITH_WAVE1.maxPerWallet}/wallet
                   </span>
                 </>
               ) : (

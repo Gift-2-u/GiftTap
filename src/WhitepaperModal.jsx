@@ -107,6 +107,8 @@ const WhitepaperModal = ({ isWhitepaperOpen, setIsWhitepaperOpen, onClose }) => 
         "• Legendary   0.50 / 0.80 / 1.20 / 2.00  · total 4.50\n\n" +
         "GiftLocksmith (mint 0.10 = L1; separate ladder):\n" +
         "• L1→2 0.20 · L2→3 0.35 · L3→4 0.60 · L4→5 1.50  · total 2.65\n\n" +
+        "Star Badge (one Star · all rarities; mint 0.10):\n" +
+        "• L1→2 0.10 · L2→3 0.15 · L3→4 0.25 · L4→5 0.40  · total 0.90\n\n" +
         "Airdrop tip: Locksmith +25% weight; each other elf adds by rarity (Common +5% · Rare +10% · Epic +20% · Legendary +30%). Clear Level 5 to appear on Ranks → Airdrop.\n\n" +
         "NFTs are optional gameplay items. No return is promised.",
     },

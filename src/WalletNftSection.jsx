@@ -12,7 +12,11 @@ import {
 import bs58 from 'bs58';
 import { listGiftNfts } from './locksmith';
 import { transferCoreNft } from './nftTransfer';
-import { secureShadowClaim, secureElfLevelUp } from './secureApi';
+import { secureShadowClaim, secureElfLevelUp, secureFateEquip } from './secureApi';
+import {
+  getEquippedShardBadgeOnFate,
+  getFreeShardBadgeCount,
+} from './shardBadge';
 import { keypairFromMnemonic } from './solanaWallet';
 import { RPC_URL } from './rpc';
 import {
@@ -75,6 +79,40 @@ export default function WalletNftSection({
     if (!selected) return null;
     return elfLevelUpCostSol(selected.rarity, selectedLevel, selected.kind);
   }, [selected, selectedLevel]);
+
+  const starEquipped = useMemo(() => {
+    if (!selected?.id) return null;
+    return getEquippedShardBadgeOnFate(localInv, selected.id);
+  }, [selected, localInv]);
+
+  const freeStars = useMemo(() => getFreeShardBadgeCount(localInv), [localInv]);
+
+  const socketableKind = useMemo(() => {
+    const k = String(selected?.kind || '').toLowerCase();
+    return ['fate', 'echo', 'rush', 'shadow'].includes(k) ? k : null;
+  }, [selected]);
+
+  const handleStarEquip = useCallback(
+    async (wantEquip) => {
+      if (!selected?.id || !socketableKind || equipBusy) return;
+      setEquipBusy(true);
+      try {
+        const data = await secureFateEquip({
+          assetId: selected.id,
+          equip: !!wantEquip,
+        });
+        const nextInv = data.inventory || localInv;
+        setLocalInv(nextInv);
+        if (typeof onInventoryChange === 'function') onInventoryChange(nextInv);
+        toast(wantEquip ? 'Star equipped' : 'Star unequipped', true);
+      } catch (e) {
+        toast(e?.message || 'Star equip failed', false);
+      } finally {
+        setEquipBusy(false);
+      }
+    },
+    [selected, socketableKind, equipBusy, localInv, onInventoryChange],
+  );
 
   const handleLevelUp = useCallback(async () => {
     if (!selected || !gameplayMode || levelBusy) return;
@@ -509,8 +547,24 @@ export default function WalletNftSection({
                   {selected.name}
                 </h3>
                 <p style={{ margin: '4px 0 0', color: '#a78bfa', fontSize: '12px' }}>
-                  {selected.collection}
-                  {selected.symbol ? ` · ${selected.symbol}` : ''}
+                  {gameplayMode
+                    ? [
+                        selected.kind === 'fate'
+                          ? 'Fate'
+                          : selected.kind === 'echo'
+                            ? 'Echo'
+                            : selected.kind === 'rush'
+                              ? 'Rush'
+                              : selected.kind === 'shadow'
+                                ? 'Shadow'
+                                : selected.kind === 'locksmith'
+                                  ? 'Locksmith'
+                                  : selected.collection,
+                        selected.rarity,
+                      ]
+                        .filter(Boolean)
+                        .join(' · ')
+                    : `${selected.collection || ''}${selected.symbol ? ` · ${selected.symbol}` : ''}`}
                 </p>
               </div>
               <button
@@ -542,7 +596,7 @@ export default function WalletNftSection({
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                marginBottom: '14px',
+                marginBottom: gameplayMode && socketableKind ? 0 : '14px',
                 position: 'relative',
               }}
             >
@@ -560,13 +614,91 @@ export default function WalletNftSection({
               )}
             </div>
 
-            {detailLoading ? (
+            {/* Star socket outside art + Level (no duplicate pills) */}
+            {gameplayMode && (socketableKind || selected.kind === 'locksmith') ? (
+              <div
+                style={{
+                  marginTop: 12,
+                  marginBottom: 12,
+                  padding: 12,
+                  borderRadius: 12,
+                  border: '1px solid #333',
+                  background: '#0e0f14',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 12,
+                }}
+              >
+                {socketableKind ? (
+                  <>
+                    <button
+                      type="button"
+                      disabled={equipBusy || (!starEquipped && freeStars < 1)}
+                      onClick={() => handleStarEquip(!starEquipped)}
+                      title={starEquipped ? 'Unequip Star' : 'Equip Star'}
+                      style={{
+                        width: 56,
+                        height: 56,
+                        borderRadius: '50%',
+                        flexShrink: 0,
+                        display: 'grid',
+                        placeItems: 'center',
+                        border: starEquipped ? '2px solid #ffd700' : '2px solid #555',
+                        background: starEquipped
+                          ? 'radial-gradient(circle at 35% 30%, #fff6a8, #c9a227 45%, #5c4508)'
+                          : '#16161c',
+                        boxShadow: starEquipped
+                          ? '0 0 16px rgba(255,215,0,0.35)'
+                          : 'inset 0 0 0 6px #0a0a0e',
+                        fontSize: 22,
+                        cursor:
+                          equipBusy || (!starEquipped && freeStars < 1)
+                            ? 'not-allowed'
+                            : 'pointer',
+                        padding: 0,
+                        color: 'inherit',
+                      }}
+                      aria-label={starEquipped ? 'Unequip Star' : 'Equip Star'}
+                    >
+                      {equipBusy ? '…' : starEquipped ? '⭐' : ''}
+                    </button>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ color: '#ddd', fontSize: 12, fontWeight: 'bold' }}>
+                        Star socket
+                      </div>
+                      <div
+                        style={{
+                          color: starEquipped ? '#ffd700' : '#888',
+                          fontSize: 12,
+                          marginTop: 2,
+                          fontWeight: 'bold',
+                        }}
+                      >
+                        {starEquipped ? 'Equipped' : 'Empty'}
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <div style={{ flex: 1 }} />
+                )}
+                <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                  <div style={{ color: '#888', fontSize: 10, textTransform: 'uppercase' }}>
+                    Level
+                  </div>
+                  <div style={{ color: '#c084fc', fontWeight: 'bold', fontSize: 18 }}>
+                    L{selectedLevel}
+                  </div>
+                </div>
+              </div>
+            ) : null}
+
+            {!gameplayMode && detailLoading ? (
               <p style={{ color: '#888', fontSize: '11px', margin: '0 0 10px' }}>
                 Loading details…
               </p>
             ) : null}
 
-            {selected.description ? (
+            {!gameplayMode && selected.description ? (
               <p
                 style={{
                   color: '#ccc',
@@ -577,7 +709,9 @@ export default function WalletNftSection({
               >
                 {selected.description}
               </p>
-            ) : (
+            ) : null}
+
+            {!gameplayMode && !selected.description ? (
               <p
                 style={{
                   color: '#888',
@@ -586,11 +720,11 @@ export default function WalletNftSection({
                   margin: '0 0 14px',
                 }}
               >
-                GiftLocksmith utility NFT — better G2Ushard → $G2U swap terms and vault access.
+                Gift2u Elves utility NFT — see Shop → NFTs for perks.
               </p>
-            )}
+            ) : null}
 
-            {selected.attributes && selected.attributes.length > 0 ? (
+            {!gameplayMode && selected.attributes && selected.attributes.length > 0 ? (
               <div style={{ marginBottom: '14px' }}>
                 <div
                   style={{
@@ -700,64 +834,33 @@ export default function WalletNftSection({
             ['fate', 'echo', 'rush', 'shadow', 'locksmith'].includes(
               String(selected.kind || '').toLowerCase(),
             ) ? (
-              <div
+              <button
+                type="button"
+                disabled={levelBusy || selectedLevelCost == null}
+                onClick={handleLevelUp}
                 style={{
-                  background: '#121018',
-                  border: '1px solid #a855f7',
-                  borderRadius: 12,
-                  padding: 12,
+                  width: '100%',
                   marginBottom: 12,
+                  background:
+                    selectedLevelCost != null
+                      ? 'linear-gradient(90deg, #9945FF, #14F195)'
+                      : '#222',
+                  border: 'none',
+                  color: selectedLevelCost != null ? '#000' : '#666',
+                  borderRadius: 8,
+                  padding: 12,
+                  fontSize: 13,
+                  fontWeight: 'bold',
+                  cursor:
+                    levelBusy || selectedLevelCost == null ? 'not-allowed' : 'pointer',
                 }}
               >
-                <div
-                  style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    marginBottom: 8,
-                  }}
-                >
-                  <span style={{ color: '#c084fc', fontWeight: 'bold', fontSize: 13 }}>
-                    Level {selectedLevel}
-                    {selectedLevel >= ELF_MAX_LEVEL ? ' (max)' : ''}
-                  </span>
-                  {selectedLevelCost != null ? (
-                    <span style={{ color: '#ffd700', fontSize: 12, fontWeight: 'bold' }}>
-                      Next {selectedLevelCost} SOL
-                    </span>
-                  ) : (
-                    <span style={{ color: '#666', fontSize: 11 }}>Max L{ELF_MAX_LEVEL}</span>
-                  )}
-                </div>
-                <button
-                  type="button"
-                  disabled={levelBusy || selectedLevelCost == null}
-                  onClick={handleLevelUp}
-                  style={{
-                    width: '100%',
-                    background:
-                      selectedLevelCost != null
-                        ? 'linear-gradient(90deg, #9945FF, #14F195)'
-                        : '#222',
-                    border: 'none',
-                    color: selectedLevelCost != null ? '#000' : '#666',
-                    borderRadius: 8,
-                    padding: 12,
-                    fontSize: 13,
-                    fontWeight: 'bold',
-                    cursor:
-                      levelBusy || selectedLevelCost == null
-                        ? 'not-allowed'
-                        : 'pointer',
-                  }}
-                >
-                  {levelBusy
-                    ? '…'
-                    : selectedLevelCost != null
-                      ? `Level up → L${selectedLevel + 1} (${selectedLevelCost} SOL)`
-                      : `Max level L${ELF_MAX_LEVEL}`}
-                </button>
-              </div>
+                {levelBusy
+                  ? '…'
+                  : selectedLevelCost != null
+                    ? `Level up L${selectedLevel + 1} · ${selectedLevelCost} SOL`
+                    : `Max L${ELF_MAX_LEVEL}`}
+              </button>
             ) : null}
 
             {!gameplayMode ? (

@@ -1,5 +1,5 @@
 /**
- * Square art + square rarity border + empty badge socket (bottom-right).
+ * Square art + square rarity border + optional on-art socket (off by default).
  * Design: thin ~12px border; socket same corner for every elf.
  * Socket geometry: ./socket-geometry.mjs (LOCKED — opaque well, tips clear rim).
  */
@@ -65,8 +65,11 @@ function drawEmptySocket(img, cx, cy, r, stroke) {
 
 for (const [name, { border: borderColor }] of Object.entries(colors)) {
   const art = square.clone();
-  // badge socket on art (before border) — bottom-right of art
-  drawEmptySocket(art, cx, cy, socketR, socketStroke);
+  // On-art socket OFF by default (STEPN-style: socket is UI outside image).
+  // Set DRAW_ON_ART_SOCKET=1 to burn empty ring into pixels again.
+  if (String(process.env.DRAW_ON_ART_SOCKET || '').trim() === '1') {
+    drawEmptySocket(art, cx, cy, socketR, socketStroke);
+  }
 
   const w = art.bitmap.width + border * 2;
   const h = art.bitmap.height + border * 2;

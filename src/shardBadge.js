@@ -22,11 +22,24 @@ export const SHARD_BADGE = {
   priceSol: 0.02,
   category: 'shard_badge',
   desc:
-    'Socket on NFT. Shows in the badge hole. Buy/sell on Badge market · equip from Pack → NFT.',
+    'Socket outside the NFT art (Backpack → NFT). Buy/sell on Badge market · equip from Backpack.',
 };
 
 /** Market tier used in badge_market_listings.tier */
 export const SHARD_BADGE_MARKET_TIER = 'shard';
+
+/** Star L1→2 … L4→5 — one Star for all rarities, priced above Common elf */
+export const STAR_LEVEL_UP_SOL = [0.1, 0.15, 0.25, 0.4];
+export const STAR_MAX_LEVEL = 5;
+export const STAR_MINT_SOL = 0.1;
+
+export function starLevelUpCostSol(currentLevel) {
+  const lvl = Math.floor(Number(currentLevel) || 1);
+  if (lvl < 1 || lvl >= STAR_MAX_LEVEL) return null;
+  const cost = STAR_LEVEL_UP_SOL[lvl - 1];
+  return Number.isFinite(cost) ? cost : null;
+}
+
 
 export function getShardBadgeCount(inv) {
   if (!inv || typeof inv !== 'object') return 0;

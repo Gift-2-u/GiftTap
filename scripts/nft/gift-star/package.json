@@ -1,0 +1,17 @@
+{
+  "name": "gift-locksmith-mint",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "mint": "node mint-core.mjs",
+    "mint:one": "node mint-core.mjs"
+  },
+  "dependencies": {
+    "@metaplex-foundation/mpl-core": "^1.7.0",
+    "@metaplex-foundation/mpl-core-candy-machine": "^0.3.0",
+    "@metaplex-foundation/umi": "^1.4.1",
+    "@metaplex-foundation/umi-bundle-defaults": "^1.4.1",
+    "@metaplex-foundation/umi-uploader-irys": "^1.5.0",
+    "bs58": "^6.0.0"
+  }
+}

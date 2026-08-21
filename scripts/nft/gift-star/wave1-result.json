@@ -1,0 +1,15 @@
+{
+  "candyMachine": "CRut6UNyve3JhZ86E6S4zx17sHQWj8XYk1wZc7YEnSjP",
+  "candyGuard": "DFrUCFbABmF3BNgwZVnEyyciNqq68ccXJ3SptgxuvkmS",
+  "wrapTx": "3EvSgHdzrRmB4sqqsWdZ81oKJMd42fJJRV7kKhCDRzpEg9x8TwnxuT93GC2B9wBdQPK5gV3YvBwjhZQu3EjejvU",
+  "priceSol": 0.1,
+  "collection": "FQPYWSohCPnS57W2AWAqwmQM21KRxGi4YXcCaiXUghPD",
+  "treasury": "AdvMvv6GzGvdLRtuxaso1Eubk7jmn6LCZEeEFHn22yeb",
+  "imageUri": "https://gateway.irys.xyz/DKxXzSn2aFMlNZpekhfpimLvL8EXfg3erDBYBSteY0g",
+  "itemsAvailable": 50000,
+  "maxPerWallet": 10,
+  "feeBufferSol": 0.02,
+  "wave": 1,
+  "name": "Star Badge",
+  "imageUrl": "/shop/socket-star2.jpg?v=1"
+}
