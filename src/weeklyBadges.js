@@ -108,18 +108,70 @@ export function isWeeklyFloorEligible(score, floor) {
 }
 
 /**
+ * First UTC ISO week that uses %-based badge cuts (this week W34 stays legacy).
+ * Legacy (before): #1 Diamond · #2 Gold · #3 Silver · #4–10 Bronze
+ * New: of eligible N — top 10% Diamond, next 15% Gold, next 25% Silver, rest Bronze
+ */
+export const WEEKLY_PERCENT_BADGES_FROM_WEEK = '2026-W35';
+
+export const WEEKLY_BADGE_CUTS = {
+  diamondPct: 0.1,
+  goldPct: 0.15,
+  silverPct: 0.25,
+};
+
+/** ISO week strings compare lexicographically for YYYY-Www */
+export function weekUsesPercentBadges(weekId) {
+  const w = String(weekId || '');
+  if (!/^\d{4}-W\d{2}$/.test(w)) return false;
+  return w >= WEEKLY_PERCENT_BADGES_FROM_WEEK;
+}
+
+/**
+ * How many of each tier for N eligible players (new %-based rules).
+ */
+export function weeklyBadgeTierCounts(totalEligible) {
+  const n = Math.max(0, Math.floor(Number(totalEligible) || 0));
+  if (n < 1) return { diamond: 0, gold: 0, silver: 0, bronze: 0, total: 0 };
+  const diamond = Math.floor(n * WEEKLY_BADGE_CUTS.diamondPct);
+  const gold = Math.floor(n * WEEKLY_BADGE_CUTS.goldPct);
+  const silver = Math.floor(n * WEEKLY_BADGE_CUTS.silverPct);
+  let bronze = n - diamond - gold - silver;
+  if (bronze < 0) bronze = 0;
+  return { diamond, gold, silver, bronze, total: n };
+}
+
+/**
  * Rank → badge tier for the Weekly leaderboard (resets every UTC week).
  * Rank is among floor-eligible players only.
- *  #1 Diamond · #2 Gold · #3 Silver · #4–10 Bronze · #11+ none
+ *
+ * @param {number} rank 1-based among eligible
+ * @param {number} [totalEligible] eligible count (required for %-based weeks)
+ * @param {string} [weekId] ISO week; default assumes current/%-era when total given
  */
-export function badgeTierForWeeklyRank(rank, _totalPlayers) {
+export function badgeTierForWeeklyRank(rank, totalEligible, weekId) {
   const r = Math.floor(Number(rank) || 0);
   if (r < 1) return null;
-  if (r === 1) return 'diamond';
-  if (r === 2) return 'gold';
-  if (r === 3) return 'silver';
-  if (r >= 4 && r <= 10) return 'bronze';
-  return null;
+
+  // Without weekId, stay legacy unless caller opts into % by passing weekId >= W35
+  const usePct = weekUsesPercentBadges(weekId);
+
+  // Legacy top-10 fixed (through 2026-W34)
+  if (!usePct) {
+    if (r === 1) return 'diamond';
+    if (r === 2) return 'gold';
+    if (r === 3) return 'silver';
+    if (r >= 4 && r <= 10) return 'bronze';
+    return null;
+  }
+
+  const n = Math.max(0, Math.floor(Number(totalEligible) || 0));
+  if (n < 1 || r > n) return null;
+  const { diamond, gold, silver } = weeklyBadgeTierCounts(n);
+  if (r <= diamond) return 'diamond';
+  if (r <= diamond + gold) return 'gold';
+  if (r <= diamond + gold + silver) return 'silver';
+  return 'bronze';
 }
 
 /**
@@ -210,6 +262,7 @@ export function rankOnWeeklyBoard(
   playerId,
   dbPlayerIdCol = 'telegram_id',
   floor = null,
+  weekId = null,
 ) {
   if (!playerId) return null;
   const pid = String(playerId);
@@ -228,7 +281,7 @@ export function rankOnWeeklyBoard(
       rank: inMain + 1,
       score: main[inMain].weekly_score ?? main[inMain].score ?? 0,
       total: main.length,
-      tier: badgeTierForWeeklyRank(inMain + 1, main.length),
+      tier: badgeTierForWeeklyRank(inMain + 1, main.length, weekId),
       onMain: true,
       floor: f,
       need: 0,
@@ -552,10 +605,10 @@ export function mysteryOddsTableForGuide() {
     shards_bulk: 'G2Ushards (Bulk)',
   };
   const cols = [
-    { tier: 'bronze', title: 'Bronze (#4–10)' },
-    { tier: 'silver', title: 'Silver (#3)' },
-    { tier: 'gold', title: 'Gold (#2)' },
-    { tier: 'diamond', title: 'Diamond (#1)' },
+    { tier: 'bronze', title: 'Bronze (rest eligible)' },
+    { tier: 'silver', title: 'Silver (next 25%)' },
+    { tier: 'gold', title: 'Gold (next 15%)' },
+    { tier: 'diamond', title: 'Diamond (top 10%)' },
   ];
   return {
     columns: cols,
@@ -580,7 +633,7 @@ export function badgeCatalogForBackpack() {
 }
 
 /**
- * @deprecated Fate socket uses Shard Badge only — see getEquippedShardBadgeOnFate in shardBadge.js
+ * @deprecated NFT sockets use Star Badge — see getEquippedShardBadgeOnFate in shardBadge.js
  * Kept for compatibility; returns null for weekly tiers.
  */
 export function getEquippedBadgeOnFate(inv, fateAssetId) {
@@ -595,8 +648,8 @@ export function getEquippedBadgeOnFate(inv, fateAssetId) {
     return {
       tier: 'shard',
       itemId: 'shard_badge',
-      image: '/shop/G2Ushard.png',
-      name: 'Shard Badge',
+      image: '/shop/socket-star2.jpg',
+      name: 'Star Badge',
     };
   }
   return null;

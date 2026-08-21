@@ -1,11 +1,11 @@
 /**
- * Shard Badge — equipable asset for the Fate NFT socket.
+ * Star Badge — equipable asset for NFT sockets (Fate · Echo · Rush · Shadow).
  *
- * Inventory key: shard_badge (count)
- * Equip map: inventory.fate_equip[fateAssetId] = { itemId: 'shard_badge', equipped_at }
+ * Inventory key: shard_badge (count) — kept for existing balances / market.
+ * Equip map: inventory.fate_equip[assetId] = { itemId: 'shard_badge', equipped_at }
  *
  * Tradeable on the in-game Badge market (tier: "shard").
- * Buy primary from Shop (SOL). Not a weekly season prize.
+ * Obtain via Mystery Gift / prize / Badge market. Not a Premium Boost.
  */
 
 export const SHARD_BADGE = {
@@ -13,15 +13,16 @@ export const SHARD_BADGE = {
   itemId: 'shard_badge',
   /** badge-market tier string */
   marketTier: 'shard',
-  name: 'Shard Badge',
-  emoji: '💠',
+  name: 'Star Badge',
+  emoji: '⭐',
   color: '#fbbf24',
-  image: '/shop/G2Ushard.png',
-  /** Primary shop price (SOL) via premium-grant */
+  /** Desktop Gift folder: socket star2.jpg */
+  image: '/shop/socket-star2.jpg',
+  /** Primary shop price kept for edge compat; not listed in Premium Boost */
   priceSol: 0.02,
   category: 'shard_badge',
   desc:
-    'Socket on Fate. Shows in the badge hole. Buy/sell on Badge market · equip from Pack → NFT.',
+    'Socket on NFT. Shows in the badge hole. Buy/sell on Badge market · equip from Pack → NFT.',
 };
 
 /** Market tier used in badge_market_listings.tier */
@@ -33,7 +34,7 @@ export function getShardBadgeCount(inv) {
 }
 
 /**
- * How many Fate sockets currently hold a Shard Badge.
+ * How many NFT sockets currently hold a Star Badge.
  */
 export function countEquippedShardBadges(inv) {
   const map = inv?.fate_equip;
@@ -56,7 +57,7 @@ export function getFreeShardBadgeCount(inv) {
 }
 
 /**
- * Equipped Shard Badge on a Fate asset (if any).
+ * Equipped Star Badge on an NFT asset (if any).
  * @returns {{ itemId: string, image: string, name: string, tier: string } | null}
  */
 export function getEquippedShardBadgeOnFate(inv, fateAssetId) {
@@ -67,9 +68,9 @@ export function getEquippedShardBadgeOnFate(inv, fateAssetId) {
   if (!row || typeof row !== 'object') return null;
   const itemId = String(row.itemId || row.item_id || '').toLowerCase();
   const tier = String(row.tier || '').toLowerCase().replace(/^badge_/, '');
-  const isShard =
+  const isStar =
     itemId === SHARD_BADGE.itemId || tier === 'shard' || tier === 'shard_badge';
-  if (!isShard) return null;
+  if (!isStar) return null;
   return {
     itemId: SHARD_BADGE.itemId,
     tier: SHARD_BADGE_MARKET_TIER,

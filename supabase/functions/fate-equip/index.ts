@@ -1,10 +1,10 @@
 /**
- * fate-equip — equip / unequip a Shard Badge onto a Fate NFT (inventory only).
- * Does not burn the badge. Free count = owned − already equipped on other Fates.
- * 1 Shard Badge per Fate asset.
+ * fate-equip — equip / unequip a Star Badge onto an NFT (inventory only).
+ * Inventory key remains shard_badge. Free count = owned − already equipped.
+ * 1 Star Badge per NFT asset.
  *
  * Body: { asset_id: string, equip?: boolean }
- *   equip true  = equip one free Shard Badge
+ *   equip true  = equip one free Star Badge
  *   equip false / null / omit with unequip=true = unequip
  * Legacy: { tier: null } still unequips; { tier: 'shard' } equips.
  */
@@ -46,7 +46,7 @@ serve(async (req) => {
     const body = await req.json().catch(() => ({}));
     const assetId = String(body.asset_id || body.assetId || "").trim();
     if (!assetId || assetId.length < 32) {
-      throw new Error("asset_id required (Fate mint address)");
+      throw new Error("asset_id required (NFT mint address)");
     }
 
     // Resolve equip vs unequip
@@ -62,16 +62,16 @@ serve(async (req) => {
       if (t === "shard" || t === "shard_badge") wantEquip = true;
       else if (["bronze", "silver", "gold", "diamond"].includes(t)) {
         throw new Error(
-          "Weekly badges do not go in the Fate socket. Equip a Shard Badge instead.",
+          "Weekly badges do not go in the NFT socket. Equip a Star Badge instead.",
         );
       } else {
-        throw new Error("Use equip:true for Shard Badge, or equip:false to unequip");
+        throw new Error("Use equip:true for Star Badge, or equip:false to unequip");
       }
     } else if (body.item_id != null || body.itemId != null) {
       const id = String(body.item_id || body.itemId || "").toLowerCase();
       if (id === SHARD_ITEM || id === "shard") wantEquip = true;
       else if (id === "" || id === "none") wantEquip = false;
-      else throw new Error("Only shard_badge can be equipped on Fate");
+      else throw new Error("Only Star Badge (shard_badge) can be equipped on NFT sockets");
     } else {
       // Default: equip
       wantEquip = true;
@@ -106,8 +106,8 @@ serve(async (req) => {
       if (free < 1) {
         throw new Error(
           owned < 1
-            ? "No Shard Badge in backpack — buy one in Shop or Badge market"
-            : "All Shard Badges are already equipped on other Fate NFTs",
+            ? "No Star Badge in backpack — buy on Badge market or win in Mystery Gift"
+            : "All Star Badges are already equipped on other NFTs",
         );
       }
       equip[assetId] = {

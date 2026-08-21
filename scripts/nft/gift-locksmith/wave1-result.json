@@ -2,7 +2,7 @@
   "standard": "metaplex-core",
   "wave": 1,
   "itemsAvailable": 500,
-  "priceSol": 0.25,
+  "priceSol": 0.1,
   "treasury": "AdvMvv6GzGvdLRtuxaso1Eubk7jmn6LCZEeEFHn22yeb",
   "collection": "FQPYWSohCPnS57W2AWAqwmQM21KRxGi4YXcCaiXUghPD",
   "collectionUri": "https://gateway.irys.xyz/5ZzpokyISH4bCL7_uLSoYGDpVVpYBtUR0bxAAIS87gQ",
@@ -13,7 +13,7 @@
   "testMint": "Fsx9L4oS9pG4P4t338DwUtQpLX7oQTsxgGvK1JmTe3Tt",
   "cluster": "mainnet",
   "guards": {
-    "solPayment": 0.25,
+    "solPayment": 0.1,
     "botTax": 0.001,
     "mintLimitPerWallet": 5
   },
@@ -28,5 +28,7 @@
     "solscanCandyMachine": "https://solscan.io/account/AQbpmorxtBaaipqm4WcmCyBzci8Qf8km9qF8kAidsMkC",
     "coreExplorerCollection": "https://core.metaplex.com/explorer/FQPYWSohCPnS57W2AWAqwmQM21KRxGi4YXcCaiXUghPD"
   },
-  "note": "Wave 1 live on-chain. Buyers mint via Core Candy Machine + Guard (0.25 SOL to treasury). Hidden settings: GiftLocksmith #1…#500 same art. Max 5 mints per wallet."
+  "note": "Wave 1 live. solPayment updated to 0.10 SOL. Max 5 mints/wallet. Hidden settings unchanged.",
+  "priceUpdateTx": "3yP8VHXgMUEKyK15Fu6rKSz9y2kygucLJ4FC43h1gqqei7D4wFFiJNgG7BnFkeRoqVoMv6dz8pBNBsCFjiTGm5U4",
+  "priceUpdatedAt": "2026-08-20T19:38:57.856Z"
 }

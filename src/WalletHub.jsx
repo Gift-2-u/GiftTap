@@ -921,13 +921,13 @@ export function GameWalletPanel({ onClose }) {
             }}
           />
 
-          {/* Same actions as in-game — all stay on the main site */}
+          {/* Same actions as in-game — all stay on the main site.
+              Shard→G2U button hidden (code/modal kept for later). Use Jupiter Swap for $G2U. */}
           <div style={{ display: 'flex', gap: '10px', marginTop: '20px' }}>
             {[
               { id: 'receive', label: 'Receive' },
               { id: 'send', label: 'Send' },
               { id: 'swap', label: 'Swap' },
-              { id: 'shard', label: 'Shard' },
             ].map((a) => (
               <button
                 key={a.id}

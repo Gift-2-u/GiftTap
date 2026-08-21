@@ -7,7 +7,7 @@ import {
   getFreeShardBadgeCount,
   getEquippedShardBadgeOnFate,
 } from './shardBadge';
-import { secureFateEquip, secureEchoActivate, secureFateActivate, secureRushActivate, secureShadowActivate, secureShadowClaim } from './secureApi';
+import { secureFateEquip, secureShadowClaim } from './secureApi';
 
 /**
  * In-game wallet NFTs. Detail: Send / Sell + Fate Shard Badge equip (instant socket overlay).
@@ -616,71 +616,6 @@ export default function WalletNftSection({
               </div>
             ) : null}
 
-            
-            
-            
-            {selected.kind === 'rush' ? (
-              <div
-                style={{
-                  background: '#0c1410',
-                  border: '1px solid #4ade80',
-                  borderRadius: 12,
-                  padding: 12,
-                  marginBottom: 12,
-                }}
-              >
-                <div style={{ color: '#4ade80', fontWeight: 'bold', fontSize: 12, marginBottom: 6 }}>
-                  Rush energy
-                </div>
-                <p style={{ color: '#888', fontSize: 11, margin: '0 0 10px', lineHeight: 1.4 }}>
-                  Equip this Rush to raise your max daily taps (1 Rush active). Expanded Battery &amp; task boosts still add on top.
-                </p>
-                <button
-                  type="button"
-                  disabled={equipBusy}
-                  onClick={async () => {
-                    const rarity =
-                      (selected.rarity || 'Common').toLowerCase().replace(/\s+/g, '');
-                    const rarityKey = ['common', 'rare', 'epic', 'legendary'].includes(rarity)
-                      ? rarity
-                      : 'common';
-                    setEquipBusy(true);
-                    try {
-                      const data = await secureRushActivate({
-                        rarity: rarityKey,
-                        level: 1,
-                        assetId: selected.id,
-                      });
-                      const nextInv = data.inventory || localInv;
-                      setLocalInv(nextInv);
-                      if (typeof onInventoryChange === 'function') onInventoryChange(nextInv);
-                      toast(
-                        `Rush ${rarityKey} equipped · daily cap ${data.daily_cap || ''}`,
-                        true,
-                      );
-                    } catch (e) {
-                      toast(e?.message || 'Equip failed', false);
-                    } finally {
-                      setEquipBusy(false);
-                    }
-                  }}
-                  style={{
-                    width: '100%',
-                    background: 'linear-gradient(90deg, #4ade80, #facc15)',
-                    border: 'none',
-                    color: '#000',
-                    borderRadius: 8,
-                    padding: 10,
-                    fontSize: 12,
-                    fontWeight: 'bold',
-                    cursor: equipBusy ? 'wait' : 'pointer',
-                  }}
-                >
-                  {equipBusy ? '…' : 'Equip Rush (daily cap)'}
-                </button>
-              </div>
-            ) : null}
-
             {selected.kind === 'shadow' ? (
               <div
                 style={{
@@ -691,56 +626,6 @@ export default function WalletNftSection({
                   marginBottom: 12,
                 }}
               >
-                <div style={{ color: '#c4b5fd', fontWeight: 'bold', fontSize: 12, marginBottom: 6 }}>
-                  Shadow night
-                </div>
-                <p style={{ color: '#888', fontSize: 11, margin: '0 0 10px', lineHeight: 1.4 }}>
-                  Equip this Shadow to claim shards once per UTC day without tapping (hours÷24 of base daily cap; Rush or 1,000 — boosts not included).
-                </p>
-                <button
-                  type="button"
-                  disabled={equipBusy}
-                  onClick={async () => {
-                    const rarity =
-                      (selected.rarity || 'Common').toLowerCase().replace(/\s+/g, '');
-                    const rarityKey = ['common', 'rare', 'epic', 'legendary'].includes(rarity)
-                      ? rarity
-                      : 'common';
-                    setEquipBusy(true);
-                    try {
-                      const data = await secureShadowActivate({
-                        rarity: rarityKey,
-                        level: 1,
-                        assetId: selected.id,
-                      });
-                      const nextInv = data.inventory || localInv;
-                      setLocalInv(nextInv);
-                      if (typeof onInventoryChange === 'function') onInventoryChange(nextInv);
-                      toast(
-                        `Shadow ${rarityKey} equipped · ${data.hours || ''}h daily claim`,
-                        true,
-                      );
-                    } catch (e) {
-                      toast(e?.message || 'Equip failed', false);
-                    } finally {
-                      setEquipBusy(false);
-                    }
-                  }}
-                  style={{
-                    width: '100%',
-                    background: 'linear-gradient(90deg, #7c3aed, #a78bfa)',
-                    border: 'none',
-                    color: '#000',
-                    borderRadius: 8,
-                    padding: 10,
-                    fontSize: 12,
-                    fontWeight: 'bold',
-                    cursor: equipBusy ? 'wait' : 'pointer',
-                    marginBottom: 8,
-                  }}
-                >
-                  {equipBusy ? '…' : 'Equip Shadow (daily claim)'}
-                </button>
                 <button
                   type="button"
                   disabled={equipBusy}
@@ -776,124 +661,6 @@ export default function WalletNftSection({
                   }}
                 >
                   {equipBusy ? '…' : 'Claim Shadow daily'}
-                </button>
-              </div>
-            ) : null}
-
-            {selected.kind === 'fate' ? (
-              <div
-                style={{
-                  background: '#120c18',
-                  border: '1px solid #a855f7',
-                  borderRadius: 12,
-                  padding: 12,
-                  marginBottom: 12,
-                }}
-              >
-                <div style={{ color: '#c4b5fd', fontWeight: 'bold', fontSize: 12, marginBottom: 6 }}>
-                  Fate luck
-                </div>
-                <p style={{ color: '#888', fontSize: 11, margin: '0 0 10px', lineHeight: 1.4 }}>
-                  Equip this Fate so tap jackpots can roll (1 Fate active per wallet).
-                </p>
-                <button
-                  type="button"
-                  disabled={equipBusy}
-                  onClick={async () => {
-                    const rarity =
-                      (selected.rarity || 'Common').toLowerCase().replace(/\s+/g, '');
-                    const rarityKey = ['common', 'rare', 'epic', 'legendary'].includes(rarity)
-                      ? rarity
-                      : 'common';
-                    setEquipBusy(true);
-                    try {
-                      const data = await secureFateActivate({
-                        rarity: rarityKey,
-                        level: 1,
-                        assetId: selected.id,
-                      });
-                      const nextInv = data.inventory || localInv;
-                      setLocalInv(nextInv);
-                      if (typeof onInventoryChange === 'function') onInventoryChange(nextInv);
-                      toast(`Fate ${rarityKey} equipped · jackpots on`, true);
-                    } catch (e) {
-                      toast(e?.message || 'Equip failed', false);
-                    } finally {
-                      setEquipBusy(false);
-                    }
-                  }}
-                  style={{
-                    width: '100%',
-                    background: 'linear-gradient(90deg, #a855f7, #f472b6)',
-                    border: 'none',
-                    color: '#000',
-                    borderRadius: 8,
-                    padding: 10,
-                    fontSize: 12,
-                    fontWeight: 'bold',
-                    cursor: equipBusy ? 'wait' : 'pointer',
-                  }}
-                >
-                  {equipBusy ? '…' : 'Equip Fate (luck jackpot)'}
-                </button>
-              </div>
-            ) : null}
-
-            {selected.kind === 'echo' ? (
-              <div
-                style={{
-                  background: '#0c1218',
-                  border: '1px solid #38bdf8',
-                  borderRadius: 12,
-                  padding: 12,
-                  marginBottom: 12,
-                }}
-              >
-                <div style={{ color: '#67e8f9', fontWeight: 'bold', fontSize: 12, marginBottom: 6 }}>
-                  Echo power
-                </div>
-                <p style={{ color: '#888', fontSize: 11, margin: '0 0 10px', lineHeight: 1.4 }}>
-                  Equip this Echo to multiply every tap&apos;s G2Ushards (1 Echo active per wallet).
-                </p>
-                <button
-                  type="button"
-                  disabled={equipBusy}
-                  onClick={async () => {
-                    const rarity =
-                      (selected.rarity || 'Common').toLowerCase().replace(/\s+/g, '');
-                    const rarityKey = ['common', 'rare', 'epic', 'legendary'].includes(rarity)
-                      ? rarity
-                      : 'common';
-                    setEquipBusy(true);
-                    try {
-                      const data = await secureEchoActivate({
-                        rarity: rarityKey,
-                        level: 1,
-                        assetId: selected.id,
-                      });
-                      const nextInv = data.inventory || localInv;
-                      setLocalInv(nextInv);
-                      if (typeof onInventoryChange === 'function') onInventoryChange(nextInv);
-                      toast(`Echo ${rarityKey} equipped · ${data.multi || ''}× taps`, true);
-                    } catch (e) {
-                      toast(e?.message || 'Equip failed', false);
-                    } finally {
-                      setEquipBusy(false);
-                    }
-                  }}
-                  style={{
-                    width: '100%',
-                    background: 'linear-gradient(90deg, #38bdf8, #818cf8)',
-                    border: 'none',
-                    color: '#000',
-                    borderRadius: 8,
-                    padding: 10,
-                    fontSize: 12,
-                    fontWeight: 'bold',
-                    cursor: equipBusy ? 'wait' : 'pointer',
-                  }}
-                >
-                  {equipBusy ? '…' : 'Equip Echo (tap multi)'}
                 </button>
               </div>
             ) : null}

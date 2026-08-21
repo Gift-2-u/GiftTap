@@ -20,8 +20,8 @@ const PREMIUM: Record<string, { name: string; priceSol: number }> = {
   crate: { name: "The Vault Drop", priceSol: 0.05 },
   x2_boost: { name: "Double Power", priceSol: 0.02 },
   x3_boost: { name: "Triple Power", priceSol: 0.035 },
-  /** Fate socket — equipable tradeable badge (inventory) */
-  shard_badge: { name: "Shard Badge", priceSol: 0.02 },
+  /** Star Badge — equipable on NFT sockets (inventory). Prefer gift/prize/Badge market. */
+  shard_badge: { name: "Star Badge", priceSol: 0.02 },
 };
 
 const MASTER = "D4GufPTvp6tnzkaYGfombFLs48UjDANsxjMFJnSYz4Gh";

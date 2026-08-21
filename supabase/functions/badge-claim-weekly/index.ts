@@ -86,11 +86,16 @@ serve(async (req) => {
 
     if (snapErr) throw snapErr;
     if (!snap) {
-      throw new Error("No prize for that week (not top 10, or week not finalized).");
+      throw new Error(
+        "No prize for that week (not eligible / not finalized).",
+      );
     }
 
     const rank = Number(snap.rank) || 0;
-    const tier = String(snap.badge_tier || tierFromRank(rank) || "");
+    // Prefer snapshotted tier (already computed with that week's rules)
+    const tier = String(
+      snap.badge_tier || tierFromRank(rank, 0, weekId) || "",
+    );
     if (!tier || !BADGE_ITEM[tier]) {
       throw new Error("No badge tier for your rank.");
     }

@@ -200,6 +200,12 @@ import {
   fetchWeeklyBoard,
   fetchAirdropBoard,
 } from './secureApi';
+import {
+  locksmithCoversWall,
+  locksmithLevelFromInv,
+  getCommonShoeCount,
+  LOCKSMITH_LEVEL_FOR_WALL,
+} from './locksmithWalls';
 import WalletNftSection from './WalletNftSection';
 import SwapBadgeCard, { NftDetailModal, LOCKSMITH_PERKS } from './SwapBadgeCard';
 import {
@@ -2949,7 +2955,13 @@ const GiftTapGame = () => {
     const persistEnergyCatchUp = (force = false) => {
       const live = applyEnergyCatchUp();
       const now = Date.now();
-      // Persist every 60s, or when full, or on force (wake)
+      // Under secure economy, only commit-taps may write last_energy / last_updated.
+      // Client persists were resetting the regen clock or writing a stale full bar.
+      if (secureEconomyRef.current) {
+        lastEnergyPersistRef.current = now;
+        return live;
+      }
+      // Persist every 60s, or when full, or on force (wake) — legacy only
       if (
         !force &&
         live < ENERGY_CAP &&
@@ -3161,8 +3173,12 @@ const GiftTapGame = () => {
           const p = data?.player;
           const credited = Math.max(0, Number(data?.taps) || 0);
           const rejectReason = data?.reason || '';
-          // no_energy: keep optimistic mining + re-queue. daily_limit: snap to server.
-          const applyMining = credited > 0 || rejectReason === 'daily_limit';
+          // Always snap mining to server on credit OR reject — stops phantom daily
+          // while battery shows 0 (Frenzy / refill desync).
+          const applyMining =
+            credited > 0 ||
+            rejectReason === 'daily_limit' ||
+            rejectReason === 'no_energy';
           if (p) {
             const b = Number(p.shard_balance);
             const ltt = Number(p.lifetime_taps);
@@ -3304,15 +3320,19 @@ const GiftTapGame = () => {
           }
           flushErrorNotifiedRef.current = false;
           lastLocalSaveAtRef.current = Date.now();
-          // Stop if server rejected further taps (daily limit / no energy)
+          // Partial credit: server ran out of energy mid-batch — keep remainder
+          if (credited > 0 && credited < taps) {
+            pendingTapsRef.current = {
+              count: (pendingTapsRef.current.count || 0) + (taps - credited),
+              batchId: null,
+            };
+            break;
+          }
+          // Full reject: do NOT re-queue no_energy (that kept daily climbing at 0 battery).
+          // Drop any remaining queue too — battery empty until regen.
           if (credited === 0) {
-            // Chunk was reserved (dequeued) before the await. On no_energy, put it
-            // back so regen'd taps are not lost and UI numbers do not snap back.
             if (rejectReason === 'no_energy') {
-              pendingTapsRef.current = {
-                count: (pendingTapsRef.current.count || 0) + taps,
-                batchId: batchId,
-              };
+              pendingTapsRef.current = { count: 0, batchId: null };
             }
             break;
           }
@@ -3891,8 +3911,10 @@ const GiftTapGame = () => {
         }
       }
 
-      // 3. CALCULATE VALID FINGERS
-      const availableByEnergy = Math.floor(Number(optimisticEnergy.current) / costMultiplier);
+      // 3. CALCULATE VALID FINGERS — catch up regen first so UI and spend agree
+      applyEnergyCatchUp();
+      const liveEnergy = Math.max(0, Number(optimisticEnergy.current) || 0);
+      const availableByEnergy = Math.floor(liveEnergy / costMultiplier);
       const dailyUsed = Math.max(Number(currentDailyTaps) || 0, Number(optimisticDaily.current) || 0);
       // Daily limit = raw taps. Frenzy gives 2x shards/boards without burning the bar 2x.
       const availableByDailyLimit = Math.max(
@@ -3902,6 +3924,11 @@ const GiftTapGame = () => {
       const validTaps = Math.min(tapPoints.length, availableByEnergy, availableByDailyLimit);
 
       if (validTaps <= 0) {
+        // Hard stop at empty battery — do not animate progress
+        if (liveEnergy < costMultiplier) {
+          setEnergy(liveEnergy);
+          return;
+        }
         // Still credit weekly quests (500/day + full drain) when blocked by energy/limit
         if (dailyUsed > 0) {
           recordWeeklyDailyProgress(dailyUsed, currentMaxLimit, now);
@@ -4092,7 +4119,14 @@ const GiftTapGame = () => {
               ? crypto.randomUUID()
               : `b_${Date.now()}_${Math.random().toString(36).slice(2)}`),
         };
-        scheduleTapFlush();
+        // Empty battery → flush now so server catches up before more optimistic taps
+        if (nextEnergy < costMultiplier) {
+          if (tapFlushTimerRef.current) clearTimeout(tapFlushTimerRef.current);
+          tapFlushTimerRef.current = null;
+          flushPendingTaps();
+        } else {
+          scheduleTapFlush();
+        }
       }
       // Local UI sync only under secureLock (no last_updated heartbeat — that
       // field is the energy regen clock owned by commit-taps).
@@ -4193,7 +4227,13 @@ const GiftTapGame = () => {
             console.warn('referral wall5', e?.message || e),
           );
         }
-        notify(`Ascended to Level ${lvl || newLevel}! Tap Power Increased.`);
+        const shoeGranted = !!data.shoe_granted;
+        const shoes = Number(data.walk2u_shoe_common) || getCommonShoeCount(data.inventory);
+        notify(
+          shoeGranted
+            ? `Ascended to Level ${lvl || newLevel}! +1 Common Walk2u Shoe L1 (×${shoes}).`
+            : `Ascended to Level ${lvl || newLevel}! Tap power increased.`,
+        );
         return;
       } catch (e) {
         console.error('secure wall-climb', e);
@@ -4232,12 +4272,30 @@ const GiftTapGame = () => {
     notify(`Ascended to Level ${newLevel}! Tap Power Increased.`);
   };
 
-  /** Pay wall climb. method: 'shards' | 'sol' | 'both' (both required on mid/late walls). */
+  /** Pay wall climb. method: 'shards' | 'sol' | 'both' | 'locksmith'. */
   const handleAscensionPayment = async (method) => {
     const wallKey = maxUnlockedLevel; // e.g. 4 for wall 4→5
     const wallData = ASCENSION_WALLS[wallKey];
     if (!wallData) return;
     const needsBoth = !!wallData.requiresBoth;
+
+    if (method === 'locksmith') {
+      const inv = inventoryRef.current || stats.inventory || {};
+      if (!locksmithCoversWall(inv, wallKey)) {
+        const need = LOCKSMITH_LEVEL_FOR_WALL[wallKey] || 1;
+        const have = locksmithLevelFromInv(inv);
+        notify(
+          have < 1
+            ? 'Equip GiftLocksmith in Pack → NFT, then climb free.'
+            : `Need GiftLocksmith L${need}+ for this wall (you have L${have}).`,
+        );
+        return;
+      }
+      await finishAscensionUnlock(balance, wallData, wallKey, {
+        method: 'locksmith',
+      });
+      return;
+    }
 
     // Mid/late walls: only the combined path unlocks
     if (needsBoth && method !== 'both') {
@@ -4468,16 +4526,17 @@ const GiftTapGame = () => {
               }
               if (payload.new.last_energy != null) {
                 const raw = Number(payload.new.last_energy);
-                const base = Number.isFinite(raw)
-                  ? Math.max(0, Math.min(ENERGY_CAP, raw))
-                  : ENERGY_CAP;
-                const atMs = payload.new.last_updated
-                  ? new Date(payload.new.last_updated).getTime()
-                  : Date.now();
-                const en = energyFromAnchor(base, atMs);
-                energyAnchorRef.current = { value: base, at: atMs };
-                setEnergy(en);
-                optimisticEnergy.current = en;
+                // 0 is valid (empty battery). Do not treat nullish as full 500.
+                if (Number.isFinite(raw)) {
+                  const base = Math.max(0, Math.min(ENERGY_CAP, raw));
+                  const atMs = payload.new.last_updated
+                    ? new Date(payload.new.last_updated).getTime()
+                    : Date.now();
+                  const en = energyFromAnchor(base, atMs);
+                  energyAnchorRef.current = { value: base, at: atMs };
+                  setEnergy(en);
+                  optimisticEnergy.current = en;
+                }
               }
               if (payload.new.tap_power != null) setTapPower(payload.new.tap_power);
               if (payload.new.max_daily_limit != null) {
@@ -4619,22 +4678,26 @@ const GiftTapGame = () => {
           nextDaily = Math.max(dbDaily, localDaily);
         }
 
-        // Energy: recover from last_energy + last_updated (0 is valid).
-        // Also keep local wall-clock catch-up (tab left open overnight never reloads).
-        const lastMs = row.last_updated ? new Date(row.last_updated).getTime() : Date.now();
+        // Energy: server last_energy + last_updated is authority (0 is valid).
+        // NEVER Math.max(local, server) — a stale local 500 (or unflushed drain)
+        // was filling the bar after ~2 min away (should be ~80 from 0, not 500).
+        const lastMs = row.last_updated
+          ? new Date(row.last_updated).getTime()
+          : Date.now();
         const rawEn = Number(row.last_energy);
-        const dbEnergy = Number.isFinite(rawEn)
-          ? Math.max(0, Math.min(ENERGY_CAP, rawEn))
-          : ENERGY_CAP;
-        const fromServer = energyFromAnchor(dbEnergy, lastMs);
-        const fromLocal = energyFromAnchor(
-          energyAnchorRef.current.value,
-          energyAnchorRef.current.at,
-        );
-        // Prefer higher: server offline math vs local sleep catch-up (never drop energy on wake)
-        const nextEnergy = Math.max(fromServer, fromLocal);
-        // Re-anchor at "full value now" so future ticks don't double-count
-        energyAnchorRef.current = { value: nextEnergy, at: Date.now() };
+        let nextEnergy;
+        if (Number.isFinite(rawEn)) {
+          const dbEnergy = Math.max(0, Math.min(ENERGY_CAP, rawEn));
+          const fromServer = energyFromAnchor(dbEnergy, lastMs);
+          nextEnergy = fromServer;
+          // Anchor at caught-up value "now" so the 1.5s clock continues cleanly
+          energyAnchorRef.current = { value: nextEnergy, at: Date.now() };
+        } else {
+          // Missing DB energy: keep local catch-up only (do not invent 500)
+          const fromLocal = catchUpEnergyAnchor(energyAnchorRef.current);
+          energyAnchorRef.current = fromLocal;
+          nextEnergy = fromLocal.value;
+        }
 
         const dbShards = Number(row.shard_balance) || 0;
         const dbLife = Number(row.lifetime_taps) || 0;
@@ -5565,6 +5628,11 @@ const GiftTapGame = () => {
             const missing = Math.max(0, need - have);
             const ready = missing <= 0;
             const pct = Math.min(100, Math.round((toward / need) * 100));
+            const invNow = inventoryRef.current || stats.inventory || {};
+            const lsOk = locksmithCoversWall(invNow, maxUnlockedLevel);
+            const lsHave = locksmithLevelFromInv(invNow);
+            const lsNeed = LOCKSMITH_LEVEL_FOR_WALL[maxUnlockedLevel] || 1;
+            const shoeHave = getCommonShoeCount(invNow);
             return (
             <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', background: 'rgba(0,0,0,0.9)', zIndex: 1000, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
               <button 
@@ -5580,13 +5648,14 @@ const GiftTapGame = () => {
                 </h2>
                 <p style={{ color: '#ddd', fontSize: '13px', lineHeight: 1.45 }}>
                   You can <strong style={{ color: '#4ade80' }}>keep mining G2Ushards</strong> at Level{' '}
-                  {maxUnlockedLevel} forever. Climb only if you want higher power (
+                  {maxUnlockedLevel} forever. Pay to climb for higher power (
                   <strong>{getLevelMultiplier(wall.targetLevel)}x</strong> at L{wall.targetLevel}).
+                  GiftLocksmith climbs free and unlocks the Walk2u shoe on early walls.
                 </p>
 
                 <div style={{ background: '#111', borderRadius: 12, padding: 12, marginBottom: 12, textAlign: 'left', fontSize: 13, color: '#ccc' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span>Climb fee</span>
+                    <span>Climb fee (payers)</span>
                     <strong style={{ color: '#ffd700' }}>
                       {need.toLocaleString()} shards
                       {wall.requiresBoth ? ` + ${wall.solCost} SOL` : ''}
@@ -5595,20 +5664,50 @@ const GiftTapGame = () => {
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6 }}>
                     <span>Your shards</span><span>{have.toLocaleString()}</span>
                   </div>
-<div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6 }}>
                     <span>Still need</span>
                     <strong style={{ color: ready ? '#4ade80' : '#fbbf24' }}>
                       {ready ? 'Ready to climb!' : missing.toLocaleString()}
                     </strong>
                   </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6 }}>
+                    <span>Walk2u shoes</span>
+                    <span style={{ color: '#67e8f9' }}>Common L1 ×{shoeHave}</span>
+                  </div>
                   <div style={{ marginTop: 10, height: 8, background: '#333', borderRadius: 4, overflow: 'hidden' }}>
                     <div style={{ width: `${pct}%`, height: '100%', background: ready ? '#4ade80' : '#a855f7' }} />
                   </div>
                   <p style={{ margin: '10px 0 0', fontSize: 11, color: '#888', lineHeight: 1.4 }}>
-                    Every tap still earns <strong style={{ color: '#4ade80' }}>spendable G2Ushards</strong>.
-                    Wall = bonus multipliers & higher tiers — never a closed gate.
+                    <strong style={{ color: '#ffd700' }}>Pay</strong> = better taps only (no shoe).
+                    {' '}
+                    <strong style={{ color: '#c4b5fd' }}>GiftLocksmith L{lsNeed}+</strong> = free climb
+                    {lsHave > 0 ? ` (you: L${lsHave})` : ''}
+                    {' '}+ shoe on walls 5 / 10 / 20.
                   </p>
                 </div>
+
+                <button
+                  type="button"
+                  onClick={() => handleAscensionPayment('locksmith')}
+                  disabled={!lsOk}
+                  style={{
+                    width: '100%',
+                    background: lsOk
+                      ? 'linear-gradient(90deg, #9945FF, #14F195)'
+                      : '#1a1a1a',
+                    color: lsOk ? '#000' : '#666',
+                    border: 'none',
+                    padding: '15px',
+                    borderRadius: '12px',
+                    fontWeight: 'bold',
+                    cursor: lsOk ? 'pointer' : 'not-allowed',
+                    marginBottom: '10px',
+                  }}
+                >
+                  {lsOk
+                    ? `Locksmith free climb → L${wall.targetLevel}`
+                    : `GiftLocksmith L${lsNeed}+ for free climb + shoe`}
+                </button>
                 
                 {wall.requiresBoth ? (
                   <>
@@ -6551,7 +6650,11 @@ const GiftTapGame = () => {
                       const isYou = playerId && String(row[DB_PLAYER_ID] || row.telegram_id || row.id || '') === String(playerId);
                       const weeklyTier =
                         leaderboardType === 'Weekly'
-                          ? badgeTierForWeeklyRank(index + 1)
+                          ? badgeTierForWeeklyRank(
+                              index + 1,
+                              leaderboard.length,
+                              getUtcWeekId(),
+                            )
                           : null;
                       const weeklyBadge = weeklyTier ? BADGE_TIERS[weeklyTier] : null;
                       if (leaderboardType === 'Airdrop') {
@@ -6998,7 +7101,7 @@ const GiftTapGame = () => {
                         <button style={styles.actionBtn} onClick={() => setIsReceiveOpen(true)}>Receive</button>
                         <button style={styles.actionBtn} onClick={() => setIsWithdrawOpen(true)}>Send</button>
                         <button style={styles.actionBtn} onClick={() => setIsSwapOpen(true)}>Swap</button>
-                        <button style={styles.actionBtn} onClick={() => setIsShardSwapOpen(true)}>Shard</button>
+                        {/* Shard→G2U button hidden — modal/code kept. Use Jupiter Swap for $G2U. */}
                       </div>
                     </>
                   )}

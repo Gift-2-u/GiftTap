@@ -19,9 +19,9 @@ import { ensureWeeklySeasonRollover } from './weeklySeasonRollover';
 import { hasSecureSession, ensureSecureSession, secureBadgeClaim } from './secureApi';
 
 /**
- * Compact: claim last week's top-10 badge only (no essay UI).
+ * Compact: claim last week's weekly badge (no essay UI).
+ * From 2026-W35: %-based cuts among eligible. W34 and earlier: top-10 fixed.
  * Full rules: Menu → Game Guide → Leaderboards.
- * Used in Shop → Pack → Badges.
  */
 export default function WeeklyBadgePanel({
   playerId,
@@ -64,7 +64,9 @@ export default function WeeklyBadgePanel({
           setPrevSnap({
             rank: data.rank,
             score: data.score,
-            tier: data.badge_tier || badgeTierForWeeklyRank(data.rank),
+            tier:
+              data.badge_tier ||
+              badgeTierForWeeklyRank(data.rank, null, prevWeekId),
           });
         } else {
           setPrevSnap(null);

@@ -1,13 +1,13 @@
 /**
  * Mint GiftLocksmith Wave 1 from Core Candy Machine (mainnet).
- * Pays 0.25 SOL via solPayment guard to treasury.
+ * Pays 0.10 SOL via solPayment guard to treasury (must match on-chain CM).
  *
  * Royalties: collection FQPYWS… has 5% (500 bps) → AdvMvv6… (Metaplex: applies to
  * all assets in the collection). CM mint does not set per-asset plugins.
  * To pin 5% on each asset for explorers: scripts/nft/gift-locksmith/fix-royalties.mjs
  *
  * CRITICAL: Always pre-check SOL before sendAndConfirm so players
- * without 0.25+fees never pay rent/bot-tax/network fees for a failed mint.
+ * without 0.10+fees never pay rent/bot-tax/network fees for a failed mint.
  *
  * Candy Machine botTax is 0.001 SOL — if we send a mint with too little SOL,
  * solPayment fails but the tx can still "succeed" and charge bot tax.
@@ -41,7 +41,8 @@ export const LOCKSMITH_WAVE1 = {
   collection: LOCKSMITH_COLLECTION,
   treasury: 'AdvMvv6GzGvdLRtuxaso1Eubk7jmn6LCZEeEFHn22yeb',
   /** On-chain solPayment guard amount (must match candy guard) */
-  priceSol: 0.25,
+  /** Free wall→5 + Common Walk2u Shoe + Walk2u path (above single climb 0.025) */
+  priceSol: 0.10,
   /**
    * Rent for Core asset + CU priority + botTax(0.001) + slack.
    * Never allow a mint attempt without price + this buffer.

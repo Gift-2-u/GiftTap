@@ -501,37 +501,6 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
       iconRing: 'rgba(192,132,252,0.55)',
       iconGlow: 'rgba(168,85,247,0.35)',
     },
-    {
-      id: 'shard_badge',
-      name: 'Shard Badge',
-      type: 'Misc',
-      rarity: 'Rare',
-      boost: 'Equip on Fate NFT socket',
-      perks: [
-        'Sockets into Fate badge hole',
-        'Shows on Fate instantly (in-game)',
-        'Trade on Badge market (P2P SOL)',
-        '1 free badge per unequipped unit',
-      ],
-      attributes: [
-        { trait_type: 'Type', value: 'Shard Badge' },
-        { trait_type: 'Utility', value: 'Fate socket' },
-        { trait_type: 'Slot', value: '1 per Fate' },
-        { trait_type: 'Trade', value: 'Badge market' },
-      ],
-      description:
-        'Shard Badge fills the Fate socket. Not a weekly season prize — buy here or trade with players. Equip from Pack → NFT on a Fate you own.',
-      duration: 'Permanent · equip / unequip anytime',
-      price: 0.02,
-      currency: 'SOL',
-      iconUrl: '/shop/G2Ushard.png',
-      imageUrl: '/shop/G2Ushard.png',
-      iconFrom: '#422006',
-      iconTo: '#1c1917',
-      iconRing: 'rgba(251,191,36,0.55)',
-      iconGlow: 'rgba(251,191,36,0.3)',
-      isShardBadge: true,
-    },
 ];
 
   /** Separate NFT marketplace (on-chain mints) */
@@ -549,7 +518,7 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
       perks: [
         '1 Fate per wallet (equip one)',
         'Chance of jackpot multi on tap G2Ushards',
-        'Rarity border + Shard Badge socket (1)',
+        'Rarity border + Star Badge socket (1)',
         live
           ? `Wave 1 live · ${c.priceSol} SOL`
           : 'Wave 1 candy machine — mint opens when live',
@@ -599,7 +568,7 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
       perks: [
         '1 Echo per wallet (equip one)',
         `Always-on tap multiplier ${multiL1}×–${multiL5}×`,
-        'Rarity border + Shard Badge socket (1)',
+        'Rarity border + Star Badge socket (1)',
         live
           ? `Wave 1 live · ${c.priceSol} SOL`
           : 'Wave 1 candy machine — mint opens when live',
@@ -649,7 +618,7 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
         '1 Rush per wallet (equip one)',
         `Max daily taps ${Number(limL1).toLocaleString()}–${Number(limL5).toLocaleString()}`,
         'Expanded Battery & task boosts add on top',
-        'Rarity border + Shard Badge socket (1)',
+        'Rarity border + Star Badge socket (1)',
         live
           ? `Wave 1 live · ${c.priceSol} SOL`
           : 'Wave 1 candy machine — mint opens when live',
@@ -699,7 +668,7 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
         '1 Shadow per wallet (equip one)',
         `${h1}–${h5} hours of base daily cap (Rush or 1,000)`,
         'Claim once per UTC day · boosts not included',
-        'Rarity border + Shard Badge socket (1)',
+        'Rarity border + Star Badge socket (1)',
         live
           ? `Wave 1 live · ${c.priceSol} SOL`
           : 'Wave 1 candy machine — mint opens when live',
@@ -740,12 +709,12 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
       type: 'NFT',
       rarity: 'Rare',
       collection: 'Gift2u Elves',
-      boost: 'Unlocks Shard Swap (G2Ushards → G2U) with better fees',
+      boost: 'Free wall climbs + Walk2u Common Shoe (early walls)',
       perks: [
-        'Unlocks Shard Swap immediately (skip Level 5 + Swap Badge)',
-        '4% fee in G2U vs 10% free path',
-        'Higher daily swap cap',
-        'Vault access (coming soon)',
+        'L1: free climb → Level 5 + Common Walk2u Shoe',
+        'L2 / L3: free → Level 10 / 20 + Common Shoe',
+        'Higher levels unlock later walls (levels grow with walls)',
+        'Paying walls = better taps only — shoe is Locksmith-only',
       ],
       attributes: [
         { trait_type: 'Collection', value: 'Gift2u Elves' },
@@ -753,7 +722,7 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
         { trait_type: 'Generation', value: 'Gen 1' },
         { trait_type: 'Rarity', value: 'Rare' },
         { trait_type: 'Wave', value: '1 of 3' },
-        { trait_type: 'Utility', value: 'Shard Swap + Vault' },
+        { trait_type: 'Utility', value: 'Free walls · Walk2u shoe' },
         { trait_type: 'Max supply', value: String(LOCKSMITH_WAVE1.itemsAvailable) },
         { trait_type: 'Max / wallet', value: String(LOCKSMITH_WAVE1.maxPerWallet) },
       ],
@@ -2737,7 +2706,7 @@ Daily claim active · Pack → NFT to see it.`,
                 </div>
 
                 <div style={{ color: '#fbbf24', fontWeight: 'bold', fontSize: 13, marginTop: 4 }}>
-                  Star Badge (Elves socket)
+                  Star Badge
                 </div>
                 <p style={{ color: '#666', fontSize: 11, margin: '0 0 8px', lineHeight: 1.35 }}>
                   Equip → NFT. Win in Mystery Gift or trade below.
@@ -2775,7 +2744,7 @@ Daily claim active · Pack → NFT to see it.`,
                       </div>
                       <div style={{ color: '#888', fontSize: 11 }}>
                         Owned ×{getShardBadgeCount(localInventory)} · ×
-                        {getFreeShardBadgeCount(localInventory)} 
+                        {getFreeShardBadgeCount(localInventory)}
                       </div>
                     </div>
                     <div style={{ color: '#fbbf24', fontWeight: 'bold', fontSize: 18 }}>

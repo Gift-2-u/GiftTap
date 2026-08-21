@@ -630,10 +630,9 @@ export { NftDetailModal };
 export const LOCKSMITH_PERKS = [
   { trait: 'Type', value: 'Utility NFT' },
   { trait: 'Collection', value: 'Gift2u Elves' },
-  { trait: 'Access', value: 'Permanent Shard Swap' },
-  { trait: 'Fee', value: '4% in G2U' },
-  { trait: 'Daily cap', value: '1,000,000 shards / day' },
-  { trait: 'Durability', value: 'None (permanent)' },
-  { trait: 'Vault', value: 'Vault access' },
-  { trait: 'Min swap', value: '500 shards' },
+  { trait: 'L1', value: 'Free → L5 + Common Shoe' },
+  { trait: 'L2–L3', value: 'Free → L10 / L20 + Shoe' },
+  { trait: 'Levels', value: 'Grow with new walls' },
+  { trait: 'Payers', value: 'Better taps only (no shoe)' },
+  { trait: 'Path', value: 'Walk2u shoe (later game)' },
 ];

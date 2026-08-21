@@ -192,7 +192,7 @@ serve(async (req) => {
       if (have < qty) {
         throw new Error(
           tier === "shard"
-            ? `Not enough free Shard Badges (free ${have}, need ${qty} — unequip from Fate first)`
+            ? `Not enough free Star Badges (free ${have}, need ${qty} — unequip from NFTs first)`
             : `Not enough ${tier} badges (have ${have}, need ${qty})`,
         );
       }

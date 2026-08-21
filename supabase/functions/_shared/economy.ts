@@ -74,13 +74,43 @@ export const BADGE_ITEM: Record<string, string> = {
   shard: "shard_badge",
 };
 
-export function tierFromRank(rank: number): string | null {
+/** First week with %-based badges (W34 and earlier = legacy top-10). */
+export const WEEKLY_PERCENT_BADGES_FROM_WEEK = "2026-W35";
+
+export function weekUsesPercentBadges(weekId: string | null | undefined): boolean {
+  const w = String(weekId || "");
+  return /^\d{4}-W\d{2}$/.test(w) && w >= WEEKLY_PERCENT_BADGES_FROM_WEEK;
+}
+
+/**
+ * Legacy: #1 D · #2 G · #3 S · #4–10 B
+ * From 2026-W35: top 10% D, next 15% G, next 25% S, rest eligible Bronze
+ */
+export function tierFromRank(
+  rank: number,
+  totalEligible = 0,
+  weekId: string | null = null,
+): string | null {
   const r = Math.floor(Number(rank) || 0);
-  if (r === 1) return "diamond";
-  if (r === 2) return "gold";
-  if (r === 3) return "silver";
-  if (r >= 4 && r <= 10) return "bronze";
-  return null;
+  if (r < 1) return null;
+
+  if (!weekUsesPercentBadges(weekId)) {
+    if (r === 1) return "diamond";
+    if (r === 2) return "gold";
+    if (r === 3) return "silver";
+    if (r >= 4 && r <= 10) return "bronze";
+    return null;
+  }
+
+  const n = Math.max(0, Math.floor(Number(totalEligible) || 0));
+  if (n < 1 || r > n) return null;
+  const diamond = Math.floor(n * 0.1);
+  const gold = Math.floor(n * 0.15);
+  const silver = Math.floor(n * 0.25);
+  if (r <= diamond) return "diamond";
+  if (r <= diamond + gold) return "gold";
+  if (r <= diamond + gold + silver) return "silver";
+  return "bronze";
 }
 
 export const MYSTERY_COSTS: Record<string, number> = {

@@ -186,6 +186,19 @@ export async function secureWallClimb({ method, txSignature }) {
   });
 }
 
+/** Equip / clear GiftLocksmith focus (wall fee waiver level 1–5). */
+export async function secureLocksmithActivate({
+  level = 1,
+  assetId = null,
+  clear = false,
+} = {}) {
+  return callSecureFunction('locksmith-activate', {
+    level,
+    asset_id: assetId,
+    clear: !!clear,
+  });
+}
+
 
 export async function secureReferralCredit(kind) {
   return callSecureFunction('referral-credit', { kind });
