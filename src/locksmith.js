@@ -58,6 +58,8 @@ export function classifyElfAsset(asset) {
   if (name === 'rush' || name.startsWith('rush ')) return 'rush';
   if (cls === 'shadow') return 'shadow';
   if (name === 'shadow' || name.startsWith('shadow ')) return 'shadow';
+  if (cls === 'star badge' || cls === 'star' || cls.includes('star badge')) return 'star';
+  if (name === 'star badge' || name.startsWith('star badge')) return 'star';
   if (name.includes('locksmith')) return 'locksmith';
   // Default: treat unknown elves-collection assets as locksmith only if name suggests it
   return name ? 'elf' : 'elf';
@@ -77,9 +79,11 @@ const assetToCard = (asset) => {
           ? 'Rush'
           : kind === 'shadow'
             ? 'Shadow'
-            : kind === 'locksmith'
-              ? 'GiftLocksmith'
-              : 'Gift2u Elf');
+            : kind === 'star'
+              ? 'Star Badge'
+              : kind === 'locksmith'
+                ? 'GiftLocksmith'
+                : 'Gift2u Elf');
   const image =
     asset?.content?.links?.image ||
     asset?.content?.files?.find((f) => f?.uri || f?.cdn_uri)?.cdn_uri ||

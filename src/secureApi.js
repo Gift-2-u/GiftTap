@@ -299,10 +299,15 @@ export async function reconcileWeeklyScores(limit = 500) {
  * Equip / unequip a Shard Badge onto a Fate NFT (inventory.fate_equip).
  * @param {{ assetId: string, equip?: boolean }} opts — equip false = unequip
  */
-export async function secureFateEquip({ assetId, equip = true }) {
+export async function secureFateEquip({
+  assetId,
+  equip = true,
+  starAssetId,
+}) {
   return callSecureFunction('fate-equip', {
     asset_id: assetId,
-    equip: equip !== false,
+    equip: !!equip,
+    ...(starAssetId ? { star_asset_id: starAssetId } : {}),
   });
 }
 

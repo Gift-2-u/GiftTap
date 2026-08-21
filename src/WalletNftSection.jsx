@@ -90,7 +90,36 @@ export default function WalletNftSection({
     return getEquippedShardBadgeOnFate(localInv, selected.id);
   }, [selected, localInv]);
 
-  const freeStars = useMemo(() => getFreeShardBadgeCount(localInv), [localInv]);
+  const walletStarCount = useMemo(
+    () => nfts.filter((n) => String(n.kind || '').toLowerCase() === 'star').length,
+    [nfts],
+  );
+
+  const freeStars = useMemo(() => {
+    const fromInv = getFreeShardBadgeCount(localInv);
+    const invOwned = Math.max(
+      0,
+      Math.floor(Number(localInv?.shard_badge) || 0),
+    );
+    let equippedN = 0;
+    const map = localInv?.fate_equip;
+    if (map && typeof map === 'object') {
+      for (const row of Object.values(map)) {
+        if (!row || typeof row !== 'object') continue;
+        const itemId = String(row.itemId || row.item_id || '').toLowerCase();
+        const tier = String(row.tier || '').toLowerCase();
+        if (
+          itemId === 'shard_badge' ||
+          tier === 'shard' ||
+          tier === 'shard_badge'
+        ) {
+          equippedN += 1;
+        }
+      }
+    }
+    const owned = Math.max(invOwned, walletStarCount);
+    return Math.max(fromInv, owned - equippedN);
+  }, [localInv, walletStarCount]);
 
   const socketableKind = useMemo(() => {
     const k = String(selected?.kind || '').toLowerCase();
@@ -112,11 +141,33 @@ export default function WalletNftSection({
   const handleStarEquip = useCallback(
     async (wantEquip) => {
       if (!selected?.id || !socketableKind || equipBusy) return;
+      if (wantEquip && freeStars < 1) {
+        toast('No Star Badge — mint one in Shop → NFTs', false);
+        return;
+      }
       setEquipBusy(true);
       try {
+        let starAssetId;
+        if (wantEquip) {
+          const equippedIds = new Set();
+          const map = localInv?.fate_equip;
+          if (map && typeof map === 'object') {
+            for (const row of Object.values(map)) {
+              const sid = row?.star_asset_id || row?.starAssetId;
+              if (sid) equippedIds.add(String(sid));
+            }
+          }
+          const freeStar = nfts.find(
+            (n) =>
+              String(n.kind || '').toLowerCase() === 'star' &&
+              !equippedIds.has(String(n.id)),
+          );
+          starAssetId = freeStar?.id;
+        }
         const data = await secureFateEquip({
           assetId: selected.id,
           equip: !!wantEquip,
+          ...(starAssetId ? { starAssetId } : {}),
         });
         const nextInv = data.inventory || localInv;
         setLocalInv(nextInv);
@@ -128,7 +179,15 @@ export default function WalletNftSection({
         setEquipBusy(false);
       }
     },
-    [selected, socketableKind, equipBusy, localInv, onInventoryChange],
+    [
+      selected,
+      socketableKind,
+      equipBusy,
+      freeStars,
+      localInv,
+      nfts,
+      onInventoryChange,
+    ],
   );
 
   const handleLevelUp = useCallback(async () => {
@@ -647,12 +706,33 @@ export default function WalletNftSection({
                 }}
               >
                 {socketableKind ? (
-                  <>
-                    <button
-                      type="button"
-                      disabled={equipBusy || (!starEquipped && freeStars < 1)}
-                      onClick={() => handleStarEquip(!starEquipped)}
-                      title={starEquipped ? 'Unequip Star' : 'Equip Star'}
+                  <button
+                    type="button"
+                    disabled={equipBusy}
+                    onClick={() => handleStarEquip(!starEquipped)}
+                    title={
+                      starEquipped
+                        ? 'Tap to unequip Star'
+                        : freeStars > 0
+                          ? 'Tap to equip Star'
+                          : 'Mint a Star Badge in Shop → NFTs'
+                    }
+                    style={{
+                      flex: 1,
+                      minWidth: 0,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 12,
+                      background: 'transparent',
+                      border: 'none',
+                      padding: 0,
+                      textAlign: 'left',
+                      cursor: equipBusy ? 'wait' : 'pointer',
+                      color: 'inherit',
+                    }}
+                    aria-label={starEquipped ? 'Unequip Star' : 'Equip Star'}
+                  >
+                    <span
                       style={{
                         width: 56,
                         height: 56,
@@ -660,7 +740,9 @@ export default function WalletNftSection({
                         flexShrink: 0,
                         display: 'grid',
                         placeItems: 'center',
-                        border: starEquipped ? '2px solid #ffd700' : '2px solid #555',
+                        border: starEquipped
+                          ? '2px solid #ffd700'
+                          : '2px solid #555',
                         background: starEquipped
                           ? 'radial-gradient(circle at 35% 30%, #fff6a8, #c9a227 45%, #5c4508)'
                           : '#16161c',
@@ -668,23 +750,24 @@ export default function WalletNftSection({
                           ? '0 0 16px rgba(255,215,0,0.35)'
                           : 'inset 0 0 0 6px #0a0a0e',
                         fontSize: 22,
-                        cursor:
-                          equipBusy || (!starEquipped && freeStars < 1)
-                            ? 'not-allowed'
-                            : 'pointer',
-                        padding: 0,
-                        color: 'inherit',
                       }}
-                      aria-label={starEquipped ? 'Unequip Star' : 'Equip Star'}
                     >
                       {equipBusy ? '…' : starEquipped ? '⭐' : ''}
-                    </button>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ color: '#ddd', fontSize: 12, fontWeight: 'bold' }}>
-                        Star socket
-                      </div>
-                      <div
+                    </span>
+                    <span style={{ flex: 1, minWidth: 0 }}>
+                      <span
                         style={{
+                          display: 'block',
+                          color: '#ddd',
+                          fontSize: 12,
+                          fontWeight: 'bold',
+                        }}
+                      >
+                        Star socket
+                      </span>
+                      <span
+                        style={{
+                          display: 'block',
                           color: starEquipped ? '#ffd700' : '#888',
                           fontSize: 12,
                           marginTop: 2,
@@ -692,9 +775,9 @@ export default function WalletNftSection({
                         }}
                       >
                         {starEquipped ? 'Equipped' : 'Empty'}
-                      </div>
-                    </div>
-                  </>
+                      </span>
+                    </span>
+                  </button>
                 ) : isLocksmithSelected ? (
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ color: '#ddd', fontSize: 12, fontWeight: 'bold' }}>
