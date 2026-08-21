@@ -1,0 +1,42 @@
+{
+  "at": "2026-08-21T19:10:31.501Z",
+  "artVersion": "clean-v1",
+  "uploaded": {
+    "common": {
+      "imageUri": "https://gateway.irys.xyz/9p_y3jI9eoHEWtaNxfP4RLWh3xhNX_QXIXSTTsDExGU",
+      "itemUri": "https://gateway.irys.xyz/R-MGZ3QVHotRC7rj3_mkIgTnI4sKmyLtpQpCMsZ8KiA",
+      "candyMachine": "8Xsen3GEmVKfrirGrENV18We8HN3SWx4gFHxuD8USuuU",
+      "candyGuard": "4v7c2tdq9a98nHX1yKJdLVn22KTfws6mUWA8X4YuVkpb",
+      "cmUpdateTx": "3idyoif7kkDimztzWa3LLeJW7kALY89ucDUUAapHuLh1XjHyzG9CEwdTXWsik4Xcs4r7SMZGiPBQRPLggz5gs2Ze"
+    },
+    "rare": {
+      "imageUri": "https://gateway.irys.xyz/wqB0q6KRaDZ2eqyARnsu_ptcCER_rwp6Hmj8lJt3gaw",
+      "itemUri": "https://gateway.irys.xyz/tnUFyBa1vY2CcPcpl9Oi3L-urbLX7C4c-B1SkTQJO4k",
+      "candyMachine": "DyqirB4Vyn5JtYAEeUm2WQN2AMaBqfzgYURW2LQCCJbQ",
+      "candyGuard": "B4LFV31ocac7edVuyMRLqhypF1WBgNQC79o1xmWD5NrQ",
+      "cmUpdateTx": "5Z9zQp4YYYgYGZEJ9SxiujumnTTBSF6bCLQzukSQk8drx9W131jpeAuzf6W6Z9iHhYxYx35BJEdf5DstoBpbQy3Z"
+    },
+    "epic": {
+      "imageUri": "https://gateway.irys.xyz/q2LSUv2benKElfghKybGoGCZoQT5yRE64jNKZT5Ysxg",
+      "itemUri": "https://gateway.irys.xyz/KWrW0Kuko3pWZmW_gW1wmVlNzWVFkne1r7lmEAhAecI",
+      "candyMachine": "GC44BKsRbd4HVZzU9wZqZxcC9XwhwzfvrN39rVCEppfA",
+      "candyGuard": "5chT9VmQShvSmg6n6jLxP2TNSBNqaCGivW7jMPk8k4cQ",
+      "cmUpdateTx": "4wfDuFFzT7hiZFSCRYBkUxFdBGoLz6opw79vAGRW1offkj7uNyXsaVPb8NTogjnQyDQuAm8PnDbfWvDyHhQrV9AD"
+    },
+    "legendary": {
+      "imageUri": "https://gateway.irys.xyz/fT7GpoKageWAC25OSS36WfsHISVBTQZJqXHYTpNom28",
+      "itemUri": "https://gateway.irys.xyz/RamOA08kf2V0-P-VdMB9ZUjisuKKyEstG7wkd8vj7y0",
+      "candyMachine": "7diXaptFs4NhBatC3H8F2vXsyzAxiSSYfxs6V7a3CjhN",
+      "candyGuard": "G9iNpH2BGdZ2zCJzHAD6ygSTcjatMQa5EbZQyvq2rDpW",
+      "cmUpdateTx": "vXaqmcUtYkw5SfEXVSqmCN7oTFSZN3Ndi19e5MkBfSovK4x21i4wRcwucybrmNj3SM5Sbi8URyUD9gUwFqVo9a2"
+    }
+  },
+  "assets": [
+    {
+      "asset": "7aR6vPhkU4EKWwPFWf3UrdmZP9AGP4iFbn87vTYs8r19",
+      "rarityKey": "common",
+      "signature": "373iXkBXGs2hQHsGnuzMGShqVqbM95xzt3nf148PSQopr2sRwXv7o2apJDAVoGAzVrM5jMGVV81dFasvXfowKAUr",
+      "newUri": "https://gateway.irys.xyz/R-MGZ3QVHotRC7rj3_mkIgTnI4sKmyLtpQpCMsZ8KiA"
+    }
+  ]
+}

@@ -161,7 +161,7 @@ function ShopItemIcon({ item, size = 52, variant = 'row' }) {
   );
 }
 
-const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, tgUser, playerWallet, decryptedPhrase, initialTab, onInitialTabConsumed }) => {
+const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, tgUser, playerWallet, decryptedPhrase, initialTab, onInitialTabConsumed, maxUnlockedLevel = 4 }) => {
   const user = player || tgUser;
   // Shop hub first — show ALL options (Free / Premium / NFT / Backpack) before any list
   const [activeTab, setActiveTab] = useState(initialTab || 'home');
@@ -537,7 +537,9 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
           ? `Wave 1 live · ${c.priceSol} SOL`
           : 'Wave 1 candy machine — mint opens when live',
       ],
+      level: 1,
       attributes: [
+        { trait_type: 'Level', value: '1' },
         { trait_type: 'Collection', value: 'Gift2u Elves' },
         { trait_type: 'Class', value: 'Fate' },
         { trait_type: 'Role', value: 'Luck' },
@@ -545,7 +547,6 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
         { trait_type: 'Rarity', value: c.label },
         { trait_type: 'Type', value: 'Utility' },
         { trait_type: 'Utility', value: 'Tap jackpot (G2Ushards)' },
-        { trait_type: 'Badge Slot', value: '1' },
         { trait_type: 'Wave', value: '1 of 3' },
         { trait_type: 'Max Supply', value: String(c.maxSupply) },
         { trait_type: 'Wave 1 supply', value: String(c.itemsAvailable) },
@@ -587,7 +588,9 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
           ? `Wave 1 live · ${c.priceSol} SOL`
           : 'Wave 1 candy machine — mint opens when live',
       ],
+      level: 1,
       attributes: [
+        { trait_type: 'Level', value: '1' },
         { trait_type: 'Collection', value: 'Gift2u Elves' },
         { trait_type: 'Class', value: 'Echo' },
         { trait_type: 'Role', value: 'Power' },
@@ -595,7 +598,6 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
         { trait_type: 'Rarity', value: c.label },
         { trait_type: 'Type', value: 'Utility' },
         { trait_type: 'Utility', value: 'Tap multiplier (G2Ushards)' },
-        { trait_type: 'Badge Slot', value: '1' },
         { trait_type: 'Wave', value: '1 of 3' },
         { trait_type: 'Max Supply', value: String(c.maxSupply) },
         { trait_type: 'Wave 1 supply', value: String(c.itemsAvailable) },
@@ -637,7 +639,9 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
           ? `Wave 1 live · ${c.priceSol} SOL`
           : 'Wave 1 candy machine — mint opens when live',
       ],
+      level: 1,
       attributes: [
+        { trait_type: 'Level', value: '1' },
         { trait_type: 'Collection', value: 'Gift2u Elves' },
         { trait_type: 'Class', value: 'Rush' },
         { trait_type: 'Role', value: 'Energy' },
@@ -645,7 +649,6 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
         { trait_type: 'Rarity', value: c.label },
         { trait_type: 'Type', value: 'Utility' },
         { trait_type: 'Utility', value: 'Max daily taps' },
-        { trait_type: 'Badge Slot', value: '1' },
         { trait_type: 'Wave', value: '1 of 3' },
         { trait_type: 'Max Supply', value: String(c.maxSupply) },
         { trait_type: 'Wave 1 supply', value: String(c.itemsAvailable) },
@@ -687,7 +690,9 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
           ? `Wave 1 live · ${c.priceSol} SOL`
           : 'Wave 1 candy machine — mint opens when live',
       ],
+      level: 1,
       attributes: [
+        { trait_type: 'Level', value: '1' },
         { trait_type: 'Collection', value: 'Gift2u Elves' },
         { trait_type: 'Class', value: 'Shadow' },
         { trait_type: 'Role', value: 'Night' },
@@ -695,7 +700,6 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
         { trait_type: 'Rarity', value: c.label },
         { trait_type: 'Type', value: 'Utility' },
         { trait_type: 'Utility', value: 'Daily claim share of base daily cap' },
-        { trait_type: 'Badge Slot', value: '1' },
         { trait_type: 'Wave', value: '1 of 3' },
         { trait_type: 'Max Supply', value: String(c.maxSupply) },
         { trait_type: 'Wave 1 supply', value: String(c.itemsAvailable) },
@@ -733,7 +737,9 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
               'Level-up SOL: 0.10 / 0.15 / 0.25 / 0.40 (total 0.90)',
               'Unequip before selling the elf',
             ],
+            level: 1,
             attributes: [
+              { trait_type: 'Level', value: '1' },
               { trait_type: 'Collection', value: 'Gift2u Elves' },
               { trait_type: 'Class', value: 'Star Badge' },
               { trait_type: 'Generation', value: 'Gen 1' },
@@ -771,7 +777,9 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
         'Higher levels unlock later walls as they open',
         'Opens the path to Walk2u',
       ],
+      level: 1,
       attributes: [
+        { trait_type: 'Level', value: '1' },
         { trait_type: 'Collection', value: 'Gift2u Elves' },
         { trait_type: 'Class', value: 'GiftLocksmith' },
         { trait_type: 'Generation', value: 'Gen 1' },
@@ -2567,6 +2575,17 @@ Daily claim active · Pack → NFT to see it.`,
                   </div>
                   <div
                     style={{
+                      color: '#c084fc',
+                      fontSize: 9,
+                      fontWeight: 'bold',
+                      marginTop: 1,
+                      lineHeight: 1.1,
+                    }}
+                  >
+                    L{Number(item.level) || 1}
+                  </div>
+                  <div
+                    style={{
                       color: '#14F195',
                       fontSize: 10,
                       fontWeight: 'bold',
@@ -3082,6 +3101,7 @@ Daily claim active · Pack → NFT to see it.`,
                   walletSecret={decryptedPhrase || ''}
                   refreshKey={walletNftRefresh}
                   gameplayMode
+                  maxUnlockedLevel={Number(maxUnlockedLevel) || Number(stats?.max_unlocked_level) || Number(player?.max_unlocked_level) || 4}
                   inventory={localInventory}
                   onInventoryChange={(inv, playerPatch) => {
                     setLocalInventory(inv);
@@ -3148,7 +3168,7 @@ Daily claim active · Pack → NFT to see it.`,
 
       </div>
 
-      {/* --- NFT detail popup (large image + mint) --- */}
+      {/* --- NFT detail popup (image + level + attributes + mint) --- */}
       {nftDetail && (
         <div
           style={{
@@ -3171,22 +3191,24 @@ Daily claim active · Pack → NFT to see it.`,
             onClick={(e) => e.stopPropagation()}
             style={{
               background: '#1c1e22',
-              padding: 14,
+              padding: 12,
               borderRadius: 16,
               border: '2px solid #9945FF',
               width: '100%',
-              maxWidth: 420,
-              maxHeight: 'min(94vh, 720px)',
+              maxWidth: 400,
+              maxHeight: '92vh',
               display: 'flex',
               flexDirection: 'column',
               boxSizing: 'border-box',
+              overflow: 'hidden',
             }}
           >
-            {/* Square art — room left for attributes */}
+            {/* Art — capped so attributes + buttons always fit */}
             <div
               style={{
                 width: '100%',
-                maxWidth: 280,
+                maxWidth: 220,
+                maxHeight: '32vh',
                 aspectRatio: '1',
                 margin: '0 auto 8px',
                 borderRadius: 12,
@@ -3194,6 +3216,7 @@ Daily claim active · Pack → NFT to see it.`,
                 background: '#111',
                 border: '1px solid #333',
                 flexShrink: 0,
+                position: 'relative',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
@@ -3209,101 +3232,116 @@ Daily claim active · Pack → NFT to see it.`,
               ) : (
                 nftDetail.image
               )}
+              <div
+                style={{
+                  position: 'absolute',
+                  top: 6,
+                  left: 6,
+                  background: 'rgba(0,0,0,0.75)',
+                  color: '#c084fc',
+                  fontWeight: 'bold',
+                  fontSize: 11,
+                  padding: '3px 8px',
+                  borderRadius: 8,
+                  border: '1px solid #a855f7',
+                }}
+              >
+                L{Number(nftDetail.level) || 1}
+              </div>
             </div>
             <div style={{ textAlign: 'center', marginBottom: 6, flexShrink: 0 }}>
               <div style={{ color: '#a78bfa', fontSize: 11, fontWeight: 'bold' }}>
-                {nftDetail.collection} · {nftDetail.rarity}
+                {nftDetail.collection} · {nftDetail.rarity} · L
+                {Number(nftDetail.level) || 1}
               </div>
               <h3
                 style={{
                   color: '#ffd700',
-                  margin: '2px 0 4px',
-                  fontSize: 17,
+                  margin: '2px 0 0',
+                  fontSize: 16,
                   lineHeight: 1.25,
                 }}
               >
                 {nftDetail.name}
               </h3>
-              {/* Description only — no separate boost/perks (already covered for Fate) */}
-              {nftDetail.description ? (
-                <p
-                  style={{
-                    color: '#aaa',
-                    fontSize: 10,
-                    margin: '4px 0 0',
-                    lineHeight: 1.4,
-                    textAlign: 'left',
-                  }}
-                >
-                  {nftDetail.description}
-                </p>
-              ) : nftDetail.boost ? (
+              {nftDetail.boost ? (
                 <p
                   style={{
                     color: '#14F195',
                     fontSize: 11,
-                    margin: 0,
+                    margin: '4px 0 0',
                     lineHeight: 1.35,
                   }}
                 >
-                  🔓 {nftDetail.boost}
+                  {nftDetail.boost}
                 </p>
               ) : null}
             </div>
 
-            {/* Attributes — primary info under description */}
+            {/* Attributes — always has room; scrolls if many */}
             <div
               style={{
-                flex: 1,
-                minHeight: 0,
+                flex: '1 1 auto',
+                minHeight: 120,
+                maxHeight: '28vh',
                 overflowY: 'auto',
+                WebkitOverflowScrolling: 'touch',
                 textAlign: 'left',
                 background: '#111',
                 borderRadius: 10,
                 border: '1px solid #333',
-                padding: '10px 10px',
+                padding: '8px 10px',
                 marginBottom: 8,
               }}
             >
-              <div style={{ color: '#888', fontSize: 10, fontWeight: 'bold', marginBottom: 8 }}>
+              <div style={{ color: '#888', fontSize: 10, fontWeight: 'bold', marginBottom: 6 }}>
                 ATTRIBUTES
               </div>
-              <div
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: '1fr 1fr',
-                  gap: 6,
-                }}
-              >
-                {(nftDetail.attributes || []).map((a) => (
-                  <div
-                    key={`${a.trait_type}-${a.value}`}
-                    style={{
-                      background: '#1a1a1a',
-                      borderRadius: 8,
-                      padding: '6px 8px',
-                      minWidth: 0,
-                    }}
-                  >
-                    <div style={{ color: '#777', fontSize: 9, lineHeight: 1.25 }}>{a.trait_type}</div>
+              {(nftDetail.attributes || []).length === 0 ? (
+                <div style={{ color: '#666', fontSize: 11 }}>No attributes</div>
+              ) : (
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: '1fr 1fr',
+                    gap: 6,
+                  }}
+                >
+                  {(nftDetail.attributes || []).map((a) => (
                     <div
+                      key={`${a.trait_type}-${a.value}`}
                       style={{
-                        color: '#fff',
-                        fontSize: 12,
-                        fontWeight: 'bold',
-                        lineHeight: 1.3,
-                        wordBreak: 'break-word',
+                        background: '#1a1a1a',
+                        borderRadius: 8,
+                        padding: '6px 8px',
+                        minWidth: 0,
                       }}
                     >
-                      {a.value}
+                      <div style={{ color: '#777', fontSize: 9, lineHeight: 1.25 }}>
+                        {a.trait_type}
+                      </div>
+                      <div
+                        style={{
+                          color:
+                            String(a.trait_type).toLowerCase() === 'level'
+                              ? '#c084fc'
+                              : '#fff',
+                          fontSize: 12,
+                          fontWeight: 'bold',
+                          lineHeight: 1.3,
+                          wordBreak: 'break-word',
+                        }}
+                      >
+                        {a.value}
+                      </div>
                     </div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              )}
             </div>
 
-            {/* Footer always visible — price + actions */}
-            <div style={{ flexShrink: 0 }}>
+            {/* Footer pinned — Close + Mint always on screen */}
+            <div style={{ flexShrink: 0, paddingTop: 2 }}>
               <div
                 style={{
                   display: 'flex',

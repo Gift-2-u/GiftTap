@@ -6354,6 +6354,7 @@ const GiftTapGame = () => {
                 player={player}
                 playerWallet={playerWallet}
                 decryptedPhrase={decryptedPhrase}
+                maxUnlockedLevel={maxUnlockedLevel}
                 initialTab={shopFocusTab || undefined}
                 onInitialTabConsumed={() => setShopFocusTab(null)}
               />

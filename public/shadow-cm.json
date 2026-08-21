@@ -5,12 +5,14 @@
     "collection": "FQPYWSohCPnS57W2AWAqwmQM21KRxGi4YXcCaiXUghPD",
     "priceSol": 0.05,
     "itemsAvailable": 5250,
-    "imageUri": "https://gateway.irys.xyz/F4wILInf0lOKYAWXW3fRGFqisQCMm_DIe17coBc7teU",
-    "itemUri": "https://gateway.irys.xyz/ZBsLS68_UD2KlC5Zk1Fmr5SdWAc3wDNSqpqNFB0QDFs",
+    "imageUri": "https://gateway.irys.xyz/BvEGWDZtGQR-C8Fx2qwF7fvm3jH5Xk5aEO_Qqnvgd7g",
+    "itemUri": "https://gateway.irys.xyz/JBNrhd_DViiQ7shtsAiyOcqKH-gnu7w_Vi7qvRFhXms",
     "treasury": "AdvMvv6GzGvdLRtuxaso1Eubk7jmn6LCZEeEFHn22yeb",
-    "cmUpdateTx": "5Ra2Aspe8n4vDT1mSq6JomqkYm9EDHTXtZGHdx8jAx8Gb289vyc1gWD6KbWjd7oWBomE9cEPnyYg7LBTbAvFYdg3",
+    "cmUpdateTx": "54FxjmWAPH3XS2vsEEBF2h7pt8NAhXP7rJFtqLzL4cjmyrQS7ktXUXjaLrcgBLmnGkzhvePdMdj7uTYLFpNvWTT",
     "metadataCleanedAt": "2026-08-18T17:28:21.584Z",
-    "copyVersion": "no-afk-v1"
+    "copyVersion": "no-afk-v1",
+    "artVersion": "clean-v1",
+    "artUpdatedAt": "2026-08-21T19:16:40.690Z"
   },
   "rare": {
     "candyMachine": "JDHEEd1G6JS11iKyG9zJkTenu4rviDiRnqMeLwNVQaFN",
@@ -18,25 +20,29 @@
     "collection": "FQPYWSohCPnS57W2AWAqwmQM21KRxGi4YXcCaiXUghPD",
     "priceSol": 0.3,
     "itemsAvailable": 1575,
-    "imageUri": "https://gateway.irys.xyz/iz8Aia5cvMETbJpAsC6u75k8EhqEiAvbZCKeCqse4Bk",
-    "itemUri": "https://gateway.irys.xyz/bsipFhOajJ-qT9M_59rit4qZbI43p8ZA3vq3E4wqsRs",
+    "imageUri": "https://gateway.irys.xyz/8K5zrw0YnfuOHAMLJeOa2goFvWO-V_gyZv60afzXemc",
+    "itemUri": "https://gateway.irys.xyz/wl6-m8KBOywaQWGFZozUPr2x9VTxQfbySSGdmPGcbpY",
     "treasury": "AdvMvv6GzGvdLRtuxaso1Eubk7jmn6LCZEeEFHn22yeb",
-    "cmUpdateTx": "2D4Ejpk9kaW4XDDbamcCwEeBPEnDsYdjxqrh889UWPfwDyEkMLPDRVLRe14V7mVTkcU9fkxi9CTrnHXHYZYjsuBi",
+    "cmUpdateTx": "qizA5sMM7GXvMXbRfzy5Vu9b6MX2hexkvCJFFpNzHuWJnfMSLycAQ91s1fMKonXGHPJ2PzmQa4EXZFfG24mtb9P",
     "metadataCleanedAt": "2026-08-18T17:28:21.584Z",
-    "copyVersion": "no-afk-v1"
+    "copyVersion": "no-afk-v1",
+    "artVersion": "clean-v1",
+    "artUpdatedAt": "2026-08-21T19:16:40.690Z"
   },
   "epic": {
     "candyMachine": "8xk34iDpSrk45QUPuRej8uyJzdeTNXmyawut6LEwSyoJ",
     "candyGuard": "J43issbB3sirTufUzaV4XMPXD4urnHastRafFHcGsedS",
     "collection": "FQPYWSohCPnS57W2AWAqwmQM21KRxGi4YXcCaiXUghPD",
-    "priceSol": 1.0,
+    "priceSol": 1,
     "itemsAvailable": 525,
-    "imageUri": "https://gateway.irys.xyz/WDn9RrVEIjWY-Kukdzka6N6_2dE8u-7WC9LvkLcr1gU",
-    "itemUri": "https://gateway.irys.xyz/SA-Pr4LTMRayW4vTHOrM_lplBO5BOtMl84tevZnxst0",
+    "imageUri": "https://gateway.irys.xyz/jmrQI6hyX2sFlveBlX9dY6nPkVzg1rC_UM6VQKttS6o",
+    "itemUri": "https://gateway.irys.xyz/o553VDx3QTV0wVLJLR1NJ-ETurk1_9zv-ZlwAQHx0AM",
     "treasury": "AdvMvv6GzGvdLRtuxaso1Eubk7jmn6LCZEeEFHn22yeb",
-    "cmUpdateTx": "3M19Ytvof9PYqhZxcpZWY7hyJPEcuMdizrqzEQo1hJSMmgX89AMWwGZS1gezDqwcU5jUzCaTGMkXxwFjRhQLsKPb",
+    "cmUpdateTx": "5N9gWsTCKALbRxbDuo8jzqoCen4tMeXKEoRoghPZJv6u9MaMt6ArXHq3w7v7oWFjCkAEcPLjZ2oiB2EcXCxMbmEs",
     "metadataCleanedAt": "2026-08-18T17:28:21.584Z",
-    "copyVersion": "no-afk-v1"
+    "copyVersion": "no-afk-v1",
+    "artVersion": "clean-v1",
+    "artUpdatedAt": "2026-08-21T19:16:40.690Z"
   },
   "legendary": {
     "candyMachine": "Gocvd4T3Ro2LYyzAig6rc2DV8XNnhCkd6xok8cgDxjby",
@@ -44,11 +50,13 @@
     "collection": "FQPYWSohCPnS57W2AWAqwmQM21KRxGi4YXcCaiXUghPD",
     "priceSol": 2.5,
     "itemsAvailable": 150,
-    "imageUri": "https://gateway.irys.xyz/TsgNtEBbOIHB8ZccT5R9boDqHV3CE2_WIM6q7rLSfYE",
-    "itemUri": "https://gateway.irys.xyz/1VlMShIBCqbbsjtEH5gsU7t3jcJf15eyY9i8RTye6nQ",
+    "imageUri": "https://gateway.irys.xyz/1N1FY7wuiSLYFzs86X5DgfBuJDMV4-Ro6rjrkhQ2EJI",
+    "itemUri": "https://gateway.irys.xyz/kLaL8z7jy-Fja-2KfSd8UOuKKhXGlPD1MCC_W_S-87A",
     "treasury": "AdvMvv6GzGvdLRtuxaso1Eubk7jmn6LCZEeEFHn22yeb",
-    "cmUpdateTx": "578grhVik6eRQf7M7o8r5LmvMJqsWgUkw9b8mcJeaYcdmYd9icDHmgXTLVmeaz7FtNWsED6NKBSVFQjtzVCUJrG9",
+    "cmUpdateTx": "2Sg6XCgxCpRw3NcfZdjEpwb5ptWtWS6NBneLZTwCrBSvuzpPNMFvwoPWumSvH3697HFDahh1KWvS8nkyMQngxLir",
     "metadataCleanedAt": "2026-08-18T17:28:21.584Z",
-    "copyVersion": "no-afk-v1"
+    "copyVersion": "no-afk-v1",
+    "artVersion": "clean-v1",
+    "artUpdatedAt": "2026-08-21T19:16:40.690Z"
   }
 }

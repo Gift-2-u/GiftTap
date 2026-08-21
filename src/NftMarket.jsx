@@ -409,7 +409,10 @@ export default function NftMarket({
                 )}
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ color: '#fff', fontWeight: 'bold', fontSize: 14 }}>
-                    {L.name || 'GiftLocksmith'}
+                    {L.name || 'Gift NFT'}
+                    <span style={{ color: '#c084fc', fontSize: 12, marginLeft: 8 }}>
+                      L{Number(L.level ?? L.nft_level ?? deriveNftFilterMeta(L).level) || 1}
+                    </span>
                   </div>
                   <div style={{ color: '#888', fontSize: 11 }}>
                     @{L.seller_username || 'seller'} · {String(L.asset_id).slice(0, 6)}…

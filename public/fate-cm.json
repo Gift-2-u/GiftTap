@@ -5,12 +5,13 @@
     "collection": "FQPYWSohCPnS57W2AWAqwmQM21KRxGi4YXcCaiXUghPD",
     "priceSol": 0.05,
     "itemsAvailable": 5250,
-    "imageUri": "https://gateway.irys.xyz/jBoYOQeSyLbmcH5vwVupKPrUtG891pmNecuxhokS4BA",
-    "itemUri": "https://gateway.irys.xyz/AzSCVEVrDUc6N-u8gydHnFHkH-mfM5Q-MWv7NDuQDk8",
+    "imageUri": "https://gateway.irys.xyz/9p_y3jI9eoHEWtaNxfP4RLWh3xhNX_QXIXSTTsDExGU",
+    "itemUri": "https://gateway.irys.xyz/R-MGZ3QVHotRC7rj3_mkIgTnI4sKmyLtpQpCMsZ8KiA",
     "treasury": "AdvMvv6GzGvdLRtuxaso1Eubk7jmn6LCZEeEFHn22yeb",
     "socketVersion": "opaque-v145",
-    "artUpdatedAt": "2026-08-18T03:37:43.581Z",
-    "cmUpdateTx": "4C2rUKUDXKA4gJ3fVj8EP9AQkBYgQ4pyACFM1Ey9wVjqJjLBpzf8uVpLK7qSUhbVkWyUNa819HuijgEpmSYadPaZ"
+    "artUpdatedAt": "2026-08-21T19:10:31.465Z",
+    "cmUpdateTx": "3idyoif7kkDimztzWa3LLeJW7kALY89ucDUUAapHuLh1XjHyzG9CEwdTXWsik4Xcs4r7SMZGiPBQRPLggz5gs2Ze",
+    "artVersion": "clean-v1"
   },
   "rare": {
     "candyMachine": "DyqirB4Vyn5JtYAEeUm2WQN2AMaBqfzgYURW2LQCCJbQ",
@@ -18,25 +19,27 @@
     "collection": "FQPYWSohCPnS57W2AWAqwmQM21KRxGi4YXcCaiXUghPD",
     "priceSol": 0.3,
     "itemsAvailable": 1575,
-    "imageUri": "https://gateway.irys.xyz/0TqV00rUawg8wWAh_-w44Spd46LTwIE6AYzN1BIb78Y",
-    "itemUri": "https://gateway.irys.xyz/N3__sEcVCeMaeyXxnLuDUOgQghrWY-Xc1FhUPIW5k0Y",
+    "imageUri": "https://gateway.irys.xyz/wqB0q6KRaDZ2eqyARnsu_ptcCER_rwp6Hmj8lJt3gaw",
+    "itemUri": "https://gateway.irys.xyz/tnUFyBa1vY2CcPcpl9Oi3L-urbLX7C4c-B1SkTQJO4k",
     "treasury": "AdvMvv6GzGvdLRtuxaso1Eubk7jmn6LCZEeEFHn22yeb",
     "socketVersion": "opaque-v145",
-    "artUpdatedAt": "2026-08-18T03:37:43.581Z",
-    "cmUpdateTx": "5fRDmVqfBRvYxK6cCd7hYdUmBfpVYFrhqY9SEhiT76L9utAnhamw4AgZu738jiqVD2DBc713bs2XNNTWfKajYYTq"
+    "artUpdatedAt": "2026-08-21T19:10:31.495Z",
+    "cmUpdateTx": "5Z9zQp4YYYgYGZEJ9SxiujumnTTBSF6bCLQzukSQk8drx9W131jpeAuzf6W6Z9iHhYxYx35BJEdf5DstoBpbQy3Z",
+    "artVersion": "clean-v1"
   },
   "epic": {
     "candyMachine": "GC44BKsRbd4HVZzU9wZqZxcC9XwhwzfvrN39rVCEppfA",
     "candyGuard": "5chT9VmQShvSmg6n6jLxP2TNSBNqaCGivW7jMPk8k4cQ",
     "collection": "FQPYWSohCPnS57W2AWAqwmQM21KRxGi4YXcCaiXUghPD",
-    "priceSol": 1.0,
+    "priceSol": 1,
     "itemsAvailable": 525,
-    "imageUri": "https://gateway.irys.xyz/iWsUCr5AHbCisUZ7Z4NfBNfsgu9ZJyImELKoW9Wb7eg",
-    "itemUri": "https://gateway.irys.xyz/w_1ws9raUvHkpI_Tff-PvxtzF0Z6xGoi8MAVqMpKWq8",
+    "imageUri": "https://gateway.irys.xyz/q2LSUv2benKElfghKybGoGCZoQT5yRE64jNKZT5Ysxg",
+    "itemUri": "https://gateway.irys.xyz/KWrW0Kuko3pWZmW_gW1wmVlNzWVFkne1r7lmEAhAecI",
     "treasury": "AdvMvv6GzGvdLRtuxaso1Eubk7jmn6LCZEeEFHn22yeb",
     "socketVersion": "opaque-v145",
-    "artUpdatedAt": "2026-08-18T03:37:43.581Z",
-    "cmUpdateTx": "2RCaNFPGxHYwVL7DHsBiu7ZW9Ao2W77NpUqNR86LmNYM2kLqpE4e5hsy3m6VjcE6MMGijMxXNR5FS3KZt4WHoWVL"
+    "artUpdatedAt": "2026-08-21T19:10:31.495Z",
+    "cmUpdateTx": "4wfDuFFzT7hiZFSCRYBkUxFdBGoLz6opw79vAGRW1offkj7uNyXsaVPb8NTogjnQyDQuAm8PnDbfWvDyHhQrV9AD",
+    "artVersion": "clean-v1"
   },
   "legendary": {
     "candyMachine": "7diXaptFs4NhBatC3H8F2vXsyzAxiSSYfxs6V7a3CjhN",
@@ -44,11 +47,12 @@
     "collection": "FQPYWSohCPnS57W2AWAqwmQM21KRxGi4YXcCaiXUghPD",
     "priceSol": 2.5,
     "itemsAvailable": 150,
-    "imageUri": "https://gateway.irys.xyz/64IDNWXfwQS4m93KQwm2hOn7dgQdVv-hemTo8RDuyjw",
-    "itemUri": "https://gateway.irys.xyz/fPmED8ogIb00_Qz1NLqhnm99zyg4cVEMDwd7kNhPtFU",
+    "imageUri": "https://gateway.irys.xyz/fT7GpoKageWAC25OSS36WfsHISVBTQZJqXHYTpNom28",
+    "itemUri": "https://gateway.irys.xyz/RamOA08kf2V0-P-VdMB9ZUjisuKKyEstG7wkd8vj7y0",
     "treasury": "AdvMvv6GzGvdLRtuxaso1Eubk7jmn6LCZEeEFHn22yeb",
     "socketVersion": "opaque-v145",
-    "artUpdatedAt": "2026-08-18T03:37:43.581Z",
-    "cmUpdateTx": "35m3qSXgAYcGGxwHdxLbo1NYwzqMpupcAQiL6cSnqp8onW7BXijFK9ZXE5Yf2yUiuArLyJsJCtXgoXDKc6qCVYXA"
+    "artUpdatedAt": "2026-08-21T19:10:31.495Z",
+    "cmUpdateTx": "vXaqmcUtYkw5SfEXVSqmCN7oTFSZN3Ndi19e5MkBfSovK4x21i4wRcwucybrmNj3SM5Sbi8URyUD9gUwFqVo9a2",
+    "artVersion": "clean-v1"
   }
 }

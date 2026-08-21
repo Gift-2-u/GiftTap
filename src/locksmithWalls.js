@@ -33,6 +33,32 @@ export const WALL_TARGET_LABEL = {
   99: 100,
 };
 
+
+/**
+ * Player walls already climbed from max_unlocked_level.
+ * e.g. maxUnlocked 19 → ["→5", "→10"]
+ */
+export function wallsClimbedLabels(maxUnlockedLevel) {
+  const m = Math.max(0, Math.floor(Number(maxUnlockedLevel) || 0));
+  const out = [];
+  for (const [wallKey, target] of Object.entries(WALL_TARGET_LABEL)) {
+    if (m > Number(wallKey)) out.push(`→${target}`);
+  }
+  return out;
+}
+
+/** Next wall target label, or null if past last wall */
+export function nextWallTargetLabel(maxUnlockedLevel) {
+  const m = Math.max(0, Math.floor(Number(maxUnlockedLevel) || 0));
+  const keys = Object.keys(WALL_TARGET_LABEL)
+    .map(Number)
+    .sort((a, b) => a - b);
+  for (const k of keys) {
+    if (m <= k) return WALL_TARGET_LABEL[k];
+  }
+  return null;
+}
+
 export const WALK2U_SHOE_COMMON_KEY = 'walk2u_shoe_common';
 
 /** Highest Locksmith level defined by current wall map (grows when walls are added) */

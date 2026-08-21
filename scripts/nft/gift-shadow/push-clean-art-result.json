@@ -1,0 +1,35 @@
+{
+  "at": "2026-08-21T19:16:40.694Z",
+  "artVersion": "clean-v1",
+  "uploaded": {
+    "common": {
+      "imageUri": "https://gateway.irys.xyz/BvEGWDZtGQR-C8Fx2qwF7fvm3jH5Xk5aEO_Qqnvgd7g",
+      "itemUri": "https://gateway.irys.xyz/JBNrhd_DViiQ7shtsAiyOcqKH-gnu7w_Vi7qvRFhXms",
+      "candyMachine": "6eCDTALwmkSndK6guUFkmNMo9AoqAWJoNR7PaqHumVqD",
+      "candyGuard": "D7h5id6Q4NQPk9V9Md6iBRTpJuUjhvNyCG4Hxe9gqRXn",
+      "cmUpdateTx": "54FxjmWAPH3XS2vsEEBF2h7pt8NAhXP7rJFtqLzL4cjmyrQS7ktXUXjaLrcgBLmnGkzhvePdMdj7uTYLFpNvWTT"
+    },
+    "rare": {
+      "imageUri": "https://gateway.irys.xyz/8K5zrw0YnfuOHAMLJeOa2goFvWO-V_gyZv60afzXemc",
+      "itemUri": "https://gateway.irys.xyz/wl6-m8KBOywaQWGFZozUPr2x9VTxQfbySSGdmPGcbpY",
+      "candyMachine": "JDHEEd1G6JS11iKyG9zJkTenu4rviDiRnqMeLwNVQaFN",
+      "candyGuard": "Asp1DhQ3NQGEXsS2d44cPR2z3mBA2EKCVdZuy1nqMVWh",
+      "cmUpdateTx": "qizA5sMM7GXvMXbRfzy5Vu9b6MX2hexkvCJFFpNzHuWJnfMSLycAQ91s1fMKonXGHPJ2PzmQa4EXZFfG24mtb9P"
+    },
+    "epic": {
+      "imageUri": "https://gateway.irys.xyz/jmrQI6hyX2sFlveBlX9dY6nPkVzg1rC_UM6VQKttS6o",
+      "itemUri": "https://gateway.irys.xyz/o553VDx3QTV0wVLJLR1NJ-ETurk1_9zv-ZlwAQHx0AM",
+      "candyMachine": "8xk34iDpSrk45QUPuRej8uyJzdeTNXmyawut6LEwSyoJ",
+      "candyGuard": "J43issbB3sirTufUzaV4XMPXD4urnHastRafFHcGsedS",
+      "cmUpdateTx": "5N9gWsTCKALbRxbDuo8jzqoCen4tMeXKEoRoghPZJv6u9MaMt6ArXHq3w7v7oWFjCkAEcPLjZ2oiB2EcXCxMbmEs"
+    },
+    "legendary": {
+      "imageUri": "https://gateway.irys.xyz/1N1FY7wuiSLYFzs86X5DgfBuJDMV4-Ro6rjrkhQ2EJI",
+      "itemUri": "https://gateway.irys.xyz/kLaL8z7jy-Fja-2KfSd8UOuKKhXGlPD1MCC_W_S-87A",
+      "candyMachine": "Gocvd4T3Ro2LYyzAig6rc2DV8XNnhCkd6xok8cgDxjby",
+      "candyGuard": "H6sBHdVpqMZijtAeEcjP4bY4pJeY4NkgSv8dMS1c6En3",
+      "cmUpdateTx": "2Sg6XCgxCpRw3NcfZdjEpwb5ptWtWS6NBneLZTwCrBSvuzpPNMFvwoPWumSvH3697HFDahh1KWvS8nkyMQngxLir"
+    }
+  },
+  "assets": []
+}

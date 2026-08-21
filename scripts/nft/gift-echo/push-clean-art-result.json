@@ -1,0 +1,42 @@
+{
+  "at": "2026-08-21T19:13:19.921Z",
+  "artVersion": "clean-v1",
+  "uploaded": {
+    "common": {
+      "imageUri": "https://gateway.irys.xyz/7ycpw3EhEScGlfHJc2bPFPNu5mF8XOBmnxJaNyDKnN8",
+      "itemUri": "https://gateway.irys.xyz/qTWaSV6Qw2AyjnSpdohmw9rxrcVoO3y4CKzWyctZDgk",
+      "candyMachine": "2paivyfk7tLazrxs8rXDQx1CLMFXcbuXVpE8n3EvhqUM",
+      "candyGuard": "7zJVBJxM6TrXpjeMDcLBaHiVZ1Si8YAoVjyTJEY5nUtF",
+      "cmUpdateTx": "221CF8FvHevRUDjzBdzRgJsB8HTsHMmQRHF8kVP2rTmW8RNMzks4UpZVQbw24v9wgEPU62df6NLCTzLQJyiLTpPD"
+    },
+    "rare": {
+      "imageUri": "https://gateway.irys.xyz/jjLDrfKKn029nYnJva_f09ILPOltWTMFcOsxeji-nX8",
+      "itemUri": "https://gateway.irys.xyz/1bLDDvD-_JEVoOfDdXP-eMH7JB629oyA5fXv8lxwKOQ",
+      "candyMachine": "CtrcxAdhVSUGhT4iddHn4Hg46o7mBPQrqhzkhuqPAktN",
+      "candyGuard": "9k6j5gR69etyubH7fgsZDA876JaeCSdwDrkwZgwLQ47V",
+      "cmUpdateTx": "4wBhmZ8rJ5786FUeEH8Z3Ur1pdr64otHAEgmA6zvbDasmE9wPQjTjGrBBDH67YEbddSVwDsAXTyoqfQ6Y8Vixhsf"
+    },
+    "epic": {
+      "imageUri": "https://gateway.irys.xyz/dEDk2QzMkst28rMZ0hFP57RQACVNDWslUn9Y6MTryjc",
+      "itemUri": "https://gateway.irys.xyz/pSGtzhwjy_c4adG9HKg9GY35tKcqExmHwDCRESbvDjg",
+      "candyMachine": "H1T9ocEqMwNeqVvJzhmsjxb1cHgVtz1qiSyqs71ineGy",
+      "candyGuard": "7S2yBiVbo2HQfo4Y7LtR1DkwBcEGvtZkz4y5Fa1NDipS",
+      "cmUpdateTx": "5i7QESDhdBiiSboBFcCqUxneYjZdGTEQYJNUNdVDGmdDXPN2R3QrXwFtndGNvBpiJrE8sCEdZHxrvxSLazWN2UNZ"
+    },
+    "legendary": {
+      "imageUri": "https://gateway.irys.xyz/4GxRcpWxLebxe2XiS1MFWNorX9_c8w4uf4TjEpJ1mtg",
+      "itemUri": "https://gateway.irys.xyz/RGQuH1ybQLagvNrNgQwahOegZ8_JfzhhDHZQCGYd08s",
+      "candyMachine": "EndYgu5PtEnSnv2XyQSmnfoUJ6kLi1WectCGkTpmoL8G",
+      "candyGuard": "CJwCnfkrVUSqY2AHqruMGTgud1WbumGtauNUCE4Vc9wZ",
+      "cmUpdateTx": "3xXNzCAVPDWg2XqYu5exgVctvYHhL2JXgT7WP6aBR7ysGgY75y6NyBEYjBgTLNsfcnmfbMLBpQuUbQjeeRdMvH6e"
+    }
+  },
+  "assets": [
+    {
+      "asset": "J5RsJKk5yC8hieBfqRcPDn37xPVL21jb2UbBPLHuAEqh",
+      "rarityKey": "common",
+      "signature": "mxynABFcs8ry7KDmM765PVd8wLMgJyNHgvVDeP8dRbUFmVZRMmPhLfogZEGbLUX9zM4AgkWjhxeUdp38H4nHXhB",
+      "newUri": "https://gateway.irys.xyz/qTWaSV6Qw2AyjnSpdohmw9rxrcVoO3y4CKzWyctZDgk"
+    }
+  ]
+}

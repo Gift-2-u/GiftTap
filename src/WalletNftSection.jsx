@@ -28,6 +28,10 @@ import {
   ELF_LEVEL_UP_FEE_SOL,
   normElfRarity,
 } from './elfLevelUp';
+import {
+  wallsClimbedLabels,
+  nextWallTargetLabel,
+} from './locksmithWalls';
 
 /**
  * In-game wallet NFTs. Detail: Send / Sell.
@@ -43,6 +47,7 @@ export default function WalletNftSection({
   inventory = null,
   onInventoryChange = null,
   gameplayMode = false,
+  maxUnlockedLevel = 4,
 }) {
   const [nfts, setNfts] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -91,6 +96,18 @@ export default function WalletNftSection({
     const k = String(selected?.kind || '').toLowerCase();
     return ['fate', 'echo', 'rush', 'shadow'].includes(k) ? k : null;
   }, [selected]);
+
+  const isLocksmithSelected =
+    String(selected?.kind || '').toLowerCase() === 'locksmith';
+
+  const climbedWalls = useMemo(
+    () => wallsClimbedLabels(maxUnlockedLevel),
+    [maxUnlockedLevel],
+  );
+  const nextWall = useMemo(
+    () => nextWallTargetLabel(maxUnlockedLevel),
+    [maxUnlockedLevel],
+  );
 
   const handleStarEquip = useCallback(
     async (wantEquip) => {
@@ -678,6 +695,32 @@ export default function WalletNftSection({
                       </div>
                     </div>
                   </>
+                ) : isLocksmithSelected ? (
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ color: '#ddd', fontSize: 12, fontWeight: 'bold' }}>
+                      Walls climbed
+                    </div>
+                    <div
+                      style={{
+                        color: climbedWalls.length ? '#14F195' : '#888',
+                        fontSize: 12,
+                        marginTop: 2,
+                        fontWeight: 'bold',
+                        lineHeight: 1.35,
+                      }}
+                    >
+                      {climbedWalls.length ? climbedWalls.join(' · ') : 'None yet'}
+                    </div>
+                    {nextWall != null ? (
+                      <div style={{ color: '#666', fontSize: 10, marginTop: 2 }}>
+                        Next →{nextWall}
+                      </div>
+                    ) : (
+                      <div style={{ color: '#666', fontSize: 10, marginTop: 2 }}>
+                        All walls clear
+                      </div>
+                    )}
+                  </div>
                 ) : (
                   <div style={{ flex: 1 }} />
                 )}

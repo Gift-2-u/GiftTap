@@ -1,13 +1,13 @@
 {
-  "itemUri": "https://gateway.irys.xyz/5nS9GNZN7388HPiohoCJo63Uh7eGyoi4H7VcuBes5qLh",
-  "collectionUri": "https://gateway.irys.xyz/BvURBf68xdiD4P32wH4ESHbbG6H2pAq5ueLCcoXLvCyx",
-  "candyMachineTx": "mQe4oqV39JZPiPsyVeHATtFdhZNYQMnSiwrZPFgKrJjt9bVLCftaAK3TdeyB33ZnFvUnsZuw3Jjar71seREWFo9",
-  "collectionTx": "46UqWLVt31LfPGvvsrMf2LNNPamSquaiu9GqRzq2KWX69kDMAesXghTSaXtJkLjawjxXGuJEdBbtMnzeYxyGfqEt",
+  "itemUri": "https://gateway.irys.xyz/FTtvw5U8CRAApj3gopaV9MENUTWcw6aRNUsG9468J6gV",
+  "collectionUri": "https://gateway.irys.xyz/6SfBqYWjSaReWdBMteWqEGQpArh2S721PRQ9w9XnvqpW",
+  "candyMachineTx": "1RJMwWujonhTWNPHs9uCeUbJgyZoSHih8dx4wdyTDGRGM4CE3vwQHPiqbL6iXjwoFnF6EeJnEaAygspZo6grkFK",
+  "collectionTx": "3EfddSrghpqxy6CS8KHYCHc3uycLxuRbb1EbJUW4ZRVLifPGQxtWDQ91kqZygf8QEXADX5C9ZmUUwEYyW5U5VTZR",
   "assetsUpdated": [
     {
       "id": "D6CYXgSVrs8JVazWU8qAvS8Hvg3CT1B218QAUXamFsBc",
-      "sig": "2fDq5hS4e5sETphEj1h3nHhjCrXuNCfz1mg6MTB8VzRQvr1h9UzJEMhUCkoNuuGzHqox9CwJAa4djxZZ98rCoryz"
+      "sig": "2HU5tjEjwB8bpbuSXZmbpXat1BGQffjjnrEkK3pzwUe2FrujHQic7mM7s6fi2r3eKxvSkfjKfwvwPTXe6h4XHKk3"
     }
   ],
-  "updatedAt": "2026-08-21T02:14:03.568Z"
+  "updatedAt": "2026-08-21T19:30:46.224Z"
 }

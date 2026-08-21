@@ -5,10 +5,10 @@
   "priceSol": 0.1,
   "treasury": "AdvMvv6GzGvdLRtuxaso1Eubk7jmn6LCZEeEFHn22yeb",
   "collection": "FQPYWSohCPnS57W2AWAqwmQM21KRxGi4YXcCaiXUghPD",
-  "collectionUri": "https://gateway.irys.xyz/BvURBf68xdiD4P32wH4ESHbbG6H2pAq5ueLCcoXLvCyx",
+  "collectionUri": "https://gateway.irys.xyz/6SfBqYWjSaReWdBMteWqEGQpArh2S721PRQ9w9XnvqpW",
   "candyMachine": "AQbpmorxtBaaipqm4WcmCyBzci8Qf8km9qF8kAidsMkC",
   "candyGuard": "CBK1Zwsnwwks3BLmhHASzD9Rsq8i2Xgs6RWMZGNSQRJ9",
-  "itemUri": "https://gateway.irys.xyz/5nS9GNZN7388HPiohoCJo63Uh7eGyoi4H7VcuBes5qLh",
+  "itemUri": "https://gateway.irys.xyz/FTtvw5U8CRAApj3gopaV9MENUTWcw6aRNUsG9468J6gV",
   "imageUri": "https://gateway.irys.xyz/HXQ5D7Iu_vkgUsW4I6W7LQ0Vn3J5rTQJXkgxMwh28k4",
   "testMint": "Fsx9L4oS9pG4P4t338DwUtQpLX7oQTsxgGvK1JmTe3Tt",
   "cluster": "mainnet",
@@ -31,5 +31,5 @@
   "note": "Wave 1 live @ 0.10 SOL. Metadata: free wall climbs + Walk2u shoes.",
   "priceUpdateTx": "3yP8VHXgMUEKyK15Fu6rKSz9y2kygucLJ4FC43h1gqqei7D4wFFiJNgG7BnFkeRoqVoMv6dz8pBNBsCFjiTGm5U4",
   "priceUpdatedAt": "2026-08-20T19:38:57.856Z",
-  "metadataUpdatedAt": "2026-08-21T02:14:03.568Z"
+  "metadataUpdatedAt": "2026-08-21T19:30:46.224Z"
 }
