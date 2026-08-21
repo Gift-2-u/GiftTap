@@ -1385,13 +1385,15 @@ const GiftTapGame = () => {
   }, []);
 
   // Full leaderboard list for the Ranks page (not a modal)
-  const fetchFullLeaderboard = async (typeOverride) => {
+  // opts.silent = background refresh: keep current list visible (no Loading flash)
+  const fetchFullLeaderboard = async (typeOverride, opts = {}) => {
     const targetType = typeOverride || leaderboardType;
     const isAllTime = targetType === 'all_time' || targetType === 'All-time';
     const tableName = isAllTime ? 'leaderboard_all_time' : 'leaderboard_season';
     const sortColumn = isAllTime ? 'lifetime_taps' : 'score';
+    const silent = !!(opts && opts.silent);
 
-    setLeaderboardLoading(true);
+    if (!silent) setLeaderboardLoading(true);
 
     // --- AIRDROP qualified board (L5+, name / lvl / %) ---
     if (targetType === 'Airdrop') {
@@ -1772,7 +1774,7 @@ const GiftTapGame = () => {
   useEffect(() => {
     if (currentPage !== 'leaderboard' || leaderboardType !== 'Weekly') return undefined;
     const id = setInterval(() => {
-      fetchFullLeaderboard('Weekly');
+      fetchFullLeaderboard('Weekly', { silent: true });
     }, 12000);
     return () => clearInterval(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -6594,7 +6596,11 @@ const GiftTapGame = () => {
                 ) : null}
 
 <div style={{ background: '#1c1e22', borderRadius: '16px', border: '1px solid #333', overflow: 'hidden' }}>
-                  {leaderboardLoading ? (
+                  {leaderboardLoading &&
+                  leaderboard.length === 0 &&
+                  !(leaderboardType === 'Season' && seasonYouRank && playerId) &&
+                  !(leaderboardType === 'Weekly' && weeklyYouRank && playerId) &&
+                  !(leaderboardType === 'Airdrop' && airdropYouRank && playerId) ? (
                     <p style={{ color: '#888', textAlign: 'center', padding: '28px' }}>Loading ranks…</p>
                   ) : leaderboard.length === 0 && !(leaderboardType === 'Season' && seasonYouRank && playerId) && !(leaderboardType === 'Weekly' && weeklyYouRank && playerId) && !(leaderboardType === 'Airdrop' && airdropYouRank && playerId) ? (
                     <p style={{ color: '#888', textAlign: 'center', padding: '28px' }}>
