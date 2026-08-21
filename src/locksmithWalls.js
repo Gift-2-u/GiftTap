@@ -15,9 +15,9 @@ export const LOCKSMITH_LEVEL_FOR_WALL = {
   9: 2, // → Level 10 + Common Shoe
   19: 3, // → Level 20 + Common Shoe
   29: 4, // → Level 30 (shoe rarity TBD)
-  49: 5, // → Level 50
-  74: 6, // → Level 75
-  99: 7, // → Level 100
+  49: 5, // → Level 50+
+  74: 5, // → Level 75 (L5 covers 50+)
+  99: 5, // → Level 100
 };
 
 /** Walls that grant Common Shoe L1 when climbed via Locksmith */

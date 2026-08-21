@@ -1,10 +1,33 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useCallback } from 'react';
+import {
+  Connection,
+  PublicKey,
+  Keypair,
+  Transaction,
+  SystemProgram,
+  ComputeBudgetProgram,
+  sendAndConfirmTransaction,
+  LAMPORTS_PER_SOL,
+} from '@solana/web3.js';
+import bs58 from 'bs58';
 import { listGiftNfts } from './locksmith';
 import { transferCoreNft } from './nftTransfer';
-import { secureShadowClaim } from './secureApi';
+import { secureShadowClaim, secureElfLevelUp } from './secureApi';
+import { keypairFromMnemonic } from './solanaWallet';
+import { RPC_URL } from './rpc';
+import {
+  getElfLevel,
+  elfLevelUpCostSol,
+  ELF_MAX_LEVEL,
+  ELF_LEVEL_UP_TREASURY,
+  ELF_LEVEL_UP_FEE_WALLET,
+  ELF_LEVEL_UP_FEE_SOL,
+  normElfRarity,
+} from './elfLevelUp';
 
 /**
  * In-game wallet NFTs. Detail: Send / Sell.
+ * gameplayMode (Backpack → NFT): level + Level up price (no address focus).
  */
 export default function WalletNftSection({
   walletAddress,
@@ -15,6 +38,7 @@ export default function WalletNftSection({
   notify,
   inventory = null,
   onInventoryChange = null,
+  gameplayMode = false,
 }) {
   const [nfts, setNfts] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -27,6 +51,7 @@ export default function WalletNftSection({
   const [sending, setSending] = useState(false);
   const [listKey, setListKey] = useState(0);
   const [equipBusy, setEquipBusy] = useState(false);
+  const [levelBusy, setLevelBusy] = useState(false);
   const [localInv, setLocalInv] = useState(inventory || {});
 
   const toast = (msg, ok = true) => {
@@ -40,6 +65,95 @@ export default function WalletNftSection({
       setLocalInv(inventory);
     }
   }, [inventory]);
+
+  const selectedLevel = useMemo(() => {
+    if (!selected?.id) return 1;
+    return getElfLevel(localInv, selected.id);
+  }, [selected, localInv]);
+
+  const selectedLevelCost = useMemo(() => {
+    if (!selected) return null;
+    return elfLevelUpCostSol(selected.rarity, selectedLevel, selected.kind);
+  }, [selected, selectedLevel]);
+
+  const handleLevelUp = useCallback(async () => {
+    if (!selected || !gameplayMode || levelBusy) return;
+    const kind = String(selected.kind || '').toLowerCase();
+    if (!['fate', 'echo', 'rush', 'shadow', 'locksmith'].includes(kind)) {
+      toast('Level up is for Gift2u Elves NFTs', false);
+      return;
+    }
+    const cost = elfLevelUpCostSol(selected.rarity, selectedLevel, kind);
+    if (cost == null) {
+      toast('Already max level (L5)', false);
+      return;
+    }
+    const secret = String(walletSecret || '').trim();
+    if (!secret) {
+      toast('Unlock your game wallet first', false);
+      return;
+    }
+    setLevelBusy(true);
+    try {
+      const connection = new Connection(RPC_URL, 'confirmed');
+      let playerKeypair;
+      if (secret.includes(' ')) {
+        playerKeypair = keypairFromMnemonic(secret.trim());
+      } else {
+        playerKeypair = Keypair.fromSecretKey(bs58.decode(secret));
+      }
+      const masterWallet = new PublicKey(ELF_LEVEL_UP_TREASURY);
+      const feeWallet = new PublicKey(ELF_LEVEL_UP_FEE_WALLET);
+      const itemLamports = Math.floor(cost * LAMPORTS_PER_SOL);
+      const feeLamports = Math.floor(ELF_LEVEL_UP_FEE_SOL * LAMPORTS_PER_SOL);
+      const need = itemLamports + feeLamports + 1_000_000;
+      const bal = await connection.getBalance(playerKeypair.publicKey);
+      if (bal < need) {
+        throw new Error(
+          `Need ~${(need / LAMPORTS_PER_SOL).toFixed(4)} SOL (level-up + fees)`,
+        );
+      }
+      const tx = new Transaction().add(
+        ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 1_000_000 }),
+        SystemProgram.transfer({
+          fromPubkey: playerKeypair.publicKey,
+          toPubkey: masterWallet,
+          lamports: itemLamports,
+        }),
+        SystemProgram.transfer({
+          fromPubkey: playerKeypair.publicKey,
+          toPubkey: feeWallet,
+          lamports: feeLamports,
+        }),
+      );
+      const signature = await sendAndConfirmTransaction(connection, tx, [
+        playerKeypair,
+      ]);
+      const data = await secureElfLevelUp({
+        assetId: selected.id,
+        kind,
+        rarity: normElfRarity(selected.rarity),
+        txSignature: signature,
+      });
+      const nextInv = data.inventory || localInv;
+      setLocalInv(nextInv);
+      if (typeof onInventoryChange === 'function') onInventoryChange(nextInv);
+      toast(`Level up → L${data.to_level} (−${cost} SOL)`, true);
+    } catch (e) {
+      toast(e?.message || 'Level up failed', false);
+    } finally {
+      setLevelBusy(false);
+    }
+  }, [
+    selected,
+    gameplayMode,
+    levelBusy,
+    selectedLevel,
+    walletSecret,
+    localInv,
+    onInventoryChange,
+    toast,
+  ]);
 
 
   useEffect(() => {
@@ -312,27 +426,35 @@ export default function WalletNftSection({
                             : nft.kind === 'locksmith'
                               ? ' · Locksmith'
                               : ''}
+                    {gameplayMode &&
+                    ['fate', 'echo', 'rush', 'shadow', 'locksmith'].includes(
+                      String(nft.kind || '').toLowerCase(),
+                    )
+                      ? ` · L${getElfLevel(localInv, nft.id)}`
+                      : ''}
                   </div>
-                  <div
-                    style={{
-                      color: '#555',
-                      fontSize: '10px',
-                      marginTop: 2,
-                      fontFamily: 'monospace',
-                    }}
-                  >
-                    {nft.id.slice(0, 4)}…{nft.id.slice(-4)}
-                  </div>
+                  {!gameplayMode ? (
+                    <div
+                      style={{
+                        color: '#555',
+                        fontSize: '10px',
+                        marginTop: 2,
+                        fontFamily: 'monospace',
+                      }}
+                    >
+                      {nft.id.slice(0, 4)}…{nft.id.slice(-4)}
+                    </div>
+                  ) : null}
                 </div>
                 <span
                   style={{
-                    color: '#ffd700',
+                    color: gameplayMode ? '#c084fc' : '#ffd700',
                     fontSize: '11px',
                     fontWeight: 'bold',
                     flexShrink: 0,
                   }}
                 >
-                  View
+                  {gameplayMode ? `L${getElfLevel(localInv, nft.id)}` : 'View'}
                 </span>
               </button>
             ))}
@@ -574,47 +696,113 @@ export default function WalletNftSection({
               </div>
             ) : null}
 
-            <div
-              style={{
-                background: '#0a0a0a',
-                border: '1px solid #333',
-                borderRadius: '10px',
-                padding: '10px',
-                marginBottom: '12px',
-              }}
-            >
-              <div style={{ color: '#888', fontSize: '10px', marginBottom: '4px' }}>
-                Mint / Asset ID
-              </div>
+            {gameplayMode &&
+            ['fate', 'echo', 'rush', 'shadow', 'locksmith'].includes(
+              String(selected.kind || '').toLowerCase(),
+            ) ? (
               <div
                 style={{
-                  color: '#e5e5e5',
-                  fontSize: '11px',
-                  fontFamily: 'monospace',
-                  wordBreak: 'break-all',
-                  lineHeight: 1.4,
+                  background: '#121018',
+                  border: '1px solid #a855f7',
+                  borderRadius: 12,
+                  padding: 12,
+                  marginBottom: 12,
                 }}
               >
-                {selected.id}
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    marginBottom: 8,
+                  }}
+                >
+                  <span style={{ color: '#c084fc', fontWeight: 'bold', fontSize: 13 }}>
+                    Level {selectedLevel}
+                    {selectedLevel >= ELF_MAX_LEVEL ? ' (max)' : ''}
+                  </span>
+                  {selectedLevelCost != null ? (
+                    <span style={{ color: '#ffd700', fontSize: 12, fontWeight: 'bold' }}>
+                      Next {selectedLevelCost} SOL
+                    </span>
+                  ) : (
+                    <span style={{ color: '#666', fontSize: 11 }}>Max L{ELF_MAX_LEVEL}</span>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  disabled={levelBusy || selectedLevelCost == null}
+                  onClick={handleLevelUp}
+                  style={{
+                    width: '100%',
+                    background:
+                      selectedLevelCost != null
+                        ? 'linear-gradient(90deg, #9945FF, #14F195)'
+                        : '#222',
+                    border: 'none',
+                    color: selectedLevelCost != null ? '#000' : '#666',
+                    borderRadius: 8,
+                    padding: 12,
+                    fontSize: 13,
+                    fontWeight: 'bold',
+                    cursor:
+                      levelBusy || selectedLevelCost == null
+                        ? 'not-allowed'
+                        : 'pointer',
+                  }}
+                >
+                  {levelBusy
+                    ? '…'
+                    : selectedLevelCost != null
+                      ? `Level up → L${selectedLevel + 1} (${selectedLevelCost} SOL)`
+                      : `Max level L${ELF_MAX_LEVEL}`}
+                </button>
               </div>
-              <button
-                type="button"
-                onClick={() => copyMint(selected.id)}
+            ) : null}
+
+            {!gameplayMode ? (
+              <div
                 style={{
-                  marginTop: '8px',
-                  background: '#222',
-                  color: copied ? '#4ade80' : '#ffd700',
-                  border: '1px solid #444',
-                  borderRadius: '6px',
-                  padding: '6px 10px',
-                  fontSize: '11px',
-                  fontWeight: 'bold',
-                  cursor: 'pointer',
+                  background: '#0a0a0a',
+                  border: '1px solid #333',
+                  borderRadius: '10px',
+                  padding: '10px',
+                  marginBottom: '12px',
                 }}
               >
-                {copied ? '✓ Copied' : 'Copy address'}
-              </button>
-            </div>
+                <div style={{ color: '#888', fontSize: '10px', marginBottom: '4px' }}>
+                  Mint / Asset ID
+                </div>
+                <div
+                  style={{
+                    color: '#e5e5e5',
+                    fontSize: '11px',
+                    fontFamily: 'monospace',
+                    wordBreak: 'break-all',
+                    lineHeight: 1.4,
+                  }}
+                >
+                  {selected.id}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => copyMint(selected.id)}
+                  style={{
+                    marginTop: '8px',
+                    background: '#222',
+                    color: copied ? '#4ade80' : '#ffd700',
+                    border: '1px solid #444',
+                    borderRadius: '6px',
+                    padding: '6px 10px',
+                    fontSize: '11px',
+                    fontWeight: 'bold',
+                    cursor: 'pointer',
+                  }}
+                >
+                  {copied ? '✓ Copied' : 'Copy address'}
+                </button>
+              </div>
+            ) : null}
 
             {sendOpen ? (
               <div

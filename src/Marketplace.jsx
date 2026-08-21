@@ -2924,6 +2924,7 @@ Daily claim active · Pack → NFT to see it.`,
                   walletAddress={playerWallet}
                   walletSecret={decryptedPhrase || ''}
                   refreshKey={walletNftRefresh}
+                  gameplayMode
                   inventory={localInventory}
                   onInventoryChange={(inv, playerPatch) => {
                     setLocalInventory(inv);

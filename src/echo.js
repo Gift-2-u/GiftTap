@@ -40,7 +40,7 @@ export const ECHO_WAVE1 = {
   rare: {
     key: 'rare',
     label: 'Rare',
-    priceSol: 0.2,
+    priceSol: 0.3,
     itemsAvailable: 1575,
     maxSupply: 5250,
     border: '#3B82F6',
@@ -52,7 +52,7 @@ export const ECHO_WAVE1 = {
   epic: {
     key: 'epic',
     label: 'Epic',
-    priceSol: 0.8,
+    priceSol: 1.0,
     itemsAvailable: 525,
     maxSupply: 1750,
     border: '#A855F7',
@@ -64,7 +64,7 @@ export const ECHO_WAVE1 = {
   legendary: {
     key: 'legendary',
     label: 'Legendary',
-    priceSol: 1.75,
+    priceSol: 2.5,
     itemsAvailable: 150,
     maxSupply: 500,
     border: '#EAB308',

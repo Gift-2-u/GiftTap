@@ -83,8 +83,8 @@ Waves = **30% / 40% / 30%** of each rarity’s supply.
 | Rarity | Total supply | W1 (30%) price | W2 (40%) price | W3 (30%) price |
 |--------|-------------:|---------------:|---------------:|---------------:|
 | Common | 17,500 | **0.05 SOL** | **0.10 SOL** | **0.15 SOL** |
-| Rare | 5,250 | **0.20 SOL** | **0.35 SOL** | **0.50 SOL** |
-| Epic | 1,750 | **0.80 SOL** | **1.25 SOL** | **1.75 SOL** |
+| Rare | 5,250 | **0.30 SOL** | **0.53 SOL** | **0.75 SOL** |
+| Epic | 1,750 | **1.00 SOL** | **1.55 SOL** | **2.20 SOL** |
 | Legendary | 500 | **2.50 SOL** | **4.00 SOL** | **6.00 SOL** |
 | **Total Fate** | **25,000** | | | |
 
@@ -96,10 +96,15 @@ Waves = **30% / 40% / 30%** of each rarity’s supply.
 
 | Rarity | L1→2 | L2→3 | L3→4 | L4→5 | **Total L1→5** |
 |--------|-----:|-----:|-----:|-----:|---------------:|
-| Common | 0.03 | 0.05 | 0.08 | 0.12 | **0.28 SOL** |
-| Rare | 0.10 | 0.15 | 0.25 | 0.40 | **0.90 SOL** |
-| Epic | 0.25 | 0.40 | 0.65 | 1.00 | **2.30 SOL** |
-| Legendary | 0.60 | 0.80 | 1.30 | 2.00 | **4.70 SOL** |
+| Common | 0.02 | 0.04 | 0.06 | 0.08 | **0.20 SOL** |
+| Rare | 0.05 | 0.10 | 0.20 | 0.25 | **0.60 SOL** |
+| Epic | 0.15 | 0.25 | 0.35 | 0.50 | **1.25 SOL** |
+| Legendary | 0.50 | 0.80 | 1.20 | 2.00 | **4.50 SOL** |
+
+**Incentive rule:** mint + L1→5 of a rarity stays under the next rarity’s W1 mint
+(Common full **0.25** < Rare W1 **0.30** · Rare full **0.90** < Epic W1 **1.00** ·
+Epic full **2.25** < Legendary W1 **2.50**). Higher rarity = higher ceiling, not a
+cheaper skip of leveling.
 
 ---
 

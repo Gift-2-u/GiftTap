@@ -199,6 +199,21 @@ export async function secureLocksmithActivate({
   });
 }
 
+/** Pay SOL then bump elf NFT level (Backpack → NFT). */
+export async function secureElfLevelUp({
+  assetId,
+  kind,
+  rarity,
+  txSignature,
+}) {
+  return callSecureFunction('elf-level-up', {
+    asset_id: assetId,
+    kind,
+    rarity,
+    tx_signature: txSignature,
+  });
+}
+
 
 export async function secureReferralCredit(kind) {
   return callSecureFunction('referral-credit', { kind });
