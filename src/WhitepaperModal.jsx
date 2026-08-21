@@ -43,7 +43,7 @@ const WhitepaperModal = ({ isWhitepaperOpen, setIsWhitepaperOpen, onClose }) => 
         "FATE · Luck\n" +
         "━━━━━━━━━━━━━━━━━━━━\n" +
         "Role: jackpot chance on tap G2Ushards.\n" +
-        "Wave 1 prices: Common 0.05 · Rare 0.20 · Epic 0.80 · Legendary 1.75 SOL.\n" +
+        "Wave 1 prices: Common 0.05 · Rare 0.30 · Epic 1.00 · Legendary 2.50 SOL.\n" +
         "You get:\n" +
         "• Fate in wallet — each tap can hit one jackpot (replaces Frenzy on that tap; Echo still stacks)\n" +
         "• Level N unlocks luck rungs 1→N (higher rung checked first)\n" +
@@ -65,7 +65,7 @@ const WhitepaperModal = ({ isWhitepaperOpen, setIsWhitepaperOpen, onClose }) => 
         "ECHO · Power\n" +
         "━━━━━━━━━━━━━━━━━━━━\n" +
         "Role: always-on tap multiplier.\n" +
-        "Wave 1 prices: Common 0.05 · Rare 0.20 · Epic 0.80 · Legendary 1.75 SOL.\n" +
+        "Wave 1 prices: Common 0.05 · Rare 0.30 · Epic 1.00 · Legendary 2.50 SOL.\n" +
         "You get (tap multi by rarity × level 1→5):\n" +
         "• Common      1.10× → 1.50×\n" +
         "• Rare        1.60× → 2.00×\n" +
@@ -76,7 +76,7 @@ const WhitepaperModal = ({ isWhitepaperOpen, setIsWhitepaperOpen, onClose }) => 
         "RUSH · Energy (daily cap)\n" +
         "━━━━━━━━━━━━━━━━━━━━\n" +
         "Role: raises max daily taps (replaces base 1,000).\n" +
-        "Wave 1 prices: Common 0.05 · Rare 0.20 · Epic 0.80 · Legendary 1.75 SOL.\n" +
+        "Wave 1 prices: Common 0.05 · Rare 0.30 · Epic 1.00 · Legendary 2.50 SOL.\n" +
         "You get (max daily taps by rarity × level 1→5):\n" +
         "• Common      1,100 → 1,500\n" +
         "• Rare        1,600 → 2,000\n" +
@@ -88,20 +88,32 @@ const WhitepaperModal = ({ isWhitepaperOpen, setIsWhitepaperOpen, onClose }) => 
         "SHADOW · Night (daily claim)\n" +
         "━━━━━━━━━━━━━━━━━━━━\n" +
         "Role: claim shards once per UTC day without tapping.\n" +
-        "Wave 1 prices: Common 0.05 · Rare 0.20 · Epic 0.80 · Legendary 1.75 SOL.\n" +
+        "Wave 1 prices: Common 0.05 · Rare 0.30 · Epic 1.00 · Legendary 2.50 SOL.\n" +
         "You get (claim hours ÷ 24 of base daily cap — Rush or 1,000; boosts not included):\n" +
         "• Common      2h → 6h\n" +
         "• Rare        8h → 12h\n" +
         "• Epic       14h → 18h\n" +
         "• Legendary  20h → 24h (full base daily at L5)\n" +
         "• 1 Star Badge socket\n\n" +
+        "━━━━━━━━━━━━━━━━━━━━\n" +
+        "LEVEL UP (Backpack → NFT)\n" +
+        "━━━━━━━━━━━━━━━━━━━━\n" +
+        "Pay SOL in Backpack → NFT to raise elf level (max L5).\n" +
+        "Mint + full L1→5 stays under the next rarity Wave 1 mint.\n\n" +
+        "Fate · Echo · Rush · Shadow (L1→2 / L2→3 / L3→4 / L4→5 · total):\n" +
+        "• Common      0.02 / 0.04 / 0.06 / 0.08  · total 0.20\n" +
+        "• Rare        0.05 / 0.10 / 0.20 / 0.25  · total 0.60\n" +
+        "• Epic        0.15 / 0.25 / 0.35 / 0.50  · total 1.25\n" +
+        "• Legendary   0.50 / 0.80 / 1.20 / 2.00  · total 4.50\n\n" +
+        "GiftLocksmith (mint 0.10 = L1; separate ladder):\n" +
+        "• L1→2 0.20 · L2→3 0.35 · L3→4 0.60 · L4→5 1.50  · total 2.65\n\n" +
         "Airdrop tip: Locksmith +25% weight; each other elf adds by rarity (Common +5% · Rare +10% · Epic +20% · Legendary +30%). Clear Level 5 to appear on Ranks → Airdrop.\n\n" +
         "NFTs are optional gameplay items. No return is promised.",
     },
     {
       id: 5,
       title: "5. Shop: Shards, Boosts & NFTs",
-      content: "Gift Shop has four areas:\n\n• Free (Shards) — temporary boosts paid with G2Ushards (Frenzy, Battery, Refill, Heavy Hands). Frenzy = 2× shards per tap, normal energy cost.\n• Premium (Boosts) — temporary SOL boosts (bots, contracts, power multipliers). These are NOT NFTs.\n• NFTs — on-chain Wave 1 mints LIVE: Locksmith · Fate · Echo · Rush · Shadow. Permanent utility.\n• Pack (Backpack) — activate temporary items; Elves live in your game wallet.\n\nThe core game stays free-to-play. Purchases are optional."
+      content: "Gift Shop has four areas:\n\n• Free (Shards) — temporary boosts paid with G2Ushards (Frenzy, Battery, Refill, Heavy Hands). Frenzy = 2× shards per tap, normal energy cost.\n• Premium (Boosts) — temporary SOL boosts (bots, contracts, power multipliers). These are NOT NFTs.\n• NFTs — on-chain Wave 1 mints LIVE: Locksmith · Fate · Echo · Rush · Shadow. Permanent utility.\n• Backpack — activate temporary items; Elves live in your game wallet. Level up Elves in Backpack → NFT.\n\nThe core game stays free-to-play. Purchases are optional."
     },
     {
       id: 6,

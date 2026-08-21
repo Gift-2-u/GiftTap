@@ -99,12 +99,15 @@ export const HELP_TIPS = {
     title: 'Gift2u Elves',
     body:
       'Wave 1 LIVE in Shop → NFTs.\n\n' +
+      'Mint W1: Common 0.05 · Rare 0.30 · Epic 1.00 · Legendary 2.50 SOL '
+      '(Locksmith 0.10).\n\n' +
       '• Locksmith — free walls · Walk2u shoe\n' +
       '• Fate — luck jackpots on taps\n' +
       '• Echo — always-on tap multi (up to 3.00×)\n' +
       '• Rush — higher max daily taps (up to 3,000)\n' +
       '• Shadow — daily claim without tapping\n\n' +
-      'Full boards: Menu → Game Guide → Gift2u Elves NFTs.',
+      'Level up in Backpack → NFT (SOL). Full boards + level-up prices: '
+      'Menu → Game Guide → Gift2u Elves NFTs.',
   },
   mystery_gift: {
     title: 'Mystery Gift',
