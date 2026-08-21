@@ -1,17 +1,27 @@
 {
   "name": "GiftLocksmith",
   "symbol": "Locksmith",
-  "description": "GiftLocksmith unlocks the G2Ushard → $G2U swap and access to the Gift2u vault for improved APY. Part of the Gift2u Elves collection (Gen 1). Planned max supply: 5000 across 3 waves.",
-  "seller_fee_basis_points": 500,
+  "description": "GiftLocksmith unlocks free ascension wall climbs and Walk2u Common Shoes on walls 5 / 10 / 20 (L1–L3). Higher Locksmith levels unlock later walls. Gift2u Elves Gen 1 — Wave 1 of 3 (max 5000).",
+  "image": "https://gateway.irys.xyz/HXQ5D7Iu_vkgUsW4I6W7LQ0Vn3J5rTQJXkgxMwh28k4",
   "external_url": "https://gift2u.fun",
+  "seller_fee_basis_points": 500,
   "attributes": [
     { "trait_type": "Collection", "value": "Gift2u Elves" },
     { "trait_type": "Class", "value": "GiftLocksmith" },
     { "trait_type": "Generation", "value": "Gen 1" },
     { "trait_type": "Rarity", "value": "Rare" },
-    { "trait_type": "Wave", "value": "Test / #0" },
-    { "trait_type": "Utility", "value": "G2Ushard Swap + Vault APY" },
+    { "trait_type": "Wave", "value": "1" },
+    { "trait_type": "Utility", "value": "Free walls · Walk2u shoe" },
     { "trait_type": "Type", "value": "Utility" },
     { "trait_type": "Max Supply", "value": "5000" }
-  ]
+  ],
+  "properties": {
+    "category": "image",
+    "files": [
+      {
+        "uri": "https://gateway.irys.xyz/HXQ5D7Iu_vkgUsW4I6W7LQ0Vn3J5rTQJXkgxMwh28k4",
+        "type": "image/jpeg"
+      }
+    ]
+  }
 }

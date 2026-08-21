@@ -713,8 +713,8 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
       perks: [
         'L1: free climb → Level 5 + Common Walk2u Shoe',
         'L2 / L3: free → Level 10 / 20 + Common Shoe',
-        'Higher levels unlock later walls (levels grow with walls)',
-        'Paying walls = better taps only — shoe is Locksmith-only',
+        'Higher levels unlock later walls as they open',
+        'Opens the path to Walk2u',
       ],
       attributes: [
         { trait_type: 'Collection', value: 'Gift2u Elves' },

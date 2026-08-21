@@ -633,6 +633,5 @@ export const LOCKSMITH_PERKS = [
   { trait: 'L1', value: 'Free → L5 + Common Shoe' },
   { trait: 'L2–L3', value: 'Free → L10 / L20 + Shoe' },
   { trait: 'Levels', value: 'Grow with new walls' },
-  { trait: 'Payers', value: 'Better taps only (no shoe)' },
-  { trait: 'Path', value: 'Walk2u shoe (later game)' },
+  { trait: 'Path', value: 'Opens Walk2u' },
 ];
