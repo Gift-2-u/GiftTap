@@ -161,7 +161,7 @@ function ShopItemIcon({ item, size = 52, variant = 'row' }) {
   );
 }
 
-const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, tgUser, playerWallet, decryptedPhrase, initialTab, onInitialTabConsumed, maxUnlockedLevel = 4 }) => {
+const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, flushPendingTaps, player, tgUser, playerWallet, decryptedPhrase, initialTab, onInitialTabConsumed, maxUnlockedLevel = 4 }) => {
   const user = player || tgUser;
   // Shop hub first — show ALL options (Free / Premium / NFT / Backpack) before any list
   const [activeTab, setActiveTab] = useState(initialTab || 'home');
@@ -1655,6 +1655,15 @@ Daily claim active · Pack → NFT to see it.`,
 
     if (hasSecureSession()) {
       try {
+        // Drain in-flight taps before Instant Refill so an old commit cannot
+        // fight the new 500 bar (stuck-at-500 / stuck-at-390 desyncs).
+        if (item.id === 'refill' && typeof flushPendingTaps === 'function') {
+          try {
+            await flushPendingTaps();
+          } catch {
+            /* ignore */
+          }
+        }
         const data = await secureBackpackActivate(item.id);
         const weekId = getUtcWeekId();
         const prevQty = Math.max(0, Math.floor(Number(localInventory[item.id]) || 0));

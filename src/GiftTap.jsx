@@ -783,9 +783,11 @@ const GiftTapGame = () => {
   const energyAnchorRef = useRef({ value: 500, at: Date.now() });
   /**
    * Bumped on Instant Refill / shop energy grants. In-flight commit-taps flushes
-   * that started before the bump must not overwrite the new full bar (stuck 390 bug).
+   * that started before the bump must not overwrite the new full bar.
    */
   const energyEpochRef = useRef(0);
+  /** Last local tap time — while bursting, local energy owns the HUD (no snap to 500). */
+  const lastLocalTapAtRef = useRef(0);
   /** Live buff expires — tap handler reads this so cost never uses stale stats */
   const buffRef = useRef({
     frenzyExpires: null,
@@ -913,9 +915,11 @@ const GiftTapGame = () => {
     const raw =
       typeof valueOrUpdater === 'function' ? valueOrUpdater(cur) : valueOrUpdater;
     const next = Math.max(0, Math.min(ENERGY_CAP, Number(raw) || 0));
-    energyEpochRef.current += 1; // invalidate in-flight flush energy snaps
+    // Invalidate in-flight flushes so a pre-refill commit cannot overwrite the new bar
+    energyEpochRef.current += 1;
     energyAnchorRef.current = { value: next, at: Date.now() };
     optimisticEnergy.current = next;
+    lastLocalTapAtRef.current = 0; // allow idle settle after refill before next taps
     setEnergy(next);
   }, []);
 
@@ -3208,8 +3212,12 @@ const GiftTapGame = () => {
             const s = Number(p.season_shards);
             const dt = Number(p.daily_taps);
             const en = Number(p.last_energy);
-            // Energy sync — never snap UP mid-burst (froze bar at ~390 after
-            // refill while daily kept climbing). Ignore flushes from before refill.
+            // Energy sync rules (refill + frenzy loop):
+            // - Ignore flushes that started before Instant Refill (epoch).
+            // - While bursting (pending taps or tapped <1s ago), LOCAL bar owns the HUD.
+            //   Never snap UP to 500 mid-session (that let players burn 2000 daily
+            //   on a frozen full battery). Only pull DOWN if server spent more.
+            // - When idle, settle to server catch-up.
             if (Number.isFinite(en) && flushEpoch === energyEpochRef.current) {
               const atMs = p.last_updated ? Date.parse(p.last_updated) : Date.now();
               const serverLive = catchUpEnergyAnchor({
@@ -3217,19 +3225,31 @@ const GiftTapGame = () => {
                 at: Number.isFinite(atMs) ? atMs : Date.now(),
               });
               const stillPending = (pendingTapsRef.current?.count || 0) > 0;
+              const recentlyTapping =
+                Date.now() - (lastLocalTapAtRef.current || 0) < 1000;
               const localEn = Number(optimisticEnergy.current);
-              const nextEn =
-                stillPending && Number.isFinite(localEn)
-                  ? Math.min(serverLive.value, localEn)
-                  : serverLive.value;
-              if (stillPending) {
-                const caught = catchUpEnergyAnchor(energyAnchorRef.current);
-                energyAnchorRef.current = { value: nextEn, at: caught.at };
+              const bursting = stillPending || recentlyTapping;
+
+              if (bursting && Number.isFinite(localEn)) {
+                if (serverLive.value < localEn - 0.5) {
+                  // Server drained further than local optimism — adopt lower
+                  const caught = catchUpEnergyAnchor(energyAnchorRef.current);
+                  energyAnchorRef.current = {
+                    value: serverLive.value,
+                    at: caught.at,
+                  };
+                  optimisticEnergy.current = serverLive.value;
+                  setEnergy(serverLive.value);
+                }
+                // else keep local spend — do NOT snap back to 500
               } else {
-                energyAnchorRef.current = { value: nextEn, at: serverLive.at };
+                energyAnchorRef.current = {
+                  value: serverLive.value,
+                  at: serverLive.at,
+                };
+                optimisticEnergy.current = serverLive.value;
+                setEnergy(serverLive.value);
               }
-              optimisticEnergy.current = nextEn;
-              setEnergy(nextEn);
             }
             // Keep Frenzy / Heavy Hands timers aligned with server (cost must match)
             if (p.frenzy_expires !== undefined || p.efficiency_expires !== undefined) {
@@ -4154,6 +4174,7 @@ const GiftTapGame = () => {
         );
         energyAnchorRef.current = spent;
         optimisticEnergy.current = spent.value;
+        lastLocalTapAtRef.current = Date.now();
       }
       let nextEnergy = Number(optimisticEnergy.current) || 0;
 
@@ -4623,20 +4644,27 @@ const GiftTapGame = () => {
               }
               if (
                 payload.new.last_energy != null &&
-                (pendingTapsRef.current?.count || 0) <= 0
+                (pendingTapsRef.current?.count || 0) <= 0 &&
+                Date.now() - (lastLocalTapAtRef.current || 0) > 1000
               ) {
                 const raw = Number(payload.new.last_energy);
-                // 0 is valid (empty battery). Do not treat nullish as full 500.
-                // Skip while bursting — realtime was fighting tap spends / refill.
+                // 0 is valid (empty battery). Skip while bursting — realtime was
+                // resetting the bar to 500 after Instant Refill.
                 if (Number.isFinite(raw)) {
                   const base = Math.max(0, Math.min(ENERGY_CAP, raw));
                   const atMs = payload.new.last_updated
                     ? new Date(payload.new.last_updated).getTime()
                     : Date.now();
                   const en = energyFromAnchor(base, atMs);
-                  energyAnchorRef.current = { value: base, at: atMs };
-                  setEnergy(en);
-                  optimisticEnergy.current = en;
+                  const localEn = Number(optimisticEnergy.current);
+                  // Never snap UP from realtime while local already spent lower
+                  if (Number.isFinite(localEn) && en > localEn + 1) {
+                    /* keep local */
+                  } else {
+                    energyAnchorRef.current = { value: base, at: atMs };
+                    setEnergy(en);
+                    optimisticEnergy.current = en;
+                  }
                 }
               }
               if (payload.new.tap_power != null) setTapPower(payload.new.tap_power);
@@ -6445,7 +6473,8 @@ const GiftTapGame = () => {
               <Marketplace 
                 balance={balance} 
                 setBalance={setBalanceSynced}
-                setEnergy={setEnergySyncedForShop} 
+                setEnergy={setEnergySyncedForShop}
+                flushPendingTaps={flushPendingTaps}
                 stats={stats}
                 setStats={setStats}
                 player={player}
