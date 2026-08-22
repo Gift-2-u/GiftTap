@@ -210,12 +210,24 @@ serve(async (req) => {
       meta: { dailyUsage: outDaily[itemId] || null },
     });
 
+    // Refill: always return the full bar we just wrote (avoid stale verified race).
+    const outEnergy =
+      itemId === "refill"
+        ? ENERGY_CAP
+        : Number.isFinite(Number(verified?.last_energy))
+          ? Number(verified?.last_energy)
+          : last_energy;
+
     return jsonResponse({
       success: true,
       item_id: itemId,
       inventory: outInv,
       shard_balance: Number(verified?.shard_balance) || shard_balance,
-      last_energy: Number(verified?.last_energy) || last_energy,
+      last_energy: outEnergy,
+      last_updated:
+        itemId === "refill"
+          ? String(updates.last_updated || new Date().toISOString())
+          : undefined,
       updates: { ...updates, inventory: outInv },
       daily_usage: outDaily,
     });

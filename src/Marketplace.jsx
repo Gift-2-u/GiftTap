@@ -1700,6 +1700,8 @@ Daily claim active · Pack → NFT to see it.`,
         setDailyUsage(nextDailyUsage);
         if (data.shard_balance != null) setBalance(Number(data.shard_balance));
         if (item.id === 'refill' || data.last_energy != null) {
+          // Must use GiftTap setEnergySyncedForShop (passed as setEnergy) so the
+          // regen anchor + epoch bump — plain setState left the bar stuck mid-drain.
           const en =
             data.last_energy != null ? Number(data.last_energy) : 500;
           if (setEnergy) setEnergy(Math.min(500, Math.max(0, en)));

@@ -781,6 +781,11 @@ const GiftTapGame = () => {
   const optimisticEnergy = useRef(500);
   /** Wall-clock anchor for 500-energy regen (survives phone sleep; ticker only +1 is useless). */
   const energyAnchorRef = useRef({ value: 500, at: Date.now() });
+  /**
+   * Bumped on Instant Refill / shop energy grants. In-flight commit-taps flushes
+   * that started before the bump must not overwrite the new full bar (stuck 390 bug).
+   */
+  const energyEpochRef = useRef(0);
   /** Live buff expires — tap handler reads this so cost never uses stale stats */
   const buffRef = useRef({
     frenzyExpires: null,
@@ -908,6 +913,7 @@ const GiftTapGame = () => {
     const raw =
       typeof valueOrUpdater === 'function' ? valueOrUpdater(cur) : valueOrUpdater;
     const next = Math.max(0, Math.min(ENERGY_CAP, Number(raw) || 0));
+    energyEpochRef.current += 1; // invalidate in-flight flush energy snaps
     energyAnchorRef.current = { value: next, at: Date.now() };
     optimisticEnergy.current = next;
     setEnergy(next);
@@ -3161,6 +3167,9 @@ const GiftTapGame = () => {
               : null,
         };
 
+        // Capture refill epoch so a response from before Instant Refill cannot
+        // overwrite the new 500 bar (UI stuck at ~390 while taps continue).
+        const flushEpoch = energyEpochRef.current;
         try {
           const data = await secureCommitTaps({ batchId, taps });
           const p = data?.player;
@@ -3178,17 +3187,28 @@ const GiftTapGame = () => {
             const s = Number(p.season_shards);
             const dt = Number(p.daily_taps);
             const en = Number(p.last_energy);
-            // Always sync energy — server may have caught up regen on no_energy path
-            if (Number.isFinite(en)) {
+            // Energy sync — never snap UP mid-burst (froze bar at ~390 after
+            // refill while daily kept climbing). Ignore flushes from before refill.
+            if (Number.isFinite(en) && flushEpoch === energyEpochRef.current) {
               const atMs = p.last_updated ? Date.parse(p.last_updated) : Date.now();
-              const anchor = {
+              const serverLive = catchUpEnergyAnchor({
                 value: en,
                 at: Number.isFinite(atMs) ? atMs : Date.now(),
-              };
-              const live = catchUpEnergyAnchor(anchor);
-              energyAnchorRef.current = live;
-              optimisticEnergy.current = live.value;
-              setEnergy(live.value);
+              });
+              const stillPending = (pendingTapsRef.current?.count || 0) > 0;
+              const localEn = Number(optimisticEnergy.current);
+              const nextEn =
+                stillPending && Number.isFinite(localEn)
+                  ? Math.min(serverLive.value, localEn)
+                  : serverLive.value;
+              if (stillPending) {
+                const caught = catchUpEnergyAnchor(energyAnchorRef.current);
+                energyAnchorRef.current = { value: nextEn, at: caught.at };
+              } else {
+                energyAnchorRef.current = { value: nextEn, at: serverLive.at };
+              }
+              optimisticEnergy.current = nextEn;
+              setEnergy(nextEn);
             }
             // Keep Frenzy / Heavy Hands timers aligned with server (cost must match)
             if (p.frenzy_expires !== undefined || p.efficiency_expires !== undefined) {
@@ -4578,9 +4598,13 @@ const GiftTapGame = () => {
                 }
                 setCurrentLevel(effectiveLevel(incomingTaps, maxU));
               }
-              if (payload.new.last_energy != null) {
+              if (
+                payload.new.last_energy != null &&
+                (pendingTapsRef.current?.count || 0) <= 0
+              ) {
                 const raw = Number(payload.new.last_energy);
                 // 0 is valid (empty battery). Do not treat nullish as full 500.
+                // Skip while bursting — realtime was fighting tap spends / refill.
                 if (Number.isFinite(raw)) {
                   const base = Math.max(0, Math.min(ENERGY_CAP, raw));
                   const atMs = payload.new.last_updated
