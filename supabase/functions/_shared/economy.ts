@@ -197,6 +197,58 @@ export function invObj(raw: unknown): Record<string, unknown> {
   return {};
 }
 
+/**
+ * Effective daily tap CAP for today (what max_daily_limit column should store).
+ * Base = Rush cap or 1000 — never use stored max_daily_limit as base (avoids double-count).
+ * Adds: Expanded Battery +1000, limit_boost, task_limit_boost, ad_energy_boost.
+ */
+export function taskLimitBoostFromInv(
+  inv: Record<string, unknown>,
+  now: Date = new Date(),
+): number {
+  const b = inv?.task_limit_boost as { amount?: number; expires?: string } | undefined;
+  if (!b?.expires) return 0;
+  if (new Date(String(b.expires)).getTime() <= now.getTime()) return 0;
+  return Math.max(0, Number(b.amount) || 0);
+}
+
+export function effectiveDailyLimit(
+  row: {
+    max_daily_limit?: unknown;
+    energy_boost_expires?: unknown;
+    limit_boost_amount?: unknown;
+    limit_boost_expires?: unknown;
+    ad_energy_boost?: unknown;
+    ad_energy_expires?: unknown;
+    inventory?: unknown;
+  },
+  now: Date = new Date(),
+): number {
+  const inv = invObj(row.inventory);
+  const rushCap = rushDailyLimitFromInv(inv);
+  let n = rushCap > 0 ? rushCap : 1000;
+  if (
+    row.energy_boost_expires &&
+    now < new Date(String(row.energy_boost_expires))
+  ) {
+    n += 1000;
+  }
+  if (
+    row.limit_boost_expires &&
+    now < new Date(String(row.limit_boost_expires))
+  ) {
+    n += Number(row.limit_boost_amount) || 0;
+  }
+  n += taskLimitBoostFromInv(inv, now);
+  if (
+    row.ad_energy_expires &&
+    now < new Date(String(row.ad_energy_expires))
+  ) {
+    n += Math.max(0, Number(row.ad_energy_boost) || 0);
+  }
+  return Math.max(1000, Math.floor(n));
+}
+
 /** Echo (Power) tap multipliers — level 1..5 per rarity */
 export const ECHO_MULTI: Record<string, number[]> = {
   common: [1.1, 1.2, 1.3, 1.4, 1.5],

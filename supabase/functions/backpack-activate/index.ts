@@ -10,6 +10,7 @@ import {
   jsonResponse,
   logEconomy,
   invObj,
+  effectiveDailyLimit,
 } from "../_shared/economy.ts";
 
 const ENERGY_CAP = 500;
@@ -63,7 +64,7 @@ serve(async (req) => {
     const { data: row, error: selErr } = await sb
       .from("players")
       .select(
-        "inventory, shard_balance, last_energy, daily_usage, frenzy_expires, efficiency_expires, energy_boost_expires, limit_boost_amount, limit_boost_expires, premium_multiplier, premium_multiplier_expires, bot_expires",
+        "inventory, shard_balance, last_energy, daily_usage, frenzy_expires, efficiency_expires, energy_boost_expires, limit_boost_amount, limit_boost_expires, ad_energy_boost, ad_energy_expires, premium_multiplier, premium_multiplier_expires, bot_expires, max_daily_limit",
       )
       .eq("telegram_id", playerId)
       .maybeSingle();
@@ -119,6 +120,15 @@ serve(async (req) => {
       updates.frenzy_expires = new Date(now + 60 * 1000).toISOString();
     } else if (itemId === "battery") {
       updates.energy_boost_expires = endOfUtcDay(0);
+      // Persist effective day cap (1000 + battery + tasks + ads) on the column
+      updates.max_daily_limit = effectiveDailyLimit(
+        {
+          ...row,
+          energy_boost_expires: updates.energy_boost_expires,
+          inventory: inv,
+        },
+        new Date(),
+      );
     } else if (itemId === "heavy") {
       // Heavy Hands retired from shop — block new activates (replace later).
       throw new Error("Heavy Hands is unavailable right now.");

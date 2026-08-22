@@ -13,7 +13,7 @@ import {
   utcIsoWeekId,
   echoMultiplierFromInv,
   rollFateJackpot,
-  rushDailyLimitFromInv,
+  effectiveDailyLimit,
 } from "../_shared/economy.ts";
 import { applyWeeklyEnergyCredit } from "../_shared/weeklyScore.ts";
 
@@ -121,13 +121,6 @@ function streakAfterPlayDay(
   return 1;
 }
 
-function taskLimitBoost(inv: Record<string, unknown>, now: Date): number {
-  const b = inv.task_limit_boost as { amount?: number; expires?: string } | undefined;
-  if (!b?.expires) return 0;
-  if (new Date(b.expires).getTime() <= now.getTime()) return 0;
-  return Math.max(0, Number(b.amount) || 0);
-}
-
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -177,13 +170,23 @@ serve(async (req) => {
       });
     }
 
-    const { data: row, error: selErr } = await sb
+    let { data: row, error: selErr } = await sb
       .from("players")
       .select(
-        "telegram_id, username, shard_balance, lifetime_taps, season_shards, weekly_shards, weekly_week_id, daily_taps, last_energy, last_updated, last_tap_date, current_streak, max_unlocked_level, max_daily_limit, inventory, frenzy_expires, efficiency_expires, energy_boost_expires, limit_boost_amount, limit_boost_expires, premium_multiplier, premium_multiplier_expires",
+        "telegram_id, username, shard_balance, lifetime_taps, season_shards, weekly_shards, weekly_week_id, daily_taps, daily_shards, last_energy, last_updated, last_tap_date, current_streak, max_unlocked_level, max_daily_limit, inventory, frenzy_expires, efficiency_expires, energy_boost_expires, limit_boost_amount, limit_boost_expires, ad_energy_boost, ad_energy_expires, premium_multiplier, premium_multiplier_expires",
       )
       .eq("telegram_id", playerId)
       .maybeSingle();
+    // Until migration 20260822_daily_shards is applied, fall back without daily_shards
+    if (selErr && /daily_shards/i.test(String(selErr.message || ""))) {
+      ({ data: row, error: selErr } = await sb
+        .from("players")
+        .select(
+          "telegram_id, username, shard_balance, lifetime_taps, season_shards, weekly_shards, weekly_week_id, daily_taps, last_energy, last_updated, last_tap_date, current_streak, max_unlocked_level, max_daily_limit, inventory, frenzy_expires, efficiency_expires, energy_boost_expires, limit_boost_amount, limit_boost_expires, ad_energy_boost, ad_energy_expires, premium_multiplier, premium_multiplier_expires",
+        )
+        .eq("telegram_id", playerId)
+        .maybeSingle());
+    }
     if (selErr) throw selErr;
     if (!row) throw new Error("Player not found");
 
@@ -198,36 +201,25 @@ serve(async (req) => {
       now.getTime(),
     );
 
-    // Daily limit: Rush (Energy) replaces base 1000; battery / boosts add on top
-    const rushCap = rushDailyLimitFromInv(inv);
-    let maxLimit = rushCap > 0 ? rushCap : (Number(row.max_daily_limit) || 1000);
-    if (
-      row.energy_boost_expires &&
-      now < new Date(String(row.energy_boost_expires))
-    ) {
-      maxLimit += 1000; // Expanded Battery
-    }
-    if (
-      row.limit_boost_expires &&
-      now < new Date(String(row.limit_boost_expires))
-    ) {
-      maxLimit += Number(row.limit_boost_amount) || 0;
-    }
-    maxLimit += taskLimitBoost(inv, now);
+    // Effective daily CAP (persisted to max_daily_limit). daily_taps = raw clicks.
+    const maxLimit = effectiveDailyLimit(row as Record<string, unknown>, now);
 
     const prevLtd = String(row.last_tap_date || "").slice(0, 10);
     const lastUpdatedDay = row.last_updated
       ? String(row.last_updated).slice(0, 10)
       : "";
     let dailyTaps = Number(row.daily_taps) || 0;
+    let dailyShards = Number((row as Record<string, unknown>).daily_shards) || 0;
     let streak = Math.max(0, Number(row.current_streak) || 0);
     // Only reset on a confirmed previous play day.
     // Missing last_tap_date + same-day last_updated must KEEP daily_taps
     // (otherwise a full bar freezes at 0 and players get another 1000).
     if (prevLtd && prevLtd !== today) {
       dailyTaps = 0;
+      dailyShards = 0;
     } else if (!prevLtd && lastUpdatedDay && lastUpdatedDay !== today) {
       dailyTaps = 0;
+      dailyShards = 0;
     }
 
     // Tap power = additive bonuses (L5 1.15 + Echo 1.1 = 1.25) → stored as tap_power.
@@ -344,9 +336,11 @@ serve(async (req) => {
     }
     const energySpent = costMultiplier * validTaps;
     const nextEnergy = Math.max(0, Math.min(ENERGY_CAP, energy - energySpent));
-    // Daily bar tracks taps; boards/balance use shards + scoreCredit (Frenzy 2x etc.)
+    // daily_taps = raw clicks (HUD bar). daily_shards = weighted mining today.
     const limitCredit = validTaps;
     const nextDaily = dailyTaps + limitCredit;
+    const nextDailyShards =
+      Math.round((dailyShards + shardsEarned) * 1000) / 1000;
     const nextLife = Math.round((lifetime + shardsEarned) * 1000) / 1000;
     const nextSeason =
       Math.round(((Number(row.season_shards) || 0) + shardsEarned) * 1000) / 1000;
@@ -379,13 +373,15 @@ serve(async (req) => {
       echoMulti > 1 ? echoMulti : 1,
     );
 
-    const updates = {
+    const updates: Record<string, unknown> = {
       shard_balance: nextBal,
       lifetime_taps: nextLife,
       season_shards: nextSeason,
       weekly_shards: weeklyShards,
       weekly_week_id: weekId,
       daily_taps: nextDaily,
+      daily_shards: nextDailyShards,
+      max_daily_limit: maxLimit,
       last_energy: finalEnergy,
       last_tap_date: today,
       current_streak: streak,
@@ -394,10 +390,17 @@ serve(async (req) => {
       last_updated: now.toISOString(),
     };
 
-    const { error: upErr } = await sb
+    let { error: upErr } = await sb
       .from("players")
       .update(updates)
       .eq("telegram_id", playerId);
+    if (upErr && /daily_shards/i.test(String(upErr.message || ""))) {
+      const { daily_shards: _drop, ...rest } = updates;
+      ({ error: upErr } = await sb
+        .from("players")
+        .update(rest)
+        .eq("telegram_id", playerId));
+    }
     if (upErr) throw upErr;
 
     // Durable weekly board (GREATEST — never lower)

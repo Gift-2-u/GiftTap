@@ -1306,7 +1306,6 @@ const GiftTapGame = () => {
       if (result && result.success) {
         console.log(`Ad OK via ${result.network}`);
 
-        const newMaxLimit = maxDailyLimit + 100;
         const newAdsCount = dailyAdsWatched + 1;
         const today = new Date().toISOString().split('T')[0];
         // End of UTC day (same clock as Expanded Battery / daily shop limits)
@@ -1317,17 +1316,39 @@ const GiftTapGame = () => {
           nowUtc.getUTCDate(),
           23, 59, 59, 999,
         ));
+        const nextAdBoost = (Number(stats.ad_energy_boost) || 0) + 100;
+        // Effective day cap = base/Rush + battery + tasks + ads (not double-count max_daily_limit)
+        let baseCap = 1000;
+        const invRush = inventoryRef.current || stats?.inventory || {};
+        const rush = invRush?.rush_active;
+        if (rush && typeof rush === 'object') {
+          const rl = Math.max(1, Math.min(5, Number(rush.level) || 1));
+          baseCap = 1000 + rl * 500; // mirror Rush ladder if present — server is authority
+        }
+        let effectiveCap = baseCap;
+        if (stats.energy_boost_expires && new Date(stats.energy_boost_expires) > nowUtc) {
+          effectiveCap += 1000;
+        }
+        if (stats.limit_boost_expires && new Date(stats.limit_boost_expires) > nowUtc) {
+          effectiveCap += Number(stats.limit_boost_amount) || 0;
+        }
+        const tlb = (inventoryRef.current || stats?.inventory || {}).task_limit_boost;
+        if (tlb?.expires && new Date(tlb.expires) > nowUtc) {
+          effectiveCap += Number(tlb.amount) || 0;
+        }
+        effectiveCap += nextAdBoost;
 
         const dbUpdates = {
-          max_daily_limit: newMaxLimit,
+          max_daily_limit: effectiveCap,
           daily_ads_watched: newAdsCount,
           last_ad_date: today,
           limit_boost_amount: stats.limit_boost_amount,
           limit_boost_expires: stats.limit_boost_expires,
-          ad_energy_boost: (stats.ad_energy_boost || 0) + 100,
+          ad_energy_boost: nextAdBoost,
           ad_energy_expires: midnightUtcTonight.toISOString(),
           // no last_updated — would freeze the 500 energy regen clock
         };
+        const newMaxLimit = effectiveCap;
 
         const { error } = await supabase
           .from('players')
@@ -5526,9 +5547,10 @@ const GiftTapGame = () => {
   };
 
   // --- CALCULATE DYNAMIC DAILY LIMIT BAR ---
+  // Same formula as server effectiveDailyLimit: base Rush/1000 + battery + boosts + ads.
+  // Do NOT start from maxDailyLimit column (that already stores the effective total).
   const now = new Date();
-  let dynamicMaxLimit = maxDailyLimit; // Default is 1000
-  // Rush (Energy) replaces base 1000; Expanded Battery / boosts add on top
+  let dynamicMaxLimit = 1000;
   {
     const ra = (inventoryRef.current || stats?.inventory || {}).rush_active;
     if (ra && typeof ra === 'object') {
@@ -5536,17 +5558,16 @@ const GiftTapGame = () => {
       if (cap > 0) dynamicMaxLimit = cap;
     }
   }
-
-  // Add 1000 if 24hr Expanded Battery is active
   if (stats.energy_boost_expires && now < new Date(stats.energy_boost_expires)) {
     dynamicMaxLimit += 1000;
   }
-  // Add 2000 or 5000 if a Premium SOL Contract is active
   if (stats.limit_boost_expires && now < new Date(stats.limit_boost_expires)) {
     dynamicMaxLimit += (stats.limit_boost_amount || 0);
   }
-  // Task rewards (+100 / +250 / +200 / +500) until UTC midnight
   dynamicMaxLimit += getTaskLimitBoost(stats, now);
+  if (stats.ad_energy_expires && now < new Date(stats.ad_energy_expires)) {
+    dynamicMaxLimit += Math.max(0, Number(stats.ad_energy_boost) || 0);
+  }
 
   const handleCopyPhrase = async () => {
     // Pure state-only retrieval. Zero browser storage.
