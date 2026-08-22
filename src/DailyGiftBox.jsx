@@ -67,7 +67,7 @@ const DailyGiftBox = () => {
     if (loggedIn) refreshInventory();
   }, [loggedIn, refreshInventory]);
 
-  const openPicker = async () => {
+  const openPicker = useCallback(async () => {
     setError('');
     setReveal(null);
     if (!loggedIn || !sessionOk) {
@@ -82,7 +82,22 @@ const DailyGiftBox = () => {
     } finally {
       setBusy(false);
     }
-  };
+  }, [loggedIn, sessionOk, refreshInventory]);
+
+  // Shop “Go to homepage gift” links here with ?mystery=1
+  useEffect(() => {
+    try {
+      const q = new URLSearchParams(window.location.search);
+      if (q.get('mystery') === '1') {
+        openPicker();
+        q.delete('mystery');
+        const next = `${window.location.pathname}${q.toString() ? `?${q}` : ''}${window.location.hash || ''}`;
+        window.history.replaceState({}, '', next);
+      }
+    } catch {
+      /* ignore */
+    }
+  }, [openPicker]);
 
   const runOpen = async (tier) => {
     if (!tier || busy) return;

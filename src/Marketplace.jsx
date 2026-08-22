@@ -2876,11 +2876,17 @@ Daily claim active · Pack → NFT to see it.`,
                     🎁 Mystery Gift
                   </div>
                   <p style={{ color: '#aaa', fontSize: 11, margin: '6px 0 10px', lineHeight: 1.4 }}>
-                    Burn badges → roll prize. Free Boost splits Frenzy/Battery/Refill;
-                    Premium splits Bot/+2K/+5K/x2/x3; NFT splits Fate/Echo/Rush/Shadow/Locksmith/Star.
-                    G2Ushards credit your balance immediately.
+                    Opening happens on the <strong style={{ color: '#ffd700' }}>Gift2u homepage gift</strong>
+                    — not by burning here. Go home, tap the big gift, choose badges, then watch it open.
                   </p>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                  <div
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: '1fr 1fr',
+                      gap: 8,
+                      marginBottom: 10,
+                    }}
+                  >
                     {Object.keys(MYSTERY_BOX_COSTS).map((tier) => {
                       const meta = BADGE_TIERS[tier];
                       const need = MYSTERY_BOX_COSTS[tier];
@@ -2890,31 +2896,34 @@ Daily claim active · Pack → NFT to see it.`,
                         <button
                           key={tier}
                           type="button"
-                          disabled={!ok || mysteryBusy}
-                          onClick={() => handleOpenMystery(tier)}
+                          onClick={() => {
+                            // Never open/reward here — send to homepage Mystery gift
+                            window.location.assign('/?mystery=1');
+                          }}
                           style={{
                             background: ok ? '#1c1e22' : '#111',
                             border: `1px solid ${ok ? meta.color : '#333'}`,
                             borderRadius: 12,
                             padding: 10,
                             color: ok ? '#fff' : '#555',
-                            cursor: ok && !mysteryBusy ? 'pointer' : 'not-allowed',
                             textAlign: 'left',
                             display: 'flex',
                             alignItems: 'center',
                             gap: 10,
                             opacity: ok ? 1 : 0.55,
+                            cursor: 'pointer',
+                            width: '100%',
                           }}
                         >
                           {meta.image ? (
                             <img
                               src={meta.image}
                               alt={meta.name}
-                              width={40}
-                              height={40}
+                              width={36}
+                              height={36}
                               style={{
-                                width: 40,
-                                height: 40,
+                                width: 36,
+                                height: 36,
                                 objectFit: 'contain',
                                 borderRadius: 8,
                                 flexShrink: 0,
@@ -2925,11 +2934,17 @@ Daily claim active · Pack → NFT to see it.`,
                             <div style={{ fontSize: 18 }}>{meta.emoji}</div>
                           )}
                           <div style={{ minWidth: 0 }}>
-                            <div style={{ fontWeight: 'bold', fontSize: 12, color: meta.color }}>
-                              Burn {need} {meta.name.replace(' Badge', '')}
+                            <div
+                              style={{
+                                fontWeight: 'bold',
+                                fontSize: 11,
+                                color: meta.color,
+                              }}
+                            >
+                              Need {need} · have {have}
                             </div>
-                            <div style={{ fontSize: 10, color: '#888', marginTop: 2 }}>
-                              You have {have}
+                            <div style={{ fontSize: 9, color: '#888', marginTop: 2 }}>
+                              Tap → homepage gift
                             </div>
                           </div>
                         </button>
