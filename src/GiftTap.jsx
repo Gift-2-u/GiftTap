@@ -139,6 +139,7 @@ import {
   getInviteLink,
   vaultSaltFor,
   DB_PLAYER_ID,
+  isSessionTokenStale,
 } from './playerIdentity';
 // DB_PLAYER_ID === 'telegram_id' (legacy Supabase column — still the player primary key)
 
@@ -314,6 +315,17 @@ export const getLevelMultiplier = (level) => {
   return 1.0; // L0–4 base
 };
 
+/** Additive stack: 1 + Σ(m − 1). L5 1.15 + Echo 1.1 → 1.25 (not 1.265). */
+export function stackPayoutMultis(...multis) {
+  let total = 1;
+  for (const raw of multis) {
+    const m = Number(raw);
+    if (!Number.isFinite(m) || m <= 0) continue;
+    total += m - 1;
+  }
+  return Math.round(Math.max(0, total) * 1000) / 1000;
+}
+
 export const ASCENSION_WALLS = {
   // Early: pay with EITHER shards OR SOL
   4: {
@@ -369,6 +381,30 @@ export const ASCENSION_WALLS = {
 };
 
 /**
+ * After climbing a wall, max_unlocked jumps (e.g. 4→9) but lifetime may still be
+ * 49,999. calculateLevel(49999)=4 would snap the HUD back to L4 on the next
+ * realtime/resync. Floor display level to the highest wall target already cleared.
+ */
+export function floorLevelFromMaxUnlocked(maxUnlockedLevel) {
+  const m = Math.max(0, Math.floor(Number(maxUnlockedLevel) || 0));
+  let floor = 0;
+  for (const [wallKey, wall] of Object.entries(ASCENSION_WALLS)) {
+    if (m > Number(wallKey)) {
+      floor = Math.max(floor, Number(wall.targetLevel) || 0);
+    }
+  }
+  return floor;
+}
+
+/** Display / power level: tap formula, not below walls already climbed, capped by unlock. */
+export function displayLevelFromTaps(lifetimeTaps, maxUnlockedLevel) {
+  const maxU = Math.max(0, Math.floor(Number(maxUnlockedLevel) || 4));
+  const fromTaps = calculateLevel(Number(lifetimeTaps) || 0);
+  const floor = floorLevelFromMaxUnlocked(maxU);
+  return Math.min(maxU, Math.max(fromTaps, floor));
+}
+
+/**
  * True when player has maxed their *unlocked* tier and may optionally climb the wall.
  * They can still earn G2Ushards forever at this level — wall is perks only (STEPN-style).
  */
@@ -380,9 +416,9 @@ export const isAtAscensionWall = (currentLevel, maxUnlockedLevel, lifetimeTaps) 
     || Number(lifetimeTaps) >= getPaywallCap(maxUnlockedLevel);
 };
 
-/** Effective play level — never exceeds paid unlock cap. */
+/** Effective play level — unlock cap, with floor from walls already climbed. */
 export const effectiveLevel = (lifetimeTaps, maxUnlockedLevel) =>
-  Math.min(calculateLevel(Number(lifetimeTaps) || 0), Number(maxUnlockedLevel) || 4);
+  displayLevelFromTaps(lifetimeTaps, maxUnlockedLevel);
 
 /**
  * Legacy: old walls stopped at newCap 50. New track goes 50→74→99→100.
@@ -2116,7 +2152,7 @@ const GiftTapGame = () => {
             });
         }
         const _max = loadedMax;
-        setCurrentLevel(Math.min(calculateLevel(_lt), _max));
+        setCurrentLevel(effectiveLevel(_lt, _max));
         // Persist "stay mining" so wall modal does not re-open after each save/tap pause
         if (Number(inv.wall_snooze_level) === loadedMax) {
           setWallSnoozedFor(loadedMax);
@@ -3349,25 +3385,33 @@ const GiftTapGame = () => {
     }, delay);
   }, [flushPendingTaps]);
 
-  // Silent JWT renew on open / return to tab — no password, no logout
+  // Silent JWT renew on open / return to tab / periodic — phone tabs sleep for days
   useEffect(() => {
     if (!playerId) return undefined;
     let cancelled = false;
     const run = async () => {
       const ok = await ensureSecureSession();
       if (!cancelled && ok) {
-        // Session ready — push any taps that queued while renewing
         flushPendingTaps();
       }
     };
     run();
-    const onVis = () => {
+    const onWake = () => {
       if (document.visibilityState === 'visible') run();
     };
-    document.addEventListener('visibilitychange', onVis);
+    document.addEventListener('visibilitychange', onWake);
+    window.addEventListener('focus', onWake);
+    window.addEventListener('pageshow', onWake);
+    // Keep alive while the tab stays open (web game habit)
+    const tick = setInterval(() => {
+      if (document.visibilityState === 'visible') run();
+    }, 6 * 60 * 60 * 1000); // every 6h
     return () => {
       cancelled = true;
-      document.removeEventListener('visibilitychange', onVis);
+      clearInterval(tick);
+      document.removeEventListener('visibilitychange', onWake);
+      window.removeEventListener('focus', onWake);
+      window.removeEventListener('pageshow', onWake);
     };
   }, [playerId, flushPendingTaps]);
 
@@ -3509,10 +3553,7 @@ const GiftTapGame = () => {
       setSeasonShards(writeS);
       setDailyTaps(writeDt);
       setBalances((bal) => ({ ...bal, G2Ushards: writeB }));
-      setCurrentLevel(() => {
-        const maxU = Number(maxUnlockedLevel) || 4;
-        return Math.min(calculateLevel(writeLtt), maxU);
-      });
+      setCurrentLevel(() => effectiveLevel(writeLtt, maxUnlockedLevel));
       pendingSaveRef.current = {
         ...p,
         b: writeB,
@@ -3849,16 +3890,23 @@ const GiftTapGame = () => {
         return;
       }
 
-      // Secure mining needs a live JWT. If missing, renew and skip this tap's
-      // optimistic credit — otherwise shards climb in UI while flush is a no-op.
-      if (secureEconomyRef.current && !hasSecureSession()) {
-        ensureSecureSession().catch(() => {});
-        const nowS = Date.now();
-        if (nowS - (mineBlockNotifiedRef.current || 0) > 20000) {
-          mineBlockNotifiedRef.current = nowS;
-          notify('Session renewing — tap again in a moment.', false);
+      // Secure mining needs a session JWT. Phone tabs sleep for days — renew
+      // silently; only block taps when there is nothing to refresh (must re-login).
+      if (secureEconomyRef.current) {
+        if (!hasSecureSession()) {
+          ensureSecureSession().catch(() => {});
+          const nowS = Date.now();
+          if (nowS - (mineBlockNotifiedRef.current || 0) > 30000) {
+            mineBlockNotifiedRef.current = nowS;
+            notify('Session expired — log in once to keep mining.', false);
+          }
+          return;
         }
-        return;
+        // Token present but stale/near expiry → renew in background; still allow tap
+        // (flush awaits ensureSecureSession before commit-taps).
+        if (isSessionTokenStale(60 * 60 * 1000)) {
+          ensureSecureSession().catch(() => {});
+        }
       }
 
       // Credit sleep/background time before deciding if player can tap (keep residual)
@@ -3873,26 +3921,32 @@ const GiftTapGame = () => {
       // 🚨 FIX: Use the synchronous Ref to prevent rapid-click bypasses
       const safeLifetimeTaps = Number(optimisticTaps.current) || 0;
 
-      const baseRate = getLevelMultiplier(currentLevel); 
-      let payoutMultiplier = 1;
-      // Energy cost always 1 (Heavy Hands retired). Frenzy never raises battery drain.
-      let costMultiplier = 1;
+      // Additive stack (not multiply): level + frenzy + premium + echo bonuses
+      const levelMulti = getLevelMultiplier(currentLevel);
+      let costMultiplier = 1; // always 1 — Frenzy never raises battery drain
 
       const buffs = buffRef.current || {};
       const frenzyOn =
         !!(buffs.frenzyExpires && now < new Date(buffs.frenzyExpires));
-      if (frenzyOn) payoutMultiplier *= 2;
-      if (buffs.premiumExpires && now < new Date(buffs.premiumExpires)) {
-        payoutMultiplier *= Number(buffs.premiumMult) || 1;
-      }
-      // Echo (Power) always-on multi from inventory.echo_active
+      const premiumMulti =
+        buffs.premiumExpires && now < new Date(buffs.premiumExpires)
+          ? Number(buffs.premiumMult) || 1
+          : 1;
+      let echoMulti = 1;
       {
         const ea = (inventoryRef.current || stats?.inventory || {}).echo_active;
         if (ea && typeof ea === 'object') {
           const em = echoMultiplier(ea.rarity || ea.rarityKey, ea.level || 1);
-          if (em > 1) payoutMultiplier *= em;
+          if (em > 1) echoMulti = em;
         }
       }
+      const payoutMultiplier = stackPayoutMultis(
+        levelMulti,
+        frenzyOn ? 2 : 1,
+        premiumMulti,
+        echoMulti,
+      );
+      const baseRate = 1; // payoutMultiplier already includes level
 
       // 3. CALCULATE VALID FINGERS — catch up regen first so UI and spend agree
       applyEnergyCatchUp();
@@ -4071,14 +4125,9 @@ const GiftTapGame = () => {
       // Battery refill on level-up is SERVER-ONLY (commit-taps). Never fake a full
       // bar locally — that caused "I'm tapping but shards don't move" (client energy
       // ahead of last_energy → flush returns no_energy → snap shards back).
-      if (!isAtLevelCap) {
-        const newCalculatedLevel = calculateLevel(nextLifetimeTaps);
-        if (newCalculatedLevel > currentLevel && newCalculatedLevel <= maxUnlockedLevel) {
-          setCurrentLevel(newCalculatedLevel);
-        }
-      } else {
-        // Stay parked at maxUnlockedLevel forever until they choose to ascend
-        setCurrentLevel(maxUnlockedLevel);
+      {
+        const nextLv = effectiveLevel(nextLifetimeTaps, maxUnlockedLevel);
+        if (nextLv !== currentLevel) setCurrentLevel(nextLv);
       }
 
       setIsPressed(true);
@@ -4161,12 +4210,11 @@ const GiftTapGame = () => {
     delete nextInv.wall_fee_progress;
     delete nextInv.wall_fee_wall;
     setStats((prev) => ({ ...prev, inventory: nextInv }));
-    if (playerId) {
+    if (playerId && !secureEconomyRef.current) {
       supabase
         .from('players')
         .update({
           inventory: nextInv,
-          last_updated: new Date().toISOString(),
         })
         .eq(DB_PLAYER_ID, String(playerId))
         .then(({ error }) => {
@@ -4528,7 +4576,7 @@ const GiftTapGame = () => {
                 if (payload.new.max_unlocked_level != null) {
                   setMaxUnlockedLevel(maxU);
                 }
-                setCurrentLevel(Math.min(calculateLevel(incomingTaps), maxU));
+                setCurrentLevel(effectiveLevel(incomingTaps, maxU));
               }
               if (payload.new.last_energy != null) {
                 const raw = Number(payload.new.last_energy);
@@ -4728,7 +4776,7 @@ const GiftTapGame = () => {
         setEnergy(nextEnergy);
         setBalances((b) => ({ ...b, G2Ushards: shards }));
         setMaxUnlockedLevel(maxU);
-        setCurrentLevel(Math.min(calculateLevel(life), maxU));
+        setCurrentLevel(effectiveLevel(life, maxU));
         if (row.max_daily_limit != null) setMaxDailyLimit(Number(row.max_daily_limit) || 1000);
         if (row.tap_power != null) setTapPower(row.tap_power);
         if (row.current_streak != null) {

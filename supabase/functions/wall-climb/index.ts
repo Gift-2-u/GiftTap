@@ -128,11 +128,11 @@ serve(async (req) => {
       shoeGranted = true;
     }
 
+    // Do not bump last_updated — that field is the energy regen clock.
     const updates = {
       shard_balance: balance,
       max_unlocked_level: wall.newCap,
       inventory: inv,
-      last_updated: new Date().toISOString(),
     };
 
     const { error: upErr } = await sb

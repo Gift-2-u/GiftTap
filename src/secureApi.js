@@ -31,11 +31,22 @@ export async function callSecureFunction(name, body = {}) {
     headers['x-gift-session'] = sessionTok;
   }
 
-  const res = await fetch(`${base}/functions/v1/${name}`, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify(body || {}),
-  });
+  let res;
+  try {
+    res = await fetch(`${base}/functions/v1/${name}`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(body || {}),
+    });
+  } catch (e) {
+    const msg = e?.message || String(e);
+    // Browser TypeError "Failed to fetch" = network / missing Edge Function / CORS
+    throw new Error(
+      /failed to fetch|networkerror|load failed/i.test(msg)
+        ? `${name} unreachable (network or function not deployed). Try again or redeploy ${name}.`
+        : msg,
+    );
+  }
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
     const err = new Error(data.error || data.message || `${name} failed (${res.status})`);
@@ -66,10 +77,13 @@ export function hasSecureSession() {
   return !!getSessionToken() && !!getPlayerId();
 }
 
+/** Prevent parallel auth-refresh storms from tap + visibility + interval. */
+let refreshInFlight = null;
+
 /**
- * Silent session keep-alive for close/reopen.
- * - If JWT present (even near/just expired), call auth-refresh → new 90-day token.
- * - No password. No logout. Safe to call on every app open / tab focus.
+ * Silent session keep-alive for close/reopen / phone tabs left open for days.
+ * - If JWT present (even expired within server grace), auth-refresh → new 90-day token.
+ * - No password. No logout. Safe on every app open / tab focus / periodic tick.
  * Returns true when hasSecureSession() is usable for commit-taps.
  */
 export async function ensureSecureSession() {
@@ -79,24 +93,37 @@ export async function ensureSecureSession() {
     // Logged into old client without JWT — cannot silent-mint without password
     return false;
   }
-  // Fresh enough → nothing to do
+  // Fresh enough (>1h until expiry) → nothing to do
   if (!isSessionTokenStale(60 * 60 * 1000)) {
     return true;
   }
-  try {
-    const data = await callSecureFunction('auth-refresh', {});
-    if (data?.session_token) {
-      setSessionToken(data.session_token, data.expires_at);
-      return true;
+  if (refreshInFlight) {
+    try {
+      return await refreshInFlight;
+    } catch {
+      return hasSecureSession() && !isSessionTokenStale(0);
     }
-  } catch (e) {
-    // Token may still be valid for commit-taps even if refresh failed
-    console.warn('auth-refresh', e?.message || e);
-    // If not stale past hard expiry, still allow mining with existing token
-    if (!isSessionTokenStale(0)) return true;
-    return !!getSessionToken() && !isSessionTokenStale(0);
   }
-  return hasSecureSession();
+  refreshInFlight = (async () => {
+    try {
+      const data = await callSecureFunction('auth-refresh', {});
+      if (data?.session_token) {
+        setSessionToken(data.session_token, data.expires_at);
+        return true;
+      }
+    } catch (e) {
+      console.warn('auth-refresh', e?.message || e);
+      // Still usable if not past hard expiry
+      if (!isSessionTokenStale(0)) return true;
+      return false;
+    }
+    return hasSecureSession() && !isSessionTokenStale(0);
+  })();
+  try {
+    return await refreshInFlight;
+  } finally {
+    refreshInFlight = null;
+  }
 }
 
 

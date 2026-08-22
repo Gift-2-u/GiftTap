@@ -1,19 +1,43 @@
 /**
- * Cloudflare Turnstile server verify.
- * Set TURNSTILE_SECRET_KEY in Supabase secrets.
- * If unset, verification is skipped (dev only) — set the secret in production.
+ * Cloudflare Turnstile server verify (siteverify).
+ *
+ * Required Supabase Edge secret:
+ *   TURNSTILE_SECRET_KEY = Cloudflare widget *secret* key (0x… / long secret)
+ * NOT VITE_TURNSTILE_SITE_KEY (that is public, frontend-only).
+ *
+ * If TURNSTILE_SECRET_KEY is missing, auth fails closed (no silent bypass).
+ * Set TURNSTILE_OPTIONAL=1 only for emergency local debugging.
+ *
+ * Local Vite widget: add localhost + 127.0.0.1 under Turnstile Hostname Management.
  */
 
 export async function verifyTurnstileToken(
   token: string | null | undefined,
   remoteIp?: string | null,
 ): Promise<void> {
-  const secret = Deno.env.get("TURNSTILE_SECRET_KEY") || "";
+  const secret = String(Deno.env.get("TURNSTILE_SECRET_KEY") || "").trim();
+  const optional = Deno.env.get("TURNSTILE_OPTIONAL") === "1";
+
   if (!secret) {
-    // Dev bypass — never ship production without this secret
-    console.warn("TURNSTILE_SECRET_KEY unset — captcha not verified");
-    return;
+    console.error(
+      "TURNSTILE_SECRET_KEY unset — siteverify not called. Set the Cloudflare *secret* key in Supabase secrets (not the site key).",
+    );
+    if (optional) {
+      console.warn("TURNSTILE_OPTIONAL=1 — captcha skipped");
+      return;
+    }
+    throw new Error(
+      "Captcha is misconfigured on the server (missing TURNSTILE_SECRET_KEY). Try again later.",
+    );
   }
+
+  if (secret.length < 20) {
+    console.error("TURNSTILE_SECRET_KEY too short");
+    throw new Error(
+      "Captcha is misconfigured on the server (invalid secret). Try again later.",
+    );
+  }
+
   const t = String(token || "").trim();
   if (!t) {
     throw new Error("Complete the captcha to continue.");

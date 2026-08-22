@@ -6,7 +6,7 @@
  */
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import {
-  bearerFromRequest,
+  sessionTokenFromRequest,
   mintSessionJwt,
   verifySessionJwtForRefresh,
 } from "../_shared/sessionJwt.ts";
@@ -32,12 +32,14 @@ serve(async (req) => {
   }
 
   try {
-    const token = bearerFromRequest(req);
+    // Prefer x-gift-session — Authorization is the Supabase anon key for the gateway.
+    // Using Bearer-only broke silent renew after long phone-tab sleeps.
+    const token = sessionTokenFromRequest(req);
     if (!token) {
-      throw new Error("Not authenticated (missing Bearer token)");
+      throw new Error("Not authenticated (missing session token)");
     }
 
-    // Valid OR expired-but-in-grace → allow silent renew
+    // Valid OR expired-but-in-grace (30d) → allow silent renew without password
     const claims = await verifySessionJwtForRefresh(token);
     const playerId = String(claims.sub);
     const username = String(claims.username || "");

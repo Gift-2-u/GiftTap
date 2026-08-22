@@ -1,6 +1,12 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 
 const SITE_KEY = import.meta.env.VITE_TURNSTILE_SITE_KEY || '';
+
+function isLocalDevHost() {
+  if (typeof window === 'undefined') return false;
+  const h = String(window.location.hostname || '');
+  return h === 'localhost' || h === '127.0.0.1' || h === '[::1]';
+}
 
 let scriptLoading = null;
 function loadTurnstileScript() {
@@ -29,10 +35,14 @@ function loadTurnstileScript() {
 /**
  * Cloudflare Turnstile widget. Calls onToken(token) when solved; '' when expired.
  * If VITE_TURNSTILE_SITE_KEY is empty, renders nothing (dev bypass).
+ *
+ * Local npm run dev: your real sitekey only works if the widget Hostname Management
+ * includes BOTH `localhost` and `127.0.0.1`. Phone on gift2u.fun works without that.
  */
 export default function TurnstileCaptcha({ onToken, resetKey = 0 }) {
   const hostRef = useRef(null);
   const widgetIdRef = useRef(null);
+  const [widgetError, setWidgetError] = useState('');
 
   useEffect(() => {
     if (!SITE_KEY || !hostRef.current) {
@@ -40,6 +50,7 @@ export default function TurnstileCaptcha({ onToken, resetKey = 0 }) {
       return undefined;
     }
     let cancelled = false;
+    setWidgetError('');
 
     (async () => {
       try {
@@ -58,6 +69,7 @@ export default function TurnstileCaptcha({ onToken, resetKey = 0 }) {
           sitekey: SITE_KEY,
           theme: 'dark',
           callback: (token) => {
+            setWidgetError('');
             if (typeof onToken === 'function') onToken(token || '');
           },
           'expired-callback': () => {
@@ -65,11 +77,21 @@ export default function TurnstileCaptcha({ onToken, resetKey = 0 }) {
           },
           'error-callback': () => {
             if (typeof onToken === 'function') onToken('');
+            setWidgetError(
+              isLocalDevHost()
+                ? 'Cloudflare blocked this host. In Turnstile → your widget → Hostname Management, add BOTH localhost and 127.0.0.1 — then hard-refresh. (gift2u.fun on phone does not need this.)'
+                : 'Captcha failed to load. Disable adblock for this page, then refresh.',
+            );
           },
         });
       } catch (e) {
         console.warn('Turnstile load failed', e);
         if (typeof onToken === 'function') onToken('');
+        setWidgetError(
+          isLocalDevHost()
+            ? 'Could not load Turnstile. Check Hostname Management includes localhost and 127.0.0.1.'
+            : 'Could not load Cloudflare Turnstile script.',
+        );
       }
     })();
 
@@ -89,15 +111,44 @@ export default function TurnstileCaptcha({ onToken, resetKey = 0 }) {
   if (!SITE_KEY) return null;
 
   return (
-    <div
-      ref={hostRef}
-      style={{
-        margin: '8px 0 12px',
-        display: 'flex',
-        justifyContent: 'center',
-        minHeight: 65,
-      }}
-    />
+    <div style={{ margin: '8px 0 12px' }}>
+      <div
+        ref={hostRef}
+        style={{
+          display: 'flex',
+          justifyContent: 'center',
+          minHeight: 65,
+        }}
+      />
+      {isLocalDevHost() ? (
+        <p
+          style={{
+            color: '#666',
+            fontSize: 10,
+            textAlign: 'center',
+            margin: '6px 0 0',
+            lineHeight: 1.35,
+          }}
+        >
+          Local Vite: Turnstile needs hostnames <strong style={{ color: '#888' }}>localhost</strong> and{' '}
+          <strong style={{ color: '#888' }}>127.0.0.1</strong> on your Cloudflare widget. Try{' '}
+          <strong style={{ color: '#888' }}>http://localhost:5173/play</strong> if you only added localhost.
+        </p>
+      ) : null}
+      {widgetError ? (
+        <p
+          style={{
+            color: '#fbbf24',
+            fontSize: 11,
+            textAlign: 'center',
+            margin: '6px 0 0',
+            lineHeight: 1.35,
+          }}
+        >
+          {widgetError}
+        </p>
+      ) : null}
+    </div>
   );
 }
 
