@@ -417,26 +417,54 @@ const MYSTERY_PRIZE_META = {
   bonus_g2u: {
     id: 'bonus_g2u',
     label: 'Bonus G2U Tokens',
-    type: 'shards',
+    type: 'g2u_tokens',
+    dest: 'wallet',
   },
   premium_boost: {
     id: 'premium_boost',
-    label: 'Premium Boost',
+    label: 'Premium Boost (Bot / +2K / +5K / x2 / x3)',
     type: 'item',
-    itemId: 'frenzy',
+    dest: 'backpack',
   },
   free_boost: {
     id: 'free_boost',
-    label: 'Free Boost',
+    label: 'Free Boost (Frenzy / Battery / Refill)',
     type: 'item',
-    itemId: 'refill',
+    dest: 'backpack',
   },
   shards_bulk: {
     id: 'shards_bulk',
     label: 'G2Ushards (Bulk)',
     type: 'shards',
+    dest: 'balance',
   },
 };
+
+/** Free Boost sub-roll (~33% each) — keep in sync with economy.ts */
+export const MYSTERY_FREE_ITEMS = [
+  { itemId: 'frenzy', label: 'Frenzy Mode', weight: 1 },
+  { itemId: 'battery', label: 'Expanded Battery', weight: 1 },
+  { itemId: 'refill', label: 'Instant Refill', weight: 1 },
+];
+
+/** Premium Boost sub-roll (20% each) */
+export const MYSTERY_PREMIUM_ITEMS = [
+  { itemId: 'bot', label: 'Weekend Bot', weight: 1 },
+  { itemId: 'grinder', label: '+2K Daily Energy', weight: 1 },
+  { itemId: 'whale', label: '+5K Daily Energy', weight: 1 },
+  { itemId: 'x2_boost', label: 'Double Power', weight: 1 },
+  { itemId: 'x3_boost', label: 'Triple Power', weight: 1 },
+];
+
+/** NFT sub-roll */
+export const MYSTERY_NFT_ROLL = [
+  { kind: 'fate', rarity: 'common', label: 'Fate Common', weight: 20 },
+  { kind: 'echo', rarity: 'common', label: 'Echo Common', weight: 20 },
+  { kind: 'rush', rarity: 'common', label: 'Rush Common', weight: 20 },
+  { kind: 'shadow', rarity: 'common', label: 'Shadow Common', weight: 20 },
+  { kind: 'locksmith', rarity: 'rare', label: 'GiftLocksmith', weight: 10 },
+  { kind: 'star', rarity: 'shard', label: 'Star Badge', weight: 10 },
+];
 
 const MYSTERY_SHARD_AMOUNTS = {
   bronze: { bonus_g2u: 2500, shards_bulk: 800 },
@@ -493,22 +521,26 @@ export function mysteryRewardTableForTier(tier) {
       type: meta.type,
       itemId: meta.itemId,
     };
-    if (meta.type === 'shards') {
+    if (meta.type === 'shards' || meta.type === 'g2u_tokens') {
       const amt = Number(amounts[prizeId]) || 0;
       row.amount = amt;
+      row.dest = meta.dest || (meta.type === 'g2u_tokens' ? 'wallet' : 'balance');
       row.label =
         prizeId === 'bonus_g2u'
-          ? `Bonus G2U Tokens (+${amt.toLocaleString()} G2Ushards)`
-          : `G2Ushards (Bulk) (+${amt.toLocaleString()})`;
+          ? `Bonus G2U Tokens (+${amt.toLocaleString()} G2U) → Wallet`
+          : `G2Ushards (Bulk) (+${amt.toLocaleString()}) → Balance`;
     }
     if (meta.type === 'item' && meta.itemId) {
+      row.dest = 'backpack';
       row.label =
         prizeId === 'premium_boost'
-          ? 'Premium Boost (+1 Frenzy)'
-          : 'Free Boost (+1 Instant Refill)';
+          ? 'Premium Boost (+1 Frenzy) → Backpack'
+          : 'Free Boost (+1 Instant Refill) → Backpack';
     }
     if (meta.type === 'nft_voucher') {
-      row.label = 'Exclusive NFT voucher';
+      row.dest = 'backpack';
+      row.label =
+        'Exclusive NFT voucher → Backpack (redeem when Exclusive mint opens)';
     }
     rows.push(row);
   }
@@ -551,8 +583,11 @@ export function openMysteryGift(inv, tier, balance = 0, rng = Math.random) {
   const reward = rollMysteryReward(rng, tier);
   let balanceDelta = 0;
 
+  let g2uDelta = 0;
   if (reward.type === 'shards') {
     balanceDelta = Number(reward.amount) || 0;
+  } else if (reward.type === 'g2u_tokens') {
+    g2uDelta = Number(reward.amount) || 0;
   } else if (reward.type === 'item' && reward.itemId) {
     base[reward.itemId] = (Number(base[reward.itemId]) || 0) + 1;
   } else if (reward.type === 'nft_voucher') {
@@ -573,7 +608,7 @@ export function openMysteryGift(inv, tier, balance = 0, rng = Math.random) {
   // keep last 30
   base.mystery_opens = opens.slice(-30);
 
-  return { inv: base, balanceDelta, reward, error: null };
+  return { inv: base, balanceDelta, g2uDelta, reward, error: null };
 }
 
 /** Odds copy for UI — pass badge tier burned */

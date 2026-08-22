@@ -128,6 +128,7 @@ export const MYSTERY_ODDS: Record<string, Record<string, number>> = {
   diamond: { exclusive_nft: 12, bonus_g2u: 50, premium_boost: 28, free_boost: 10, shards_bulk: 0 },
 };
 
+/** G2Ushards bulk (mining balance) + placeholder Bonus G2U (SPL) amounts by burn tier */
 export const MYSTERY_SHARD_AMOUNTS: Record<string, Record<string, number>> = {
   bronze: { bonus_g2u: 2500, shards_bulk: 800 },
   silver: { bonus_g2u: 8000, shards_bulk: 2000 },
@@ -135,50 +136,130 @@ export const MYSTERY_SHARD_AMOUNTS: Record<string, Record<string, number>> = {
   diamond: { bonus_g2u: 50000, shards_bulk: 0 },
 };
 
-export function rollMystery(tier: string): {
+/** Free Boost sub-roll (~33.3% each) — Frenzy is Free, not Premium */
+export const MYSTERY_FREE_ITEMS: Array<{ itemId: string; label: string; weight: number }> = [
+  { itemId: "frenzy", label: "Frenzy Mode", weight: 1 },
+  { itemId: "battery", label: "Expanded Battery", weight: 1 },
+  { itemId: "refill", label: "Instant Refill", weight: 1 },
+];
+
+/** Premium Boost sub-roll (20% each) */
+export const MYSTERY_PREMIUM_ITEMS: Array<{ itemId: string; label: string; weight: number }> = [
+  { itemId: "bot", label: "Weekend Bot", weight: 1 },
+  { itemId: "grinder", label: "+2K Daily Energy", weight: 1 },
+  { itemId: "whale", label: "+5K Daily Energy", weight: 1 },
+  { itemId: "x2_boost", label: "Double Power", weight: 1 },
+  { itemId: "x3_boost", label: "Triple Power", weight: 1 },
+];
+
+/** Exclusive NFT sub-roll (Common elves 20% each; Locksmith + Star 10% each) */
+export const MYSTERY_NFT_ROLL: Array<{
+  kind: string;
+  rarity: string;
+  label: string;
+  weight: number;
+}> = [
+  { kind: "fate", rarity: "common", label: "Fate Common", weight: 20 },
+  { kind: "echo", rarity: "common", label: "Echo Common", weight: 20 },
+  { kind: "rush", rarity: "common", label: "Rush Common", weight: 20 },
+  { kind: "shadow", rarity: "common", label: "Shadow Common", weight: 20 },
+  { kind: "locksmith", rarity: "rare", label: "GiftLocksmith", weight: 10 },
+  { kind: "star", rarity: "shard", label: "Star Badge", weight: 10 },
+];
+
+function weightedPick<T extends { weight: number }>(
+  rows: T[],
+  rng: () => number = Math.random,
+): T {
+  const total = rows.reduce((s, r) => s + (Number(r.weight) || 0), 0) || 1;
+  let x = rng() * total;
+  for (const r of rows) {
+    x -= Number(r.weight) || 0;
+    if (x <= 0) return r;
+  }
+  return rows[0];
+}
+
+export type MysteryReward = {
   prizeId: string;
   label: string;
   type: string;
+  dest: string;
   itemId?: string;
   amount?: number;
-} {
+  nftKind?: string;
+  nftRarity?: string;
+  pending?: boolean;
+};
+
+/**
+ * Top roll by badge burn tier, then sub-roll for free / premium / NFT.
+ * shards_bulk → immediate G2Ushards; bonus_g2u → pending SPL until amounts/wallet set.
+ */
+export function rollMystery(
+  tier: string,
+  rng: () => number = Math.random,
+): MysteryReward {
   const odds = MYSTERY_ODDS[tier] || MYSTERY_ODDS.bronze;
   const amounts = MYSTERY_SHARD_AMOUNTS[tier] || MYSTERY_SHARD_AMOUNTS.bronze;
   const entries = Object.entries(odds).filter(([, w]) => w > 0);
-  const total = entries.reduce((s, [, w]) => s + w, 0);
-  let x = Math.random() * total;
-  let prizeId = entries[0][0];
-  for (const [id, w] of entries) {
-    x -= w;
-    if (x <= 0) {
-      prizeId = id;
-      break;
-    }
-  }
-  if (prizeId === "exclusive_nft") {
-    return { prizeId, label: "Exclusive NFT voucher", type: "nft_voucher" };
+  const top = weightedPick(
+    entries.map(([prizeId, weight]) => ({ prizeId, weight })),
+    rng,
+  );
+  const prizeId = top.prizeId;
+
+  if (prizeId === "free_boost") {
+    const pick = weightedPick(MYSTERY_FREE_ITEMS, rng);
+    return {
+      prizeId: "free_boost",
+      label: `Free Boost: ${pick.label} → Backpack`,
+      type: "item",
+      itemId: pick.itemId,
+      dest: "backpack",
+    };
   }
   if (prizeId === "premium_boost") {
-    return { prizeId, label: "Premium Boost (+1 Frenzy)", type: "item", itemId: "frenzy" };
+    const pick = weightedPick(MYSTERY_PREMIUM_ITEMS, rng);
+    return {
+      prizeId: "premium_boost",
+      label: `Premium Boost: ${pick.label} → Backpack`,
+      type: "item",
+      itemId: pick.itemId,
+      dest: "backpack",
+    };
   }
-  if (prizeId === "free_boost") {
-    return { prizeId, label: "Free Boost (+1 Instant Refill)", type: "item", itemId: "refill" };
+  if (prizeId === "exclusive_nft") {
+    const pick = weightedPick(MYSTERY_NFT_ROLL, rng);
+    return {
+      prizeId: "exclusive_nft",
+      label: `Exclusive NFT: ${pick.label} (mint pending → game wallet)`,
+      type: "nft_pending",
+      nftKind: pick.kind,
+      nftRarity: pick.rarity,
+      dest: "wallet_nft",
+      pending: true,
+    };
   }
   if (prizeId === "bonus_g2u") {
     const amount = amounts.bonus_g2u || 0;
     return {
-      prizeId,
-      label: `Bonus G2U Tokens (+${amount.toLocaleString()} G2Ushards)`,
-      type: "shards",
+      prizeId: "bonus_g2u",
+      label: `Bonus G2U (+${amount.toLocaleString()} reserved → game wallet when live)`,
+      type: "g2u_pending",
       amount,
+      dest: "wallet",
+      pending: true,
     };
   }
+  // shards_bulk — immediate mining shards
   const amount = amounts.shards_bulk || 0;
   return {
     prizeId: "shards_bulk",
-    label: `G2Ushards (Bulk) (+${amount.toLocaleString()})`,
+    label: `G2Ushards (Bulk) (+${amount.toLocaleString()}) → Balance`,
     type: "shards",
     amount,
+    dest: "balance",
   };
 }
 

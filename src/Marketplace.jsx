@@ -72,7 +72,7 @@ import {
   BADGE_ITEM_IDS,
   getBadgeCounts,
   canOpenMysteryWith,
-  openMysteryGift,
+  MYSTERY_ODDS_BY_TIER,
   badgeCatalogForBackpack,
 } from './weeklyBadges';
 import {
@@ -193,6 +193,8 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, flushPen
   const [walletNftCount, setWalletNftCount] = useState(0);
   const [walletNftRefresh, setWalletNftRefresh] = useState(0);
   const [mysteryBusy, setMysteryBusy] = useState(false);
+  /** { label, dest, prizeId, tier } after a successful open */
+  const [mysteryReveal, setMysteryReveal] = useState(null);
   // NEW: Track daily usage from the database stats
   const [dailyUsage, setDailyUsage] = useState(stats?.daily_usage || {});
 
@@ -1960,7 +1962,7 @@ Daily claim active · Pack → NFT to see it.`,
   };
 
 
-  // --- Mystery Gift: burn badges for weighted prize ---
+  // --- Mystery Gift: burn badges → server roll → auto-credit backpack / wallet ---
   const handleOpenMystery = async (tier) => {
     if (!user?.id) return;
     if (!canOpenMysteryWith(localInventory, tier)) {
@@ -1975,53 +1977,20 @@ Daily claim active · Pack → NFT to see it.`,
       return;
     }
     setMysteryBusy(true);
+    setMysteryReveal(null);
     setTxStatus({ show: true, loading: true, message: 'Opening Mystery Gift...', success: false });
     try {
-      if (hasSecureSession()) {
-        const data = await secureMysteryOpen(tier);
-        const inv = data.inventory || {};
-        if (data.shard_balance != null) setBalance(Number(data.shard_balance));
-        setLocalInventory(inv);
-        if (setStats) {
-          setStats((prev) => ({
-            ...prev,
-            inventory: applyServerInventoryAuthority(
-              prev?.inventory || {},
-              inv,
-              getUtcWeekId(),
-            ),
-          }));
-        }
-        setTxStatus({
-          show: true,
-          loading: false,
-          message: `🎁 Mystery Gift: ${data.reward?.label || 'opened'}`,
-          success: true,
-        });
-        setTimeout(() => setTxStatus((p) => ({ ...p, show: false })), 3500);
-        return;
+      try {
+        await ensureSecureSession();
+      } catch {
+        /* ignore */
       }
-
-      const bal = Number(balance) || 0;
-      const baseInv = buildFullInventory({});
-      const result = openMysteryGift(baseInv, tier, bal);
-      if (result.error) throw new Error(result.error);
-      let inv = result.inv;
-      let nextBal = bal;
-      if (result.balanceDelta) {
-        nextBal = Math.round((bal + Number(result.balanceDelta)) * 1000) / 1000;
+      if (!hasSecureSession()) {
+        throw new Error('Log in again to open Mystery Gift (secure session required).');
       }
-      const updates = {
-        inventory: inv,
-        last_updated: new Date().toISOString(),
-      };
-      if (result.balanceDelta) updates.shard_balance = nextBal;
-      const { error } = await supabase
-        .from('players')
-        .update(updates)
-        .eq(DB_PLAYER_ID, String(user.id));
-      if (error) throw error;
-      if (result.balanceDelta) setBalance(nextBal);
+      const data = await secureMysteryOpen(tier);
+      const inv = data.inventory || {};
+      if (data.shard_balance != null) setBalance(Number(data.shard_balance));
       setLocalInventory(inv);
       if (setStats) {
         setStats((prev) => ({
@@ -2031,15 +2000,30 @@ Daily claim active · Pack → NFT to see it.`,
             inv,
             getUtcWeekId(),
           ),
+          ...(data.gft_token_balance != null
+            ? { gft_token_balance: Number(data.gft_token_balance) }
+            : {}),
         }));
       }
-      setTxStatus({
-        show: true,
-        loading: false,
-        message: `🎁 Mystery Gift: ${result.reward?.label || 'opened'}`,
-        success: true,
+      const reward = data.reward || {};
+      const dest = reward.dest || data.dest || 'backpack';
+      const destLine =
+        dest === 'wallet'
+          ? 'Reserved for SPL $G2U to your game wallet (when Mystery wallet is live)'
+          : dest === 'wallet_nft'
+            ? 'Queued for mint to your game wallet (Mystery pays CM fee)'
+            : dest === 'balance'
+              ? 'Added to your G2Ushards balance'
+              : 'Added to Backpack — open Pack to activate';
+      setTxStatus((p) => ({ ...p, show: false }));
+      setMysteryReveal({
+        tier,
+        label: reward.label || 'Mystery prize',
+        prizeId: reward.prizeId || '',
+        dest,
+        destLine,
+        amount: reward.amount || data.balance_delta || data.g2u_delta || null,
       });
-      setTimeout(() => setTxStatus((p) => ({ ...p, show: false })), 3500);
     } catch (e) {
       console.error('mystery open', e);
       setTxStatus({
@@ -2089,6 +2073,92 @@ Daily claim active · Pack → NFT to see it.`,
               </button>
             )}
           </div>
+        </div>
+      )}
+
+      {mysteryReveal && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,0.9)',
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center',
+            zIndex: 100060,
+            padding: 16,
+          }}
+        >
+          <div
+            style={{
+              background: 'linear-gradient(165deg, #1a1520 0%, #0f172a 60%)',
+              border: '2px solid #ffd700',
+              borderRadius: 18,
+              padding: '28px 22px',
+              textAlign: 'center',
+              width: '100%',
+              maxWidth: 340,
+              boxShadow: '0 0 40px rgba(255,215,0,0.25)',
+              animation: 'mysteryPop 0.45s ease-out',
+            }}
+          >
+            <div style={{ fontSize: 42, marginBottom: 8 }}>🎁</div>
+            <h3 style={{ color: '#ffd700', margin: '0 0 8px', fontSize: 20 }}>
+              You got…
+            </h3>
+            <p
+              style={{
+                color: '#fff',
+                fontSize: 15,
+                fontWeight: 'bold',
+                lineHeight: 1.4,
+                margin: '0 0 10px',
+              }}
+            >
+              {mysteryReveal.label}
+            </p>
+            <p style={{ color: '#4ade80', fontSize: 12, margin: '0 0 18px', lineHeight: 1.4 }}>
+              {mysteryReveal.destLine}
+            </p>
+            <p style={{ color: '#666', fontSize: 10, margin: '0 0 16px' }}>
+              Burned {BADGE_TIERS[mysteryReveal.tier]?.name || mysteryReveal.tier} · odds for that
+              tier applied
+            </p>
+            <button
+              type="button"
+              onClick={() => {
+                setMysteryReveal(null);
+                if (
+                  mysteryReveal.dest === 'backpack' ||
+                  mysteryReveal.prizeId === 'premium_boost' ||
+                  mysteryReveal.prizeId === 'free_boost' ||
+                  mysteryReveal.prizeId === 'exclusive_nft'
+                ) {
+                  setActiveTab('backpack');
+                  setBackpackCat('boost');
+                }
+              }}
+              style={{
+                width: '100%',
+                background: 'linear-gradient(90deg, #ffd700, #f59e0b)',
+                color: '#000',
+                border: 'none',
+                padding: 14,
+                borderRadius: 12,
+                fontWeight: 'bold',
+                cursor: 'pointer',
+                fontSize: 14,
+              }}
+            >
+              Nice!
+            </button>
+          </div>
+          <style>{`
+            @keyframes mysteryPop {
+              from { transform: scale(0.85); opacity: 0; }
+              to { transform: scale(1); opacity: 1; }
+            }
+          `}</style>
         </div>
       )}
 
@@ -2803,8 +2873,9 @@ Daily claim active · Pack → NFT to see it.`,
                     🎁 Mystery Gift
                   </div>
                   <p style={{ color: '#aaa', fontSize: 11, margin: '6px 0 10px', lineHeight: 1.4 }}>
-                    Burn badges to open. One open = one burn cost (pick a tier).
-                    Odds shown below. Website gift can use the same rules later.
+                    Burn badges → roll prize. Free Boost splits Frenzy/Battery/Refill;
+                    Premium splits Bot/+2K/+5K/x2/x3; NFT splits Fate/Echo/Rush/Shadow/Locksmith/Star.
+                    G2Ushards credit your balance immediately.
                   </p>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
                     {Object.keys(MYSTERY_BOX_COSTS).map((tier) => {
@@ -2864,31 +2935,31 @@ Daily claim active · Pack → NFT to see it.`,
                   </div>
                   <div style={{ marginTop: 10, fontSize: 10, color: '#666', lineHeight: 1.45 }}>
                     <strong style={{ color: '#888' }}>Odds by badge burned</strong>
-                    {' '}(Game Guide → Mystery Gift)
+                    {' '}(same % the server uses)
                     <div style={{ marginTop: 6, overflowX: 'auto' }}>
                       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 9, color: '#aaa' }}>
                         <thead>
                           <tr>
                             <th style={{ textAlign: 'left', padding: '2px 4px', color: '#888' }}>Prize</th>
-                            <th style={{ padding: '2px 4px', color: '#cd7f32' }}>🥉 rest</th>
-                            <th style={{ padding: '2px 4px', color: '#c0c0c0' }}>🥈 25%</th>
-                            <th style={{ padding: '2px 4px', color: '#ffd700' }}>🥇 15%</th>
-                            <th style={{ padding: '2px 4px', color: '#67e8f9' }}>💎 10%</th>
+                            <th style={{ padding: '2px 4px', color: '#cd7f32' }}>🥉</th>
+                            <th style={{ padding: '2px 4px', color: '#c0c0c0' }}>🥈</th>
+                            <th style={{ padding: '2px 4px', color: '#ffd700' }}>🥇</th>
+                            <th style={{ padding: '2px 4px', color: '#67e8f9' }}>💎</th>
                           </tr>
                         </thead>
                         <tbody>
                           {[
-                            ['Exclusive NFT', 1, 2, 5, 12],
-                            ['Bonus G2U Tokens', 10, 20, 35, 50],
-                            ['Premium Boost', 14, 23, 30, 28],
-                            ['Free Boost', 35, 30, 20, 10],
-                            ['G2Ushards (Bulk)', 40, 25, 10, 0],
-                          ].map((row) => (
-                            <tr key={row[0]}>
-                              <td style={{ padding: '2px 4px', textAlign: 'left' }}>{row[0]}</td>
-                              {row.slice(1).map((p, i) => (
-                                <td key={i} style={{ padding: '2px 4px', textAlign: 'center' }}>
-                                  {p}%
+                            ['exclusive_nft', 'Exclusive NFT → Backpack'],
+                            ['bonus_g2u', 'Bonus G2U → Wallet'],
+                            ['premium_boost', 'Premium Boost → Backpack'],
+                            ['free_boost', 'Free Boost → Backpack'],
+                            ['shards_bulk', 'G2Ushards bulk → Balance'],
+                          ].map(([prizeId, label]) => (
+                            <tr key={prizeId}>
+                              <td style={{ padding: '2px 4px', textAlign: 'left' }}>{label}</td>
+                              {['bronze', 'silver', 'gold', 'diamond'].map((t) => (
+                                <td key={t} style={{ padding: '2px 4px', textAlign: 'center' }}>
+                                  {(MYSTERY_ODDS_BY_TIER[t]?.[prizeId] ?? 0)}%
                                 </td>
                               ))}
                             </tr>
