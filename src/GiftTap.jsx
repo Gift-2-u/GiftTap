@@ -3235,6 +3235,9 @@ const GiftTapGame = () => {
                     : buffRef.current.efficiencyExpires,
               };
             }
+            if (p.tap_power != null && Number.isFinite(Number(p.tap_power))) {
+              setTapPower(Number(p.tap_power));
+            }
             if (applyMining) {
               if (Number.isFinite(b)) {
                 optimisticBalance.current = b;
@@ -3941,7 +3944,7 @@ const GiftTapGame = () => {
       // 🚨 FIX: Use the synchronous Ref to prevent rapid-click bypasses
       const safeLifetimeTaps = Number(optimisticTaps.current) || 0;
 
-      // Additive stack (not multiply): level + frenzy + premium + echo bonuses
+      // Tap power = additive (L5 1.15 + Echo 1.1 = 1.25). Frenzy doubles that (→ 2.5).
       const levelMulti = getLevelMultiplier(currentLevel);
       let costMultiplier = 1; // always 1 — Frenzy never raises battery drain
 
@@ -3960,13 +3963,12 @@ const GiftTapGame = () => {
           if (em > 1) echoMulti = em;
         }
       }
-      const payoutMultiplier = stackPayoutMultis(
-        levelMulti,
-        frenzyOn ? 2 : 1,
-        premiumMulti,
-        echoMulti,
-      );
-      const baseRate = 1; // payoutMultiplier already includes level
+      const baseTapPower = stackPayoutMultis(levelMulti, premiumMulti, echoMulti);
+      if (Math.abs(baseTapPower - Number(tapPower || 0)) > 0.0005) {
+        setTapPower(baseTapPower);
+      }
+      const payoutMultiplier = frenzyOn ? baseTapPower * 2 : baseTapPower;
+      const baseRate = 1; // payoutMultiplier is full shards-per-tap
 
       // 3. CALCULATE VALID FINGERS — catch up regen first so UI and spend agree
       applyEnergyCatchUp();

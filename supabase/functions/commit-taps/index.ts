@@ -230,8 +230,10 @@ serve(async (req) => {
       dailyTaps = 0;
     }
 
-    // Buffs — ADDITIVE stack (not multiply): L5 1.15 + Echo 1.1 = 1.25.
-    // Frenzy = +1.0 (shown as 2×). Energy cost stays 1. Daily bar = raw taps.
+    // Tap power = additive bonuses (L5 1.15 + Echo 1.1 = 1.25) → stored as tap_power.
+    // Frenzy doubles THAT power (1.25 → 2.5), it does not add +1 onto base 1.
+    // Fate jackpot replaces Frenzy on that tap: tap_power × jackpotMulti.
+    // Energy cost stays 1. Daily bar = raw taps.
     const frenzyOn =
       !!(row.frenzy_expires && now < new Date(String(row.frenzy_expires)));
     const heavyHandsOn = false; // retired — ignore leftover efficiency_expires
@@ -249,13 +251,12 @@ serve(async (req) => {
     // After wall climb, pay at target level even if lifetime is still just under the XP gate
     const level = playLevel(lifetime, maxU);
     const levelMulti = getLevelMultiplier(level);
-    // Normal tap payout (Fate jackpot replaces Frenzy on that tap only)
-    const basePayoutMulti = stackPayoutMultis(
+    const tapPower = stackPayoutMultis(
       levelMulti,
-      frenzyOn ? 2 : 1,
       premiumMulti,
       echoMulti > 1 ? echoMulti : 1,
     );
+    const basePayoutMulti = frenzyOn ? tapPower * 2 : tapPower;
 
     const byEnergy = Math.floor(energy / costMultiplier);
     // Daily limit bar = raw taps (1 click = 1). Frenzy/Echo/premium multiply
@@ -314,7 +315,7 @@ serve(async (req) => {
       streak = streakAfterPlayDay(prevLtd, streak, today);
     }
 
-    // Per-tap payout: Fate jackpot replaces Frenzy on that tap only (Echo/level still add)
+    // Per-tap payout: Fate jackpot replaces Frenzy → tap_power × jackpot multi
     let shardsEarned = 0;
     let scoreCredit = 0;
     let jackpotHits = 0;
@@ -325,13 +326,8 @@ serve(async (req) => {
       const hit = rollFateJackpot(inv);
       let tapMulti: number;
       if (hit) {
-        // Fate multi replaces Frenzy; level + premium + echo still add
-        tapMulti = stackPayoutMultis(
-          levelMulti,
-          hit.multi,
-          premiumMulti,
-          echoMulti > 1 ? echoMulti : 1,
-        );
+        // Fate replaces Frenzy: same base tap_power, times jackpot multi
+        tapMulti = Math.round(tapPower * hit.multi * 1000) / 1000;
         jackpotHits += 1;
         jackpotBestMulti = Math.max(jackpotBestMulti, hit.multi);
         if (jackpotLog.length < 5) jackpotLog.push(hit);
@@ -376,6 +372,12 @@ serve(async (req) => {
     if (newLevel > prevLevel && newLevel <= maxU) {
       finalEnergy = ENERGY_CAP;
     }
+    // Persist base tap power (no Frenzy) so HUD / DB show 1.25 not 2.5
+    const tapPowerAfter = stackPayoutMultis(
+      getLevelMultiplier(newLevel),
+      premiumMulti,
+      echoMulti > 1 ? echoMulti : 1,
+    );
 
     const updates = {
       shard_balance: nextBal,
@@ -388,6 +390,7 @@ serve(async (req) => {
       last_tap_date: today,
       current_streak: streak,
       inventory: inv,
+      tap_power: tapPowerAfter,
       last_updated: now.toISOString(),
     };
 
@@ -416,7 +419,21 @@ serve(async (req) => {
       taps: validTaps,
       energy_spent: energySpent,
       shards: shardsEarned,
-      result: { levelMulti, payoutMultiplier, costMultiplier, frenzyOn, heavyHandsOn, level, scoreCredit, limitCredit, echoMulti, jackpotHits, jackpotBestMulti, jackpotLog },
+      result: {
+        tapPower,
+        tapPowerAfter,
+        payoutMultiplier,
+        costMultiplier,
+        frenzyOn,
+        heavyHandsOn,
+        level,
+        scoreCredit,
+        limitCredit,
+        echoMulti,
+        jackpotHits,
+        jackpotBestMulti,
+        jackpotLog,
+      },
     });
 
     await logEconomy(sb, {
@@ -425,7 +442,18 @@ serve(async (req) => {
       delta: shardsEarned,
       balance_after: nextBal,
       ref: batchId,
-      meta: { taps: validTaps, energySpent, scoreCredit, limitCredit, level, levelMulti, payoutMultiplier, echoMulti, jackpotHits, jackpotBestMulti },
+      meta: {
+        taps: validTaps,
+        energySpent,
+        scoreCredit,
+        limitCredit,
+        level,
+        tapPower,
+        payoutMultiplier,
+        echoMulti,
+        jackpotHits,
+        jackpotBestMulti,
+      },
     });
 
     return jsonResponse({
@@ -438,6 +466,7 @@ serve(async (req) => {
       cost_multiplier: costMultiplier,
       frenzy_on: frenzyOn,
       heavy_hands_on: heavyHandsOn,
+      tap_power: tapPowerAfter,
       jackpot_hits: jackpotHits,
       jackpot_best_multi: jackpotBestMulti,
       player: {
