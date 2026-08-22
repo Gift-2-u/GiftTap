@@ -2876,8 +2876,8 @@ Daily claim active · Pack → NFT to see it.`,
                     🎁 Mystery Gift
                   </div>
                   <p style={{ color: '#aaa', fontSize: 11, margin: '6px 0 10px', lineHeight: 1.4 }}>
-                    Opening happens on the <strong style={{ color: '#ffd700' }}>Gift2u homepage gift</strong>
-                    — not by burning here. Go home, tap the big gift, choose badges, then watch it open.
+                    These badges only send you to <strong style={{ color: '#ffd700' }}>gift2u.fun</strong>.
+                    Open the Mystery Gift by tapping the <strong style={{ color: '#ffd700' }}>big gift</strong> on the home page.
                   </p>
                   <div
                     style={{
@@ -2897,8 +2897,8 @@ Daily claim active · Pack → NFT to see it.`,
                           key={tier}
                           type="button"
                           onClick={() => {
-                            // Never open/reward here — send to homepage Mystery gift
-                            window.location.assign('/?mystery=1');
+                            // Never open/reward here — home page; player taps the big gift
+                            window.location.assign('/');
                           }}
                           style={{
                             background: ok ? '#1c1e22' : '#111',
@@ -2944,7 +2944,7 @@ Daily claim active · Pack → NFT to see it.`,
                               Need {need} · have {have}
                             </div>
                             <div style={{ fontSize: 9, color: '#888', marginTop: 2 }}>
-                              Tap → homepage gift
+                              Go home · tap the gift
                             </div>
                           </div>
                         </button>
