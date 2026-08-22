@@ -49,11 +49,11 @@ serve(async (req) => {
       };
     }
 
+    // Do not bump last_updated — that field is the energy regen clock.
     const { data: updated, error: upErr } = await sb
       .from("players")
       .update({
         inventory: inv,
-        last_updated: new Date().toISOString(),
       })
       .eq("telegram_id", playerId)
       .select("inventory")

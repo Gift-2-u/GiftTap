@@ -193,6 +193,7 @@ import {
   ensureSecureSession,
   secureCommitTaps,
   secureWallClimb,
+  secureLocksmithActivate,
   secureCreateUserWallet,
   secureGetVault,
   secureSetVaultIfEmpty,
@@ -4264,13 +4265,34 @@ const GiftTapGame = () => {
     const needsBoth = !!wallData.requiresBoth;
 
     if (method === 'locksmith') {
-      const inv = inventoryRef.current || stats.inventory || {};
+      let inv = inventoryRef.current || stats.inventory || {};
+      // Owning on-chain Locksmith used to leave free-climb greyed out because
+      // Pack never wrote inventory.locksmith_active. Auto-equip if they hold it.
+      if (!locksmithCoversWall(inv, wallKey) && hasLocksmithNft) {
+        try {
+          const need = LOCKSMITH_LEVEL_FOR_WALL[wallKey] || 1;
+          const have = Math.max(1, locksmithLevelFromInv(inv) || 1);
+          const level = Math.max(need, have);
+          const data = await secureLocksmithActivate({ level });
+          if (data?.inventory) {
+            inv = { ...(inventoryRef.current || {}), ...data.inventory };
+            inventoryRef.current = inv;
+            setStats((prev) => ({
+              ...prev,
+              inventory: inv,
+            }));
+          }
+        } catch (e) {
+          notify(e?.message || 'Could not equip GiftLocksmith', false);
+          return;
+        }
+      }
       if (!locksmithCoversWall(inv, wallKey)) {
         const need = LOCKSMITH_LEVEL_FOR_WALL[wallKey] || 1;
         const have = locksmithLevelFromInv(inv);
         notify(
           have < 1
-            ? 'Equip GiftLocksmith in Pack → NFT, then climb free.'
+            ? 'Mint or equip GiftLocksmith in Pack → NFT, then climb free.'
             : `Need GiftLocksmith L${need}+ for this wall (you have L${have}).`,
         );
         return;
@@ -5610,6 +5632,8 @@ const GiftTapGame = () => {
             const lsOk = locksmithCoversWall(invNow, maxUnlockedLevel);
             const lsHave = locksmithLevelFromInv(invNow);
             const lsNeed = LOCKSMITH_LEVEL_FOR_WALL[maxUnlockedLevel] || 1;
+            // Own NFT but not equipped yet → still allow free-climb (auto-equip on press)
+            const lsCanFree = lsOk || !!hasLocksmithNft;
             const shoeHave = getCommonShoeCount(invNow);
             return (
             <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', background: 'rgba(0,0,0,0.9)', zIndex: 1000, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
@@ -5667,24 +5691,26 @@ const GiftTapGame = () => {
                 <button
                   type="button"
                   onClick={() => handleAscensionPayment('locksmith')}
-                  disabled={!lsOk}
+                  disabled={!lsCanFree}
                   style={{
                     width: '100%',
-                    background: lsOk
+                    background: lsCanFree
                       ? 'linear-gradient(90deg, #9945FF, #14F195)'
                       : '#1a1a1a',
-                    color: lsOk ? '#000' : '#666',
+                    color: lsCanFree ? '#000' : '#666',
                     border: 'none',
                     padding: '15px',
                     borderRadius: '12px',
                     fontWeight: 'bold',
-                    cursor: lsOk ? 'pointer' : 'not-allowed',
+                    cursor: lsCanFree ? 'pointer' : 'not-allowed',
                     marginBottom: '10px',
                   }}
                 >
                   {lsOk
                     ? `Locksmith free climb → L${wall.targetLevel}`
-                    : `GiftLocksmith L${lsNeed}+ for free climb + shoe`}
+                    : hasLocksmithNft
+                      ? `Equip Locksmith & free climb → L${wall.targetLevel}`
+                      : `GiftLocksmith L${lsNeed}+ for free climb + shoe`}
                 </button>
                 
                 {wall.requiresBoth ? (

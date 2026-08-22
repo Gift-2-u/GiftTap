@@ -18,6 +18,7 @@ import {
   secureStarLevelUp,
   secureNftSetLevel,
   secureFateEquip,
+  secureLocksmithActivate,
 } from './secureApi';
 import {
   getEquippedShardBadgeOnFate,
@@ -40,6 +41,7 @@ import {
 import {
   wallsClimbedLabels,
   nextWallTargetLabel,
+  locksmithLevelFromInv,
 } from './locksmithWalls';
 
 /**
@@ -147,6 +149,15 @@ export default function WalletNftSection({
   const isLocksmithSelected =
     String(selected?.kind || '').toLowerCase() === 'locksmith';
 
+  const locksmithEquipped = useMemo(() => {
+    if (!isLocksmithSelected || !selected?.id) return false;
+    const active = localInv?.locksmith_active;
+    if (!active || typeof active !== 'object') return false;
+    const aid = String(active.asset_id || active.assetId || '');
+    // Equipped if same asset, or any active locksmith when asset_id was never stored
+    return !aid || aid === String(selected.id);
+  }, [isLocksmithSelected, selected, localInv]);
+
   const climbedWalls = useMemo(
     () => wallsClimbedLabels(maxUnlockedLevel),
     [maxUnlockedLevel],
@@ -154,6 +165,46 @@ export default function WalletNftSection({
   const nextWall = useMemo(
     () => nextWallTargetLabel(maxUnlockedLevel),
     [maxUnlockedLevel],
+  );
+
+  const handleLocksmithEquip = useCallback(
+    async (wantEquip) => {
+      if (!selected?.id || !isLocksmithSelected || equipBusy) return;
+      setEquipBusy(true);
+      try {
+        const level = Math.max(
+          1,
+          getElfLevel(localInv, selected.id) ||
+            locksmithLevelFromInv(localInv) ||
+            1,
+        );
+        const data = await secureLocksmithActivate(
+          wantEquip
+            ? { level, assetId: selected.id, clear: false }
+            : { clear: true },
+        );
+        const nextInv = data.inventory || localInv;
+        setLocalInv(nextInv);
+        if (typeof onInventoryChange === 'function') onInventoryChange(nextInv);
+        toast(
+          wantEquip
+            ? `GiftLocksmith equipped (L${level}) — free wall climb ready`
+            : 'GiftLocksmith unequipped',
+          true,
+        );
+      } catch (e) {
+        toast(e?.message || 'Locksmith equip failed', false);
+      } finally {
+        setEquipBusy(false);
+      }
+    },
+    [
+      selected,
+      isLocksmithSelected,
+      equipBusy,
+      localInv,
+      onInventoryChange,
+    ],
   );
 
   const handleStarEquip = useCallback(
@@ -832,31 +883,80 @@ export default function WalletNftSection({
                     </div>
                   </div>
                 ) : isLocksmithSelected ? (
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ color: '#ddd', fontSize: 12, fontWeight: 'bold' }}>
-                      Walls climbed
-                    </div>
-                    <div
+                  <button
+                    type="button"
+                    disabled={equipBusy}
+                    onClick={() => handleLocksmithEquip(!locksmithEquipped)}
+                    title={
+                      locksmithEquipped
+                        ? 'Tap to unequip Locksmith'
+                        : 'Tap to equip — unlocks free wall climb'
+                    }
+                    style={{
+                      flex: 1,
+                      minWidth: 0,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 12,
+                      background: 'transparent',
+                      border: 'none',
+                      padding: 0,
+                      textAlign: 'left',
+                      cursor: equipBusy ? 'wait' : 'pointer',
+                      color: 'inherit',
+                    }}
+                    aria-label={
+                      locksmithEquipped ? 'Unequip Locksmith' : 'Equip Locksmith'
+                    }
+                  >
+                    <span
                       style={{
-                        color: climbedWalls.length ? '#14F195' : '#888',
-                        fontSize: 12,
-                        marginTop: 2,
-                        fontWeight: 'bold',
-                        lineHeight: 1.35,
+                        width: 56,
+                        height: 56,
+                        borderRadius: 12,
+                        flexShrink: 0,
+                        display: 'grid',
+                        placeItems: 'center',
+                        border: locksmithEquipped
+                          ? '2px solid #14F195'
+                          : '2px solid #555',
+                        background: locksmithEquipped
+                          ? 'linear-gradient(145deg, #9945FF, #14F195)'
+                          : '#16161c',
+                        fontSize: 22,
                       }}
                     >
-                      {climbedWalls.length ? climbedWalls.join(' · ') : 'None yet'}
-                    </div>
-                    {nextWall != null ? (
-                      <div style={{ color: '#666', fontSize: 10, marginTop: 2 }}>
-                        Next →{nextWall}
-                      </div>
-                    ) : (
-                      <div style={{ color: '#666', fontSize: 10, marginTop: 2 }}>
-                        All walls clear
-                      </div>
-                    )}
-                  </div>
+                      {equipBusy ? '…' : '🔑'}
+                    </span>
+                    <span style={{ flex: 1, minWidth: 0 }}>
+                      <span
+                        style={{
+                          display: 'block',
+                          color: '#ddd',
+                          fontSize: 12,
+                          fontWeight: 'bold',
+                        }}
+                      >
+                        {locksmithEquipped ? 'Equipped' : 'Tap to equip'}
+                      </span>
+                      <span
+                        style={{
+                          display: 'block',
+                          color: climbedWalls.length ? '#14F195' : '#888',
+                          fontSize: 11,
+                          marginTop: 2,
+                          fontWeight: 'bold',
+                          lineHeight: 1.35,
+                        }}
+                      >
+                        Walls:{' '}
+                        {climbedWalls.length
+                          ? climbedWalls.join(' · ')
+                          : 'none yet'}
+                        {nextWall != null ? ` · next →${nextWall}` : ''}
+                      </span>
+                    </span>
+                  </button>
                 ) : (
                   <div style={{ flex: 1 }} />
                 )}
