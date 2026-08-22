@@ -1990,15 +1990,18 @@ Daily claim active · Pack → NFT to see it.`,
       }
       const data = await secureMysteryOpen(tier);
       const inv = data.inventory || {};
+      const weekId = getUtcWeekId();
+      // Server snapshot wins for badge burns — empty prev so deleted badge keys stay gone
+      const synced = applyServerInventoryAuthority({}, inv, weekId);
       if (data.shard_balance != null) setBalance(Number(data.shard_balance));
-      setLocalInventory(inv);
+      setLocalInventory(synced);
       if (setStats) {
         setStats((prev) => ({
           ...prev,
           inventory: applyServerInventoryAuthority(
             prev?.inventory || {},
             inv,
-            getUtcWeekId(),
+            weekId,
           ),
           ...(data.gft_token_balance != null
             ? { gft_token_balance: Number(data.gft_token_balance) }

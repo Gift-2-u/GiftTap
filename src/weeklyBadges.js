@@ -398,15 +398,9 @@ export function canOpenMysteryWith(inv, tier) {
 
 /**
  * Mystery Gift drop rates by badge tier burned (each column sums to 100%).
+ * Keep in sync with supabase/functions/_shared/economy.ts MYSTERY_ODDS.
  *
- * Weekly badges: Diamond top 10% · Gold next 15% · Silver next 25% · Bronze rest eligible.
- *
- * Prize                    Bronze(rest) Silver25% Gold15% Diamond10%
- * Exclusive NFT                 1%         2%       5%      12%
- * Bonus G2U Tokens             10%        20%      35%      50%
- * Premium Boost                14%        23%      30%      28%
- * Free Boost                   35%        30%      20%      10%
- * G2Ushards (Bulk)             40%        25%      10%       0%
+ * Exclusive NFT is scarce (Diamond ~2% ≈ 1 in 50 opens).
  */
 const MYSTERY_PRIZE_META = {
   exclusive_nft: {
@@ -475,31 +469,31 @@ const MYSTERY_SHARD_AMOUNTS = {
 
 export const MYSTERY_ODDS_BY_TIER = {
   bronze: {
-    exclusive_nft: 1,
+    exclusive_nft: 0.2,
     bonus_g2u: 10,
     premium_boost: 14,
     free_boost: 35,
-    shards_bulk: 40,
+    shards_bulk: 40.8,
   },
   silver: {
-    exclusive_nft: 2,
+    exclusive_nft: 0.5,
     bonus_g2u: 20,
     premium_boost: 23,
     free_boost: 30,
-    shards_bulk: 25,
+    shards_bulk: 26.5,
   },
   gold: {
-    exclusive_nft: 5,
+    exclusive_nft: 1,
     bonus_g2u: 35,
     premium_boost: 30,
     free_boost: 20,
-    shards_bulk: 10,
+    shards_bulk: 14,
   },
   diamond: {
-    exclusive_nft: 12,
-    bonus_g2u: 50,
+    exclusive_nft: 2,
+    bonus_g2u: 55,
     premium_boost: 28,
-    free_boost: 10,
+    free_boost: 15,
     shards_bulk: 0,
   },
 };

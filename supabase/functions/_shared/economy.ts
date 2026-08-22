@@ -120,12 +120,39 @@ export const MYSTERY_COSTS: Record<string, number> = {
   bronze: 10,
 };
 
-/** Drop rates by burn tier (sum 100) */
+/**
+ * Drop rates by burn tier (sum 100).
+ * Exclusive NFT kept scarce — Diamond ~2% (~1 in 50 opens), not 12%.
+ */
 export const MYSTERY_ODDS: Record<string, Record<string, number>> = {
-  bronze: { exclusive_nft: 1, bonus_g2u: 10, premium_boost: 14, free_boost: 35, shards_bulk: 40 },
-  silver: { exclusive_nft: 2, bonus_g2u: 20, premium_boost: 23, free_boost: 30, shards_bulk: 25 },
-  gold: { exclusive_nft: 5, bonus_g2u: 35, premium_boost: 30, free_boost: 20, shards_bulk: 10 },
-  diamond: { exclusive_nft: 12, bonus_g2u: 50, premium_boost: 28, free_boost: 10, shards_bulk: 0 },
+  bronze: {
+    exclusive_nft: 0.2,
+    bonus_g2u: 10,
+    premium_boost: 14,
+    free_boost: 35,
+    shards_bulk: 40.8,
+  },
+  silver: {
+    exclusive_nft: 0.5,
+    bonus_g2u: 20,
+    premium_boost: 23,
+    free_boost: 30,
+    shards_bulk: 26.5,
+  },
+  gold: {
+    exclusive_nft: 1,
+    bonus_g2u: 35,
+    premium_boost: 30,
+    free_boost: 20,
+    shards_bulk: 14,
+  },
+  diamond: {
+    exclusive_nft: 2,
+    bonus_g2u: 55,
+    premium_boost: 28,
+    free_boost: 15,
+    shards_bulk: 0,
+  },
 };
 
 /** G2Ushards bulk (mining balance) + placeholder Bonus G2U (SPL) amounts by burn tier */

@@ -414,6 +414,15 @@ export const SHOP_INVENTORY_QTY_KEYS = [
   'x2_boost', 'x3_boost', 'exclusive_nft_voucher',
 ];
 
+/** Weekly badge qty keys — burns (Mystery Gift) must clear UI when server omits key */
+export const BADGE_INVENTORY_QTY_KEYS = [
+  'badge_bronze',
+  'badge_silver',
+  'badge_gold',
+  'badge_diamond',
+  'shard_badge',
+];
+
 /**
  * Copy shop item counts from `authority` onto `target` (mutate + return).
  * Missing / 0 on authority deletes the key — used items stay gone.
@@ -429,16 +438,31 @@ export function applyShopQtyAuthority(target, authority) {
   return out;
 }
 
+/** Same as shop qty — server/burn snapshot is authority for badge stacks. */
+export function applyBadgeQtyAuthority(target, authority) {
+  const out = target && typeof target === 'object' ? target : {};
+  const src = authority && typeof authority === 'object' ? authority : {};
+  for (const k of BADGE_INVENTORY_QTY_KEYS) {
+    const n = Math.max(0, Math.floor(Number(src[k]) || 0));
+    if (n <= 0) delete out[k];
+    else out[k] = n;
+  }
+  return out;
+}
+
 /**
- * Merge weekly/task metadata, but treat serverInv as authority for shop item counts.
- * If server omitted a key (item used up), it must disappear.
- * Plain {...prev, ...server} keeps prev qty when server key is missing — that was the exploit.
+ * Merge weekly/task metadata, but treat serverInv as authority for shop + badge counts.
+ * If server omitted a key (item used / badges burned), it must disappear.
+ * Plain {...prev, ...server} keeps prev qty when server key is missing — that was
+ * the Mystery Gift bug (UI still showed 3 diamonds after burn).
  */
 export function applyServerInventoryAuthority(prevInv, serverInv, weekId = getUtcWeekId()) {
   const prev = prevInv && typeof prevInv === 'object' ? prevInv : {};
   const server = serverInv && typeof serverInv === 'object' ? serverInv : {};
   const merged = mergeInventoryWeekly(prev, server, weekId);
-  return applyShopQtyAuthority(merged, server);
+  applyShopQtyAuthority(merged, server);
+  applyBadgeQtyAuthority(merged, server);
+  return merged;
 }
 
 /**

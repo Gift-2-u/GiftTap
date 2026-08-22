@@ -114,7 +114,7 @@ export const HELP_TIPS = {
     body:
       'Burn weekly badges in Shop → Pack → Badges.\n\n' +
       'Cost: 3 Diamond / 4 Gold / 5 Silver / 10 Bronze per open.\n\n' +
-      'Higher-tier badges have better odds (Diamond open: 12% Exclusive NFT, 50% Bonus G2U Tokens).\n\n' +
+      'Higher-tier badges have better odds (Diamond open: ~2% Exclusive NFT, 55% Bonus G2U).\n\n' +
       'Full drop table: Menu → Game Guide → Mystery Gift.',
   },
   weekly_badges: {

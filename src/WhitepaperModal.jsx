@@ -166,16 +166,17 @@ const WhitepaperModal = ({ isWhitepaperOpen, setIsWhitepaperOpen, onClose }) => 
         "Weekly badges (Ranks → Weekly, after week freezes):\n" +
         "• Diamond = top 10% · Gold = next 15% · Silver = next 25% · Bronze = rest eligible\n\n" +
         "DROP RATES by badge tier burned (each column = 100%):\n\n" +
-        "Prize                  Bronze (rest)  Silver 25%  Gold 15%  Diamond 10%\n" +
-        "Exclusive NFT              1%            2%         5%         12%\n" +
-        "Bonus G2U Tokens          10%           20%        35%         50%\n" +
-        "Premium Boost             14%           23%        30%         28%\n" +
-        "Free Boost                35%           30%        20%         10%\n" +
-        "G2Ushards (Bulk)          40%           25%        10%          0%\n\n" +
-        "Better badges = better odds (more Exclusive NFT & Bonus G2U, less bulk shards).\n" +
-        "Exclusive NFT: rare voucher toward a special drop (on-chain mint when that path is live).\n" +
-        "Bonus G2U Tokens: paid as G2Ushards credit for now (amount scales with badge tier).\n" +
-        "Premium Boost = Frenzy · Free Boost = Instant Refill (Pack).\n\n" +
+        "Prize                  Bronze         Silver      Gold       Diamond\n" +
+        "Exclusive NFT            0.2%           0.5%        1%          2%\n" +
+        "Bonus G2U               10%            20%        35%         55%\n" +
+        "Premium Boost           14%            23%        30%         28%\n" +
+        "Free Boost              35%            30%        20%         15%\n" +
+        "G2Ushards (Bulk)        40.8%          26.5%      14%          0%\n\n" +
+        "Exclusive NFT is scarce (~2% on Diamond ≈ 1 in 50 opens).\n" +
+        "If Exclusive hits: Fate/Echo/Rush/Shadow Common 20% each · Locksmith 10% · Star 10%.\n" +
+        "Free Boost splits: Frenzy / Battery / Refill (~⅓ each).\n" +
+        "Premium Boost splits: Bot / +2K / +5K / x2 / x3 (20% each).\n" +
+        "G2Ushards bulk credits mining balance immediately. Bonus G2U = SPL when Mystery wallet is live.\n\n" +
         "Independent roll per open. Not financial advice; prizes can change for balance/fair play.",
     },
     {

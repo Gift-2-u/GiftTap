@@ -844,7 +844,8 @@ const HomePage = () => {
       </Link>
       
       {/* If this tag is missing, the box will never show up */}
-      <DailyGiftBox wallet={wallet} connection={connection} />
+      {/* Homepage Mystery Gift — burn badges, shake, reveal prize */}
+      <DailyGiftBox />
       
       <div className="mt-10 flex flex-col sm:flex-row gap-4 items-center justify-center">
         <Link to="/stake" className="bg-purple-600 hover:bg-purple-700 px-10 py-4 rounded-full font-black text-lg inline-block">
