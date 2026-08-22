@@ -12,10 +12,19 @@ import {
 import bs58 from 'bs58';
 import { listGiftNfts } from './locksmith';
 import { transferCoreNft } from './nftTransfer';
-import { secureShadowClaim, secureElfLevelUp, secureFateEquip } from './secureApi';
+import {
+  secureShadowClaim,
+  secureElfLevelUp,
+  secureStarLevelUp,
+  secureNftSetLevel,
+  secureFateEquip,
+} from './secureApi';
 import {
   getEquippedShardBadgeOnFate,
   getFreeShardBadgeCount,
+  getStarLevel,
+  starLevelUpCostSol,
+  STAR_MAX_LEVEL,
 } from './shardBadge';
 import { keypairFromMnemonic } from './solanaWallet';
 import { RPC_URL } from './rpc';
@@ -75,13 +84,22 @@ export default function WalletNftSection({
     }
   }, [inventory]);
 
+  const isStarSelected =
+    String(selected?.kind || '').toLowerCase() === 'star';
+
   const selectedLevel = useMemo(() => {
     if (!selected?.id) return 1;
+    if (String(selected.kind || '').toLowerCase() === 'star') {
+      return getStarLevel(localInv, selected.id);
+    }
     return getElfLevel(localInv, selected.id);
   }, [selected, localInv]);
 
   const selectedLevelCost = useMemo(() => {
     if (!selected) return null;
+    if (String(selected.kind || '').toLowerCase() === 'star') {
+      return starLevelUpCostSol(selectedLevel);
+    }
     return elfLevelUpCostSol(selected.rarity, selectedLevel, selected.kind);
   }, [selected, selectedLevel]);
 
@@ -193,11 +211,17 @@ export default function WalletNftSection({
   const handleLevelUp = useCallback(async () => {
     if (!selected || !gameplayMode || levelBusy) return;
     const kind = String(selected.kind || '').toLowerCase();
-    if (!['fate', 'echo', 'rush', 'shadow', 'locksmith'].includes(kind)) {
-      toast('Level up is for Gift2u Elves NFTs', false);
+    const isStar = kind === 'star';
+    if (
+      !isStar &&
+      !['fate', 'echo', 'rush', 'shadow', 'locksmith'].includes(kind)
+    ) {
+      toast('Level up is for Gift2u Elves / Star Badge', false);
       return;
     }
-    const cost = elfLevelUpCostSol(selected.rarity, selectedLevel, kind);
+    const cost = isStar
+      ? starLevelUpCostSol(selectedLevel)
+      : elfLevelUpCostSol(selected.rarity, selectedLevel, kind);
     if (cost == null) {
       toast('Already max level (L5)', false);
       return;
@@ -243,16 +267,35 @@ export default function WalletNftSection({
       const signature = await sendAndConfirmTransaction(connection, tx, [
         playerKeypair,
       ]);
-      const data = await secureElfLevelUp({
-        assetId: selected.id,
-        kind,
-        rarity: normElfRarity(selected.rarity),
-        txSignature: signature,
-      });
+      let data;
+      if (isStar) {
+        data = await secureStarLevelUp({
+          assetId: selected.id,
+          txSignature: signature,
+        });
+      } else {
+        data = await secureElfLevelUp({
+          assetId: selected.id,
+          kind,
+          rarity: normElfRarity(selected.rarity),
+          txSignature: signature,
+        });
+      }
       const nextInv = data.inventory || localInv;
       setLocalInv(nextInv);
       if (typeof onInventoryChange === 'function') onInventoryChange(nextInv);
       toast(`Level up → L${data.to_level} (−${cost} SOL)`, true);
+      // Best-effort: refresh ME / wallet Level trait
+      try {
+        await secureNftSetLevel({
+          assetId: selected.id,
+          level: data.to_level,
+          kind: isStar ? 'star' : kind,
+          rarity: selected.rarity,
+        });
+      } catch (metaErr) {
+        console.warn('nft-set-level', metaErr?.message || metaErr);
+      }
     } catch (e) {
       toast(e?.message || 'Level up failed', false);
     } finally {
@@ -266,7 +309,6 @@ export default function WalletNftSection({
     walletSecret,
     localInv,
     onInventoryChange,
-    toast,
   ]);
 
 
@@ -633,9 +675,11 @@ export default function WalletNftSection({
                               ? 'Rush'
                               : selected.kind === 'shadow'
                                 ? 'Shadow'
-                                : selected.kind === 'locksmith'
-                                  ? 'Locksmith'
-                                  : selected.collection,
+                                : selected.kind === 'star'
+                                  ? 'Star Badge'
+                                  : selected.kind === 'locksmith'
+                                    ? 'Locksmith'
+                                    : selected.collection,
                         selected.rarity,
                       ]
                         .filter(Boolean)
@@ -691,7 +735,7 @@ export default function WalletNftSection({
             </div>
 
             {/* Star socket outside art + Level (no duplicate pills) */}
-            {gameplayMode && (socketableKind || selected.kind === 'locksmith') ? (
+            {gameplayMode && (socketableKind || isLocksmithSelected || isStarSelected) ? (
               <div
                 style={{
                   marginTop: 12,
@@ -778,6 +822,15 @@ export default function WalletNftSection({
                       </span>
                     </span>
                   </button>
+                ) : isStarSelected ? (
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ color: '#ddd', fontSize: 12, fontWeight: 'bold' }}>
+                      Star Badge
+                    </div>
+                    <div style={{ color: '#ffd700', fontSize: 12, marginTop: 2, fontWeight: 'bold' }}>
+                      Socket into Fate · Echo · Rush · Shadow
+                    </div>
+                  </div>
                 ) : isLocksmithSelected ? (
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ color: '#ddd', fontSize: 12, fontWeight: 'bold' }}>
@@ -957,7 +1010,7 @@ export default function WalletNftSection({
             ) : null}
 
             {gameplayMode &&
-            ['fate', 'echo', 'rush', 'shadow', 'locksmith'].includes(
+            ['fate', 'echo', 'rush', 'shadow', 'locksmith', 'star'].includes(
               String(selected.kind || '').toLowerCase(),
             ) ? (
               <button

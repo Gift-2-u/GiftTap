@@ -633,6 +633,8 @@ const GiftTapGame = () => {
   const pendingTapsRef = useRef({ count: 0, batchId: null });
   const tapFlushTimerRef = useRef(null);
   const flushInFlightRef = useRef(false);
+  /** Throttle 'why shards stopped' notices (no_energy / daily_limit) */
+  const mineBlockNotifiedRef = useRef(0);
   const flushErrorNotifiedRef = useRef(false);
   /** When true, only commit-taps (service_role) can change daily_taps / balances */
   const secureEconomyRef = useRef(true);
@@ -843,6 +845,11 @@ const GiftTapGame = () => {
       energyAnchorRef.current = { value: next, at: nowMs };
       optimisticEnergy.current = next;
       setEnergy(next);
+      // Secure economy: last_energy / last_updated owned by Edge (shop-buy /
+      // backpack-activate / commit-taps). Client writes here desync mining.
+      if (secureEconomyRef.current) {
+        return next;
+      }
       if (playerId) {
         const { error } = await supabase
           .from('players')
@@ -3322,6 +3329,24 @@ const GiftTapGame = () => {
           }
           flushErrorNotifiedRef.current = false;
           lastLocalSaveAtRef.current = Date.now();
+          // Tell the player WHY shards stopped (common report: tapping + last_tap today, shards flat)
+          if (credited === 0 && (rejectReason === 'no_energy' || rejectReason === 'daily_limit')) {
+            const nowN = Date.now();
+            if (nowN - (mineBlockNotifiedRef.current || 0) > 20000) {
+              mineBlockNotifiedRef.current = nowN;
+              if (rejectReason === 'no_energy') {
+                notify(
+                  'Battery empty — wait for regen or use Refill / Expanded Battery. Taps only count when energy > 0.',
+                  false,
+                );
+              } else {
+                notify(
+                  'Daily tap limit reached for this UTC day. Expanded Battery (+1000) is in Shop → Free.',
+                  false,
+                );
+              }
+            }
+          }
           // Partial credit: server ran out of energy mid-batch — keep remainder
           if (credited > 0 && credited < taps) {
             pendingTapsRef.current = {
@@ -3869,9 +3894,16 @@ const GiftTapGame = () => {
         return;
       }
 
-      // Silent session renew only — never ask players to log out mid-tap / mid-session.
+      // Secure mining needs a live JWT. If missing, renew and skip this tap's
+      // optimistic credit — otherwise shards climb in UI while flush is a no-op.
       if (secureEconomyRef.current && !hasSecureSession()) {
         ensureSecureSession().catch(() => {});
+        const nowS = Date.now();
+        if (nowS - (mineBlockNotifiedRef.current || 0) > 20000) {
+          mineBlockNotifiedRef.current = nowS;
+          notify('Session renewing — tap again in a moment.', false);
+        }
+        return;
       }
 
       // Credit sleep/background time before deciding if player can tap (keep residual)
@@ -4085,12 +4117,12 @@ const GiftTapGame = () => {
       optimisticDaily.current = nextDaily;
 
       // Level-ups only inside unlocked tier (climbing wall is paid / optional)
+      // Battery refill on level-up is SERVER-ONLY (commit-taps). Never fake a full
+      // bar locally — that caused "I'm tapping but shards don't move" (client energy
+      // ahead of last_energy → flush returns no_energy → snap shards back).
       if (!isAtLevelCap) {
         const newCalculatedLevel = calculateLevel(nextLifetimeTaps);
         if (newCalculatedLevel > currentLevel && newCalculatedLevel <= maxUnlockedLevel) {
-          // Full battery refill on level-up (500 pool — not daily limit)
-          nextEnergy = ENERGY_CAP;
-          energyAnchorRef.current = { value: ENERGY_CAP, at: Date.now() };
           setCurrentLevel(newCalculatedLevel);
         }
       } else {

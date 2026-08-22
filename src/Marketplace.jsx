@@ -861,7 +861,16 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, player, 
         return;
       }
 
-      // Legacy client write (until full cutover / if no session JWT)
+      // No JWT → do not legacy-write (esp. refill energy). Forces secure path.
+      setTxStatus({
+        show: true,
+        loading: false,
+        message: 'Session expired — log in again, then buy. (Keeps battery in sync.)',
+        success: false,
+      });
+      return;
+
+      // Legacy client write (disabled under hard security)
       const newInventory = buildFullInventory({
         [item.id]: (Number(localInventory[item.id]) || 0) + 1,
       });
@@ -1874,8 +1883,8 @@ Daily claim active · Pack → NFT to see it.`,
     if (item.id === 'battery') dbUpdates.energy_boost_expires = midnightUtcTonight.toISOString();
     if (item.id === 'heavy') dbUpdates.efficiency_expires = midnightUtcTonight.toISOString();
     if (item.id === 'refill') {
-      dbUpdates.last_energy = 500; // ENERGY_CAP battery pool
-      if (setEnergy) setEnergy(500);
+      // Never client-write last_energy — backpack-activate Edge owns the battery.
+      throw new Error('Log in again to refill battery (secure session required).');
     }
    
     // Premium SOL Items
@@ -2553,7 +2562,16 @@ Daily claim active · Pack → NFT to see it.`,
                         src={item.imageUrl}
                         alt={item.name}
                         loading="lazy"
-                        style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                        style={{
+                          width: '100%',
+                          height: '100%',
+                          objectFit:
+                            item.isStarMint || item.id === 'star_badge'
+                              ? 'contain'
+                              : 'cover',
+                          objectPosition: 'center',
+                          background: '#0a0a0a',
+                        }}
                       />
                     ) : (
                       item.image
@@ -3227,7 +3245,16 @@ Daily claim active · Pack → NFT to see it.`,
                 <img
                   src={nftDetail.imageUrl}
                   alt={nftDetail.name}
-                  style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                  style={{
+                    width: '100%',
+                    height: '100%',
+                    objectFit:
+                      nftDetail.isStarMint || nftDetail.id === 'star_badge'
+                        ? 'contain'
+                        : 'cover',
+                    objectPosition: 'center',
+                    background: '#0a0a0a',
+                  }}
                 />
               ) : (
                 nftDetail.image

@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.7";
 import { mintSessionJwt } from "../_shared/sessionJwt.ts";
+import { verifyTurnstileToken } from "../_shared/turnstile.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -57,13 +58,19 @@ serve(async (req) => {
   }
 
   try {
-    const { username, password } = await req.json();
-    const cleanName = String(username || "").trim();
-    const pass = String(password || "");
+    const body = await req.json();
+    const cleanName = String(body.username || "").trim();
+    const pass = String(body.password || "");
+    const captchaToken = body.captcha_token || body.captchaToken || "";
 
     if (!cleanName || !pass) {
       throw new Error("Username and password are required.");
     }
+
+    await verifyTurnstileToken(
+      captchaToken,
+      req.headers.get("cf-connecting-ip") || req.headers.get("x-forwarded-for"),
+    );
 
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL") ?? "",

@@ -214,6 +214,23 @@ export async function secureElfLevelUp({
   });
 }
 
+/** Pay SOL then bump Star Badge level. */
+export async function secureStarLevelUp({ assetId, txSignature }) {
+  return callSecureFunction('star-level-up', {
+    asset_id: assetId,
+    tx_signature: txSignature,
+  });
+}
+
+/** Refresh on-chain metadata Level trait (ME / wallets). */
+export async function secureNftSetLevel({ assetId, level, kind, rarity }) {
+  return callSecureFunction('nft-set-level', {
+    asset_id: assetId,
+    level,
+    kind,
+    rarity,
+  });
+}
 
 export async function secureReferralCredit(kind) {
   return callSecureFunction('referral-credit', { kind });

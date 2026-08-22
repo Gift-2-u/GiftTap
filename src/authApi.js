@@ -131,7 +131,7 @@ export function suggestUsername() {
 /**
  * Create account + wallet in one step (wallet_address is required NOT NULL in DB).
  */
-export async function registerAccount(username, password) {
+export async function registerAccount(username, password, captchaToken = '') {
   const cleanName = String(username || '').trim();
   const pass = String(password || '');
 
@@ -186,6 +186,7 @@ export async function registerAccount(username, password) {
       username: cleanName,
       password: pass,
       wallet_address: wallet.publicKey,
+      captcha_token: captchaToken || undefined,
       // vault re-keyed after we know player_id — send null for now if salt uses id
     }),
   });
@@ -236,7 +237,7 @@ export async function registerAccount(username, password) {
   };
 }
 
-export async function loginAccount(username, password) {
+export async function loginAccount(username, password, captchaToken = '') {
   const cleanName = String(username || '').trim();
   const pass = String(password || '');
 
@@ -259,7 +260,11 @@ export async function loginAccount(username, password) {
       Authorization: `Bearer ${anon}`,
       apikey: anon,
     },
-    body: JSON.stringify({ username: cleanName, password: pass }),
+    body: JSON.stringify({
+      username: cleanName,
+      password: pass,
+      captcha_token: captchaToken || undefined,
+    }),
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {

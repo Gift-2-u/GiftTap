@@ -40,6 +40,16 @@ export function starLevelUpCostSol(currentLevel) {
   return Number.isFinite(cost) ? cost : null;
 }
 
+export function getStarLevel(inv, assetId) {
+  if (!assetId || !inv) return 1;
+  const map = inv.star_levels;
+  if (map && typeof map === 'object') {
+    const n = Math.floor(Number(map[assetId]) || 0);
+    if (n >= 1) return Math.min(STAR_MAX_LEVEL, n);
+  }
+  return 1;
+}
+
 
 export function getShardBadgeCount(inv) {
   if (!inv || typeof inv !== 'object') return 0;

@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import { registerAccount, loginAccount, formatAuthError } from './authApi';
+import TurnstileCaptcha, { turnstileRequired } from './TurnstileCaptcha';
 
 /**
  * Cross-device account gate: Sign up / Log in with unique username + password.
@@ -13,6 +14,16 @@ const AuthScreen = ({ onAuthenticated, onRestoreAccount, embedded = false }) => 
   const [mnemonic, setMnemonic] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [captchaToken, setCaptchaToken] = useState('');
+  const [captchaReset, setCaptchaReset] = useState(0);
+  const onCaptchaToken = useCallback((token) => {
+    setCaptchaToken(token || '');
+  }, []);
+  const resetCaptcha = () => {
+    setCaptchaToken('');
+    setCaptchaReset((n) => n + 1);
+  };
+  const needCaptcha = turnstileRequired();
 
   const box = {
     background: embedded ? 'transparent' : '#1c1e22',
@@ -66,9 +77,13 @@ const AuthScreen = ({ onAuthenticated, onRestoreAccount, embedded = false }) => 
       setError('Passwords do not match.');
       return;
     }
+    if (needCaptcha && !captchaToken) {
+      setError('Complete the captcha to continue.');
+      return;
+    }
     setLoading(true);
     try {
-      const data = await registerAccount(username.trim(), password);
+      const data = await registerAccount(username.trim(), password, captchaToken);
       await onAuthenticated({
         playerId: data.player_id,
         username: data.username,
@@ -82,6 +97,7 @@ const AuthScreen = ({ onAuthenticated, onRestoreAccount, embedded = false }) => 
     } catch (err) {
       console.error('Sign up error:', err);
       setError(formatAuthError(err) || 'Sign up failed');
+      resetCaptcha();
     } finally {
       setLoading(false);
     }
@@ -90,9 +106,13 @@ const AuthScreen = ({ onAuthenticated, onRestoreAccount, embedded = false }) => 
   const handleLogin = async (e) => {
     e.preventDefault();
     setError('');
+    if (needCaptcha && !captchaToken) {
+      setError('Complete the captcha to continue.');
+      return;
+    }
     setLoading(true);
     try {
-      const data = await loginAccount(username.trim(), password);
+      const data = await loginAccount(username.trim(), password, captchaToken);
       await onAuthenticated({
         playerId: data.player_id,
         username: data.username,
@@ -106,6 +126,7 @@ const AuthScreen = ({ onAuthenticated, onRestoreAccount, embedded = false }) => 
     } catch (err) {
       console.error('Login error:', err);
       setError(formatAuthError(err) || 'Login failed');
+      resetCaptcha();
     } finally {
       setLoading(false);
     }
@@ -167,10 +188,10 @@ const AuthScreen = ({ onAuthenticated, onRestoreAccount, embedded = false }) => 
 
       <div style={box}>
         <div style={{ display: 'flex', marginBottom: '20px' }}>
-          <button type="button" style={tab(mode === 'login')} onClick={() => { setMode('login'); setError(''); }}>
+          <button type="button" style={tab(mode === 'login')} onClick={() => { setMode('login'); setError(''); resetCaptcha(); }}>
             Log in
           </button>
-          <button type="button" style={tab(mode === 'signup')} onClick={() => { setMode('signup'); setError(''); setUsername(''); }}>
+          <button type="button" style={tab(mode === 'signup')} onClick={() => { setMode('signup'); setError(''); setUsername(''); resetCaptcha(); }}>
             Sign up
           </button>
           <button type="button" style={tab(mode === 'restore')} onClick={() => { setMode('restore'); setError(''); }}>
@@ -217,6 +238,7 @@ const AuthScreen = ({ onAuthenticated, onRestoreAccount, embedded = false }) => 
               required
               minLength={6}
             />
+            <TurnstileCaptcha onToken={onCaptchaToken} resetKey={captchaReset} />
             <button type="submit" style={btn(true)} disabled={loading}>
               {loading ? 'Creating…' : 'Create account'}
             </button>
@@ -253,6 +275,7 @@ const AuthScreen = ({ onAuthenticated, onRestoreAccount, embedded = false }) => 
               disabled={loading}
               required
             />
+            <TurnstileCaptcha onToken={onCaptchaToken} resetKey={captchaReset} />
             <button type="submit" style={btn(true)} disabled={loading}>
               {loading ? 'Logging in…' : 'Log in'}
             </button>
