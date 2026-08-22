@@ -188,18 +188,15 @@ serve(async (req) => {
     }
 
     // Buffs (base — Fate jackpot rolled per tap below)
-    // Frenzy = 2× shards ONLY. Energy cost stays 1 unless Heavy Hands is on.
+    // Frenzy = 2× shards / board score. Energy cost stays 1.
+    // Daily limit bar = raw taps (1 click = 1). Heavy Hands retired from shop.
     const frenzyOn =
       !!(row.frenzy_expires && now < new Date(String(row.frenzy_expires)));
-    const heavyHandsOn =
-      !!(row.efficiency_expires && now < new Date(String(row.efficiency_expires)));
+    const heavyHandsOn = false; // retired — ignore leftover efficiency_expires
     let costMultiplier = 1;
     let basePayoutMulti = 1;
     if (frenzyOn) basePayoutMulti *= 2;
-    if (heavyHandsOn) {
-      basePayoutMulti *= 2;
-      costMultiplier *= 2; // Heavy Hands only — never Frenzy
-    }
+    void heavyHandsOn;
     if (
       row.premium_multiplier_expires &&
       now < new Date(String(row.premium_multiplier_expires))
@@ -216,9 +213,8 @@ serve(async (req) => {
     const baseRate = getLevelMultiplier(level);
 
     const byEnergy = Math.floor(energy / costMultiplier);
-    // Daily limit = raw taps (1 tap = 1 bar). Frenzy/premium/Echo must NOT burn the
-    // 1000 bar 2x — they only multiply shards + weekly/season boards.
-    // (Heavy Hands still drains 2x battery via costMultiplier above.)
+    // Daily limit bar = raw taps (1 click = 1). Frenzy/Echo/premium multiply
+    // shards + weekly/season boards only — they do not burn the bar faster.
     const byDaily = Math.max(0, Math.floor(maxLimit - dailyTaps));
     const validTaps = Math.min(requestedTaps, byEnergy, byDaily);
 
@@ -286,12 +282,6 @@ serve(async (req) => {
       if (hit) {
         // Fate multi replaces Frenzy for this tap
         tapMulti = hit.multi;
-        if (
-          row.efficiency_expires &&
-          now < new Date(String(row.efficiency_expires))
-        ) {
-          tapMulti *= 2;
-        }
         if (
           row.premium_multiplier_expires &&
           now < new Date(String(row.premium_multiplier_expires))

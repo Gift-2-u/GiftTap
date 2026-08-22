@@ -22,7 +22,7 @@ serve(async (req) => {
     const itemId = String(body.item_id || body.itemId || "").toLowerCase();
     const catalog = SHARD_SHOP[itemId];
     if (!catalog) {
-      throw new Error("Unknown shard shop item (frenzy|battery|heavy|refill)");
+      throw new Error("Unknown shard shop item (frenzy|battery|refill)");
     }
     const cost = catalog.cost;
 
@@ -66,12 +66,13 @@ serve(async (req) => {
 
     const nextBalance = Math.round((balance - cost) * 1000) / 1000;
 
+    // Do NOT bump last_updated — it is the energy regen clock. Touching it
+    // without rewriting last_energy freezes battery at 0 on the next commit-taps.
     const { error: upErr } = await sb
       .from("players")
       .update({
         shard_balance: nextBalance,
         inventory: inv,
-        last_updated: new Date().toISOString(),
       })
       .eq("telegram_id", playerId);
     if (upErr) throw upErr;

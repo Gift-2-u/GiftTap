@@ -186,7 +186,7 @@ export function rollMystery(tier: string): {
 export const SHARD_SHOP: Record<string, { name: string; cost: number }> = {
   frenzy: { name: "Frenzy Mode", cost: 700 },
   battery: { name: "Expanded Battery", cost: 750 },
-  heavy: { name: "Heavy Hands", cost: 750 },
+  // heavy retired from catalog — replace later
   refill: { name: "Instant Refill", cost: 300 },
 };
 

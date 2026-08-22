@@ -290,7 +290,7 @@ const Tasks = ({
           shard_balance: newBalance,
           completed_tasks: newCompleted,
           inventory: invShard,
-          last_updated: new Date().toISOString(),
+          // no last_updated — energy regen clock (owned by commit-taps)
         })
         .eq(DB_PLAYER_ID, userId);
       if (error) throw error;
@@ -393,7 +393,7 @@ const Tasks = ({
         .update({
           completed_tasks: newCompleted,
           inventory: inv,
-          last_updated: new Date().toISOString(),
+          // no last_updated — energy regen clock (owned by commit-taps)
         })
         .eq(DB_PLAYER_ID, userId);
       if (claimErr) throw claimErr;

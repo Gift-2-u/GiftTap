@@ -104,9 +104,11 @@ serve(async (req) => {
     inv.daily_usage = dailyUsage;
 
     const now = Date.now();
+    // Do NOT stamp last_updated unless last_energy also changes.
+    // last_updated is the battery regen clock — bumping it alone freezes
+    // energy at 0 while the client UI still regenerates (no_energy wipe).
     const updates: Record<string, unknown> = {
       inventory: inv,
-      last_updated: new Date().toISOString(),
     };
 
     let shard_balance = Number(row.shard_balance) || 0;
@@ -118,10 +120,12 @@ serve(async (req) => {
     } else if (itemId === "battery") {
       updates.energy_boost_expires = endOfUtcDay(0);
     } else if (itemId === "heavy") {
-      updates.efficiency_expires = endOfUtcDay(0);
+      // Heavy Hands retired from shop — block new activates (replace later).
+      throw new Error("Heavy Hands is unavailable right now.");
     } else if (itemId === "refill") {
       last_energy = ENERGY_CAP;
       updates.last_energy = ENERGY_CAP;
+      updates.last_updated = new Date(now).toISOString();
     } else if (itemId === "bot") {
       updates.bot_expires = endOfUtcDay(2);
     } else if (itemId === "grinder") {
@@ -168,7 +172,7 @@ serve(async (req) => {
       }
       await sb
         .from("players")
-        .update({ inventory: outInv, last_updated: new Date().toISOString() })
+        .update({ inventory: outInv })
         .eq("telegram_id", playerId);
     } else if (still <= 0) {
       outInv[itemId] = 0;

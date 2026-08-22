@@ -1013,11 +1013,14 @@ const GiftTapGame = () => {
                   merged,
                   weekId,
                 );
+                // Never touch last_updated here — it is the energy regen clock.
+                // Bumping it without last_energy freezes server battery at 0 while
+                // the UI still regenerates locally → flush returns no_energy and
+                // wipes optimistic taps / daily progress.
                 const { error } = await supabase
                   .from('players')
                   .update({
                     inventory: inventoryRef.current,
-                    last_updated: new Date().toISOString(),
                   })
                   .eq(DB_PLAYER_ID, String(playerId));
                 if (error) console.warn('weekly_quests save', error.message);
@@ -1210,11 +1213,11 @@ const GiftTapGame = () => {
           writeInv.task_daily_limit_migrated_v1 = true;
           writeInv = hydrateWeeklyClaimsFromLedger(writeInv, weekId);
           inventoryRef.current = writeInv;
+          // Do not write last_updated (energy regen clock) on inventory-only patches.
           const { error } = await supabase
             .from('players')
             .update({
               inventory: writeInv,
-              last_updated: new Date().toISOString(),
             })
             .eq(DB_PLAYER_ID, String(playerId));
           if (error) throw error;
@@ -1224,7 +1227,6 @@ const GiftTapGame = () => {
             .from('players')
             .update({
               inventory: inventoryRef.current,
-              last_updated: new Date().toISOString(),
             })
             .eq(DB_PLAYER_ID, String(playerId));
           if (error) throw error;
@@ -1281,7 +1283,7 @@ const GiftTapGame = () => {
           limit_boost_expires: stats.limit_boost_expires,
           ad_energy_boost: (stats.ad_energy_boost || 0) + 100,
           ad_energy_expires: midnightUtcTonight.toISOString(),
-          last_updated: new Date().toISOString()
+          // no last_updated — would freeze the 500 energy regen clock
         };
 
         const { error } = await supabase
@@ -1952,7 +1954,6 @@ const GiftTapGame = () => {
               .from('players')
               .update({
                 inventory: inv,
-                last_updated: new Date().toISOString(),
               })
               .eq(DB_PLAYER_ID, String(userId))
               .then(({ error }) => {
@@ -2005,7 +2006,6 @@ const GiftTapGame = () => {
             .from('players')
             .update({
               inventory: inv,
-              last_updated: new Date().toISOString(),
             })
             .eq(DB_PLAYER_ID, String(userId))
             .then(({ error }) => {
@@ -2053,7 +2053,6 @@ const GiftTapGame = () => {
                 weekly_shards: wScore,
                 weekly_week_id: weekIdNow,
                 inventory: inv,
-                last_updated: new Date().toISOString(),
               })
               .eq(DB_PLAYER_ID, String(userId))
               .then(({ error }) => {
@@ -2069,7 +2068,6 @@ const GiftTapGame = () => {
                 weekly_shards: wScore,
                 weekly_week_id: weekIdNow,
                 inventory: inv,
-                last_updated: new Date().toISOString(),
               })
               .eq(DB_PLAYER_ID, String(userId))
               .then(({ error }) => {
@@ -2110,7 +2108,6 @@ const GiftTapGame = () => {
             .from('players')
             .update({
               max_unlocked_level: loadedMax,
-              last_updated: new Date().toISOString(),
             })
             .eq(DB_PLAYER_ID, String(userId))
             .then(({ error }) => {
@@ -2337,21 +2334,22 @@ const GiftTapGame = () => {
                     setLifetimeTaps(botLife);
                     setSeasonShards(botSeason);
                     
-                    // Bot is a boost only — do NOT touch last_tap_date / current_streak.
-                    // Streak = first REAL valid tap of a UTC day only.
-                    supabase
-                      .from('players')
-                      .update({ 
-                          shard_balance: Number(playerRow.shard_balance) + offlineShardsEarned,
-                          daily_taps: simDailyTaps,
-                          lifetime_taps: projectedLifetime,
-                          season_shards: Number(playerRow.season_shards) + offlineShardsEarned,
-                          last_updated: new Date().toISOString()
-                      })
-                      .eq(DB_PLAYER_ID, userId)
-                      .then(({ error }) => {
-                          if (error) console.error("Bot sync failed:", error);
-                      });
+                    // Bot is a boost only — do NOT touch last_tap_date / current_streak /
+                    // last_updated (energy regen clock).
+                    if (!secureEconomyRef.current) {
+                      supabase
+                        .from('players')
+                        .update({ 
+                            shard_balance: Number(playerRow.shard_balance) + offlineShardsEarned,
+                            daily_taps: simDailyTaps,
+                            lifetime_taps: projectedLifetime,
+                            season_shards: Number(playerRow.season_shards) + offlineShardsEarned,
+                        })
+                        .eq(DB_PLAYER_ID, userId)
+                        .then(({ error }) => {
+                            if (error) console.error("Bot sync failed:", error);
+                        });
+                    }
 
                     // Fire the welcome back popup!
                     setTimeout(() => {
@@ -2359,67 +2357,16 @@ const GiftTapGame = () => {
                         // Open mining: no auto climb popup after bot mining (use HUD Level up).
                     }, 1000);
                 } else {
-                    // Bot active but mined 0 (daily limit maxed before they left) — no forced wall modal
-                    {
-              const _enNow = energyFromAnchor(
-                Number.isFinite(Number(playerRow.last_energy))
-                  ? Number(playerRow.last_energy)
-                  : ENERGY_CAP,
-                playerRow.last_updated
-                  ? new Date(playerRow.last_updated).getTime()
-                  : Date.now(),
-              );
-              supabase
-                .from('players')
-                .update({
-                  last_energy: _enNow,
-                  last_updated: new Date().toISOString(),
-                })
-                .eq(DB_PLAYER_ID, userId)
-                .then();
-            }
+                    // Bot active but mined 0 — no forced wall modal.
+                    // Secure economy: never client-write last_energy / last_updated
+                    // (commit-taps owns the regen clock).
                 }
             } else {
-              // Bot active but mined 0 (Limit was maxed before they left)
-              {
-              const _enNow = energyFromAnchor(
-                Number.isFinite(Number(playerRow.last_energy))
-                  ? Number(playerRow.last_energy)
-                  : ENERGY_CAP,
-                playerRow.last_updated
-                  ? new Date(playerRow.last_updated).getTime()
-                  : Date.now(),
-              );
-              supabase
-                .from('players')
-                .update({
-                  last_energy: _enNow,
-                  last_updated: new Date().toISOString(),
-                })
-                .eq(DB_PLAYER_ID, userId)
-                .then();
-            }
+              // Bot active but mined 0 (limit maxed) — same: no energy-clock write.
             }
         } else {
-            // No bot active or expired before last login (THE HEARTBEAT SYNC)
-            {
-              const _enNow = energyFromAnchor(
-                Number.isFinite(Number(playerRow.last_energy))
-                  ? Number(playerRow.last_energy)
-                  : ENERGY_CAP,
-                playerRow.last_updated
-                  ? new Date(playerRow.last_updated).getTime()
-                  : Date.now(),
-              );
-              supabase
-                .from('players')
-                .update({
-                  last_energy: _enNow,
-                  last_updated: new Date().toISOString(),
-                })
-                .eq(DB_PLAYER_ID, userId)
-                .then();
-            }
+            // No bot — do NOT heartbeat last_updated. Under secure economy that
+            // field is the battery regen clock owned by commit-taps only.
         }
 
         // HARD SECURITY: vault NOT readable via anon select('*').
@@ -3356,10 +3303,17 @@ const GiftTapGame = () => {
             break;
           }
           // Full reject: do NOT re-queue no_energy (that kept daily climbing at 0 battery).
-          // Drop any remaining queue too — battery empty until regen.
+          // Drop only this drained attempt — remaining queue is also empty-battery noise.
           if (credited === 0) {
             if (rejectReason === 'no_energy') {
               pendingTapsRef.current = { count: 0, batchId: null };
+              // Align optimistic daily with server (uncredited taps must not stick),
+              // but never invent a lower daily than server already has.
+              if (p && Number.isFinite(Number(p.daily_taps))) {
+                const serverDt = Number(p.daily_taps) || 0;
+                optimisticDaily.current = serverDt;
+                setDailyTaps(serverDt);
+              }
             }
             break;
           }
@@ -3920,19 +3874,13 @@ const GiftTapGame = () => {
 
       const baseRate = getLevelMultiplier(currentLevel); 
       let payoutMultiplier = 1;
-      // Energy cost: Heavy Hands only. Frenzy never raises battery drain.
+      // Energy cost always 1 (Heavy Hands retired). Frenzy never raises battery drain.
       let costMultiplier = 1;
 
       const buffs = buffRef.current || {};
       const frenzyOn =
         !!(buffs.frenzyExpires && now < new Date(buffs.frenzyExpires));
-      const heavyHandsOn =
-        !!(buffs.efficiencyExpires && now < new Date(buffs.efficiencyExpires));
       if (frenzyOn) payoutMultiplier *= 2;
-      if (heavyHandsOn) {
-        payoutMultiplier *= 2;
-        costMultiplier *= 2;
-      }
       if (buffs.premiumExpires && now < new Date(buffs.premiumExpires)) {
         payoutMultiplier *= Number(buffs.premiumMult) || 1;
       }
@@ -4012,17 +3960,19 @@ const GiftTapGame = () => {
           streakRef.current = nextStreak;
           setLastTapDate(today);
           setStreak(nextStreak);
-          supabase
-            .from('players')
-            .update({
-              current_streak: nextStreak,
-              last_tap_date: today,
-              last_updated: new Date().toISOString(),
-            })
-            .eq(DB_PLAYER_ID, playerId)
-            .then(({ error }) => {
-              if (error) console.warn('streak day-roll save failed', error.message);
-            });
+          // Streak/date only — never last_updated (energy regen clock).
+          if (!secureEconomyRef.current) {
+            supabase
+              .from('players')
+              .update({
+                current_streak: nextStreak,
+                last_tap_date: today,
+              })
+              .eq(DB_PLAYER_ID, playerId)
+              .then(({ error }) => {
+                if (error) console.warn('streak day-roll save failed', error.message);
+              });
+          }
         } else if (!prevLtd) {
           // Missing ltd (common under secure_economy client freezes): keep daily progress
           lastTapDateRef.current = today;
@@ -4884,9 +4834,7 @@ const GiftTapGame = () => {
         .update({
           sol_balance: realSol,
           usdc_balance: realUsdc,
-          last_updated: new Date().toISOString(),
-          // 🚨 Notice: We REMOVE energy/balance/boost from here. 
-          // This tells Supabase: "Don't touch the game progress, only the money."
+          // Never last_updated — that is the energy regen clock, not a wallet stamp.
         })
         .eq(DB_PLAYER_ID, playerId)
         .select();
@@ -5176,7 +5124,6 @@ const GiftTapGame = () => {
         .update({
           shard_balance: newBal,
           inventory: nextInv,
-          last_updated: new Date().toISOString(),
         })
         .eq(DB_PLAYER_ID, playerId);
       if (error) throw error;
@@ -5230,7 +5177,6 @@ const GiftTapGame = () => {
           shard_balance: newShardBal,
           gft_token_balance: newGft,
           inventory: nextInv,
-          last_updated: new Date().toISOString(),
         })
         .eq(DB_PLAYER_ID, playerId);
       if (error) throw error;
@@ -5282,7 +5228,6 @@ const GiftTapGame = () => {
         .update({
           gft_token_balance: newGft,
           inventory: result.inventory,
-          last_updated: new Date().toISOString(),
         })
         .eq(DB_PLAYER_ID, playerId);
       if (error) throw error;
@@ -5319,7 +5264,6 @@ const GiftTapGame = () => {
         .update({
           gft_token_balance: newGft,
           inventory: result.inventory,
-          last_updated: new Date().toISOString(),
         })
         .eq(DB_PLAYER_ID, playerId);
       if (error) throw error;
