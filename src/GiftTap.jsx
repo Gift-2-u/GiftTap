@@ -666,6 +666,14 @@ const GiftTapGame = () => {
   const optimisticWeekly = useRef(0);
   /** Keep ranks tab type for live weekly score patches while mining */
   const leaderboardTypeRef = useRef(leaderboardType);
+  /** Per-tab board cache so Season→Weekly doesn't flash season rows / zeros */
+  const leaderboardCacheRef = useRef({
+    Season: null,
+    Weekly: null,
+    Airdrop: null,
+    all_time: null,
+  });
+  const lbFetchSeqRef = useRef(0);
   /** Hard security: accumulate valid taps, flush via commit-taps */
   const pendingTapsRef = useRef({ count: 0, batchId: null });
   const tapFlushTimerRef = useRef(null);
@@ -1458,8 +1466,11 @@ const GiftTapGame = () => {
         .limit(1)
         .maybeSingle();
       if (data) {
+        const id = data[DB_PLAYER_ID] || data.telegram_id;
         setTopLeader({
-          name: data.username || (data[DB_PLAYER_ID] ? `ID:..${String(data[DB_PLAYER_ID]).slice(-4)}` : 'Anon'),
+          name:
+            data.username ||
+            (id ? `ID:..${String(id).slice(-4)}` : 'Anon'),
           score: data.lifetime_taps,
         });
       }
@@ -1468,12 +1479,22 @@ const GiftTapGame = () => {
 
   // Full leaderboard list for the Ranks page (not a modal)
   // opts.silent = background refresh: keep current list visible (no Loading flash)
+  // Weekly/Airdrop: paint from fast DB/cache first (like Season), heal via Edge in background.
   const fetchFullLeaderboard = async (typeOverride, opts = {}) => {
     const targetType = typeOverride || leaderboardType;
-    const isAllTime = targetType === 'all_time' || targetType === 'All-time';
+    const cacheKey =
+      targetType === 'All-time' || targetType === 'all_time' ? 'all_time' : targetType;
+    const isAllTime = cacheKey === 'all_time';
     const tableName = isAllTime ? 'leaderboard_all_time' : 'leaderboard_season';
     const sortColumn = isAllTime ? 'lifetime_taps' : 'score';
     const silent = !!(opts && opts.silent);
+    const seq = ++lbFetchSeqRef.current;
+    const stillThisTab = () =>
+      lbFetchSeqRef.current === seq &&
+      (leaderboardTypeRef.current === targetType ||
+        (isAllTime &&
+          (leaderboardTypeRef.current === 'all_time' ||
+            leaderboardTypeRef.current === 'All-time')));
 
     if (!silent) setLeaderboardLoading(true);
 
@@ -1484,214 +1505,184 @@ const GiftTapGame = () => {
         setWeeklyYouRank(null);
         setSeasonEligibleCount(0);
         setWeeklyEligibleCount(0);
-        let viewerNfts = [];
-        try {
-          if (playerWallet) {
-            const owned = await listGiftNfts(playerWallet);
-            viewerNfts = Array.isArray(owned)
-              ? owned.map((n) => ({
-                  kind: n.kind || n.name,
-                  rarity: n.rarity,
-                  name: n.name,
-                }))
-              : [];
-          }
-        } catch {
-          /* ignore */
-        }
+
+        // Fast path: Edge board first (use known Locksmith flag). NFTs refine in background.
         const board = await fetchAirdropBoard({
           limit: 100,
           viewerId: playerId || null,
-          viewerHasNft: !!hasLocksmithNft || viewerNfts.length > 0,
-          viewerNfts,
+          viewerHasNft: !!hasLocksmithNft,
+          viewerNfts: null,
         });
-        const rows = Array.isArray(board?.rows) ? board.rows : [];
-        setLeaderboard(
-          rows.map((r) => ({
-            ...r,
-            [DB_PLAYER_ID]: r.telegram_id,
-            telegram_id: r.telegram_id,
-            username: r.username || 'Player',
-            score: Number(r.bonus_pct) || 0,
-            bonus_pct: Number(r.bonus_pct) || 0,
-            level: Number(r.level) || 0,
-            lifetime_taps: Number(r.lifetime_taps) || 0,
-          })),
-        );
-        setAirdropQualifiedCount(
-          Number(board?.qualified_count) || rows.length || 0,
-        );
-        if (board?.you && playerId) {
-          setAirdropYouRank({
-            rank: board.you.rank,
-            level: board.you.level,
-            bonus_pct: board.you.bonus_pct,
-            username: board.you.username,
-            inList: !!board.you.inList,
-          });
-        } else {
-          setAirdropYouRank(null);
+        if (!stillThisTab()) return;
+
+        const rows = (Array.isArray(board?.rows) ? board.rows : []).map((r) => ({
+          ...r,
+          [DB_PLAYER_ID]: r.telegram_id,
+          telegram_id: r.telegram_id,
+          username: r.username || 'Player',
+          score: Number(r.bonus_pct) || 0,
+          bonus_pct: Number(r.bonus_pct) || 0,
+          level: Number(r.level) || 0,
+          lifetime_taps: Number(r.lifetime_taps) || 0,
+        }));
+        const you =
+          board?.you && playerId
+            ? {
+                rank: board.you.rank,
+                level: board.you.level,
+                bonus_pct: board.you.bonus_pct,
+                username: board.you.username,
+                inList: !!board.you.inList,
+              }
+            : null;
+        const qCount = Number(board?.qualified_count) || rows.length || 0;
+        setLeaderboard(rows);
+        setAirdropQualifiedCount(qCount);
+        setAirdropYouRank(you);
+        leaderboardCacheRef.current.Airdrop = { rows, you, qualified: qCount };
+        setLeaderboardLoading(false);
+
+        // Background: refine "you" with on-chain NFT list (does not blank the board)
+        if (playerWallet) {
+          (async () => {
+            try {
+              const owned = await listGiftNfts(playerWallet);
+              const viewerNfts = Array.isArray(owned)
+                ? owned.map((n) => ({
+                    kind: n.kind || n.name,
+                    rarity: n.rarity,
+                    name: n.name,
+                  }))
+                : [];
+              if (!viewerNfts.length && !hasLocksmithNft) return;
+              const refined = await fetchAirdropBoard({
+                limit: 100,
+                viewerId: playerId || null,
+                viewerHasNft: !!hasLocksmithNft || viewerNfts.length > 0,
+                viewerNfts,
+              });
+              if (!stillThisTab()) return;
+              const r2 = (Array.isArray(refined?.rows) ? refined.rows : []).map((r) => ({
+                ...r,
+                [DB_PLAYER_ID]: r.telegram_id,
+                telegram_id: r.telegram_id,
+                username: r.username || 'Player',
+                score: Number(r.bonus_pct) || 0,
+                bonus_pct: Number(r.bonus_pct) || 0,
+                level: Number(r.level) || 0,
+                lifetime_taps: Number(r.lifetime_taps) || 0,
+              }));
+              const you2 =
+                refined?.you && playerId
+                  ? {
+                      rank: refined.you.rank,
+                      level: refined.you.level,
+                      bonus_pct: refined.you.bonus_pct,
+                      username: refined.you.username,
+                      inList: !!refined.you.inList,
+                    }
+                  : null;
+              const q2 = Number(refined?.qualified_count) || r2.length || 0;
+              setLeaderboard(r2);
+              setAirdropQualifiedCount(q2);
+              setAirdropYouRank(you2);
+              leaderboardCacheRef.current.Airdrop = { rows: r2, you: you2, qualified: q2 };
+            } catch {
+              /* ignore refine */
+            }
+          })();
         }
       } catch (e) {
         console.warn('airdrop board', e?.message || e);
-        setLeaderboard([]);
-        setAirdropQualifiedCount(0);
-        setAirdropYouRank(null);
+        if (stillThisTab() && !leaderboardCacheRef.current.Airdrop?.rows?.length) {
+          setLeaderboard([]);
+          setAirdropQualifiedCount(0);
+          setAirdropYouRank(null);
+        }
       } finally {
-        setLeaderboardLoading(false);
+        if (stillThisTab()) setLeaderboardLoading(false);
       }
       return;
     }
 
-    // --- WEEKLY board from Supabase (weekly_shards + snapshots) ---
+    // --- WEEKLY: fast DB paint (like Season), Edge reconcile in background ---
     if (targetType === 'Weekly') {
-      try {
-        setAirdropYouRank(null);
-        setAirdropQualifiedCount(0);
-        // Push any pending taps so weekly_shards is current for ALL players using commit-taps
-        try {
-          await flushPendingTaps();
-        } catch {
-          /* ignore */
-        }
-        // Freeze any finished week before reading live / claim UI
-        await ensureWeeklySeasonRollover();
-        const weekId = getUtcWeekId();
-        const liveW = Number(optimisticWeekly.current) || 0;
-        const day = getUtcIsoWeekDayNumber();
-        const floor = getWeeklyBoardFloor(day);
-        setWeeklyBoardDay(day);
-        setWeeklyBoardFloor(floor);
+      const weekId = getUtcWeekId();
+      const liveW = Number(optimisticWeekly.current) || 0;
+      const day = getUtcIsoWeekDayNumber();
+      const floor = getWeeklyBoardFloor(day);
+      setWeeklyBoardDay(day);
+      setWeeklyBoardFloor(floor);
+      setAirdropYouRank(null);
+      setAirdropQualifiedCount(0);
+      setSeasonYouRank(null);
+      setSeasonEligibleCount(0);
 
-        // SYSTEM board: Edge reconciles EVERY miner this week (energy units),
-        // then we still merge public sources as backup. No per-player patches.
-        const byId = new Map();
-        const absorb = (list) => {
-          for (const r of list || []) {
-            const id = String(r.telegram_id || r[DB_PLAYER_ID] || r.id || '').trim();
-            if (!id) continue;
-            const rowWeek = String(r.weekly_week_id || r.week_id || '').trim();
-            // Strict: this UTC week only
-            if (rowWeek && rowWeek !== weekId) continue;
-            // Edge rows always current week; allow missing week_id from board API
-            if (!rowWeek && r.weekly_shards == null && r.score == null && r.weekly_score == null) {
-              continue;
+      const byId = new Map();
+      const absorb = (list) => {
+        for (const r of list || []) {
+          const id = String(r.telegram_id || r[DB_PLAYER_ID] || r.id || '').trim();
+          if (!id) continue;
+          const rowWeek = String(r.weekly_week_id || r.week_id || '').trim();
+          if (rowWeek && rowWeek !== weekId) continue;
+          if (
+            !rowWeek &&
+            r.weekly_shards == null &&
+            r.score == null &&
+            r.weekly_score == null
+          ) {
+            continue;
+          }
+          let score = Math.max(
+            0,
+            Number(r.weekly_shards ?? r.score ?? r.weekly_score) || 0,
+          );
+          const daily = Math.max(0, Number(r.daily_taps) || 0);
+          if (daily > score) score = daily;
+          if (score <= 0) continue;
+          const effectiveWeek = rowWeek || weekId;
+          if (effectiveWeek !== weekId) continue;
+          const prev = byId.get(id);
+          if (prev && score <= (Number(prev.weekly_score) || 0)) {
+            if ((!prev.username || prev.username === 'Player') && r.username) {
+              byId.set(id, { ...prev, username: r.username });
             }
-            let score = Math.max(
-              0,
-              Number(r.weekly_shards ?? r.score ?? r.weekly_score) || 0,
-            );
-            const daily = Math.max(0, Number(r.daily_taps) || 0);
-            // Energy floor: week total >= today's daily
-            if (daily > score) score = daily;
-            if (score <= 0) continue;
-            // If week missing, treat as current only when from weekly-board
-            const effectiveWeek = rowWeek || weekId;
-            if (effectiveWeek !== weekId) continue;
-            const prev = byId.get(id);
-            if (prev && score <= (Number(prev.weekly_score) || 0)) {
-              if ((!prev.username || prev.username === 'Player') && r.username) {
-                byId.set(id, { ...prev, username: r.username });
-              }
-              continue;
-            }
-            byId.set(id, {
-              ...prev,
-              ...r,
-              telegram_id: id,
-              [DB_PLAYER_ID]: id,
-              username: r.username || prev?.username || 'Player',
-              weekly_shards: score,
-              weekly_score: score,
-              score,
-              weekly_week_id: weekId,
-            });
+            continue;
           }
-        };
-
-        // 0) Canonical: weekly-board Edge (reconcile ALL + return live scores)
-        try {
-          const board = await fetchWeeklyBoard(500);
-          if (board?.rows?.length) {
-            absorb(
-              board.rows.map((r) => ({
-                ...r,
-                weekly_week_id: board.week_id || weekId,
-                week_id: board.week_id || weekId,
-              })),
-            );
-          } else if (board?.error) {
-            console.warn('weekly-board:', board.error);
-          }
-        } catch (e) {
-          console.warn('weekly-board', e?.message || e);
+          byId.set(id, {
+            ...prev,
+            ...r,
+            telegram_id: id,
+            [DB_PLAYER_ID]: id,
+            username: r.username || prev?.username || 'Player',
+            weekly_shards: score,
+            weekly_score: score,
+            score,
+            weekly_week_id: weekId,
+          });
         }
+      };
 
-        // 1) Fallbacks if Edge unavailable
-        if (byId.size === 0) {
-          try {
-            const rpc = await supabase.rpc('get_weekly_leaderboard_live', {
-              p_limit: 500,
-            });
-            if (!rpc.error && rpc.data?.length) absorb(rpc.data);
-          } catch (e) {
-            console.warn('weekly rpc', e?.message || e);
-          }
-          {
-            const v = await supabase
-              .from('leaderboard_weekly')
-              .select('*')
-              .eq('weekly_week_id', weekId)
-              .gt('weekly_shards', 0)
-              .order('weekly_shards', { ascending: false })
-              .limit(500);
-            if (!v.error) absorb(v.data);
-          }
-          {
-            const led = await supabase
-              .from('weekly_score_ledger')
-              .select('telegram_id, username, score, week_id, updated_at')
-              .eq('week_id', weekId)
-              .gt('score', 0)
-              .order('score', { ascending: false })
-              .limit(500);
-            if (!led.error) {
-              absorb(
-                (led.data || []).map((r) => ({
-                  telegram_id: r.telegram_id,
-                  username: r.username,
-                  weekly_shards: Number(r.score) || 0,
-                  weekly_week_id: r.week_id,
-                })),
-              );
-            }
-          }
-          {
-            const pl = await supabase
-              .from('players')
-              .select(
-                `${DB_PLAYER_ID}, username, weekly_shards, weekly_week_id, daily_taps, last_tap_date, inventory`,
-              )
-              .eq('weekly_week_id', weekId)
-              .or('weekly_shards.gt.0,daily_taps.gt.0')
-              .limit(500);
-            if (!pl.error) absorb(pl.data);
-          }
-        }
-
+      const paintWeeklyFromMap = () => {
         let rows = [...byId.values()].sort(
           (a, b) => (Number(b.weekly_score) || 0) - (Number(a.weekly_score) || 0),
         );
-
-        // Inject live self (device may be ahead of last save) into full pool first
         if (playerId && liveW > 0) {
           const ix = rows.findIndex(
-            (r) => String(r[DB_PLAYER_ID] || r.telegram_id || '') === String(playerId),
+            (r) =>
+              String(r[DB_PLAYER_ID] || r.telegram_id || '') === String(playerId),
           );
           if (ix >= 0) {
             const best = Math.max(liveW, Number(rows[ix].weekly_score) || 0);
-            rows[ix] = { ...rows[ix], weekly_score: best, score: best, weekly_shards: best };
-            rows.sort((a, b) => (b.weekly_score || 0) - (a.weekly_score || 0));
+            rows[ix] = {
+              ...rows[ix],
+              weekly_score: best,
+              score: best,
+              weekly_shards: best,
+            };
+            rows.sort(
+              (a, b) => (Number(b.weekly_score) || 0) - (Number(a.weekly_score) || 0),
+            );
           } else {
             rows = [
               {
@@ -1704,30 +1695,26 @@ const GiftTapGame = () => {
                 weekly_week_id: weekId,
               },
               ...rows,
-            ].sort((a, b) => (b.weekly_score || 0) - (a.weekly_score || 0));
+            ].sort(
+              (a, b) => (Number(b.weekly_score) || 0) - (Number(a.weekly_score) || 0),
+            );
           }
         }
-
-        const allRows = rows;
-        const mainRows = filterWeeklyMainBoard(allRows, floor, 50);
-        setWeeklyEligibleCount(mainRows.length);
-        setLeaderboard(mainRows);
-        setSeasonYouRank(null);
-        setSeasonEligibleCount(0);
-
-        const me = rankOnWeeklyBoard(allRows, playerId, DB_PLAYER_ID, floor);
+        const mainRows = filterWeeklyMainBoard(rows, floor, 50);
+        let you = null;
+        const me = rankOnWeeklyBoard(rows, playerId, DB_PLAYER_ID, floor);
         if (me && playerId) {
           const inList = mainRows.some(
             (r) =>
               String(r[DB_PLAYER_ID] || r.telegram_id || '') === String(playerId),
           );
-          setWeeklyYouRank({
+          you = {
             ...me,
             score: Math.max(liveW, Number(me.score) || 0),
             inList,
-          });
+          };
         } else if (playerId) {
-          setWeeklyYouRank({
+          you = {
             rank: null,
             score: liveW,
             total: mainRows.length,
@@ -1736,18 +1723,94 @@ const GiftTapGame = () => {
             floor,
             need: Math.max(0, floor - liveW),
             inList: false,
-          });
-        } else {
-          setWeeklyYouRank(null);
+          };
         }
-      } catch (e) {
-        console.warn('weekly leaderboard', e?.message || e);
-        setLeaderboard([]);
-        setWeeklyYouRank(null);
-        setWeeklyEligibleCount(0);
-      } finally {
+        if (!stillThisTab()) return;
+        setWeeklyEligibleCount(mainRows.length);
+        setLeaderboard(mainRows);
+        setWeeklyYouRank(you);
+        leaderboardCacheRef.current.Weekly = {
+          rows: mainRows,
+          you,
+          eligible: mainRows.length,
+          floor,
+          day,
+          weekId,
+        };
         setLeaderboardLoading(false);
+      };
+
+      try {
+        // FAST PATH (same idea as Season): ledger + view in parallel — no Edge wait
+        const [led, viewRes, rpc] = await Promise.all([
+          supabase
+            .from('weekly_score_ledger')
+            .select('telegram_id, username, score, week_id, updated_at')
+            .eq('week_id', weekId)
+            .gt('score', 0)
+            .order('score', { ascending: false })
+            .limit(500),
+          supabase
+            .from('leaderboard_weekly')
+            .select('*')
+            .eq('weekly_week_id', weekId)
+            .gt('weekly_shards', 0)
+            .order('weekly_shards', { ascending: false })
+            .limit(500),
+          supabase.rpc('get_weekly_leaderboard_live', { p_limit: 500 }).then(
+            (r) => r,
+            () => ({ data: null, error: true }),
+          ),
+        ]);
+        if (!led.error) {
+          absorb(
+            (led.data || []).map((r) => ({
+              telegram_id: r.telegram_id,
+              username: r.username,
+              weekly_shards: Number(r.score) || 0,
+              weekly_week_id: r.week_id,
+            })),
+          );
+        }
+        if (!viewRes.error) absorb(viewRes.data);
+        if (!rpc.error && rpc.data?.length) absorb(rpc.data);
+        paintWeeklyFromMap();
+      } catch (e) {
+        console.warn('weekly fast path', e?.message || e);
+        if (stillThisTab()) setLeaderboardLoading(false);
       }
+
+      // BACKGROUND: flush + rollover + Edge reconcile (updates quietly)
+      (async () => {
+        try {
+          try {
+            await flushPendingTaps();
+          } catch {
+            /* ignore */
+          }
+          try {
+            await ensureWeeklySeasonRollover();
+          } catch {
+            /* ignore */
+          }
+          const board = await fetchWeeklyBoard(500);
+          if (!stillThisTab()) return;
+          if (board?.rows?.length) {
+            absorb(
+              board.rows.map((r) => ({
+                ...r,
+                weekly_week_id: board.week_id || weekId,
+                week_id: board.week_id || weekId,
+              })),
+            );
+            paintWeeklyFromMap();
+          } else if (board?.error) {
+            console.warn('weekly-board:', board.error);
+          }
+        } catch (e) {
+          console.warn('weekly-board', e?.message || e);
+        }
+      })();
       return;
     }
 
@@ -1759,7 +1822,21 @@ const GiftTapGame = () => {
           .order(sortColumn, { ascending: false })
           .limit(100);
         if (error) console.warn('Leaderboard fetch:', error.message || error);
-        setLeaderboard(data || []);
+        if (!stillThisTab()) return;
+        const rows = data || [];
+        setLeaderboard(rows);
+        leaderboardCacheRef.current.all_time = { rows };
+        // Keep All-time tab badge in sync with the real #1 on the board
+        if (rows[0]) {
+          const top = rows[0];
+          const id = top[DB_PLAYER_ID] || top.telegram_id;
+          setTopLeader({
+            name:
+              top.username ||
+              (id ? `ID:..${String(id).slice(-4)}` : 'Anon'),
+            score: top.lifetime_taps ?? top.score ?? 0,
+          });
+        }
         setSeasonYouRank(null);
         setSeasonEligibleCount(0);
         setWeeklyYouRank(null);
@@ -1821,17 +1898,20 @@ const GiftTapGame = () => {
 
       const main = filterSeasonMainBoard(rows, floor, 100);
       const eligibleAll = rows.filter((r) => getSeasonScore(r) >= floor);
+      if (!stillThisTab()) return;
       setSeasonEligibleCount(eligibleAll.length);
       setLeaderboard(main);
 
+      let you = null;
       if (playerId) {
         const info = rankInSeason(rows, playerId, DB_PLAYER_ID);
-        const myScore = info?.score ?? (Number(optimisticSeason.current) || Number(seasonShards) || 0);
+        const myScore =
+          info?.score ?? (Number(optimisticSeason.current) || Number(seasonShards) || 0);
         const onMain = myScore >= floor;
         const inList = main.some(
           (r) => String(r[DB_PLAYER_ID] || r.id || '') === String(playerId),
         );
-        setSeasonYouRank({
+        you = {
           rank: info?.rank || null,
           score: myScore,
           onMain,
@@ -1839,16 +1919,80 @@ const GiftTapGame = () => {
           need: Math.max(0, floor - myScore),
           total: rows.length,
           eligible: eligibleAll.length,
-        });
+        };
+        setSeasonYouRank(you);
       } else {
         setSeasonYouRank(null);
       }
+      leaderboardCacheRef.current.Season = {
+        rows: main,
+        you,
+        eligible: eligibleAll.length,
+        floor,
+        day,
+      };
     } catch (err) {
       console.error('Leaderboard fetch error:', err);
-      setLeaderboard([]);
-      setSeasonYouRank(null);
+      if (stillThisTab()) {
+        setLeaderboard([]);
+        setSeasonYouRank(null);
+      }
     } finally {
-      setLeaderboardLoading(false);
+      if (stillThisTab()) setLeaderboardLoading(false);
+    }
+  };
+
+  /** Switch Ranks tab: show cached board instantly (no season bleed / zeros), then refresh */
+  const switchLeaderboardTab = (type) => {
+    const cacheKey = type === 'All-time' || type === 'all_time' ? 'all_time' : type;
+    setLeaderboardType(type);
+    leaderboardTypeRef.current = type === 'All-time' ? 'all_time' : type;
+    const cached = leaderboardCacheRef.current[cacheKey];
+    if (cached?.rows?.length) {
+      setLeaderboard(cached.rows);
+      if (cacheKey === 'Weekly') {
+        setWeeklyYouRank(cached.you || null);
+        setWeeklyEligibleCount(cached.eligible || 0);
+        if (cached.floor != null) setWeeklyBoardFloor(cached.floor);
+        if (cached.day != null) setWeeklyBoardDay(cached.day);
+        setSeasonYouRank(null);
+        setAirdropYouRank(null);
+      } else if (cacheKey === 'Season') {
+        setSeasonYouRank(cached.you || null);
+        setSeasonEligibleCount(cached.eligible || 0);
+        if (cached.floor != null) setSeasonBoardFloor(cached.floor);
+        if (cached.day != null) setSeasonBoardDay(cached.day);
+        setWeeklyYouRank(null);
+        setAirdropYouRank(null);
+      } else if (cacheKey === 'Airdrop') {
+        setAirdropYouRank(cached.you || null);
+        setAirdropQualifiedCount(cached.qualified || 0);
+        setSeasonYouRank(null);
+        setWeeklyYouRank(null);
+      } else {
+        setSeasonYouRank(null);
+        setWeeklyYouRank(null);
+        setAirdropYouRank(null);
+      }
+      fetchFullLeaderboard(type, { silent: true });
+    } else {
+      // No cache yet — clear other tab's rows so Season doesn't show under Weekly
+      setLeaderboard([]);
+      if (cacheKey === 'Weekly') {
+        setSeasonYouRank(null);
+        setAirdropYouRank(null);
+      } else if (cacheKey === 'Airdrop') {
+        setSeasonYouRank(null);
+        setWeeklyYouRank(null);
+      } else if (cacheKey === 'Season') {
+        setWeeklyYouRank(null);
+        setAirdropYouRank(null);
+      } else {
+        setSeasonYouRank(null);
+        setWeeklyYouRank(null);
+        setAirdropYouRank(null);
+      }
+      fetchFullLeaderboard(type);
     }
   };
 
@@ -1864,9 +2008,8 @@ const GiftTapGame = () => {
 
   /** Open Ranks page always landing on Season tab */
   const openLeaderboardPage = () => {
-    setLeaderboardType('Season');
     setCurrentPage('leaderboard');
-    fetchFullLeaderboard('Season');
+    switchLeaderboardTab('Season');
   };
 
   // 🚨 NEW FUNCTION: Bypasses the database and reads the live blockchain
@@ -4739,18 +4882,23 @@ const GiftTapGame = () => {
 
           const fetchTopLeaderSafe = async () => {
             try {
+              // Must order by lifetime_taps — limit(1) alone returns an arbitrary row
               const { data, error } = await supabase
                 .from('leaderboard_all_time')
                 .select('*')
+                .order('lifetime_taps', { ascending: false })
                 .limit(1)
                 .maybeSingle();
-              
+
               if (error) throw error;
 
               if (data) {
+                const id = data[DB_PLAYER_ID] || data.telegram_id;
                 setTopLeader({
-                  name: data.username || `ID:..${String(data[DB_PLAYER_ID]).slice(-4)}`,
-                  score: data.lifetime_taps
+                  name:
+                    data.username ||
+                    (id ? `ID:..${String(id).slice(-4)}` : 'Anon'),
+                  score: data.lifetime_taps,
                 });
               }
             } catch (err) {
@@ -6540,10 +6688,7 @@ const GiftTapGame = () => {
                 <div style={{ display: 'flex', gap: '10px', marginBottom: '14px' }}>
                   <button
                     type="button"
-                    onClick={() => {
-                      setLeaderboardType('Season');
-                      fetchFullLeaderboard('Season');
-                    }}
+                    onClick={() => switchLeaderboardTab('Season')}
                     style={{
                       flex: 1,
                       padding: '12px 8px',
@@ -6567,10 +6712,7 @@ const GiftTapGame = () => {
                   </button>
                   <button
                     type="button"
-                    onClick={() => {
-                      setLeaderboardType('Weekly');
-                      fetchFullLeaderboard('Weekly');
-                    }}
+                    onClick={() => switchLeaderboardTab('Weekly')}
                     style={{
                       flex: 1,
                       padding: '12px 8px',
@@ -6589,10 +6731,7 @@ const GiftTapGame = () => {
                   </button>
                   <button
                     type="button"
-                    onClick={() => {
-                      setLeaderboardType('Airdrop');
-                      fetchFullLeaderboard('Airdrop');
-                    }}
+                    onClick={() => switchLeaderboardTab('Airdrop')}
                     style={{
                       flex: 1,
                       padding: '12px 6px',
@@ -6616,10 +6755,7 @@ const GiftTapGame = () => {
                   </button>
                   <button
                     type="button"
-                    onClick={() => {
-                      setLeaderboardType('all_time');
-                      fetchFullLeaderboard('all_time');
-                    }}
+                    onClick={() => switchLeaderboardTab('all_time')}
                     style={{
                       flex: 1,
                       padding: '12px 8px',

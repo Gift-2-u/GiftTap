@@ -403,16 +403,35 @@ serve(async (req) => {
     }
     if (upErr) throw upErr;
 
-    // Durable weekly board (GREATEST — never lower)
+    // Durable boards (GREATEST — never lower). Same model for weekly/season/lifetime.
+    const boardUsername = String((row as Record<string, unknown>).username || "");
     try {
       await sb.rpc("upsert_weekly_score_ledger", {
         p_week_id: weekId,
         p_telegram_id: playerId,
-        p_username: String((row as Record<string, unknown>).username || ""),
+        p_username: boardUsername,
         p_score: weeklyShards,
       });
     } catch (e) {
       console.warn("upsert_weekly_score_ledger", e);
+    }
+    try {
+      await sb.rpc("upsert_season_score_ledger", {
+        p_telegram_id: playerId,
+        p_username: boardUsername,
+        p_score: nextSeason,
+      });
+    } catch (e) {
+      console.warn("upsert_season_score_ledger", e);
+    }
+    try {
+      await sb.rpc("upsert_lifetime_score_ledger", {
+        p_telegram_id: playerId,
+        p_username: boardUsername,
+        p_score: nextLife,
+      });
+    } catch (e) {
+      console.warn("upsert_lifetime_score_ledger", e);
     }
 
     // Record batch (ignore unique conflict race)
