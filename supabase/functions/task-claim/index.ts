@@ -19,6 +19,7 @@ type TaskDef =
 const TASKS: Record<string, TaskDef> = {
   sub_tg: { id: "sub_tg", type: "shards", reward: 250 },
   follow_x: { id: "follow_x", type: "shards", reward: 250 },
+  join_discord: { id: "join_discord", type: "shards", reward: 250 },
   streak_7: { id: "streak_7", type: "shards", reward: 500 },
   taps_1000: { id: "taps_1000", type: "daily_limit", reward: 100, dayLimited: true },
   taps_5000: { id: "taps_5000", type: "daily_limit", reward: 250, dayLimited: true },

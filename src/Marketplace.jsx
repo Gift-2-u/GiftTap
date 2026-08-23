@@ -161,7 +161,7 @@ function ShopItemIcon({ item, size = 52, variant = 'row' }) {
   );
 }
 
-const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, flushPendingTaps, player, tgUser, playerWallet, decryptedPhrase, initialTab, onInitialTabConsumed, maxUnlockedLevel = 4 }) => {
+const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, bumpEnergyEpoch, flushPendingTaps, player, tgUser, playerWallet, decryptedPhrase, initialTab, onInitialTabConsumed, maxUnlockedLevel = 4 }) => {
   const user = player || tgUser;
   // Shop hub first — show ALL options (Free / Premium / NFT / Backpack) before any list
   const [activeTab, setActiveTab] = useState(initialTab || 'home');
@@ -1667,6 +1667,9 @@ Daily claim active · Pack → NFT to see it.`,
           }
         }
         const data = await secureBackpackActivate(item.id);
+        // Frenzy/Battery activate must invalidate in-flight flushes so a stale
+        // no_energy (last_energy 0) cannot wipe the live battery bar.
+        if (typeof bumpEnergyEpoch === 'function') bumpEnergyEpoch();
         const weekId = getUtcWeekId();
         const prevQty = Math.max(0, Math.floor(Number(localInventory[item.id]) || 0));
         let inv = { ...(data.inventory || {}) };
@@ -1710,12 +1713,13 @@ Daily claim active · Pack → NFT to see it.`,
         setLocalInventory({ ...authInv });
         setDailyUsage(nextDailyUsage);
         if (data.shard_balance != null) setBalance(Number(data.shard_balance));
-        if (item.id === 'refill' || data.last_energy != null) {
-          // Must use GiftTap setEnergySyncedForShop (passed as setEnergy) so the
-          // regen anchor + epoch bump — plain setState left the bar stuck mid-drain.
+        // Instant Refill only — Frenzy must never touch the energy bar
+        if (item.id === 'refill' && setEnergy) {
           const en =
             data.last_energy != null ? Number(data.last_energy) : 500;
-          if (setEnergy) setEnergy(Math.min(500, Math.max(0, en)));
+          if (Number.isFinite(en)) {
+            setEnergy(Math.min(500, Math.max(0, en)));
+          }
         }
         if (setStats) {
           setStats((prev) => {

@@ -117,10 +117,11 @@ serve(async (req) => {
     if (!Number.isFinite(last_energy)) last_energy = ENERGY_CAP;
 
     if (itemId === "frenzy") {
+      // Shards ×2 for 60s only — do NOT touch last_energy / last_updated
       updates.frenzy_expires = new Date(now + 60 * 1000).toISOString();
     } else if (itemId === "battery") {
+      // Expanded daily tap cap only — do NOT touch the 500 energy pool
       updates.energy_boost_expires = endOfUtcDay(0);
-      // Persist effective day cap (1000 + battery + tasks + ads) on the column
       updates.max_daily_limit = effectiveDailyLimit(
         {
           ...row,
@@ -220,7 +221,7 @@ serve(async (req) => {
       meta: { dailyUsage: outDaily[itemId] || null },
     });
 
-    // Refill: always return the full bar we just wrote (avoid stale verified race).
+    // Only Instant Refill changes the 500 energy pool
     const outEnergy =
       itemId === "refill"
         ? ENERGY_CAP
@@ -233,10 +234,10 @@ serve(async (req) => {
       item_id: itemId,
       inventory: outInv,
       shard_balance: Number(verified?.shard_balance) || shard_balance,
-      last_energy: outEnergy,
+      last_energy: itemId === "refill" ? outEnergy : undefined,
       last_updated:
-        itemId === "refill"
-          ? String(updates.last_updated || new Date().toISOString())
+        itemId === "refill" && updates.last_updated != null
+          ? String(updates.last_updated)
           : undefined,
       updates: { ...updates, inventory: outInv },
       daily_usage: outDaily,

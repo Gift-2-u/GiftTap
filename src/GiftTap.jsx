@@ -909,6 +909,11 @@ const GiftTapGame = () => {
     [playerId],
   );
 
+  /** Invalidate in-flight flush energy snaps (Frenzy/Battery activate or Refill). */
+  const bumpEnergyEpoch = useCallback(() => {
+    energyEpochRef.current += 1;
+  }, []);
+
   /** Shop/backpack must update energy AND the regen anchor — setEnergy alone snaps back. */
   const setEnergySyncedForShop = useCallback((valueOrUpdater) => {
     const cur = Number(optimisticEnergy.current);
@@ -3212,12 +3217,11 @@ const GiftTapGame = () => {
             const s = Number(p.season_shards);
             const dt = Number(p.daily_taps);
             const en = Number(p.last_energy);
-            // Energy sync rules (refill + frenzy loop):
-            // - Ignore flushes that started before Instant Refill (epoch).
-            // - While bursting (pending taps or tapped <1s ago), LOCAL bar owns the HUD.
-            //   Never snap UP to 500 mid-session (that let players burn 2000 daily
-            //   on a frozen full battery). Only pull DOWN if server spent more.
-            // - When idle, settle to server catch-up.
+            // Energy sync (Frenzy/refill):
+            // - Ignore flushes from before activate/refill (epoch).
+            // - Never wipe a live local bar to 0 on a stale no_energy (Frenzy bug).
+            // - While bursting, only nudge DOWN by this batch's spend — not a cliff to 0.
+            // - Never snap UP to 500 mid-burst.
             if (Number.isFinite(en) && flushEpoch === energyEpochRef.current) {
               const atMs = p.last_updated ? Date.parse(p.last_updated) : Date.now();
               const serverLive = catchUpEnergyAnchor({
@@ -3226,22 +3230,29 @@ const GiftTapGame = () => {
               });
               const stillPending = (pendingTapsRef.current?.count || 0) > 0;
               const recentlyTapping =
-                Date.now() - (lastLocalTapAtRef.current || 0) < 1000;
+                Date.now() - (lastLocalTapAtRef.current || 0) < 1200;
               const localEn = Number(optimisticEnergy.current);
               const bursting = stillPending || recentlyTapping;
+              const staleEmpty =
+                credited === 0 &&
+                rejectReason === 'no_energy' &&
+                Number.isFinite(localEn) &&
+                localEn > 1;
 
-              if (bursting && Number.isFinite(localEn)) {
+              if (staleEmpty) {
+                // Keep local battery — server empty is often a desync after Frenzy activate
+              } else if (bursting && Number.isFinite(localEn)) {
                 if (serverLive.value < localEn - 0.5) {
-                  // Server drained further than local optimism — adopt lower
+                  const maxDrop = Math.max(credited, taps, 1) + 5;
+                  const nextEn = Math.max(
+                    serverLive.value,
+                    Math.max(0, localEn - maxDrop),
+                  );
                   const caught = catchUpEnergyAnchor(energyAnchorRef.current);
-                  energyAnchorRef.current = {
-                    value: serverLive.value,
-                    at: caught.at,
-                  };
-                  optimisticEnergy.current = serverLive.value;
-                  setEnergy(serverLive.value);
+                  energyAnchorRef.current = { value: nextEn, at: caught.at };
+                  optimisticEnergy.current = nextEn;
+                  setEnergy(nextEn);
                 }
-                // else keep local spend — do NOT snap back to 500
               } else {
                 energyAnchorRef.current = {
                   value: serverLive.value,
@@ -3403,17 +3414,21 @@ const GiftTapGame = () => {
             };
             break;
           }
-          // Full reject: do NOT re-queue no_energy (that kept daily climbing at 0 battery).
-          // Drop only this drained attempt — remaining queue is also empty-battery noise.
+          // Full reject handling
           if (credited === 0) {
             if (rejectReason === 'no_energy') {
-              pendingTapsRef.current = { count: 0, batchId: null };
-              // Align optimistic daily with server (uncredited taps must not stick),
-              // but never invent a lower daily than server already has.
-              if (p && Number.isFinite(Number(p.daily_taps))) {
-                const serverDt = Number(p.daily_taps) || 0;
-                optimisticDaily.current = serverDt;
-                setDailyTaps(serverDt);
+              const localEn = Number(optimisticEnergy.current) || 0;
+              if (localEn > 1) {
+                // Desync (often after Frenzy/Battery activate): do NOT wipe the bar
+                // or the whole queue — leave remaining taps; next flush retries.
+              } else {
+                // Truly empty — drop queue so daily can't climb on 0 battery
+                pendingTapsRef.current = { count: 0, batchId: null };
+                if (p && Number.isFinite(Number(p.daily_taps))) {
+                  const serverDt = Number(p.daily_taps) || 0;
+                  optimisticDaily.current = serverDt;
+                  setDailyTaps(serverDt);
+                }
               }
             }
             break;
@@ -6474,6 +6489,7 @@ const GiftTapGame = () => {
                 balance={balance} 
                 setBalance={setBalanceSynced}
                 setEnergy={setEnergySyncedForShop}
+                bumpEnergyEpoch={bumpEnergyEpoch}
                 flushPendingTaps={flushPendingTaps}
                 stats={stats}
                 setStats={setStats}

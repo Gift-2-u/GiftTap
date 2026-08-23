@@ -171,66 +171,127 @@ const DailyGiftBox = () => {
         }}
         aria-label="Open Mystery Gift"
       >
-        <div
+        {/* Pulsing halo */}
+        <motion.div
+          animate={{
+            scale: [1, 1.12, 1],
+            opacity: [0.35, 0.55, 0.35],
+          }}
+          transition={{ duration: 2.8, repeat: Infinity, ease: 'easeInOut' }}
           style={{
             position: 'absolute',
-            width: '250px',
-            height: '250px',
+            width: '260px',
+            height: '260px',
             background:
-              'radial-gradient(circle, rgba(50, 100, 255, 0.3) 0%, transparent 70%)',
+              'radial-gradient(circle, rgba(168, 85, 247, 0.45) 0%, rgba(255, 215, 0, 0.15) 45%, transparent 70%)',
             zIndex: 0,
             borderRadius: '50%',
           }}
         />
 
+        {/* Sparkles while shaking / reveal */}
+        {(phase === 'shaking' || phase === 'reveal') &&
+          [0, 1, 2, 3, 4, 5].map((i) => (
+            <motion.span
+              key={i}
+              initial={{ opacity: 0, scale: 0, x: 0, y: 0 }}
+              animate={{
+                opacity: [0, 1, 0],
+                scale: [0.4, 1.2, 0.2],
+                x: [0, (i % 2 === 0 ? 1 : -1) * (40 + i * 18)],
+                y: [0, -50 - i * 12, -20],
+              }}
+              transition={{
+                duration: 1.1,
+                repeat: phase === 'shaking' ? Infinity : 0,
+                delay: i * 0.12,
+              }}
+              style={{
+                position: 'absolute',
+                zIndex: 6,
+                fontSize: 18 + (i % 3) * 4,
+                pointerEvents: 'none',
+              }}
+            >
+              {i % 2 === 0 ? '✨' : '⭐'}
+            </motion.span>
+          ))}
+
         <motion.div
           animate={
             phase === 'shaking'
               ? {
-                  rotate: [-8, 8, -10, 10, -6, 6, 0],
-                  scale: [1, 1.06, 0.96, 1.08, 1],
-                  transition: { duration: 1.05, ease: 'easeInOut' },
+                  rotate: [-10, 12, -14, 14, -8, 8, 0],
+                  y: [0, -18, 6, -22, 0],
+                  scale: [1, 1.08, 0.94, 1.12, 1],
+                  transition: { duration: 1.1, ease: 'easeInOut' },
                 }
-              : isPressed
-                ? { scale: 0.94 }
-                : { scale: 1, rotate: 0 }
+              : phase === 'reveal'
+                ? {
+                    y: -28,
+                    scale: 1.06,
+                    rotate: 0,
+                    transition: { type: 'spring', stiffness: 220, damping: 14 },
+                  }
+                : isPressed
+                  ? { scale: 0.93, y: 4 }
+                  : {
+                      y: [0, -14, 0],
+                      rotate: [-2.5, 2.5, -2.5],
+                      scale: [1, 1.03, 1],
+                      transition: {
+                        duration: 3.2,
+                        repeat: Infinity,
+                        ease: 'easeInOut',
+                      },
+                    }
           }
           style={{ zIndex: 5, position: 'relative' }}
         >
-          <img
-            src={giftLogo}
-            alt="Mystery Gift"
-            onDragStart={(e) => e.preventDefault()}
-            onContextMenu={(e) => e.preventDefault()}
-            style={{
-              width: '280px',
-              height: 'auto',
-              filter: isPressed || phase === 'shaking'
-                ? 'drop-shadow(0 0 28px rgba(255, 215, 0, 0.95)) brightness(1.12)'
-                : 'drop-shadow(0 0 12px rgba(255, 215, 0, 0.45))',
-              transition: 'filter 0.15s ease-out',
-              userSelect: 'none',
-              WebkitUserSelect: 'none',
-            }}
-          />
+          {/* “Lid lift” illusion on open */}
+          <motion.div
+            animate={
+              phase === 'reveal'
+                ? { y: -36, rotate: -12, opacity: 0.95 }
+                : phase === 'shaking'
+                  ? { y: [-2, 4, -6, 0], rotate: [0, -4, 4, 0] }
+                  : { y: 0, rotate: 0 }
+            }
+            transition={{ duration: phase === 'reveal' ? 0.55 : 0.35 }}
+            style={{ originX: 0.5, originY: 1 }}
+          >
+            <img
+              src={giftLogo}
+              alt="Mystery Gift"
+              onDragStart={(e) => e.preventDefault()}
+              onContextMenu={(e) => e.preventDefault()}
+              style={{
+                width: '280px',
+                height: 'auto',
+                filter:
+                  isPressed || phase === 'shaking' || phase === 'reveal'
+                    ? 'drop-shadow(0 0 32px rgba(255, 215, 0, 1)) brightness(1.15)'
+                    : 'drop-shadow(0 0 16px rgba(255, 215, 0, 0.55))',
+                transition: 'filter 0.2s ease-out',
+                userSelect: 'none',
+                WebkitUserSelect: 'none',
+              }}
+            />
+          </motion.div>
         </motion.div>
       </div>
 
       <h3 className="text-xl font-bold mb-2 mt-2 text-yellow-300">
         Mystery Gift
       </h3>
-      <p className="text-slate-400 text-sm mb-6 text-center leading-relaxed px-2">
+      <p className="text-slate-400 text-sm mb-2 text-center leading-relaxed px-2">
         Tap the gift · burn weekly badges · win boosts, G2Ushards, G2U, or an NFT
       </p>
-
-      <button
-        type="button"
-        onClick={openPicker}
-        disabled={busy || phase === 'shaking'}
-        className="w-full py-4 rounded-full font-black tracking-widest transition-all bg-gradient-to-r from-purple-600 to-pink-600 hover:scale-105 shadow-[0_0_20px_rgba(168,85,247,0.4)] text-white disabled:opacity-60"
-      >
-        {busy || phase === 'shaking' ? 'OPENING…' : 'OPEN MYSTERY GIFT'}
-      </button>
+      {(busy || phase === 'shaking') && (
+        <p className="text-purple-300 text-xs font-bold mb-4 tracking-widest">
+          OPENING…
+        </p>
+      )}
 
       {/* Overlay flows */}
       <AnimatePresence>

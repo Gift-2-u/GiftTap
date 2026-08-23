@@ -6,6 +6,11 @@ import AppNotice from './AppNotice';
 import { IDEAS_EMAIL, openIdeasEmail, copyIdeasEmail } from './contactIdeas';
 import WeeklyQuests from './WeeklyQuests';
 import { hasSecureSession, secureTaskClaim } from './secureApi';
+import { SOCIAL_LINKS } from './socialLinks';
+
+const DISCORD_URL =
+  SOCIAL_LINKS.find((s) => s.id === 'discord')?.href ||
+  'https://discord.gg/d8aEvFbHW';
 
 /**
  * Existing tasks kept as-is (shards / social / purchase).
@@ -27,6 +32,14 @@ const TASK_LIST = [
     reward: 250,
     link: 'https://x.com/Gift2udev',
     icon: '/logo-white.png',
+    type: 'social',
+  },
+  {
+    id: 'join_discord',
+    title: 'Join Discord',
+    reward: 250,
+    link: DISCORD_URL,
+    icon: '/icons/social/discord.svg',
     type: 'social',
   },
   {
