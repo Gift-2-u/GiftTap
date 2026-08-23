@@ -176,7 +176,8 @@ const WhitepaperModal = ({ isWhitepaperOpen, setIsWhitepaperOpen, onClose }) => 
         "If Exclusive hits: Fate/Echo/Rush/Shadow Common 20% each · Locksmith 10% · Star 10%.\n" +
         "Free Boost splits: Frenzy / Battery / Refill (~⅓ each).\n" +
         "Premium Boost splits: Bot / +2K / +5K / x2 / x3 (20% each).\n" +
-        "G2Ushards bulk credits mining balance immediately. Bonus G2U = SPL when Mystery wallet is live.\n\n" +
+        "G2Ushards bulk credits mining balance immediately.\n" +
+        "Bonus G2U + Exclusive NFT mints are paid from the Mystery vault (10% of max $G2U supply) to your game wallet when payouts are live.\n\n" +
         "Independent roll per open. Not financial advice; prizes can change for balance/fair play.",
     },
     {

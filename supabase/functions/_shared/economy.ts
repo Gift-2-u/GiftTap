@@ -221,7 +221,9 @@ export type MysteryReward = {
 
 /**
  * Top roll by badge burn tier, then sub-roll for free / premium / NFT.
- * shards_bulk → immediate G2Ushards; bonus_g2u → pending SPL until amounts/wallet set.
+ * shards_bulk → immediate G2Ushards.
+ * bonus_g2u / exclusive_nft → paid from Mystery vault (10% allocation);
+ *   queued until MYSTERY_PAYOUTS_LIVE + vault secrets (see mysteryVault.ts).
  */
 export function rollMystery(
   tier: string,
@@ -260,7 +262,7 @@ export function rollMystery(
     const pick = weightedPick(MYSTERY_NFT_ROLL, rng);
     return {
       prizeId: "exclusive_nft",
-      label: `Exclusive NFT: ${pick.label} (mint pending → game wallet)`,
+      label: `Exclusive NFT: ${pick.label} (Mystery vault pays mint → your game wallet)`,
       type: "nft_pending",
       nftKind: pick.kind,
       nftRarity: pick.rarity,
@@ -272,7 +274,7 @@ export function rollMystery(
     const amount = amounts.bonus_g2u || 0;
     return {
       prizeId: "bonus_g2u",
-      label: `Bonus G2U (+${amount.toLocaleString()} reserved → game wallet when live)`,
+      label: `Bonus G2U (+${amount.toLocaleString()} from Mystery vault → your game wallet)`,
       type: "g2u_pending",
       amount,
       dest: "wallet",

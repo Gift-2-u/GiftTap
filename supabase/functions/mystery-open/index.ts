@@ -5,8 +5,10 @@
  *   free_boost    → frenzy | battery | refill (~⅓) → inventory
  *   premium_boost → bot | grinder | whale | x2 | x3 (20%) → inventory
  *   shards_bulk   → shard_balance (G2Ushards) immediately
- *   bonus_g2u     → mystery_g2u_pending until SPL transfer live
- *   exclusive_nft → mystery_nft_pending (kind/rarity) until CM mint live
+ *   bonus_g2u     → paid from Mystery vault (10% allocation) when live; else queued
+ *   exclusive_nft → CM mint paid by Mystery vault when live; else queued
+ *
+ * Payer wallet = MYSTERY_VAULT_* (see _shared/mysteryVault.ts). Not treasury/LP.
  */
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { requirePlayerFromRequest } from "../_shared/sessionJwt.ts";
@@ -21,6 +23,10 @@ import {
   rollMystery,
   invObj,
 } from "../_shared/economy.ts";
+import {
+  getMysteryVaultConfig,
+  mysteryVaultPublicMeta,
+} from "../_shared/mysteryVault.ts";
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -39,6 +45,9 @@ serve(async (req) => {
     if (!MYSTERY_ODDS[tier]) {
       throw new Error("No Mystery odds for that badge tier");
     }
+
+    const vault = getMysteryVaultConfig();
+    const vaultMeta = mysteryVaultPublicMeta(vault);
 
     const sb = adminClient();
     const { data: row, error: selErr } = await sb
@@ -63,6 +72,7 @@ serve(async (req) => {
     let shard_balance = Number(row.shard_balance) || 0;
     let balanceDelta = 0;
     const dest = reward.dest || "backpack";
+    const playerWallet = row.wallet_address || null;
 
     if (reward.type === "shards" && reward.amount) {
       balanceDelta = Number(reward.amount) || 0;
@@ -70,6 +80,7 @@ serve(async (req) => {
     } else if (reward.type === "item" && reward.itemId) {
       inv[reward.itemId] = (Number(inv[reward.itemId]) || 0) + 1;
     } else if (reward.type === "g2u_pending" && reward.amount) {
+      // Bonus $G2U — funded by Mystery vault (10%). On-chain transfer when live.
       const prev = Math.max(0, Number(inv.mystery_g2u_pending) || 0);
       inv.mystery_g2u_pending = Math.round((prev + Number(reward.amount)) * 1000) / 1000;
       const queue = Array.isArray(inv.mystery_g2u_queue)
@@ -79,9 +90,16 @@ serve(async (req) => {
         at: new Date().toISOString(),
         amount: reward.amount,
         burn: tier,
+        status: vault.g2uTransferReady ? "ready_to_send" : "pending_transfer",
+        payer: vault.pubkey || null,
+        payer_source: vault.source,
+        g2u_mint: vault.g2uMint || null,
+        to_wallet: playerWallet,
       });
       inv.mystery_g2u_queue = queue.slice(-50);
+      inv.mystery_g2u_payer = vault.pubkey || inv.mystery_g2u_payer || null;
     } else if (reward.type === "nft_pending" && reward.nftKind) {
+      // Exclusive NFT — Mystery vault pays CM mint to player's game wallet when live.
       inv.exclusive_nft_voucher = (Number(inv.exclusive_nft_voucher) || 0) + 1;
       const q = Array.isArray(inv.mystery_nft_pending)
         ? [...(inv.mystery_nft_pending as unknown[])]
@@ -93,9 +111,13 @@ serve(async (req) => {
         label: reward.label,
         burn: tier,
         at: new Date().toISOString(),
-        status: "pending_mint",
+        status: vault.nftMintReady ? "ready_to_mint" : "pending_mint",
+        payer: vault.pubkey || null,
+        payer_source: vault.source,
+        to_wallet: playerWallet,
       });
       inv.mystery_nft_pending = q.slice(-30);
+      inv.mystery_nft_payer = vault.pubkey || inv.mystery_nft_payer || null;
     }
 
     const opens = Array.isArray(inv.mystery_opens)
@@ -111,6 +133,8 @@ serve(async (req) => {
       nftKind: reward.nftKind || null,
       amount: reward.amount || null,
       dest,
+      payer_source: vault.source,
+      payer: vault.pubkey || null,
     });
     inv.mystery_opens = opens.slice(-30);
 
@@ -129,7 +153,13 @@ serve(async (req) => {
       delta: balanceDelta,
       balance_after: shard_balance,
       ref: tier,
-      meta: { cost, reward, dest, wallet: row.wallet_address || null },
+      meta: {
+        cost,
+        reward,
+        dest,
+        wallet: playerWallet,
+        mystery_vault: vaultMeta,
+      },
     });
 
     return jsonResponse({
@@ -142,6 +172,7 @@ serve(async (req) => {
       shard_balance,
       balance_delta: balanceDelta,
       dest,
+      mystery_vault: vaultMeta,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
