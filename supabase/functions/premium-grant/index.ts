@@ -11,8 +11,7 @@ import {
   jsonResponse,
   logEconomy,
   invObj,
-  utcIsoWeekId,
-} from "../_shared/economy.ts";
+  utcIsoWeekId} from "../_shared/economy.ts";
 
 /** Test pool ratio ~25 SOL / 100M G2U → 4_000_000 G2U per SOL */
 const G2U_PER_SOL = Number(Deno.env.get("G2U_PER_SOL") || 4_000_000);
@@ -25,34 +24,27 @@ const PREMIUM: Record<
   grinder: {
     name: "+2K Daily Energy",
     priceSol: 0.01,
-    priceG2u: 0.01 * G2U_PER_SOL,
-  },
+    priceG2u: 0.01 * G2U_PER_SOL},
   whale: {
     name: "+5K Daily Energy",
     priceSol: 0.03,
-    priceG2u: 0.03 * G2U_PER_SOL,
-  },
+    priceG2u: 0.03 * G2U_PER_SOL},
   crate: {
     name: "The Vault Drop",
     priceSol: 0.05,
-    priceG2u: 0.05 * G2U_PER_SOL,
-  },
+    priceG2u: 0.05 * G2U_PER_SOL},
   x2_boost: {
     name: "Double Power",
     priceSol: 0.02,
-    priceG2u: 0.02 * G2U_PER_SOL,
-  },
+    priceG2u: 0.02 * G2U_PER_SOL},
   x3_boost: {
     name: "Triple Power",
     priceSol: 0.035,
-    priceG2u: 0.035 * G2U_PER_SOL,
-  },
+    priceG2u: 0.035 * G2U_PER_SOL},
   shard_badge: {
     name: "Star Badge",
     priceSol: 0.02,
-    priceG2u: 0.02 * G2U_PER_SOL,
-  },
-};
+    priceG2u: 0.02 * G2U_PER_SOL}};
 
 const MASTER = "D4GufPTvp6tnzkaYGfombFLs48UjDANsxjMFJnSYz4Gh";
 
@@ -74,8 +66,7 @@ function bumpWeeklyBoost(inv: Record<string, unknown>) {
           daysTap500: [],
           daysActive: [],
           daysFull: [],
-          boostBuys: 0,
-        };
+          boostBuys: 0};
   if (String(wq.weekId || "") !== weekId) {
     inv.weekly_quests = {
       weekId,
@@ -83,8 +74,7 @@ function bumpWeeklyBoost(inv: Record<string, unknown>) {
       daysTap500: [],
       daysActive: [],
       daysFull: [],
-      boostBuys: 1,
-    };
+      boostBuys: 1};
   } else {
     wq.boostBuys = (Number(wq.boostBuys) || 0) + 1;
     wq.weekId = weekId;
@@ -140,8 +130,7 @@ serve(async (req) => {
         .update({
           inventory: inv,
           gft_token_balance: nextBal,
-          has_made_purchase: true,
-          last_updated: new Date().toISOString(),
+          has_made_purchase: true
         })
         .eq("telegram_id", playerId);
       if (upErr) throw upErr;
@@ -155,9 +144,7 @@ serve(async (req) => {
         meta: {
           item_id: itemId,
           currency: "g2u",
-          priceG2u,
-        },
-      });
+          priceG2u}});
 
       return jsonResponse({
         success: true,
@@ -166,8 +153,7 @@ serve(async (req) => {
         currency: "g2u",
         price_g2u: priceG2u,
         gft_token_balance: nextBal,
-        inventory: inv,
-      });
+        inventory: inv});
     }
 
     // —— SOL path (default / pre-launch) ——
@@ -191,8 +177,7 @@ serve(async (req) => {
       return jsonResponse({
         success: true,
         already: true,
-        inventory: p?.inventory || {},
-      });
+        inventory: p?.inventory || {}});
     }
 
     const rpc =
@@ -211,9 +196,7 @@ serve(async (req) => {
             params: [
               txSignature,
               { encoding: "json", maxSupportedTransactionVersion: 0 },
-            ],
-          }),
-        });
+            ]})});
         const j = await res.json();
         const tx = j?.result;
         if (!tx) {
@@ -243,8 +226,7 @@ serve(async (req) => {
       .from("players")
       .update({
         inventory: inv,
-        has_made_purchase: true,
-        last_updated: new Date().toISOString(),
+        has_made_purchase: true
       })
       .eq("telegram_id", playerId);
     if (upErr) throw upErr;
@@ -257,17 +239,14 @@ serve(async (req) => {
         item_id: itemId,
         currency: "sol",
         priceSol: catalog.priceSol,
-        master: MASTER,
-      },
-    });
+        master: MASTER}});
 
     return jsonResponse({
       success: true,
       already: false,
       item_id: itemId,
       currency: "sol",
-      inventory: inv,
-    });
+      inventory: inv});
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     const status = /authenticated|expired|signature|Invalid session|Not authenticated/i

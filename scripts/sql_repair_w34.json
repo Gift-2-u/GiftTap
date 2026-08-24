@@ -1,0 +1,1 @@
+{"query": "select public.grant_weekly_badges_from_snapshot('2026-W34') as newly_filled"}

@@ -1,0 +1,1 @@
+{"query": "select week_id, count(*)::int as snap_rows, count(*) filter (where badge_tier is not null)::int as with_tier from weekly_leaderboard_snapshots where week_id = public.previous_utc_iso_week_id(now()) group by 1"}

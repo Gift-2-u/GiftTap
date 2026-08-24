@@ -15,8 +15,7 @@ import {
   utcIsoWeekId,
   shadowHours,
   shadowYield,
-  shadowBaseDailyCap,
-} from "../_shared/economy.ts";
+  shadowBaseDailyCap} from "../_shared/economy.ts";
 import { applyWeeklyEnergyCredit } from "../_shared/weeklyScore.ts";
 
 function utcTodayStr(d = new Date()): string {
@@ -92,8 +91,7 @@ serve(async (req) => {
       prevWeekId: row.weekly_week_id,
       prevWeekly: Number(row.weekly_shards) || 0,
       energySpent: yieldAmt,
-      nextDaily,
-    });
+      nextDaily});
     inv.weekly_lb = { weekId: weeklyCredit.weekId, score: weeklyCredit.weeklyShards };
     claimsMap[today] = {
       yield: yieldAmt,
@@ -101,8 +99,7 @@ serve(async (req) => {
       base_cap: baseCap,
       rarity,
       level,
-      claimed_at: new Date().toISOString(),
-    };
+      claimed_at: new Date().toISOString()};
     inv.shadow_claims = claimsMap;
 
     const updates = {
@@ -113,8 +110,7 @@ serve(async (req) => {
       weekly_shards: weeklyCredit.weeklyShards,
       weekly_week_id: weeklyCredit.weekId,
       last_tap_date: today,
-      inventory: inv,
-      last_updated: new Date().toISOString(),
+      inventory: inv
     };
 
     const { error: upErr } = await sb
@@ -128,8 +124,7 @@ serve(async (req) => {
         p_week_id: weeklyCredit.weekId,
         p_telegram_id: playerId,
         p_username: String(row.username || ""),
-        p_score: weeklyCredit.weeklyShards,
-      });
+        p_score: weeklyCredit.weeklyShards});
     } catch (e) {
       console.warn("weekly ledger", e);
     }
@@ -140,8 +135,7 @@ serve(async (req) => {
       delta: yieldAmt,
       balance_after: nextBal,
       ref: today,
-      meta: { hours, baseCap, rarity, level, yield: yieldAmt },
-    });
+      meta: { hours, baseCap, rarity, level, yield: yieldAmt }});
 
     return jsonResponse({
       success: true,
@@ -149,8 +143,7 @@ serve(async (req) => {
       hours,
       base_cap: baseCap,
       inventory: inv,
-      player: updates,
-    });
+      player: updates});
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     const status = /authenticated|expired|signature|Invalid session|Not authenticated/i.test(

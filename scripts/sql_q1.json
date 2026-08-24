@@ -1,0 +1,1 @@
+{"query": "select public.utc_iso_week_id(now()) as current_week, public.previous_utc_iso_week_id(now()) as previous_week"}

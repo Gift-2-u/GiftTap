@@ -11,8 +11,7 @@ import {
   invObj,
   logEconomy,
   SHADOW_HOURS,
-  shadowHours,
-} from "../_shared/economy.ts";
+  shadowHours} from "../_shared/economy.ts";
 import { ensureNftDurabilityOnActivate } from "../_shared/nftDurability.ts";
 
 const RARITIES = new Set(Object.keys(SHADOW_HOURS));
@@ -55,15 +54,14 @@ serve(async (req) => {
           level,
           asset_id: assetId,
           hours,
-          activated_at: new Date().toISOString(),
-        },
+          activated_at: new Date().toISOString()},
         prev,
       );
     }
 
     const { data: updated, error: upErr } = await sb
       .from("players")
-      .update({ inventory: inv, last_updated: new Date().toISOString() })
+      .update({ inventory: inv })
       .eq("telegram_id", playerId)
       .select("inventory")
       .maybeSingle();
@@ -82,8 +80,7 @@ serve(async (req) => {
       ref: active && typeof active === "object"
         ? String((active as Record<string, unknown>).asset_id || "")
         : null,
-      meta: { shadow_active: active },
-    });
+      meta: { shadow_active: active }});
 
     return jsonResponse({
       success: true,
@@ -91,8 +88,7 @@ serve(async (req) => {
       shadow_active: active,
       hours: active && typeof active === "object"
         ? Number((active as Record<string, unknown>).hours) || 0
-        : 0,
-    });
+        : 0});
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     const status = /authenticated|expired|signature|Invalid session|Not authenticated/i.test(message)

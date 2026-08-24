@@ -203,6 +203,7 @@ import { ensureWeeklySeasonRollover } from './weeklySeasonRollover';
 import {
   hasSecureSession,
   ensureSecureSession,
+  fetchPlayerState,
   secureCommitTaps,
   secureWallClimb,
   secureLocksmithActivate,
@@ -908,21 +909,7 @@ const GiftTapGame = () => {
       energyAnchorRef.current = { value: next, at: nowMs };
       optimisticEnergy.current = next;
       setEnergy(next);
-      // Secure economy: last_energy / last_updated owned by Edge (shop-buy /
-      // backpack-activate / commit-taps). Client writes here desync mining.
-      if (secureEconomyRef.current) {
-        return next;
-      }
-      if (playerId) {
-        const { error } = await supabase
-          .from('players')
-          .update({
-            last_energy: next,
-            last_updated: new Date().toISOString(),
-          })
-          .eq(DB_PLAYER_ID, String(playerId));
-        if (error) throw error;
-      }
+      // Never client-write last_updated (login/player-state + commit-taps only).
       return next;
     },
     [playerId],
@@ -2133,6 +2120,16 @@ const GiftTapGame = () => {
           await ensureSecureSession();
           const st = await secureVaultStatus();
           setNeedsPassword(st?.has_password === false);
+          // Stamp this player's last_updated (last seen) + catch up energy
+          const state = await fetchPlayerState();
+          if (state?.player) {
+            if (state.player.last_updated != null) {
+              playerRow.last_updated = state.player.last_updated;
+            }
+            if (state.player.last_energy != null) {
+              playerRow.last_energy = state.player.last_energy;
+            }
+          }
         } catch {
           setNeedsPassword(false);
         }
@@ -2914,6 +2911,13 @@ const GiftTapGame = () => {
     }
     // Public launch — no invite / beta code required
     setHasAccess(true);
+    // Stamp last_updated for this login (that player only)
+    try {
+      await ensureSecureSession();
+      await fetchPlayerState();
+    } catch {
+      /* load path will retry */
+    }
   };
 
   /**
@@ -3138,32 +3142,9 @@ const GiftTapGame = () => {
 
     const persistEnergyCatchUp = (force = false) => {
       const live = applyEnergyCatchUp();
-      const now = Date.now();
-      // Under secure economy, only commit-taps may write last_energy / last_updated.
-      // Client persists were resetting the regen clock or writing a stale full bar.
-      if (secureEconomyRef.current) {
-        lastEnergyPersistRef.current = now;
-        return live;
-      }
-      // Persist every 60s, or when full, or on force (wake) — legacy only
-      if (
-        !force &&
-        live < ENERGY_CAP &&
-        now - (lastEnergyPersistRef.current || 0) < 60000
-      ) {
-        return live;
-      }
-      lastEnergyPersistRef.current = now;
-      supabase
-        .from('players')
-        .update({
-          last_energy: live,
-          last_updated: new Date().toISOString(),
-        })
-        .eq(DB_PLAYER_ID, playerId)
-        .then(({ error }) => {
-          if (error) console.warn('energy persist', error.message);
-        });
+      // Never client-write last_updated / last_energy here.
+      // Login stamps last seen; commit-taps owns mining clock.
+      lastEnergyPersistRef.current = Date.now();
       return live;
     };
 
@@ -3879,7 +3860,7 @@ const GiftTapGame = () => {
             limit_boost_amount: stats.limit_boost_amount,
             limit_boost_expires: stats.limit_boost_expires,
             inventory: nextInventory,
-            last_updated: new Date().toISOString(),
+            // never last_updated here — login/player-state + commit-taps only
           };
 
       const doUpdate = async (row) =>
@@ -3903,7 +3884,6 @@ const GiftTapGame = () => {
           const full = await doUpdate({
             lifetime_taps: writeLtt,
             season_shards: writeS,
-            last_updated: new Date().toISOString(),
           });
           if (!full.error && full.data?.length) {
             data = full.data;
@@ -3926,7 +3906,6 @@ const GiftTapGame = () => {
           last_tap_date: saveLtd,
           current_streak: p.strk,
           inventory: nextInventory,
-          last_updated: new Date().toISOString(),
         }));
       }
 

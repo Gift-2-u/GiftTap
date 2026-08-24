@@ -18,8 +18,7 @@ import {
   invObj,
   logEconomy,
   ECHO_MULTI,
-  echoMultiplier,
-} from "../_shared/economy.ts";
+  echoMultiplier} from "../_shared/economy.ts";
 import { ensureNftDurabilityOnActivate } from "../_shared/nftDurability.ts";
 
 const RARITIES = new Set(Object.keys(ECHO_MULTI));
@@ -67,8 +66,7 @@ serve(async (req) => {
           level,
           asset_id: assetId,
           multi: echoMultiplier(rarity, level),
-          activated_at: new Date().toISOString(),
-        },
+          activated_at: new Date().toISOString()},
         prev,
       );
     }
@@ -76,8 +74,7 @@ serve(async (req) => {
     const { data: updated, error: upErr } = await sb
       .from("players")
       .update({
-        inventory: inv,
-        last_updated: new Date().toISOString(),
+        inventory: inv
       })
       .eq("telegram_id", playerId)
       .select("inventory")
@@ -92,8 +89,7 @@ serve(async (req) => {
       ref: (inv.echo_active as Record<string, unknown> | undefined)?.asset_id
         ? String((inv.echo_active as Record<string, unknown>).asset_id)
         : null,
-      meta: { echo_active: inv.echo_active ?? null },
-    });
+      meta: { echo_active: inv.echo_active ?? null }});
 
     return jsonResponse({
       success: true,
@@ -106,8 +102,7 @@ serve(async (req) => {
           String((inv.echo_active as Record<string, unknown>).rarity),
           Number((inv.echo_active as Record<string, unknown>).level) || 1,
         )
-        : 1,
-    });
+        : 1});
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     const status = /authenticated|expired|signature|Invalid session|Not authenticated/i.test(

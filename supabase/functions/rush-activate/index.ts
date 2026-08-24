@@ -13,8 +13,7 @@ import {
   invObj,
   logEconomy,
   RUSH_DAILY_LIMIT,
-  rushDailyLimit,
-} from "../_shared/economy.ts";
+  rushDailyLimit} from "../_shared/economy.ts";
 import { ensureNftDurabilityOnActivate } from "../_shared/nftDurability.ts";
 
 const RARITIES = new Set(Object.keys(RUSH_DAILY_LIMIT));
@@ -63,8 +62,7 @@ serve(async (req) => {
           level,
           asset_id: assetId,
           daily_cap: dailyCap,
-          activated_at: new Date().toISOString(),
-        },
+          activated_at: new Date().toISOString()},
         prev,
       );
     }
@@ -72,8 +70,7 @@ serve(async (req) => {
     const { data: updated, error: upErr } = await sb
       .from("players")
       .update({
-        inventory: inv,
-        last_updated: new Date().toISOString(),
+        inventory: inv
       })
       .eq("telegram_id", playerId)
       .select("inventory")
@@ -92,8 +89,7 @@ serve(async (req) => {
       ref: active && typeof active === "object"
         ? String((active as Record<string, unknown>).asset_id || "")
         : null,
-      meta: { rush_active: active },
-    });
+      meta: { rush_active: active }});
 
     return jsonResponse({
       success: true,
@@ -101,8 +97,7 @@ serve(async (req) => {
       rush_active: active,
       daily_cap: active && typeof active === "object"
         ? Number((active as Record<string, unknown>).daily_cap) || 0
-        : 0,
-    });
+        : 0});
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     const status = /authenticated|expired|signature|Invalid session|Not authenticated/i.test(

@@ -1,0 +1,1 @@
+{"query": "select count(*)::int as n from pg_trigger where tgname = 'trg_preserve_last_updated_unless_energy'"}

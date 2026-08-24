@@ -17,8 +17,7 @@ import {
   jsonResponse,
   invObj,
   logEconomy,
-  FATE_JACKPOT,
-} from "../_shared/economy.ts";
+  FATE_JACKPOT} from "../_shared/economy.ts";
 import { ensureNftDurabilityOnActivate } from "../_shared/nftDurability.ts";
 
 const RARITIES = new Set(Object.keys(FATE_JACKPOT));
@@ -65,8 +64,7 @@ serve(async (req) => {
           rarity,
           level,
           asset_id: assetId,
-          activated_at: new Date().toISOString(),
-        },
+          activated_at: new Date().toISOString()},
         prev,
       );
       // Keep string focus id in sync when provided (badge/jackpot focus)
@@ -76,8 +74,7 @@ serve(async (req) => {
     const { data: updated, error: upErr } = await sb
       .from("players")
       .update({
-        inventory: inv,
-        last_updated: new Date().toISOString(),
+        inventory: inv
       })
       .eq("telegram_id", playerId)
       .select("inventory")
@@ -92,8 +89,7 @@ serve(async (req) => {
       ref: (inv.fate_power as Record<string, unknown> | undefined)?.asset_id
         ? String((inv.fate_power as Record<string, unknown>).asset_id)
         : null,
-      meta: { fate_power: inv.fate_power ?? null },
-    });
+      meta: { fate_power: inv.fate_power ?? null }});
 
     return jsonResponse({
       success: true,
@@ -101,8 +97,7 @@ serve(async (req) => {
       fate_power:
         (updated?.inventory as Record<string, unknown>)?.fate_power ??
         inv.fate_power ??
-        null,
-    });
+        null});
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     const status = /authenticated|expired|signature|Invalid session|Not authenticated/i.test(

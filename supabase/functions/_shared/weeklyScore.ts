@@ -147,8 +147,10 @@ export async function sumBatchEnergyThisWeek(
 }
 
 /**
- * Reconcile EVERY player with activity this week so weekly_shards matches
- * true payout-weighted score (batches + daily floor + stored). service_role only.
+ * Build the live weekly board (READ-ONLY for players rows).
+ * Never mass-UPDATEs players / last_updated. Scores come from:
+ *   ledger + players.weekly_* + tap_batches (computed in memory).
+ * Per-player weekly_* writes happen only in commit-taps / healPlayerWeekly(self).
  */
 export async function reconcileAllWeeklyScores(
   sb: SupabaseClient,
@@ -207,7 +209,39 @@ export async function reconcileAllWeeklyScores(
     }
   };
 
-  // Page players already tagged this week
+  // Prefer durable ledger (no player writes)
+  {
+    let from = 0;
+    const pageSize = 500;
+    for (;;) {
+      const { data, error } = await sb
+        .from("weekly_score_ledger")
+        .select("telegram_id, username, score, week_id")
+        .eq("week_id", weekId)
+        .gt("score", 0)
+        .range(from, from + pageSize - 1);
+      if (error) {
+        console.warn("weekly ledger page", error.message);
+        break;
+      }
+      absorbPlayers(
+        (data || []).map((r) => ({
+          telegram_id: r.telegram_id,
+          username: r.username,
+          weekly_shards: Number(r.score) || 0,
+          weekly_week_id: weekId,
+          daily_taps: 0,
+          last_tap_date: null,
+          inventory: null,
+          last_updated: null,
+        })),
+      );
+      if (!data || data.length < pageSize) break;
+      from += pageSize;
+    }
+  }
+
+  // Merge players already tagged this week (read only)
   {
     let from = 0;
     const pageSize = 500;
@@ -229,31 +263,7 @@ export async function reconcileAllWeeklyScores(
     }
   }
 
-  // Players who tapped since week start (wrong week id still healed)
-  {
-    const weekStartDay = weekStart.slice(0, 10);
-    let from = 0;
-    const pageSize = 500;
-    for (;;) {
-      const { data, error } = await sb
-        .from("players")
-        .select(
-          "telegram_id, username, weekly_shards, weekly_week_id, daily_taps, last_tap_date, inventory, last_updated",
-        )
-        .gte("last_tap_date", weekStartDay)
-        .range(from, from + pageSize - 1);
-      if (error) {
-        console.warn("players ltd page", error.message);
-        break;
-      }
-      absorbPlayers(data as Array<Record<string, unknown>>);
-      if (!data || data.length < pageSize) break;
-      from += pageSize;
-    }
-  }
-
   // Batch energy only counts if a real players row exists.
-  // Never invent ghost board rows (orphan tap_batches / truncated ids).
   for (const id of batchMap.keys()) {
     if (byId.has(id)) continue;
     const { data } = await sb
@@ -264,10 +274,8 @@ export async function reconcileAllWeeklyScores(
       .eq("telegram_id", id)
       .maybeSingle();
     if (data) absorbPlayers([data as Record<string, unknown>]);
-    // else: skip orphan batch player_id — not a real account
   }
 
-  let healed = 0;
   const board: Array<{
     telegram_id: string;
     username: string;
@@ -292,52 +300,16 @@ export async function reconcileAllWeeklyScores(
     });
     if (trueScore <= 0) continue;
 
-    const needsHeal =
-      String(p.weekly_week_id || "") !== weekId ||
-      Math.max(0, Number(p.weekly_shards) || 0) + 0.0001 < trueScore;
-
-    if (needsHeal) {
-      const inv = invObj(p.inventory);
-      inv.weekly_lb = { weekId, score: trueScore };
-      // Do not bump last_updated — energy regen / last-seen clock (mass heal was
-      // stamping every board player when anyone opened Weekly ranks).
-      const { error: upErr } = await sb
-        .from("players")
-        .update({
-          weekly_shards: trueScore,
-          weekly_week_id: weekId,
-          inventory: inv,
-        })
-        .eq("telegram_id", p.telegram_id);
-      if (!upErr) {
-        healed += 1;
-        p.weekly_shards = trueScore;
-        p.weekly_week_id = weekId;
-        p.inventory = inv;
-        try {
-          await sb.rpc("upsert_weekly_score_ledger", {
-            p_week_id: weekId,
-            p_telegram_id: p.telegram_id,
-            p_username: p.username || "",
-            p_score: trueScore,
-          });
-        } catch {
-          /* optional */
-        }
-      } else {
-        console.warn("weekly heal update", p.telegram_id, upErr.message);
-      }
-    } else {
-      try {
-        await sb.rpc("upsert_weekly_score_ledger", {
-          p_week_id: weekId,
-          p_telegram_id: p.telegram_id,
-          p_username: p.username || "",
-          p_score: trueScore,
-        });
-      } catch {
-        /* optional */
-      }
+    // Ledger only — never UPDATE players (that mass-touched last_updated / rows)
+    try {
+      await sb.rpc("upsert_weekly_score_ledger", {
+        p_week_id: weekId,
+        p_telegram_id: p.telegram_id,
+        p_username: p.username || "",
+        p_score: trueScore,
+      });
+    } catch {
+      /* optional */
     }
 
     board.push({
@@ -357,12 +329,15 @@ export async function reconcileAllWeeklyScores(
   return {
     weekId,
     checked: byId.size,
-    healed,
+    healed: 0,
     board: board.slice(0, limit),
   };
 }
 
-/** Heal a single player (login / player-state). */
+/**
+ * Heal ONE player only (login / player-state for that JWT).
+ * Never bumps last_updated (energy regen clock — commit-taps / refill only).
+ */
 export async function healPlayerWeekly(
   sb: SupabaseClient,
   playerId: string,
@@ -404,6 +379,7 @@ export async function healPlayerWeekly(
 
   const inv = invObj(player.inventory);
   inv.weekly_lb = { weekId, score: trueScore };
+  // This player only. Never include last_updated (energy clock).
   const { data: fixed, error } = await sb
     .from("players")
     .update({

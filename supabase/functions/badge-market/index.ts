@@ -17,8 +17,7 @@ import {
   jsonResponse,
   logEconomy,
   invObj,
-  BADGE_ITEM,
-} from "../_shared/economy.ts";
+  BADGE_ITEM} from "../_shared/economy.ts";
 
 const FEE_BPS = 500; // 5%
 const TIERS = new Set(["bronze", "silver", "gold", "diamond", "shard"]);
@@ -126,14 +125,12 @@ serve(async (req) => {
       const listings = rows.map((r) => ({
         ...r,
         seller_wallet:
-          r.currency === "sol" ? walletById[String(r.seller_id)] || null : null,
-      }));
+          r.currency === "sol" ? walletById[String(r.seller_id)] || null : null}));
       return jsonResponse({
         success: true,
         listings,
         fee_bps: FEE_BPS,
-        treasury_sol: TREASURY_SOL,
-      });
+        treasury_sol: TREASURY_SOL});
     }
 
     // ---------- MY LISTINGS ----------
@@ -211,15 +208,14 @@ serve(async (req) => {
           qty,
           currency,
           unit_price: round9(unit_price),
-          status: "active",
-        })
+          status: "active"})
         .select("*")
         .maybeSingle();
       if (insErr) throw insErr;
 
       const { error: upErr } = await sb
         .from("players")
-        .update({ inventory: inv, last_updated: new Date().toISOString() })
+        .update({ inventory: inv })
         .eq("telegram_id", playerId);
       if (upErr) {
         // rollback listing
@@ -234,15 +230,13 @@ serve(async (req) => {
         kind: "badge_market_list",
         delta: 0,
         ref: listing?.id || null,
-        meta: { tier, qty, currency, unit_price },
-      });
+        meta: { tier, qty, currency, unit_price }});
 
       return jsonResponse({
         success: true,
         listing,
         inventory: inv,
-        fee_bps: FEE_BPS,
-      });
+        fee_bps: FEE_BPS});
     }
 
     // ---------- CANCEL ----------
@@ -278,15 +272,14 @@ serve(async (req) => {
         .update({
           status: "cancelled",
           cancelled_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        })
+          updated_at: new Date().toISOString()})
         .eq("id", listingId)
         .eq("status", "active");
       if (markErr) throw markErr;
 
       const { error: upErr } = await sb
         .from("players")
-        .update({ inventory: inv, last_updated: new Date().toISOString() })
+        .update({ inventory: inv })
         .eq("telegram_id", playerId);
       if (upErr) throw upErr;
 
@@ -294,8 +287,7 @@ serve(async (req) => {
         player_id: playerId,
         kind: "badge_market_cancel",
         ref: listingId,
-        meta: { tier: listing.tier, qty },
-      });
+        meta: { tier: listing.tier, qty }});
 
       return jsonResponse({ success: true, inventory: inv, listing_id: listingId });
     }
@@ -348,8 +340,7 @@ serve(async (req) => {
             success: true,
             already: true,
             inventory: p?.inventory || {},
-            listing_id: prior.id,
-          });
+            listing_id: prior.id});
         }
       }
 
@@ -388,8 +379,7 @@ serve(async (req) => {
             buyer_username: buyer.username || username || null,
             gross_amount: gross,
             fee_amount: fee,
-            seller_net: net,
-          })
+            seller_net: net})
           .eq("id", listingId)
           .eq("status", "active")
           .select("id")
@@ -404,8 +394,7 @@ serve(async (req) => {
           .from("players")
           .update({
             gft_token_balance: buyerNext,
-            inventory: buyerInv,
-            last_updated: new Date().toISOString(),
+            inventory: buyerInv
           })
           .eq("telegram_id", playerId);
         if (ub) throw ub;
@@ -413,8 +402,7 @@ serve(async (req) => {
         const { error: us } = await sb
           .from("players")
           .update({
-            gft_token_balance: sellerNext,
-            last_updated: new Date().toISOString(),
+            gft_token_balance: sellerNext
           })
           .eq("telegram_id", listing.seller_id);
         if (us) throw us;
@@ -428,8 +416,7 @@ serve(async (req) => {
         await sb.from("badge_market_treasury").upsert({
           id: 1,
           g2u_balance: tNext,
-          updated_at: new Date().toISOString(),
-        });
+          updated_at: new Date().toISOString()});
 
         await logEconomy(sb, {
           player_id: playerId,
@@ -437,16 +424,14 @@ serve(async (req) => {
           delta: -gross,
           balance_after: buyerNext,
           ref: listingId,
-          meta: { tier, qty, currency: "g2u", fee, net, seller_id: listing.seller_id },
-        });
+          meta: { tier, qty, currency: "g2u", fee, net, seller_id: listing.seller_id }});
         await logEconomy(sb, {
           player_id: listing.seller_id,
           kind: "badge_market_sell_g2u",
           delta: net,
           balance_after: sellerNext,
           ref: listingId,
-          meta: { tier, qty, currency: "g2u", fee, buyer_id: playerId },
-        });
+          meta: { tier, qty, currency: "g2u", fee, buyer_id: playerId }});
 
         return jsonResponse({
           success: true,
@@ -456,8 +441,7 @@ serve(async (req) => {
           seller_net: net,
           inventory: buyerInv,
           gft_token_balance: buyerNext,
-          listing_id: listingId,
-        });
+          listing_id: listingId});
       }
 
       // SOL path — on-chain payment required
@@ -487,9 +471,7 @@ serve(async (req) => {
                 params: [
                   txSignature,
                   { encoding: "json", maxSupportedTransactionVersion: 0 },
-                ],
-              }),
-            });
+                ]})});
             const j = await res.json();
             const tx = j?.result;
             if (tx?.meta?.err) throw new Error("On-chain transaction failed");
@@ -510,8 +492,7 @@ serve(async (req) => {
             tx_signature: txSignature,
             gross_amount: gross,
             fee_amount: fee,
-            seller_net: net,
-          })
+            seller_net: net})
           .eq("id", listingId)
           .eq("status", "active")
           .select("id")
@@ -525,8 +506,7 @@ serve(async (req) => {
         const { error: ub } = await sb
           .from("players")
           .update({
-            inventory: buyerInv,
-            last_updated: new Date().toISOString(),
+            inventory: buyerInv
           })
           .eq("telegram_id", playerId);
         if (ub) throw ub;
@@ -540,8 +520,7 @@ serve(async (req) => {
         await sb.from("badge_market_treasury").upsert({
           id: 1,
           sol_fees_accounted: solFees,
-          updated_at: new Date().toISOString(),
-        });
+          updated_at: new Date().toISOString()});
 
         await logEconomy(sb, {
           player_id: playerId,
@@ -557,9 +536,7 @@ serve(async (req) => {
             net,
             seller_id: listing.seller_id,
             seller_wallet: sellerWallet,
-            treasury: TREASURY_SOL,
-          },
-        });
+            treasury: TREASURY_SOL}});
 
         return jsonResponse({
           success: true,
@@ -571,8 +548,7 @@ serve(async (req) => {
           treasury_sol: TREASURY_SOL,
           inventory: buyerInv,
           listing_id: listingId,
-          tx_signature: txSignature,
-        });
+          tx_signature: txSignature});
       }
 
       throw new Error("Unsupported currency");

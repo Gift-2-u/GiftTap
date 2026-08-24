@@ -8,14 +8,12 @@ import {
   adminClient,
   corsHeaders,
   jsonResponse,
-  logEconomy,
-} from "../_shared/economy.ts";
+  logEconomy} from "../_shared/economy.ts";
 
 const AMOUNTS: Record<string, { amount: number; flag: string; needTaps?: number }> = {
   taps1000: { amount: 500, flag: "referral_taps1000_paid", needTaps: 1000 },
   lvl1: { amount: 1000, flag: "referral_lvl1_paid", needTaps: 10000 },
-  wall5: { amount: 3000, flag: "referral_wall5_paid" },
-};
+  wall5: { amount: 3000, flag: "referral_wall5_paid" }};
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -63,7 +61,7 @@ serve(async (req) => {
     // Claim flag atomically
     const { data: claimed, error: claimErr } = await sb
       .from("players")
-      .update({ [meta.flag]: true, last_updated: new Date().toISOString() })
+      .update({ [meta.flag]: true })
       .eq("telegram_id", inviteeId)
       .or(`${meta.flag}.is.null,${meta.flag}.eq.false`)
       .select("referred_by")
@@ -84,7 +82,7 @@ serve(async (req) => {
     const next = Math.round(((Number(ref.shard_balance) || 0) + meta.amount) * 1000) / 1000;
     const { error: upErr } = await sb
       .from("players")
-      .update({ shard_balance: next, last_updated: new Date().toISOString() })
+      .update({ shard_balance: next })
       .eq("telegram_id", referrerId);
     if (upErr) throw upErr;
 
@@ -93,16 +91,14 @@ serve(async (req) => {
       kind: `referral_${kind}`,
       delta: meta.amount,
       balance_after: next,
-      ref: inviteeId,
-    });
+      ref: inviteeId});
 
     return jsonResponse({
       success: true,
       kind,
       amount: meta.amount,
       referrer_id: referrerId,
-      balance_after: next,
-    });
+      balance_after: next});
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     const status = /authenticated|expired|signature|Invalid session|Not authenticated/i.test(

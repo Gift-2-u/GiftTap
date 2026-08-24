@@ -10,8 +10,7 @@ import {
   jsonResponse,
   invObj,
   logEconomy,
-  echoMultiplier,
-} from "../_shared/economy.ts";
+  echoMultiplier} from "../_shared/economy.ts";
 import { ensureNftDurabilityOnActivate } from "../_shared/nftDurability.ts";
 
 const ELF_LEVEL_UP_SOL: Record<string, number[]> = {
@@ -19,8 +18,7 @@ const ELF_LEVEL_UP_SOL: Record<string, number[]> = {
   common: [0.02, 0.04, 0.06, 0.08],
   rare: [0.05, 0.1, 0.2, 0.25],
   epic: [0.15, 0.25, 0.35, 0.5],
-  legendary: [0.5, 0.8, 1.2, 2.0],
-};
+  legendary: [0.5, 0.8, 1.2, 2.0]};
 /** Locksmith L1→2 … L4→5 (mint = first wall ×4; not Rare ladder) */
 const LOCKSMITH_LEVEL_UP_SOL = [0.2, 0.35, 0.6, 1.5];
 const MAX_LEVEL = 5;
@@ -65,8 +63,7 @@ function syncActiveLevel(
         level,
         asset_id: assetId,
         multi: echoMultiplier(rarity, level),
-        activated_at: now,
-      },
+        activated_at: now},
       prev,
     );
   } else if (kind === "fate") {
@@ -79,8 +76,7 @@ function syncActiveLevel(
         rarity,
         level,
         asset_id: assetId,
-        activated_at: now,
-      },
+        activated_at: now},
       prev,
     );
     inv.fate_active = assetId;
@@ -94,8 +90,7 @@ function syncActiveLevel(
         rarity,
         level,
         asset_id: assetId,
-        activated_at: now,
-      },
+        activated_at: now},
       prev,
     );
   } else if (kind === "shadow") {
@@ -108,16 +103,14 @@ function syncActiveLevel(
         rarity,
         level,
         asset_id: assetId,
-        activated_at: now,
-      },
+        activated_at: now},
       prev,
     );
   } else if (kind === "locksmith") {
     inv.locksmith_active = {
       level,
       asset_id: assetId,
-      activated_at: now,
-    };
+      activated_at: now};
   }
 }
 
@@ -168,8 +161,7 @@ serve(async (req) => {
     const { data: updated, error: upErr } = await sb
       .from("players")
       .update({
-        inventory: inv,
-        last_updated: new Date().toISOString(),
+        inventory: inv
       })
       .eq("telegram_id", playerId)
       .select("inventory")
@@ -188,9 +180,7 @@ serve(async (req) => {
         from_level: fromLevel,
         to_level: toLevel,
         cost_sol: costSol,
-        tx_signature: txSignature,
-      },
-    });
+        tx_signature: txSignature}});
 
     return jsonResponse({
       success: true,
@@ -201,8 +191,7 @@ serve(async (req) => {
       to_level: toLevel,
       cost_sol: costSol,
       inventory: updated?.inventory ?? inv,
-      tx_signature: txSignature,
-    });
+      tx_signature: txSignature});
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     const status =

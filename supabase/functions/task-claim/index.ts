@@ -8,8 +8,7 @@ import {
   corsHeaders,
   jsonResponse,
   logEconomy,
-  invObj,
-} from "../_shared/economy.ts";
+  invObj} from "../_shared/economy.ts";
 
 type TaskDef =
   | { id: string; type: "shards"; reward: number }
@@ -24,8 +23,7 @@ const TASKS: Record<string, TaskDef> = {
   taps_1000: { id: "taps_1000", type: "daily_limit", reward: 100, dayLimited: true },
   taps_5000: { id: "taps_5000", type: "daily_limit", reward: 250, dayLimited: true },
   streak_3: { id: "streak_3", type: "daily_limit", reward: 200, dayLimited: true },
-  streak_10: { id: "streak_10", type: "daily_limit", reward: 500, dayLimited: true },
-};
+  streak_10: { id: "streak_10", type: "daily_limit", reward: 500, dayLimited: true }};
 
 function utcMidnightIso(d = new Date()): string {
   return new Date(
@@ -63,8 +61,7 @@ serve(async (req) => {
         already: true,
         completed_tasks: done,
         inventory: row.inventory,
-        shard_balance: row.shard_balance,
-      });
+        shard_balance: row.shard_balance});
     }
 
     // Light readiness checks (server)
@@ -90,8 +87,7 @@ serve(async (req) => {
     let shard_balance = Number(row.shard_balance) || 0;
     const updates: Record<string, unknown> = {
       completed_tasks: newDone,
-      inventory: inv,
-      last_updated: new Date().toISOString(),
+      inventory: inv
     };
 
     if (task.type === "shards") {
@@ -106,8 +102,7 @@ serve(async (req) => {
       }
       inv.task_limit_boost = {
         amount,
-        expires: utcMidnightIso(),
-      };
+        expires: utcMidnightIso()};
       updates.inventory = inv;
     }
 
@@ -123,8 +118,7 @@ serve(async (req) => {
       delta: task.type === "shards" ? task.reward : 0,
       balance_after: shard_balance,
       ref: taskId,
-      meta: { type: task.type, reward: task.reward },
-    });
+      meta: { type: task.type, reward: task.reward }});
 
     return jsonResponse({
       success: true,
@@ -132,8 +126,7 @@ serve(async (req) => {
       task_id: taskId,
       completed_tasks: newDone,
       inventory: inv,
-      shard_balance,
-    });
+      shard_balance});
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     const status = /authenticated|expired|signature|Invalid session|Not authenticated/i.test(

@@ -10,8 +10,7 @@ import {
   corsHeaders,
   jsonResponse,
   invObj,
-  logEconomy,
-} from "../_shared/economy.ts";
+  logEconomy} from "../_shared/economy.ts";
 
 const STAR_LEVEL_UP_SOL = [0.1, 0.15, 0.25, 0.4];
 const MAX_LEVEL = 5;
@@ -66,8 +65,7 @@ serve(async (req) => {
     const { data: updated, error: upErr } = await sb
       .from("players")
       .update({
-        inventory: inv,
-        last_updated: new Date().toISOString(),
+        inventory: inv
       })
       .eq("telegram_id", playerId)
       .select("inventory")
@@ -84,9 +82,7 @@ serve(async (req) => {
         from_level: fromLevel,
         to_level: toLevel,
         cost_sol: costSol,
-        tx_signature: txSignature,
-      },
-    });
+        tx_signature: txSignature}});
 
     return jsonResponse({
       success: true,
@@ -95,8 +91,7 @@ serve(async (req) => {
       to_level: toLevel,
       cost_sol: costSol,
       inventory: updated?.inventory ?? inv,
-      tx_signature: txSignature,
-    });
+      tx_signature: txSignature});
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     const status =

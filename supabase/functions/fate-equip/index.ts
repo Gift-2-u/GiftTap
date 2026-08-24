@@ -12,8 +12,7 @@ import {
   corsHeaders,
   jsonResponse,
   invObj,
-  logEconomy,
-} from "../_shared/economy.ts";
+  logEconomy} from "../_shared/economy.ts";
 
 const SHARD_ITEM = "shard_badge";
 const ELVES_COLLECTION = "FQPYWSohCPnS57W2AWAqwmQM21KRxGi4YXcCaiXUghPD";
@@ -70,10 +69,7 @@ async function countOwnedStarNfts(wallet: string): Promise<number> {
           ownerAddress: wallet,
           page,
           limit: 1000,
-          displayOptions: { showCollectionMetadata: true },
-        },
-      }),
-    });
+          displayOptions: { showCollectionMetadata: true }}})});
     const json = await res.json().catch(() => ({}));
     const items = json?.result?.items || [];
     for (const a of items) {
@@ -186,8 +182,7 @@ serve(async (req) => {
         equipped_at: new Date().toISOString(),
         ...(starAssetId && starAssetId.length >= 32
           ? { star_asset_id: starAssetId }
-          : {}),
-      };
+          : {})};
       inv.fate_equip = equip;
       inv.fate_active = assetId;
     }
@@ -195,8 +190,7 @@ serve(async (req) => {
     const { data: updated, error: upErr } = await sb
       .from("players")
       .update({
-        inventory: inv,
-        last_updated: new Date().toISOString(),
+        inventory: inv
       })
       .eq("telegram_id", playerId)
       .select("inventory")
@@ -213,9 +207,7 @@ serve(async (req) => {
         equip: wantEquip,
         item_id: wantEquip ? SHARD_ITEM : null,
         asset_id: assetId,
-        star_asset_id: wantEquip && starAssetId ? starAssetId : null,
-      },
-    });
+        star_asset_id: wantEquip && starAssetId ? starAssetId : null}});
 
     const outInv = (updated?.inventory as Record<string, unknown>) ?? inv;
     return jsonResponse({
@@ -225,8 +217,7 @@ serve(async (req) => {
       item_id: wantEquip ? SHARD_ITEM : null,
       inventory: outInv,
       fate_equip: outInv?.fate_equip ?? inv.fate_equip,
-      fate_active: outInv?.fate_active ?? inv.fate_active,
-    });
+      fate_active: outInv?.fate_active ?? inv.fate_active});
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     const status =
