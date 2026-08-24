@@ -24,15 +24,23 @@ import {
 const ENERGY_CAP = 500;
 const ENERGY_SECONDS_PER_POINT = 1.5;
 
+function utcDayStr(ms: number): string {
+  return new Date(ms).toISOString().slice(0, 10);
+}
+
 function energyFromAnchor(
   value: number,
   atIso: string | null | undefined,
   nowMs = Date.now(),
 ): number {
+  const at = atIso ? Date.parse(String(atIso)) : NaN;
+  // New UTC day since last energy anchor → full 500 bar
+  if (Number.isFinite(at) && utcDayStr(at) < utcDayStr(nowMs)) {
+    return ENERGY_CAP;
+  }
   const base = Number.isFinite(Number(value))
     ? Math.max(0, Math.min(ENERGY_CAP, Number(value)))
     : ENERGY_CAP;
-  const at = atIso ? Date.parse(String(atIso)) : NaN;
   const t0 = Number.isFinite(at) ? at : nowMs;
   const seconds = Math.max(0, Math.floor((nowMs - t0) / 1000));
   const gained = Math.floor(seconds / ENERGY_SECONDS_PER_POINT);
@@ -366,13 +374,9 @@ serve(async (req) => {
     // Mining NFT durability: 1% per 1,000 raw taps (Echo/Fate/Rush/Shadow)
     drainActiveNfts(inv, validTaps);
 
-    // Level-up battery refill (within unlocked tier)
-    let finalEnergy = nextEnergy;
-    const prevLevel = playLevel(lifetime, maxU);
+    // Energy: tap spend only here. No level-up refill (UTC day fill is in energyFromAnchor).
+    const finalEnergy = nextEnergy;
     const newLevel = playLevel(nextLife, maxU);
-    if (newLevel > prevLevel && newLevel <= maxU) {
-      finalEnergy = ENERGY_CAP;
-    }
     // Persist base tap power (no Frenzy) so HUD / DB show 1.25 not 2.5
     const tapPowerAfter = stackPayoutMultis(
       getLevelMultiplier(newLevel),

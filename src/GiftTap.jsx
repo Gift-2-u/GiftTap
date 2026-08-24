@@ -33,12 +33,17 @@ function streakAfterPlayDay(prevLtd, prevStreak, today = utcTodayStr()) {
 const ENERGY_CAP = 500;
 const ENERGY_SECONDS_PER_POINT = 1.5; // 1 energy / 1.5s → full 500 in ~12.5 min
 
-/** Recover energy from a stored (value, timestampMs) using wall clock. */
+/** Recover energy from a stored (value, timestampMs) using wall clock. New UTC day → 500. */
 function energyFromAnchor(value, atMs, nowMs = Date.now()) {
+  const at = Number(atMs);
+  if (Number.isFinite(at)) {
+    const anchorDay = new Date(at).toISOString().slice(0, 10);
+    const today = new Date(nowMs).toISOString().slice(0, 10);
+    if (anchorDay < today) return ENERGY_CAP;
+  }
   const base = Number.isFinite(Number(value))
     ? Math.max(0, Math.min(ENERGY_CAP, Number(value)))
     : ENERGY_CAP;
-  const at = Number(atMs);
   const t0 = Number.isFinite(at) ? at : nowMs;
   const seconds = Math.max(0, (nowMs - t0) / 1000);
   const gained = Math.floor(seconds / ENERGY_SECONDS_PER_POINT);
@@ -68,8 +73,14 @@ function spendEnergyFromAnchor(anchor, cost, nowMs = Date.now()) {
   return { value: energy, at: nowMs - residual };
 }
 
-/** Regen-only catch-up (no spend), preserves residual time. */
+/** Regen-only catch-up (no spend), preserves residual time. New UTC day → full 500. */
 function catchUpEnergyAnchor(anchor, nowMs = Date.now()) {
+  const prevAt = Number.isFinite(Number(anchor?.at)) ? Number(anchor.at) : nowMs;
+  const prevDay = new Date(prevAt).toISOString().slice(0, 10);
+  const today = new Date(nowMs).toISOString().slice(0, 10);
+  if (prevDay < today) {
+    return { value: ENERGY_CAP, at: nowMs };
+  }
   return spendEnergyFromAnchor(anchor, 0, nowMs);
 }
 
@@ -1098,11 +1109,10 @@ const GiftTapGame = () => {
     [playerId],
   );
 
-  // Credit weekly Tap-500 / base-1000 whenever live daily taps are high enough
+  // Credit weekly Tap-500 / base-1000; also re-run at low taps to clear false drain-daily
   useEffect(() => {
     if (!isDataLoaded) return;
     const taps = Math.max(Number(dailyTaps) || 0, Number(optimisticDaily.current) || 0);
-    if (taps < 500) return;
     recordWeeklyDailyProgress(taps, WEEKLY_BASE_DAILY_LIMIT, new Date());
   }, [dailyTaps, isDataLoaded, currentPage, recordWeeklyDailyProgress]);
 
@@ -3093,7 +3103,7 @@ const GiftTapGame = () => {
       const today = utcTodayStr();
       if (utcDayWatchRef.current === today) return false;
       utcDayWatchRef.current = today;
-      // New UTC day — reset daily UI immediately (server catches up on next save)
+      // New UTC day — reset daily taps + fill energy bar to 500
       optimisticDaily.current = 0;
       setDailyTaps(0);
       setDailyAdsWatched(0);
@@ -3103,10 +3113,11 @@ const GiftTapGame = () => {
         ...(serverProgressRef.current || {}),
         dt: 0,
       };
-      // UI reset is enough here. Server daily resets on first tap of the new UTC day
-      // (protect allows fresh-day writes). Ads counter is local until next ad claim.
+      energyAnchorRef.current = { value: ENERGY_CAP, at: Date.now() };
+      optimisticEnergy.current = ENERGY_CAP;
+      setEnergy(ENERGY_CAP);
+      energyEpochRef.current = (energyEpochRef.current || 0) + 1;
       try {
-        // Best-effort: clear ad count for new UTC day (not mining counters)
         supabase
           .from('players')
           .update({
@@ -3120,7 +3131,6 @@ const GiftTapGame = () => {
       } catch {
         /* ignore */
       }
-      console.log('🕛 UTC day rolled → daily limit reset (no refresh)');
       return true;
     };
 
@@ -3384,9 +3394,11 @@ const GiftTapGame = () => {
 
               if (staleEmpty) {
                 // Keep local battery — server empty is often a desync after Frenzy activate
-              } else if (bursting && Number.isFinite(localEn)) {
+              } else if (bursting && Number.isFinite(localEn) && credited > 0) {
+                // Only drop by taps the SERVER actually credited (never the full
+                // requested batch size — that wiped 500 energy on a 2-tap flush).
                 if (serverLive.value < localEn - 0.5) {
-                  const maxDrop = Math.max(credited, taps, 1) + 5;
+                  const maxDrop = Math.max(credited, 1) + 2;
                   const nextEn = Math.max(
                     serverLive.value,
                     Math.max(0, localEn - maxDrop),
@@ -3549,29 +3561,27 @@ const GiftTapGame = () => {
               }
             }
           }
-          // Partial credit: server ran out of energy mid-batch — keep remainder
+          // Partial credit: server ran out of energy/limit mid-batch.
+          // DO NOT re-queue unpaid taps — client already spent local energy for them;
+          // re-queue caused phantom flushes (2 taps → drain whole bar / snap to 0).
           if (credited > 0 && credited < taps) {
-            pendingTapsRef.current = {
-              count: (pendingTapsRef.current.count || 0) + (taps - credited),
-              batchId: null,
-            };
+            pendingTapsRef.current = { count: 0, batchId: null };
+            if (p && Number.isFinite(Number(p.daily_taps))) {
+              const serverDt = Number(p.daily_taps) || 0;
+              optimisticDaily.current = serverDt;
+              setDailyTaps(serverDt);
+            }
             break;
           }
           // Full reject handling
           if (credited === 0) {
-            if (rejectReason === 'no_energy') {
-              const localEn = Number(optimisticEnergy.current) || 0;
-              if (localEn > 1) {
-                // Desync (often after Frenzy/Battery activate): do NOT wipe the bar
-                // or the whole queue — leave remaining taps; next flush retries.
-              } else {
-                // Truly empty — drop queue so daily can't climb on 0 battery
-                pendingTapsRef.current = { count: 0, batchId: null };
-                if (p && Number.isFinite(Number(p.daily_taps))) {
-                  const serverDt = Number(p.daily_taps) || 0;
-                  optimisticDaily.current = serverDt;
-                  setDailyTaps(serverDt);
-                }
+            if (rejectReason === 'no_energy' || rejectReason === 'daily_limit') {
+              // Drop queue — unpaid optimistic taps must not retry-drain the battery
+              pendingTapsRef.current = { count: 0, batchId: null };
+              if (p && Number.isFinite(Number(p.daily_taps))) {
+                const serverDt = Number(p.daily_taps) || 0;
+                optimisticDaily.current = serverDt;
+                setDailyTaps(serverDt);
               }
             }
             break;

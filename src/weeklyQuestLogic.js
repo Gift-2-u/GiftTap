@@ -98,30 +98,26 @@ export function ensureWeeklyState(raw, weekId = getUtcWeekId()) {
 }
 
 /**
- * True when daily taps meet the target limit (default = base 1000).
- * Weekly drain-daily uses BASE 1000 only — boosts do not raise the target.
+ * True when raw daily taps hit the weekly drain target.
+ * Always uses BASE 1000 — NOT the 500 energy battery, NOT boosted max limit.
  */
 export function isDailyLimitDrained(dayTaps, maxLimit = WEEKLY_BASE_DAILY_LIMIT) {
   const taps = Math.max(0, Number(dayTaps) || 0);
-  const limit = Math.max(0, Number(maxLimit) || WEEKLY_BASE_DAILY_LIMIT);
-  if (limit <= 0) return false;
-  if (taps + 1e-6 >= limit) return true;
-  if (taps / limit >= 0.999) return true;
-  // Stuck under cap (e.g. efficiency cost 2 with 1 left): remaining < 1
-  if (limit - taps < 1) return true;
-  return false;
+  // Weekly drain-daily is hard-locked to 1000 raw taps (ignore callers passing 500/energy)
+  const limit = WEEKLY_BASE_DAILY_LIMIT;
+  void maxLimit;
+  return taps >= limit;
 }
 
 /**
  * After taps / day progress — update sets for today.
  * @param {object} state
- * @param {{ day: string, dayTaps: number, maxLimit: number }} p
+ * @param {{ day: string, dayTaps: number, maxLimit?: number }} p
  */
 export function applyWeeklyDailyProgress(state, weekId, p) {
   const s = ensureWeeklyState(state, weekId);
   const day = p.day || utcDayStr();
   const dayTaps = Math.max(0, Number(p.dayTaps) || 0);
-  const maxLimit = Math.max(0, Number(p.maxLimit) || 0);
 
   const daysActive = new Set(s.daysActive);
   const daysTap500 = new Set(s.daysTap500);
@@ -129,9 +125,13 @@ export function applyWeeklyDailyProgress(state, weekId, p) {
 
   if (dayTaps > 0) daysActive.add(day);
   if (dayTaps >= 500) daysTap500.add(day);
-  // Full daily for weekly board = BASE 1000 only (not boosted dynamic max)
-  if (isDailyLimitDrained(dayTaps, WEEKLY_BASE_DAILY_LIMIT)) {
+  else daysTap500.delete(day);
+
+  // Drain-daily = 1000 raw taps only (not energy 500). Clear false positives.
+  if (dayTaps >= WEEKLY_BASE_DAILY_LIMIT) {
     daysFull.add(day);
+  } else {
+    daysFull.delete(day);
   }
 
   return {
@@ -179,24 +179,24 @@ export const WEEKLY_QUEST_LIST = [
   {
     id: 'wq_full_1',
     title: 'Drain daily limit once',
-    description: 'Use the base 1,000 daily limit on 1 UTC day (boosts do not raise this target)',
-    icon: '🔋',
+    description: 'Reach 1,000 raw taps in one UTC day (not the 500 energy bar)',
+    icon: '📊',
     kind: 'daysFull',
     need: 1,
   },
   {
     id: 'wq_full_3',
     title: 'Drain daily limit 3 days',
-    description: 'Hit base 1,000 daily on 3 different UTC days (boosts ignored)',
-    icon: '🔋',
+    description: '1,000 raw taps on 3 different UTC days (not the 500 energy bar)',
+    icon: '📊',
     kind: 'daysFull',
     need: 3,
   },
   {
     id: 'wq_full_5',
     title: 'Drain daily limit 5 days',
-    description: 'Hit base 1,000 daily on 5 different UTC days (boosts ignored)',
-    icon: '🔋',
+    description: '1,000 raw taps on 5 different UTC days (not the 500 energy bar)',
+    icon: '📊',
     kind: 'daysFull',
     need: 5,
   },
