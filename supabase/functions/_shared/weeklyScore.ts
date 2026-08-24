@@ -299,13 +299,14 @@ export async function reconcileAllWeeklyScores(
     if (needsHeal) {
       const inv = invObj(p.inventory);
       inv.weekly_lb = { weekId, score: trueScore };
+      // Do not bump last_updated — energy regen / last-seen clock (mass heal was
+      // stamping every board player when anyone opened Weekly ranks).
       const { error: upErr } = await sb
         .from("players")
         .update({
           weekly_shards: trueScore,
           weekly_week_id: weekId,
           inventory: inv,
-          last_updated: now.toISOString(),
         })
         .eq("telegram_id", p.telegram_id);
       if (!upErr) {
@@ -409,7 +410,6 @@ export async function healPlayerWeekly(
       weekly_shards: trueScore,
       weekly_week_id: weekId,
       inventory: inv,
-      last_updated: now.toISOString(),
     })
     .eq("telegram_id", playerId)
     .select("weekly_shards, weekly_week_id, inventory")
