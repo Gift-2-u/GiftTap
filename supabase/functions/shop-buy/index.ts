@@ -66,13 +66,12 @@ serve(async (req) => {
 
     const nextBalance = Math.round((balance - cost) * 1000) / 1000;
 
-    // Do NOT bump last_updated — it is the energy regen clock. Touching it
-    // without rewriting last_energy freezes battery at 0 on the next commit-taps.
     const { error: upErr } = await sb
       .from("players")
       .update({
         shard_balance: nextBalance,
         inventory: inv,
+        last_updated: new Date().toISOString(),
       })
       .eq("telegram_id", playerId);
     if (upErr) throw upErr;

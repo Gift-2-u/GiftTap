@@ -110,7 +110,8 @@ serve(async (req) => {
       weekly_shards: weeklyCredit.weeklyShards,
       weekly_week_id: weeklyCredit.weekId,
       last_tap_date: today,
-      inventory: inv
+      inventory: inv,
+      last_updated: new Date().toISOString(),
     };
 
     const { error: upErr } = await sb

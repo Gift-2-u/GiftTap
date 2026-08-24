@@ -61,7 +61,10 @@ serve(async (req) => {
     // Claim flag atomically
     const { data: claimed, error: claimErr } = await sb
       .from("players")
-      .update({ [meta.flag]: true })
+      .update({
+        [meta.flag]: true,
+        last_updated: new Date().toISOString(),
+      })
       .eq("telegram_id", inviteeId)
       .or(`${meta.flag}.is.null,${meta.flag}.eq.false`)
       .select("referred_by")
@@ -82,7 +85,10 @@ serve(async (req) => {
     const next = Math.round(((Number(ref.shard_balance) || 0) + meta.amount) * 1000) / 1000;
     const { error: upErr } = await sb
       .from("players")
-      .update({ shard_balance: next })
+      .update({
+        shard_balance: next,
+        last_updated: new Date().toISOString(),
+      })
       .eq("telegram_id", referrerId);
     if (upErr) throw upErr;
 

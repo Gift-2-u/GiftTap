@@ -87,7 +87,8 @@ serve(async (req) => {
     let shard_balance = Number(row.shard_balance) || 0;
     const updates: Record<string, unknown> = {
       completed_tasks: newDone,
-      inventory: inv
+      inventory: inv,
+      last_updated: new Date().toISOString(),
     };
 
     if (task.type === "shards") {

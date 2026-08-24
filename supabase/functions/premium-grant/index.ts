@@ -130,7 +130,8 @@ serve(async (req) => {
         .update({
           inventory: inv,
           gft_token_balance: nextBal,
-          has_made_purchase: true
+          has_made_purchase: true,
+          last_updated: new Date().toISOString(),
         })
         .eq("telegram_id", playerId);
       if (upErr) throw upErr;
@@ -226,7 +227,8 @@ serve(async (req) => {
       .from("players")
       .update({
         inventory: inv,
-        has_made_purchase: true
+        has_made_purchase: true,
+        last_updated: new Date().toISOString(),
       })
       .eq("telegram_id", playerId);
     if (upErr) throw upErr;

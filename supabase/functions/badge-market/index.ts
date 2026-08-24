@@ -215,7 +215,10 @@ serve(async (req) => {
 
       const { error: upErr } = await sb
         .from("players")
-        .update({ inventory: inv })
+        .update({
+          inventory: inv,
+          last_updated: new Date().toISOString(),
+        })
         .eq("telegram_id", playerId);
       if (upErr) {
         // rollback listing
@@ -279,7 +282,10 @@ serve(async (req) => {
 
       const { error: upErr } = await sb
         .from("players")
-        .update({ inventory: inv })
+        .update({
+          inventory: inv,
+          last_updated: new Date().toISOString(),
+        })
         .eq("telegram_id", playerId);
       if (upErr) throw upErr;
 
@@ -394,7 +400,8 @@ serve(async (req) => {
           .from("players")
           .update({
             gft_token_balance: buyerNext,
-            inventory: buyerInv
+            inventory: buyerInv,
+            last_updated: new Date().toISOString(),
           })
           .eq("telegram_id", playerId);
         if (ub) throw ub;
@@ -402,7 +409,8 @@ serve(async (req) => {
         const { error: us } = await sb
           .from("players")
           .update({
-            gft_token_balance: sellerNext
+            gft_token_balance: sellerNext,
+            last_updated: new Date().toISOString(),
           })
           .eq("telegram_id", listing.seller_id);
         if (us) throw us;
@@ -506,7 +514,8 @@ serve(async (req) => {
         const { error: ub } = await sb
           .from("players")
           .update({
-            inventory: buyerInv
+            inventory: buyerInv,
+            last_updated: new Date().toISOString(),
           })
           .eq("telegram_id", playerId);
         if (ub) throw ub;

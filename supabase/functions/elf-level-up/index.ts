@@ -161,7 +161,8 @@ serve(async (req) => {
     const { data: updated, error: upErr } = await sb
       .from("players")
       .update({
-        inventory: inv
+        inventory: inv,
+        last_updated: new Date().toISOString(),
       })
       .eq("telegram_id", playerId)
       .select("inventory")

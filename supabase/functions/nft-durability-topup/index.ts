@@ -98,12 +98,12 @@ serve(async (req) => {
       };
     }
 
-    // inventory + G2U only — never last_updated
     const { data: updated, error: upErr } = await sb
       .from("players")
       .update({
         inventory: inv,
         gft_token_balance: nextBal,
+        last_updated: new Date().toISOString(),
       })
       .eq("telegram_id", playerId)
       .select("inventory, gft_token_balance")

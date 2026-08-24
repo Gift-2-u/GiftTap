@@ -105,11 +105,9 @@ serve(async (req) => {
     inv.daily_usage = dailyUsage;
 
     const now = Date.now();
-    // Do NOT stamp last_updated unless last_energy also changes.
-    // last_updated is the battery regen clock — bumping it alone freezes
-    // energy at 0 while the client UI still regenerates (no_energy wipe).
     const updates: Record<string, unknown> = {
       inventory: inv,
+      last_updated: new Date(now).toISOString(),
     };
 
     let shard_balance = Number(row.shard_balance) || 0;
@@ -117,7 +115,7 @@ serve(async (req) => {
     if (!Number.isFinite(last_energy)) last_energy = ENERGY_CAP;
 
     if (itemId === "frenzy") {
-      // Shards ×2 for 60s only — do NOT touch last_energy / last_updated
+      // Shards ×2 for 60s only — do NOT touch last_energy / energy_at
       updates.frenzy_expires = new Date(now + 60 * 1000).toISOString();
     } else if (itemId === "battery") {
       // Expanded daily tap cap only — do NOT touch the 500 energy pool
@@ -137,7 +135,6 @@ serve(async (req) => {
       last_energy = ENERGY_CAP;
       updates.last_energy = ENERGY_CAP;
       updates.energy_at = new Date(now).toISOString();
-      // do not touch last_updated (login/last-seen only)
     } else if (itemId === "bot") {
       updates.bot_expires = endOfUtcDay(2);
     } else if (itemId === "grinder") {
@@ -184,7 +181,10 @@ serve(async (req) => {
       }
       await sb
         .from("players")
-        .update({ inventory: outInv })
+        .update({
+          inventory: outInv,
+          last_updated: new Date().toISOString(),
+        })
         .eq("telegram_id", playerId);
     } else if (still <= 0) {
       outInv[itemId] = 0;

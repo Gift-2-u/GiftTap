@@ -277,17 +277,16 @@ serve(async (req) => {
       const storedFinite = Number.isFinite(storedEnergy) ? storedEnergy : 0;
       const healLtd = dailyTaps > 0 && prevLtd !== today;
       const nowIso = now.toISOString();
-      // Regen on energy_at only. last_updated = login only (never on taps).
+      // Regen uses energy_at; last_updated = any game activity (this flush attempt).
       let persistedAnchor = false;
+      const patch: Record<string, unknown> = { last_updated: nowIso };
       if (healLtd || energy > storedFinite + 0.001) {
-        const patch: Record<string, unknown> = {
-          last_energy: energy,
-          energy_at: nowIso,
-        };
+        patch.last_energy = energy;
+        patch.energy_at = nowIso;
         if (healLtd) patch.last_tap_date = today;
-        await sb.from("players").update(patch).eq("telegram_id", playerId);
         persistedAnchor = true;
       }
+      await sb.from("players").update(patch).eq("telegram_id", playerId);
       const energyAtOut = persistedAnchor
         ? nowIso
         : (energyAnchorIso || nowIso);
@@ -306,7 +305,7 @@ serve(async (req) => {
           daily_taps: dailyTaps,
           last_energy: energy,
           energy_at: energyAtOut,
-          last_updated: row.last_updated || nowIso,
+          last_updated: nowIso,
           // If they already have today's progress, always surface today so client won't day-roll wipe
           last_tap_date: dailyTaps > 0 ? today : (prevLtd || null),
           current_streak: streak,
@@ -399,7 +398,7 @@ serve(async (req) => {
       max_daily_limit: maxLimit,
       last_energy: finalEnergy,
       energy_at: nowIso,
-      // last_tap_date = day they tapped (daily). last_updated is LOGIN only — not here.
+      last_updated: nowIso,
       last_tap_date: today,
       current_streak: streak,
       inventory: inv,
