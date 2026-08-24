@@ -79,7 +79,7 @@ export function locksmithLevelFromInv(inv) {
   return level;
 }
 
-/** True if equipped Locksmith level can free-climb this wall (+ shoe if mapped) */
+/** True if owned Locksmith level can free-climb this wall (+ shoe if mapped) */
 export function locksmithCoversWall(inv, wallKey) {
   const need = LOCKSMITH_LEVEL_FOR_WALL[Number(wallKey)];
   if (!need) return false;

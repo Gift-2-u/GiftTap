@@ -57,11 +57,22 @@ serve(async (req) => {
 
     const inv = invObj(row.inventory);
     const active = activeRowForKind(inv, kind);
-    if (!active) {
-      throw new Error(`No ${kind} equipped — Equip in Wallet / Backpack first`);
+    const assetId = String(
+      body.asset_id || body.assetId || active?.asset_id || active?.assetId || "",
+    ).trim();
+
+    const map =
+      inv.nft_durability &&
+      typeof inv.nft_durability === "object" &&
+      !Array.isArray(inv.nft_durability)
+        ? { ...(inv.nft_durability as Record<string, number>) }
+        : {};
+
+    let before = active ? getNftDurability(active) : 100;
+    if (assetId && map[assetId] !== undefined && map[assetId] !== null) {
+      before = Math.max(0, Math.min(100, Number(map[assetId]) || 0));
     }
 
-    const before = getNftDurability(active);
     const { add, costG2u, after } = computeDurabilityTopUp(before, percent);
     if (add <= 0) {
       throw new Error("Durability already at 100%");
@@ -75,19 +86,24 @@ serve(async (req) => {
     }
     const nextBal = Math.round((bal - costG2u) * 1e6) / 1e6;
 
-    const key = NFT_ACTIVE_KEY[kind];
-    inv[key] = {
-      ...active,
-      durability: after,
-      durability_updated_at: new Date().toISOString(),
-    };
+    if (assetId) map[assetId] = after;
+    inv.nft_durability = map;
 
+    if (active) {
+      const key = NFT_ACTIVE_KEY[kind];
+      inv[key] = {
+        ...active,
+        durability: after,
+        durability_updated_at: new Date().toISOString(),
+      };
+    }
+
+    // inventory + G2U only — never last_updated
     const { data: updated, error: upErr } = await sb
       .from("players")
       .update({
         inventory: inv,
         gft_token_balance: nextBal,
-        last_updated: new Date().toISOString(),
       })
       .eq("telegram_id", playerId)
       .select("inventory, gft_token_balance")
@@ -102,6 +118,7 @@ serve(async (req) => {
       ref: kind,
       meta: {
         kind,
+        asset_id: assetId || null,
         percent_added: add,
         durability_before: before,
         durability_after: after,

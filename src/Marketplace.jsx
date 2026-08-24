@@ -539,7 +539,7 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, bumpEner
       collection: 'Gift2u Elves',
       boost: 'Luck jackpot multi on tap G2Ushards',
       perks: [
-        '1 Fate per wallet (equip one)',
+        'Own in wallet = attributes on (highest Fate if several)',
         'Chance of jackpot multi on tap G2Ushards',
         'Rarity border · Star socket in Backpack (outside art)',
         live
@@ -590,7 +590,7 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, bumpEner
       collection: 'Gift2u Elves',
       boost: `Tap multi ${multiL1}× → ${multiL5}×`,
       perks: [
-        '1 Echo per wallet (equip one)',
+        'Own in wallet = attributes on (highest Echo if several)',
         `Always-on tap multiplier ${multiL1}×–${multiL5}×`,
         'Rarity border · Star socket in Backpack (outside art)',
         live
@@ -640,7 +640,7 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, bumpEner
       collection: 'Gift2u Elves',
       boost: `Daily cap ${Number(limL1).toLocaleString()} → ${Number(limL5).toLocaleString()}`,
       perks: [
-        '1 Rush per wallet (equip one)',
+        'Own in wallet = attributes on (highest Rush if several)',
         `Max daily taps ${Number(limL1).toLocaleString()}–${Number(limL5).toLocaleString()}`,
         'Expanded Battery & task boosts add on top',
         'Rarity border · Star socket in Backpack (outside art)',
@@ -691,7 +691,7 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, bumpEner
       collection: 'Gift2u Elves',
       boost: `${h1}h → ${h5}h daily claim (base cap)`,
       perks: [
-        '1 Shadow per wallet (equip one)',
+        'Own in wallet = attributes on (highest Shadow if several)',
         `${h1}–${h5} hours of base daily cap (Rush or 1,000)`,
         'Claim once per UTC day · boosts not included',
         'Rarity border · Star socket in Backpack (outside art)',
@@ -3626,7 +3626,7 @@ Daily claim active · Pack → NFT to see it.`,
                       />
                     </div>
                     <div style={{ color: '#666', fontSize: 10, lineHeight: 1.35 }}>
-                      Starts at 100% when equipped · drains 1% / 1,000 taps · off at 0% ·
+                      Starts at 100% when owned · drains 1% / 1,000 taps · off at 0% ·
                       reload with $G2U in Wallet / Backpack (1,000 G2U = 1%)
                     </div>
                   </div>

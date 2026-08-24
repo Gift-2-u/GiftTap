@@ -121,7 +121,7 @@ export const HELP_TIPS = {
   nft_durability: {
     title: 'NFT durability',
     body:
-      'Echo, Fate, Rush, and Shadow start at 100% durability when equipped.\n\n' +
+      'Echo, Fate, Rush, and Shadow start at 100% durability when owned in wallet/backpack. Attributes apply automatically (highest of each kind) — no equip step.\n\n' +
       'Drains 1% per 1,000 taps. At 0% the perk is fully off.\n\n' +
       'Reload with $G2U in Wallet / Backpack → NFT (1,000 G2U per 1%).\n\n' +
       'After launch, premium boosts are also bought with $G2U.',

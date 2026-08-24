@@ -4552,8 +4552,7 @@ const GiftTapGame = () => {
 
     if (method === 'locksmith') {
       let inv = inventoryRef.current || stats.inventory || {};
-      // Owning on-chain Locksmith used to leave free-climb greyed out because
-      // Pack never wrote inventory.locksmith_active. Auto-equip if they hold it.
+      // Own Locksmith in wallet = free climb. Sync inventory if on-chain but not active yet.
       if (!locksmithCoversWall(inv, wallKey) && hasLocksmithNft) {
         try {
           const need = LOCKSMITH_LEVEL_FOR_WALL[wallKey] || 1;
@@ -4569,7 +4568,7 @@ const GiftTapGame = () => {
             }));
           }
         } catch (e) {
-          notify(e?.message || 'Could not equip GiftLocksmith', false);
+          notify(e?.message || 'Could not sync GiftLocksmith', false);
           return;
         }
       }
@@ -4578,7 +4577,7 @@ const GiftTapGame = () => {
         const have = locksmithLevelFromInv(inv);
         notify(
           have < 1
-            ? 'Mint or equip GiftLocksmith in Pack → NFT, then climb free.'
+            ? 'Mint GiftLocksmith (Shop → NFTs) — own it in wallet to climb free.'
             : `Need GiftLocksmith L${need}+ for this wall (you have L${have}).`,
         );
         return;
@@ -5934,7 +5933,7 @@ const GiftTapGame = () => {
             const lsOk = locksmithCoversWall(invNow, maxUnlockedLevel);
             const lsHave = locksmithLevelFromInv(invNow);
             const lsNeed = LOCKSMITH_LEVEL_FOR_WALL[maxUnlockedLevel] || 1;
-            // Own NFT but not equipped yet → still allow free-climb (auto-equip on press)
+            // Own Locksmith in wallet = free climb (sync on press if needed)
             const lsCanFree = lsOk || !!hasLocksmithNft;
             const shoeHave = getCommonShoeCount(invNow);
             return (
@@ -6011,7 +6010,7 @@ const GiftTapGame = () => {
                   {lsOk
                     ? `Locksmith free climb → L${wall.targetLevel}`
                     : hasLocksmithNft
-                      ? `Equip Locksmith & free climb → L${wall.targetLevel}`
+                      ? `Free climb with Locksmith → L${wall.targetLevel}`
                       : `GiftLocksmith L${lsNeed}+ for free climb + shoe`}
                 </button>
                 

@@ -22,7 +22,7 @@ export function rushDailyLimit(rarityKey, level = 1) {
 }
 
 export const RUSH_DESCRIPTION =
-  "Rush is the Energy elf of the Gift2u Elves. Equip one Rush per wallet. Rush raises your max daily taps by rarity and level (up to 3,000 on Legendary L5).";
+  "Rush is the Energy elf of the Gift2u Elves. Own it in wallet/backpack and its attributes apply (highest Rush if you hold several). Rush raises your max daily taps by rarity and level (up to 3,000 on Legendary L5).";
 
 export const RUSH_WAVE1 = {
   common: {

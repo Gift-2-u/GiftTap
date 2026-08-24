@@ -1,6 +1,6 @@
 /**
  * Client helpers for Echo / Fate / Rush / Shadow durability.
- * Mirror of supabase/functions/_shared/nftDurability.ts (keep in sync).
+ * Own NFT = attributes apply (highest level of each kind). No equip step.
  */
 
 export const NFT_DURABILITY_MAX = 100;
@@ -32,6 +32,12 @@ export function getActiveRow(inventory, kind) {
   return raw;
 }
 
+export function getNftDurabilityMap(inventory = {}) {
+  const m = inventory?.nft_durability;
+  if (m && typeof m === 'object' && !Array.isArray(m)) return { ...m };
+  return {};
+}
+
 export function getNftDurability(row) {
   if (!row || typeof row !== 'object') return 0;
   if (row.durability === undefined || row.durability === null) return 100;
@@ -40,17 +46,28 @@ export function getNftDurability(row) {
   return Math.max(0, Math.min(100, n));
 }
 
-/** Durability for a wallet NFT if it is the currently equipped active of that kind. */
+/** Durability for an owned mining NFT (by asset id). Own = active — no equip. */
 export function durabilityForWalletNft(inventory, nft) {
   const kind = kindFromNft(nft);
   if (!kind) return null;
-  const row = getActiveRow(inventory, kind);
-  if (!row) return null;
-  const aid = String(row.asset_id || row.assetId || '');
   const nid = String(nft?.id || nft?.asset_id || '');
-  // If asset_id missing on active, still show bar for that kind's equipped NFT
-  if (aid && nid && aid !== nid) return null;
-  return getNftDurability(row);
+  if (!nid) return null;
+
+  const map = getNftDurabilityMap(inventory);
+  if (map[nid] !== undefined && map[nid] !== null) {
+    const n = Number(map[nid]);
+    if (Number.isFinite(n)) return Math.max(0, Math.min(100, n));
+  }
+
+  // Fall back to active row if this asset is the synced highest of that kind
+  const row = getActiveRow(inventory, kind);
+  if (row) {
+    const aid = String(row.asset_id || row.assetId || '');
+    if (!aid || aid === nid) return getNftDurability(row);
+  }
+
+  // Owned but never drained → 100%
+  return 100;
 }
 
 export function isNftPerkLive(inventory, kind) {

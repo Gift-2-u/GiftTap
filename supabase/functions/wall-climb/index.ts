@@ -87,7 +87,7 @@ serve(async (req) => {
       if (lsLevel < needLs) {
         throw new Error(
           lsLevel < 1
-            ? "Equip GiftLocksmith (Pack → NFT) to climb free and claim the shoe"
+            ? "Own GiftLocksmith in wallet/backpack to climb free and claim the shoe"
             : `GiftLocksmith L${needLs}+ required for this wall (you have L${lsLevel})`,
         );
       }

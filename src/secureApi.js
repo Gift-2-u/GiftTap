@@ -220,7 +220,7 @@ export async function secureWallClimb({ method, txSignature }) {
   });
 }
 
-/** Equip / clear GiftLocksmith focus (wall fee waiver level 1–5). */
+/** Sync / clear GiftLocksmith focus (own = attributes; wall fee waiver L1–5). */
 export async function secureLocksmithActivate({
   level = 1,
   assetId = null,
@@ -287,10 +287,17 @@ export async function securePremiumGrant(itemId, txSignature, opts = {}) {
 }
 
 /** Reload Echo/Fate/Rush/Shadow durability with $G2U (post-launch). */
-export async function secureNftDurabilityTopUp({ kind, percent = 1 } = {}) {
+export async function secureNftDurabilityTopUp({
+  kind,
+  percent = 1,
+  asset_id,
+  assetId,
+} = {}) {
+  const aid = asset_id || assetId;
   return callSecureFunction('nft-durability-topup', {
     kind,
     percent,
+    ...(aid ? { asset_id: aid } : {}),
   });
 }
 
@@ -427,7 +434,7 @@ export async function secureShadowActivate({ rarity, level = 1, assetId = null, 
   });
 }
 
-/** Claim Shadow daily shards for today (UTC). Requires equipped Shadow. */
+/** Claim Shadow daily shards for today (UTC). Requires owned Shadow in wallet. */
 export async function secureShadowClaim() {
   return callSecureFunction('shadow-claim', {});
 }

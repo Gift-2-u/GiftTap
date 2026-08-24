@@ -20,6 +20,12 @@ import {
   secureFateEquip,
   secureLocksmithActivate,
   secureNftDurabilityTopUp,
+  secureEchoActivate,
+  secureFateActivate,
+  secureRushActivate,
+  secureShadowActivate,
+  hasSecureSession,
+  ensureSecureSession,
 } from './secureApi';
 import {
   durabilityForWalletNft,
@@ -119,6 +125,7 @@ export default function WalletNftSection({
         const data = await secureNftDurabilityTopUp({
           kind: selectedDurKind,
           percent: pct,
+          asset_id: selected?.id || undefined,
         });
         const nextInv = data.inventory || localInv;
         setLocalInv(nextInv);
@@ -211,15 +218,6 @@ export default function WalletNftSection({
   const isLocksmithSelected =
     String(selected?.kind || '').toLowerCase() === 'locksmith';
 
-  const locksmithEquipped = useMemo(() => {
-    if (!isLocksmithSelected || !selected?.id) return false;
-    const active = localInv?.locksmith_active;
-    if (!active || typeof active !== 'object') return false;
-    const aid = String(active.asset_id || active.assetId || '');
-    // Equipped if same asset, or any active locksmith when asset_id was never stored
-    return !aid || aid === String(selected.id);
-  }, [isLocksmithSelected, selected, localInv]);
-
   const climbedWalls = useMemo(
     () => wallsClimbedLabels(maxUnlockedLevel),
     [maxUnlockedLevel],
@@ -227,46 +225,6 @@ export default function WalletNftSection({
   const nextWall = useMemo(
     () => nextWallTargetLabel(maxUnlockedLevel),
     [maxUnlockedLevel],
-  );
-
-  const handleLocksmithEquip = useCallback(
-    async (wantEquip) => {
-      if (!selected?.id || !isLocksmithSelected || equipBusy) return;
-      setEquipBusy(true);
-      try {
-        const level = Math.max(
-          1,
-          getElfLevel(localInv, selected.id) ||
-            locksmithLevelFromInv(localInv) ||
-            1,
-        );
-        const data = await secureLocksmithActivate(
-          wantEquip
-            ? { level, assetId: selected.id, clear: false }
-            : { clear: true },
-        );
-        const nextInv = data.inventory || localInv;
-        setLocalInv(nextInv);
-        if (typeof onInventoryChange === 'function') onInventoryChange(nextInv);
-        toast(
-          wantEquip
-            ? `GiftLocksmith equipped (L${level}) — free wall climb ready`
-            : 'GiftLocksmith unequipped',
-          true,
-        );
-      } catch (e) {
-        toast(e?.message || 'Locksmith equip failed', false);
-      } finally {
-        setEquipBusy(false);
-      }
-    },
-    [
-      selected,
-      isLocksmithSelected,
-      equipBusy,
-      localInv,
-      onInventoryChange,
-    ],
   );
 
   const handleStarEquip = useCallback(
@@ -497,6 +455,92 @@ export default function WalletNftSection({
       cancelled = true;
     };
   }, [walletAddress, refreshKey, listKey]);
+
+  // Own in wallet/backpack = attributes on. Sync highest of each kind into *_active (no equip UI).
+  useEffect(() => {
+    if (!nfts.length || !hasSecureSession()) return undefined;
+    let cancelled = false;
+    (async () => {
+      const kinds = ['echo', 'fate', 'rush', 'shadow', 'locksmith'];
+      const activators = {
+        echo: secureEchoActivate,
+        fate: secureFateActivate,
+        rush: secureRushActivate,
+        shadow: secureShadowActivate,
+        locksmith: secureLocksmithActivate,
+      };
+      const activeKey = {
+        echo: 'echo_active',
+        fate: 'fate_power',
+        rush: 'rush_active',
+        shadow: 'shadow_active',
+        locksmith: 'locksmith_active',
+      };
+      let inv = localInv;
+      for (const kind of kinds) {
+        if (cancelled) break;
+        const owned = nfts.filter(
+          (n) => String(n.kind || '').toLowerCase() === kind,
+        );
+        if (!owned.length) continue;
+        let best = owned[0];
+        let bestLv = getElfLevel(inv, best.id);
+        for (const n of owned) {
+          const lv = getElfLevel(inv, n.id);
+          if (lv > bestLv) {
+            best = n;
+            bestLv = lv;
+          }
+        }
+        // Locksmith level can also live on locksmith_active.level
+        if (kind === 'locksmith') {
+          bestLv = Math.max(
+            bestLv || 1,
+            locksmithLevelFromInv(inv) || 1,
+            getElfLevel(inv, best.id) || 1,
+          );
+        }
+        const cur = inv?.[activeKey[kind]];
+        const curId =
+          cur && typeof cur === 'object'
+            ? String(cur.asset_id || cur.assetId || '')
+            : '';
+        const curLv =
+          cur && typeof cur === 'object'
+            ? Math.max(1, Math.floor(Number(cur.level) || 1))
+            : 0;
+        if (curId && curId === String(best.id) && curLv >= (bestLv || 1)) {
+          continue;
+        }
+        try {
+          await ensureSecureSession();
+          const payload =
+            kind === 'locksmith'
+              ? { level: bestLv || 1, assetId: best.id, clear: false }
+              : {
+                  rarity: normElfRarity(best.rarity),
+                  level: bestLv || 1,
+                  assetId: best.id,
+                  clear: false,
+                };
+          const data = await activators[kind](payload);
+          if (data?.inventory) {
+            inv = data.inventory;
+            if (!cancelled) {
+              setLocalInv(inv);
+              if (typeof onInventoryChange === 'function') onInventoryChange(inv);
+            }
+          }
+        } catch (e) {
+          console.warn(`auto-sync ${kind}`, e?.message || e);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nfts, walletAddress]);
 
   const copyMint = async (id) => {
     try {
@@ -1087,21 +1131,6 @@ export default function WalletNftSection({
                 >
                   {selectedDurability >= 100 ? 'Durability full' : 'Reload durability'}
                 </button>
-              </div>
-            ) : selectedDurKind ? (
-              <div
-                style={{
-                  marginBottom: 12,
-                  padding: 10,
-                  borderRadius: 10,
-                  border: '1px dashed #333',
-                  color: '#888',
-                  fontSize: 11,
-                  lineHeight: 1.4,
-                }}
-              >
-                Equip this {selectedDurKind} to track durability (starts at 100%). Perk
-                turns fully off at 0% — reload with $G2U after launch.
               </div>
             ) : null}
 

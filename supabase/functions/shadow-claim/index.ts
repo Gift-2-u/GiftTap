@@ -45,7 +45,7 @@ serve(async (req) => {
     const inv = invObj(row.inventory);
     const active = inv.shadow_active;
     if (!active || typeof active !== "object") {
-      throw new Error("No Shadow equipped — mint or Equip Shadow first");
+      throw new Error("No Shadow owned — mint Shadow and keep it in wallet/backpack");
     }
     const a = active as Record<string, unknown>;
     const dur =

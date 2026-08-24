@@ -59,7 +59,7 @@ export const FATE_WAVE1 = {
 };
 
 export const FATE_DESCRIPTION =
-  'Fate is the Luck elf of the Gift2u Elves. Equip one Fate per wallet. On each tap, Fate has a chance to hit a jackpot that multiplies that tap’s G2Ushards.';
+  'Fate is the Luck elf of the Gift2u Elves. Own it in wallet/backpack and its attributes apply (highest Fate if you hold several). On each tap, Fate has a chance to hit a jackpot that multiplies that tap’s G2Ushards.';
 
 export function fateDescription(rarityKey) {
   const r = FATE_WAVE1[rarityKey];

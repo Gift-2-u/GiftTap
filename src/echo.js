@@ -21,7 +21,7 @@ export function echoMultiplier(rarityKey, level = 1) {
 }
 
 export const ECHO_DESCRIPTION =
-  "Echo is the Power elf of the Gift2u Elves. Equip one Echo per wallet. Echo multiplies every tap’s G2Ushards by its rarity and level (up to 3.00× on Legendary L5).";
+  "Echo is the Power elf of the Gift2u Elves. Own it in wallet/backpack and its attributes apply (highest Echo if you hold several). Echo multiplies every tap’s G2Ushards by its rarity and level (up to 3.00× on Legendary L5).";
 
 /** Wave 1 shop/mint config (draft prices = Fate parity until approved) */
 export const ECHO_WAVE1 = {

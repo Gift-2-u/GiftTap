@@ -37,7 +37,7 @@ export function roundDurability(n: number): number {
 
 /**
  * Read durability from an active row.
- * Missing field on an equipped NFT → treat as full (legacy actives).
+ * Missing field on an owned/active NFT → treat as full (legacy actives).
  */
 export function getNftDurability(
   row: Record<string, unknown> | null | undefined,
@@ -87,9 +87,17 @@ export function ensureNftDurabilityOnActivate(
   };
 }
 
+function durabilityMap(inv: Record<string, unknown>): Record<string, number> {
+  const m = inv.nft_durability;
+  if (m && typeof m === "object" && !Array.isArray(m)) {
+    return { ...(m as Record<string, number>) };
+  }
+  return {};
+}
+
 /**
- * Drain every active mining elf by raw taps.
- * Returns true if inventory changed.
+ * Drain every active mining elf by raw taps (highest owned of each kind,
+ * synced into *_active). Also writes inventory.nft_durability[assetId].
  */
 export function drainActiveNfts(
   inv: Record<string, unknown>,
@@ -103,18 +111,23 @@ export function drainActiveNfts(
 
   let changed = false;
   const now = new Date().toISOString();
+  const map = durabilityMap(inv);
   for (const kind of NFT_DURABILITY_KINDS) {
     const key = NFT_ACTIVE_KEY[kind];
     const raw = inv[key];
     if (!raw || typeof raw !== "object") continue;
     const row = { ...(raw as Record<string, unknown>) };
-    const before = getNftDurability(row);
+    const assetId = String(row.asset_id || row.assetId || "");
+    let before = getNftDurability(row);
+    if (assetId && map[assetId] !== undefined && map[assetId] !== null) {
+      before = roundDurability(Number(map[assetId]));
+    }
     if (before <= 0) {
-      // normalize legacy missing → written 0 after first empty drain pass
-      if (row.durability === undefined || row.durability === null) {
+      if (row.durability === undefined || row.durability === null || before === 0) {
         row.durability = 0;
         row.durability_updated_at = now;
         inv[key] = row;
+        if (assetId) map[assetId] = 0;
         changed = true;
       }
       continue;
@@ -124,9 +137,11 @@ export function drainActiveNfts(
       row.durability = after;
       row.durability_updated_at = now;
       inv[key] = row;
+      if (assetId) map[assetId] = after;
       changed = true;
     }
   }
+  if (changed) inv.nft_durability = map;
   return changed;
 }
 
