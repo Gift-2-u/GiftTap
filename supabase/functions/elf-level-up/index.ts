@@ -12,6 +12,7 @@ import {
   logEconomy,
   echoMultiplier,
 } from "../_shared/economy.ts";
+import { ensureNftDurabilityOnActivate } from "../_shared/nftDurability.ts";
 
 const ELF_LEVEL_UP_SOL: Record<string, number[]> = {
   // Totals: Common 0.20 · Rare 0.60 · Epic 1.25 · Legendary 4.50
@@ -54,35 +55,63 @@ function syncActiveLevel(
 ) {
   const now = new Date().toISOString();
   if (kind === "echo") {
-    inv.echo_active = {
-      rarity,
-      level,
-      asset_id: assetId,
-      multi: echoMultiplier(rarity, level),
-      activated_at: now,
-    };
+    const prev =
+      inv.echo_active && typeof inv.echo_active === "object"
+        ? (inv.echo_active as Record<string, unknown>)
+        : null;
+    inv.echo_active = ensureNftDurabilityOnActivate(
+      {
+        rarity,
+        level,
+        asset_id: assetId,
+        multi: echoMultiplier(rarity, level),
+        activated_at: now,
+      },
+      prev,
+    );
   } else if (kind === "fate") {
-    inv.fate_power = {
-      rarity,
-      level,
-      asset_id: assetId,
-      activated_at: now,
-    };
+    const prev =
+      inv.fate_power && typeof inv.fate_power === "object"
+        ? (inv.fate_power as Record<string, unknown>)
+        : null;
+    inv.fate_power = ensureNftDurabilityOnActivate(
+      {
+        rarity,
+        level,
+        asset_id: assetId,
+        activated_at: now,
+      },
+      prev,
+    );
     inv.fate_active = assetId;
   } else if (kind === "rush") {
-    inv.rush_active = {
-      rarity,
-      level,
-      asset_id: assetId,
-      activated_at: now,
-    };
+    const prev =
+      inv.rush_active && typeof inv.rush_active === "object"
+        ? (inv.rush_active as Record<string, unknown>)
+        : null;
+    inv.rush_active = ensureNftDurabilityOnActivate(
+      {
+        rarity,
+        level,
+        asset_id: assetId,
+        activated_at: now,
+      },
+      prev,
+    );
   } else if (kind === "shadow") {
-    inv.shadow_active = {
-      rarity,
-      level,
-      asset_id: assetId,
-      activated_at: now,
-    };
+    const prev =
+      inv.shadow_active && typeof inv.shadow_active === "object"
+        ? (inv.shadow_active as Record<string, unknown>)
+        : null;
+    inv.shadow_active = ensureNftDurabilityOnActivate(
+      {
+        rarity,
+        level,
+        asset_id: assetId,
+        activated_at: now,
+      },
+      prev,
+    );
   } else if (kind === "locksmith") {
     inv.locksmith_active = {
       level,

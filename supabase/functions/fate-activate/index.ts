@@ -19,6 +19,7 @@ import {
   logEconomy,
   FATE_JACKPOT,
 } from "../_shared/economy.ts";
+import { ensureNftDurabilityOnActivate } from "../_shared/nftDurability.ts";
 
 const RARITIES = new Set(Object.keys(FATE_JACKPOT));
 
@@ -55,12 +56,19 @@ serve(async (req) => {
       if (level < 1) level = 1;
       if (level > 5) level = 5;
       const assetId = String(body.asset_id || body.assetId || "").trim() || null;
-      inv.fate_power = {
-        rarity,
-        level,
-        asset_id: assetId,
-        activated_at: new Date().toISOString(),
-      };
+      const prev =
+        inv.fate_power && typeof inv.fate_power === "object"
+          ? (inv.fate_power as Record<string, unknown>)
+          : null;
+      inv.fate_power = ensureNftDurabilityOnActivate(
+        {
+          rarity,
+          level,
+          asset_id: assetId,
+          activated_at: new Date().toISOString(),
+        },
+        prev,
+      );
       // Keep string focus id in sync when provided (badge/jackpot focus)
       if (assetId) inv.fate_active = assetId;
     }

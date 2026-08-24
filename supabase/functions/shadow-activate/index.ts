@@ -13,6 +13,7 @@ import {
   SHADOW_HOURS,
   shadowHours,
 } from "../_shared/economy.ts";
+import { ensureNftDurabilityOnActivate } from "../_shared/nftDurability.ts";
 
 const RARITIES = new Set(Object.keys(SHADOW_HOURS));
 
@@ -44,13 +45,20 @@ serve(async (req) => {
       if (level > 5) level = 5;
       const assetId = String(body.asset_id || body.assetId || "").trim() || null;
       const hours = shadowHours(rarity, level);
-      inv.shadow_active = {
-        rarity,
-        level,
-        asset_id: assetId,
-        hours,
-        activated_at: new Date().toISOString(),
-      };
+      const prev =
+        inv.shadow_active && typeof inv.shadow_active === "object"
+          ? (inv.shadow_active as Record<string, unknown>)
+          : null;
+      inv.shadow_active = ensureNftDurabilityOnActivate(
+        {
+          rarity,
+          level,
+          asset_id: assetId,
+          hours,
+          activated_at: new Date().toISOString(),
+        },
+        prev,
+      );
     }
 
     const { data: updated, error: upErr } = await sb

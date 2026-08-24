@@ -913,6 +913,19 @@ export function GameWalletPanel({ onClose }) {
           <WalletNftSection
             walletAddress={address}
             refreshKey={sessionTick}
+            inventory={row?.inventory || {}}
+            maxUnlockedLevel={
+              Number(row?.max_unlocked_level) || 4
+            }
+            gftTokenBalance={g2u}
+            onGftBalanceChange={(next) => {
+              setRow((prev) =>
+                prev ? { ...prev, gft_token_balance: next } : prev,
+              );
+            }}
+            onInventoryChange={(inv) => {
+              setRow((prev) => (prev ? { ...prev, inventory: inv } : prev));
+            }}
             onOpenShopNfts={() => {
               if (typeof window !== 'undefined') window.location.href = '/play';
             }}

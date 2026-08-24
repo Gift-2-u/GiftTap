@@ -19,7 +19,14 @@ import {
   secureNftSetLevel,
   secureFateEquip,
   secureLocksmithActivate,
+  secureNftDurabilityTopUp,
 } from './secureApi';
+import {
+  durabilityForWalletNft,
+  kindFromNft,
+  NFT_DURABILITY_G2U_PER_PERCENT,
+} from './nftDurability';
+import DurabilityReloadModal from './DurabilityReloadModal';
 import {
   getEquippedShardBadgeOnFate,
   getFreeShardBadgeCount,
@@ -59,6 +66,9 @@ export default function WalletNftSection({
   onInventoryChange = null,
   gameplayMode = false,
   maxUnlockedLevel = 4,
+  /** Liquid $G2U (gft_token_balance) for durability reload */
+  gftTokenBalance = 0,
+  onGftBalanceChange = null,
 }) {
   const [nfts, setNfts] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -72,7 +82,10 @@ export default function WalletNftSection({
   const [listKey, setListKey] = useState(0);
   const [equipBusy, setEquipBusy] = useState(false);
   const [levelBusy, setLevelBusy] = useState(false);
+  const [durBusy, setDurBusy] = useState(false);
+  const [reloadOpen, setReloadOpen] = useState(false);
   const [localInv, setLocalInv] = useState(inventory || {});
+  const [localGft, setLocalGft] = useState(Number(gftTokenBalance) || 0);
 
   const toast = (msg, ok = true) => {
     if (typeof notify === 'function') notify(msg, ok);
@@ -85,6 +98,55 @@ export default function WalletNftSection({
       setLocalInv(inventory);
     }
   }, [inventory]);
+
+  useEffect(() => {
+    setLocalGft(Number(gftTokenBalance) || 0);
+  }, [gftTokenBalance]);
+
+  const selectedDurability = useMemo(() => {
+    if (!selected) return null;
+    return durabilityForWalletNft(localInv, selected);
+  }, [selected, localInv]);
+
+  const selectedDurKind = useMemo(() => kindFromNft(selected), [selected]);
+
+  const handleDurabilityReload = useCallback(
+    async (percent = 1) => {
+      if (!selectedDurKind || durBusy) return;
+      const pct = Math.max(1, Math.floor(Number(percent) || 1));
+      setDurBusy(true);
+      try {
+        const data = await secureNftDurabilityTopUp({
+          kind: selectedDurKind,
+          percent: pct,
+        });
+        const nextInv = data.inventory || localInv;
+        setLocalInv(nextInv);
+        if (typeof onInventoryChange === 'function') onInventoryChange(nextInv);
+        const nextGft = Number(data.gft_token_balance);
+        if (Number.isFinite(nextGft)) {
+          setLocalGft(nextGft);
+          if (typeof onGftBalanceChange === 'function') onGftBalanceChange(nextGft);
+        }
+        setReloadOpen(false);
+        toast(
+          `${selectedDurKind} +${data.percent_added}% durability (−${Number(data.cost_g2u).toLocaleString()} G2U) → ${Math.round(data.durability_after)}%`,
+          true,
+        );
+      } catch (e) {
+        toast(e?.message || 'Durability reload failed', false);
+      } finally {
+        setDurBusy(false);
+      }
+    },
+    [
+      selectedDurKind,
+      durBusy,
+      localInv,
+      onInventoryChange,
+      onGftBalanceChange,
+    ],
+  );
 
   const isStarSelected =
     String(selected?.kind || '').toLowerCase() === 'star';
@@ -451,6 +513,7 @@ export default function WalletNftSection({
     setSendOpen(false);
     setSendTo('');
     setSending(false);
+    setReloadOpen(false);
   };
 
   const handleSell = () => {
@@ -604,7 +667,17 @@ export default function WalletNftSection({
                       }}
                     />
                   ) : (
-                    nft.kind === 'fate' ? '🍀' : nft.kind === 'echo' ? '⚡' : nft.kind === 'rush' ? '🔋' : nft.kind === 'shadow' ? '🌑' : '🔑'
+                    nft.kind === 'fate'
+                      ? '🍀'
+                      : nft.kind === 'echo'
+                        ? '⚡'
+                        : nft.kind === 'rush'
+                          ? '🔋'
+                          : nft.kind === 'shadow'
+                            ? '🌑'
+                            : nft.kind === 'locksmith'
+                              ? '🔓'
+                              : '🎁'
                   )}
                 </div>
                 <div style={{ minWidth: 0, flex: 1 }}>
@@ -781,12 +854,24 @@ export default function WalletNftSection({
                   }}
                 />
               ) : (
-                <span style={{ fontSize: 64 }}>{selected.kind === 'fate' ? '🍀' : selected.kind === 'echo' ? '⚡' : selected.kind === 'rush' ? '🔋' : selected.kind === 'shadow' ? '🌑' : '🔑'}</span>
+                <span style={{ fontSize: 64 }}>
+                  {selected.kind === 'fate'
+                    ? '🍀'
+                    : selected.kind === 'echo'
+                      ? '⚡'
+                      : selected.kind === 'rush'
+                        ? '🔋'
+                        : selected.kind === 'shadow'
+                          ? '🌑'
+                          : selected.kind === 'locksmith'
+                            ? '🔓'
+                            : '🎁'}
+                </span>
               )}
             </div>
 
-            {/* Star socket outside art + Level (no duplicate pills) */}
-            {gameplayMode && (socketableKind || isLocksmithSelected || isStarSelected) ? (
+            {/* Star socket + Level — same card in Backpack AND Wallet */}
+            {(socketableKind || isLocksmithSelected || isStarSelected) ? (
               <div
                 style={{
                   marginTop: 12,
@@ -800,265 +885,227 @@ export default function WalletNftSection({
                   gap: 12,
                 }}
               >
-                {socketableKind ? (
-                  <button
-                    type="button"
-                    disabled={equipBusy}
-                    onClick={() => handleStarEquip(!starEquipped)}
-                    title={
-                      starEquipped
-                        ? 'Tap to unequip Star'
-                        : freeStars > 0
-                          ? 'Tap to equip Star'
-                          : 'Mint a Star Badge in Shop → NFTs'
-                    }
-                    style={{
-                      flex: 1,
-                      minWidth: 0,
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 12,
-                      background: 'transparent',
-                      border: 'none',
-                      padding: 0,
-                      textAlign: 'left',
-                      cursor: equipBusy ? 'wait' : 'pointer',
-                      color: 'inherit',
-                    }}
-                    aria-label={starEquipped ? 'Unequip Star' : 'Equip Star'}
-                  >
-                    <span
-                      style={{
-                        width: 56,
-                        height: 56,
-                        borderRadius: '50%',
-                        flexShrink: 0,
-                        display: 'grid',
-                        placeItems: 'center',
-                        border: starEquipped
-                          ? '2px solid #ffd700'
-                          : '2px solid #555',
-                        background: starEquipped
-                          ? 'radial-gradient(circle at 35% 30%, #fff6a8, #c9a227 45%, #5c4508)'
-                          : '#16161c',
-                        boxShadow: starEquipped
-                          ? '0 0 16px rgba(255,215,0,0.35)'
-                          : 'inset 0 0 0 6px #0a0a0e',
-                        fontSize: 22,
-                      }}
-                    >
-                      {equipBusy ? '…' : starEquipped ? '⭐' : ''}
-                    </span>
-                    <span style={{ flex: 1, minWidth: 0 }}>
-                      <span
-                        style={{
-                          display: 'block',
-                          color: '#ddd',
-                          fontSize: 12,
-                          fontWeight: 'bold',
-                        }}
-                      >
-                        Star socket
-                      </span>
-                      <span
-                        style={{
-                          display: 'block',
-                          color: starEquipped ? '#ffd700' : '#888',
-                          fontSize: 12,
-                          marginTop: 2,
-                          fontWeight: 'bold',
-                        }}
-                      >
-                        {starEquipped ? 'Equipped' : 'Empty'}
-                      </span>
-                    </span>
-                  </button>
-                ) : isStarSelected ? (
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ color: '#ddd', fontSize: 12, fontWeight: 'bold' }}>
-                      Star Badge
-                    </div>
-                    <div style={{ color: '#ffd700', fontSize: 12, marginTop: 2, fontWeight: 'bold' }}>
-                      Socket into Fate · Echo · Rush · Shadow
-                    </div>
-                  </div>
-                ) : isLocksmithSelected ? (
-                  <button
-                    type="button"
-                    disabled={equipBusy}
-                    onClick={() => handleLocksmithEquip(!locksmithEquipped)}
-                    title={
-                      locksmithEquipped
-                        ? 'Tap to unequip Locksmith'
-                        : 'Tap to equip — unlocks free wall climb'
-                    }
-                    style={{
-                      flex: 1,
-                      minWidth: 0,
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 12,
-                      background: 'transparent',
-                      border: 'none',
-                      padding: 0,
-                      textAlign: 'left',
-                      cursor: equipBusy ? 'wait' : 'pointer',
-                      color: 'inherit',
-                    }}
-                    aria-label={
-                      locksmithEquipped ? 'Unequip Locksmith' : 'Equip Locksmith'
-                    }
-                  >
-                    <span
-                      style={{
-                        width: 56,
-                        height: 56,
-                        borderRadius: 12,
-                        flexShrink: 0,
-                        display: 'grid',
-                        placeItems: 'center',
-                        border: locksmithEquipped
-                          ? '2px solid #14F195'
-                          : '2px solid #555',
-                        background: locksmithEquipped
-                          ? 'linear-gradient(145deg, #9945FF, #14F195)'
-                          : '#16161c',
-                        fontSize: 22,
-                      }}
-                    >
-                      {equipBusy ? '…' : '🔑'}
-                    </span>
-                    <span style={{ flex: 1, minWidth: 0 }}>
-                      <span
-                        style={{
-                          display: 'block',
-                          color: '#ddd',
-                          fontSize: 12,
-                          fontWeight: 'bold',
-                        }}
-                      >
-                        {locksmithEquipped ? 'Equipped' : 'Tap to equip'}
-                      </span>
-                      <span
-                        style={{
-                          display: 'block',
-                          color: climbedWalls.length ? '#14F195' : '#888',
-                          fontSize: 11,
-                          marginTop: 2,
-                          fontWeight: 'bold',
-                          lineHeight: 1.35,
-                        }}
-                      >
-                        Walls:{' '}
-                        {climbedWalls.length
-                          ? climbedWalls.join(' · ')
-                          : 'none yet'}
-                        {nextWall != null ? ` · next →${nextWall}` : ''}
-                      </span>
-                    </span>
-                  </button>
-                ) : (
-                  <div style={{ flex: 1 }} />
-                )}
-                <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                  <div style={{ color: '#888', fontSize: 10, textTransform: 'uppercase' }}>
-                    Level
-                  </div>
-                  <div style={{ color: '#c084fc', fontWeight: 'bold', fontSize: 18 }}>
-                    L{selectedLevel}
-                  </div>
-                </div>
-              </div>
-            ) : null}
-
-            {!gameplayMode && detailLoading ? (
-              <p style={{ color: '#888', fontSize: '11px', margin: '0 0 10px' }}>
-                Loading details…
-              </p>
-            ) : null}
-
-            {!gameplayMode && selected.description ? (
-              <p
-                style={{
-                  color: '#ccc',
-                  fontSize: '12px',
-                  lineHeight: 1.5,
-                  margin: '0 0 14px',
-                }}
-              >
-                {selected.description}
-              </p>
-            ) : null}
-
-            {!gameplayMode && !selected.description ? (
-              <p
-                style={{
-                  color: '#888',
-                  fontSize: '12px',
-                  lineHeight: 1.5,
-                  margin: '0 0 14px',
-                }}
-              >
-                Gift2u Elves utility NFT — see Shop → NFTs for perks.
-              </p>
-            ) : null}
-
-            {!gameplayMode && selected.attributes && selected.attributes.length > 0 ? (
-              <div style={{ marginBottom: '14px' }}>
-                <div
-                  style={{
-                    color: '#ffd700',
-                    fontSize: '11px',
-                    fontWeight: 'bold',
-                    marginBottom: '8px',
-                    textTransform: 'uppercase',
-                    letterSpacing: '0.04em',
-                  }}
-                >
-                  Attributes
-                </div>
-                <div
-                  style={{
-                    display: 'grid',
-                    gridTemplateColumns: '1fr 1fr',
-                    gap: '8px',
-                  }}
-                >
-                  {selected.attributes.map((attr, i) => (
+                {isStarSelected ? (
+                  <div style={{ flex: 1, textAlign: 'center' }}>
                     <div
-                      key={`${attr.trait_type}-${i}`}
                       style={{
-                        background: '#1c1e22',
-                        border: '1px solid #333',
-                        borderRadius: '8px',
-                        padding: '8px',
+                        color: '#888',
+                        fontSize: 10,
+                        textTransform: 'uppercase',
                       }}
                     >
+                      Level
+                    </div>
+                    <div
+                      style={{ color: '#c084fc', fontWeight: 'bold', fontSize: 22 }}
+                    >
+                      L{selectedLevel}
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    {socketableKind ? (
+                      <button
+                        type="button"
+                        disabled={equipBusy}
+                        onClick={() => handleStarEquip(!starEquipped)}
+                        title={
+                          starEquipped
+                            ? 'Tap to unequip Star'
+                            : freeStars > 0
+                              ? 'Tap to equip Star'
+                              : 'Mint a Star Badge in Shop → NFTs'
+                        }
+                        style={{
+                          width: 56,
+                          height: 56,
+                          borderRadius: '50%',
+                          flexShrink: 0,
+                          display: 'grid',
+                          placeItems: 'center',
+                          border: starEquipped
+                            ? '2px solid #ffd700'
+                            : '2px solid #555',
+                          background: starEquipped
+                            ? 'radial-gradient(circle at 35% 30%, #fff6a8, #c9a227 45%, #5c4508)'
+                            : '#16161c',
+                          boxShadow: starEquipped
+                            ? '0 0 16px rgba(255,215,0,0.35)'
+                            : 'inset 0 0 0 6px #0a0a0e',
+                          fontSize: 22,
+                          padding: 0,
+                          cursor: equipBusy ? 'wait' : 'pointer',
+                          color: 'inherit',
+                        }}
+                        aria-label={starEquipped ? 'Unequip Star' : 'Equip Star'}
+                      >
+                        {equipBusy ? '…' : starEquipped ? '⭐' : ''}
+                      </button>
+                    ) : isLocksmithSelected ? (
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div
+                          style={{
+                            color: '#888',
+                            fontSize: 10,
+                            textTransform: 'uppercase',
+                            marginBottom: 2,
+                          }}
+                        >
+                          Walls cleared
+                        </div>
+                        <div
+                          style={{
+                            color: climbedWalls.length ? '#14F195' : '#888',
+                            fontSize: 12,
+                            fontWeight: 'bold',
+                            lineHeight: 1.4,
+                          }}
+                        >
+                          {climbedWalls.length
+                            ? climbedWalls.join(' · ')
+                            : '—'}
+                          {nextWall != null ? (
+                            <span style={{ color: '#666', fontWeight: 'normal' }}>
+                              {' '}
+                              · next {nextWall}
+                            </span>
+                          ) : null}
+                        </div>
+                      </div>
+                    ) : (
+                      <div style={{ flex: 1 }} />
+                    )}
+                    {socketableKind ? <span style={{ flex: 1 }} /> : null}
+                    <div style={{ textAlign: 'right', flexShrink: 0 }}>
                       <div
                         style={{
                           color: '#888',
-                          fontSize: '10px',
-                          marginBottom: '2px',
+                          fontSize: 10,
                           textTransform: 'uppercase',
                         }}
                       >
-                        {attr.trait_type || 'Trait'}
+                        Level
                       </div>
                       <div
                         style={{
-                          color: '#fff',
-                          fontSize: '12px',
+                          color: '#c084fc',
                           fontWeight: 'bold',
-                          wordBreak: 'break-word',
+                          fontSize: 18,
                         }}
                       >
-                        {attr.value}
+                        L{selectedLevel}
                       </div>
                     </div>
-                  ))}
-                </div>
+                  </>
+                )}
               </div>
             ) : null}
+
+            {/* Durability: same card in Wallet + Backpack (not on tap HUD) */}
+            {selectedDurKind && selectedDurability != null ? (
+              <div
+                style={{
+                  marginBottom: 12,
+                  padding: 12,
+                  borderRadius: 12,
+                  border: '1px solid #333',
+                  background: '#0e0f14',
+                }}
+              >
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    marginBottom: 6,
+                  }}
+                >
+                  <span style={{ color: '#ddd', fontSize: 12, fontWeight: 'bold' }}>
+                    Durability
+                  </span>
+                  <span
+                    style={{
+                      color:
+                        selectedDurability > 40
+                          ? '#4ade80'
+                          : selectedDurability > 15
+                            ? '#fbbf24'
+                            : '#f87171',
+                      fontSize: 13,
+                      fontWeight: 'bold',
+                    }}
+                  >
+                    {Math.round(selectedDurability)}%
+                    {selectedDurability <= 0 ? ' · OFF' : ''}
+                  </span>
+                </div>
+                <div
+                  style={{
+                    height: 8,
+                    borderRadius: 999,
+                    background: '#1a1d24',
+                    overflow: 'hidden',
+                    marginBottom: 8,
+                  }}
+                >
+                  <div
+                    style={{
+                      width: `${Math.min(100, Math.max(0, selectedDurability))}%`,
+                      height: '100%',
+                      background:
+                        selectedDurability > 40
+                          ? 'linear-gradient(90deg, #16a34a, #4ade80)'
+                          : selectedDurability > 15
+                            ? 'linear-gradient(90deg, #d97706, #fbbf24)'
+                            : 'linear-gradient(90deg, #b91c1c, #f87171)',
+                    }}
+                  />
+                </div>
+                <div style={{ color: '#666', fontSize: 10, marginBottom: 8, lineHeight: 1.35 }}>
+                  Drains 1% / 1,000 taps · perk fully off at 0% ·{' '}
+                  {NFT_DURABILITY_G2U_PER_PERCENT.toLocaleString()} $G2U = 1%
+                </div>
+                <button
+                  type="button"
+                  disabled={durBusy || selectedDurability >= 100}
+                  onClick={() => setReloadOpen(true)}
+                  style={{
+                    width: '100%',
+                    background:
+                      selectedDurability >= 100
+                        ? '#222'
+                        : 'linear-gradient(90deg, #16a34a, #4ade80)',
+                    border: 'none',
+                    color: selectedDurability >= 100 ? '#666' : '#000',
+                    borderRadius: 8,
+                    padding: '10px 8px',
+                    fontSize: 12,
+                    fontWeight: 'bold',
+                    cursor:
+                      durBusy || selectedDurability >= 100 ? 'not-allowed' : 'pointer',
+                  }}
+                >
+                  {selectedDurability >= 100 ? 'Durability full' : 'Reload durability'}
+                </button>
+              </div>
+            ) : selectedDurKind ? (
+              <div
+                style={{
+                  marginBottom: 12,
+                  padding: 10,
+                  borderRadius: 10,
+                  border: '1px dashed #333',
+                  color: '#888',
+                  fontSize: 11,
+                  lineHeight: 1.4,
+                }}
+              >
+                Equip this {selectedDurKind} to track durability (starts at 100%). Perk
+                turns fully off at 0% — reload with $G2U after launch.
+              </div>
+            ) : null}
+
+            {/* Wallet matches Backpack: no on-chain attributes list (guide has full traits) */}
 
             {selected.kind === 'shadow' ? (
               <div
@@ -1318,6 +1365,16 @@ export default function WalletNftSection({
           </div>
         </div>
       )}
+
+      <DurabilityReloadModal
+        open={reloadOpen && !!selectedDurKind}
+        onClose={() => setReloadOpen(false)}
+        onAccept={handleDurabilityReload}
+        kind={selectedDurKind || 'echo'}
+        currentPct={selectedDurability ?? 0}
+        gftBalance={localGft}
+        busy={durBusy}
+      />
     </>
   );
 }

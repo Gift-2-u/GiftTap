@@ -181,6 +181,16 @@ const WhitepaperModal = ({ isWhitepaperOpen, setIsWhitepaperOpen, onClose }) => 
         "Independent roll per open. Not financial advice; prizes can change for balance/fair play.",
     },
     {
+      id: 92,
+      title: "9c. NFT durability & premium $G2U",
+      content:
+        "Echo, Fate, Rush, and Shadow start at 100% durability when equipped.\n\n" +
+        "Drain: 1% per 1,000 raw taps. At 0% the perk is fully off (no weak floor).\n\n" +
+        "Reload: 1,000 $G2U per 1% in Wallet / Backpack → NFT (same card everywhere).\n\n" +
+        "After launch, all premium boosts (bot, grinder, whale, x2, x3, crate) are bought with $G2U.\n" +
+        "Shard shop items (frenzy, battery, refill) stay on G2Ushards.",
+    },
+    {
       id: 10,
       title: "10. Code of Conduct",
       content: "No auto-clickers, scripts, multi-account mining, or abuse of swap/referral systems.\n\nFlagged accounts may be locked and lose G2Ushard-to-G2U swap eligibility and other rewards. Play fair."

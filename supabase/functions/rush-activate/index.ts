@@ -15,6 +15,7 @@ import {
   RUSH_DAILY_LIMIT,
   rushDailyLimit,
 } from "../_shared/economy.ts";
+import { ensureNftDurabilityOnActivate } from "../_shared/nftDurability.ts";
 
 const RARITIES = new Set(Object.keys(RUSH_DAILY_LIMIT));
 
@@ -52,13 +53,20 @@ serve(async (req) => {
       if (level > 5) level = 5;
       const assetId = String(body.asset_id || body.assetId || "").trim() || null;
       const dailyCap = rushDailyLimit(rarity, level);
-      inv.rush_active = {
-        rarity,
-        level,
-        asset_id: assetId,
-        daily_cap: dailyCap,
-        activated_at: new Date().toISOString(),
-      };
+      const prev =
+        inv.rush_active && typeof inv.rush_active === "object"
+          ? (inv.rush_active as Record<string, unknown>)
+          : null;
+      inv.rush_active = ensureNftDurabilityOnActivate(
+        {
+          rarity,
+          level,
+          asset_id: assetId,
+          daily_cap: dailyCap,
+          activated_at: new Date().toISOString(),
+        },
+        prev,
+      );
     }
 
     const { data: updated, error: upErr } = await sb

@@ -4158,8 +4158,14 @@ const GiftTapGame = () => {
       {
         const ea = (inventoryRef.current || stats?.inventory || {}).echo_active;
         if (ea && typeof ea === 'object') {
-          const em = echoMultiplier(ea.rarity || ea.rarityKey, ea.level || 1);
-          if (em > 1) echoMulti = em;
+          const dur =
+            ea.durability === undefined || ea.durability === null
+              ? 100
+              : Number(ea.durability) || 0;
+          if (dur > 0) {
+            const em = echoMultiplier(ea.rarity || ea.rarityKey, ea.level || 1);
+            if (em > 1) echoMulti = em;
+          }
         }
       }
       const baseTapPower = stackPayoutMultis(levelMulti, premiumMulti, echoMulti);
@@ -7344,6 +7350,22 @@ const GiftTapGame = () => {
                         walletSecret={decryptedPhrase || generatedSecret || ''}
                         refreshKey={isModalOpen ? 1 : 0}
                         inventory={stats?.inventory || inventoryRef.current || {}}
+                        maxUnlockedLevel={Number(maxUnlockedLevel) || 4}
+                        gftTokenBalance={
+                          Number(stats?.gft_token_balance) ||
+                          Number(balances?.G2U) ||
+                          0
+                        }
+                        onGftBalanceChange={(gft) => {
+                          setStats((prev) => ({
+                            ...prev,
+                            gft_token_balance: gft,
+                          }));
+                          setBalances((prev) => ({
+                            ...prev,
+                            G2U: gft,
+                          }));
+                        }}
                         onInventoryChange={(inv, playerPatch) => {
                           if (!inv || typeof inv !== 'object') return;
                           inventoryRef.current = inv;

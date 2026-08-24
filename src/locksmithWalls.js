@@ -35,26 +35,29 @@ export const WALL_TARGET_LABEL = {
 
 
 /**
- * Player walls already climbed from max_unlocked_level.
- * e.g. maxUnlocked 19 → ["→5", "→10"]
+ * Walls cleared = player has reached that level (passed the wall).
+ * Level 5+ → Wall-5 · Level 10+ → Wall-5 · Wall-10 · etc.
  */
 export function wallsClimbedLabels(maxUnlockedLevel) {
   const m = Math.max(0, Math.floor(Number(maxUnlockedLevel) || 0));
   const out = [];
-  for (const [wallKey, target] of Object.entries(WALL_TARGET_LABEL)) {
-    if (m > Number(wallKey)) out.push(`→${target}`);
+  const targets = [...new Set(Object.values(WALL_TARGET_LABEL))].sort(
+    (a, b) => a - b,
+  );
+  for (const target of targets) {
+    if (m >= Number(target)) out.push(`Wall-${target}`);
   }
   return out;
 }
 
-/** Next wall target label, or null if past last wall */
+/** Next wall target label, or null if past last wall — e.g. "Wall-5" */
 export function nextWallTargetLabel(maxUnlockedLevel) {
   const m = Math.max(0, Math.floor(Number(maxUnlockedLevel) || 0));
   const keys = Object.keys(WALL_TARGET_LABEL)
     .map(Number)
     .sort((a, b) => a - b);
   for (const k of keys) {
-    if (m <= k) return WALL_TARGET_LABEL[k];
+    if (m <= k) return `Wall-${WALL_TARGET_LABEL[k]}`;
   }
   return null;
 }

@@ -16,6 +16,10 @@ import {
   effectiveDailyLimit,
 } from "../_shared/economy.ts";
 import { applyWeeklyEnergyCredit } from "../_shared/weeklyScore.ts";
+import {
+  drainActiveNfts,
+  durabilitySnapshot,
+} from "../_shared/nftDurability.ts";
 
 const ENERGY_CAP = 500;
 const ENERGY_SECONDS_PER_POINT = 1.5;
@@ -359,6 +363,9 @@ serve(async (req) => {
     const weeklyShards = weeklyCredit.weeklyShards;
     inv.weekly_lb = { weekId, score: weeklyShards };
 
+    // Mining NFT durability: 1% per 1,000 raw taps (Echo/Fate/Rush/Shadow)
+    drainActiveNfts(inv, validTaps);
+
     // Level-up battery refill (within unlocked tier)
     let finalEnergy = nextEnergy;
     const prevLevel = playLevel(lifetime, maxU);
@@ -491,6 +498,7 @@ serve(async (req) => {
       tap_power: tapPowerAfter,
       jackpot_hits: jackpotHits,
       jackpot_best_multi: jackpotBestMulti,
+      nft_durability: durabilitySnapshot(inv),
       player: {
         ...updates,
         max_unlocked_level: maxU,

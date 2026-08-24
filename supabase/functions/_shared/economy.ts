@@ -373,11 +373,17 @@ export function echoMultiplier(rarityKey: string, level = 1): number {
   return ladder[idx] || 1;
 }
 
-/** Read inventory.echo_active → multiplier (1 if none). */
+/** Read inventory.echo_active → multiplier (1 if none or durability 0). */
 export function echoMultiplierFromInv(inv: Record<string, unknown>): number {
   const raw = inv?.echo_active;
   if (!raw || typeof raw !== "object") return 1;
   const row = raw as Record<string, unknown>;
+  // Lazy import avoid circular — inline durability check
+  const dur =
+    row.durability === undefined || row.durability === null
+      ? 100
+      : Math.max(0, Number(row.durability) || 0);
+  if (dur <= 0) return 1;
   const rarity = String(row.rarity || row.rarityKey || "").toLowerCase();
   if (!ECHO_MULTI[rarity]) return 1;
   return echoMultiplier(rarity, Number(row.level) || 1);
@@ -426,6 +432,11 @@ export function rollFateJackpot(
   const raw = inv?.fate_power;
   if (!raw || typeof raw !== "object") return null;
   const row = raw as Record<string, unknown>;
+  const dur =
+    row.durability === undefined || row.durability === null
+      ? 100
+      : Math.max(0, Number(row.durability) || 0);
+  if (dur <= 0) return null;
   const rarity = String(row.rarity || row.rarityKey || "").toLowerCase();
   const ladder = FATE_JACKPOT[rarity];
   if (!ladder) return null;
@@ -455,11 +466,16 @@ export function rushDailyLimit(rarityKey: string, level = 1): number {
   return ladder[idx] || 1000;
 }
 
-/** Rush active → daily base cap; 0 if none (caller uses 1000 / max_daily_limit). */
+/** Rush active → daily base cap; 0 if none or durability 0. */
 export function rushDailyLimitFromInv(inv: Record<string, unknown>): number {
   const raw = inv?.rush_active;
   if (!raw || typeof raw !== "object") return 0;
   const row = raw as Record<string, unknown>;
+  const dur =
+    row.durability === undefined || row.durability === null
+      ? 100
+      : Math.max(0, Number(row.durability) || 0);
+  if (dur <= 0) return 0;
   const rarity = String(row.rarity || row.rarityKey || "").toLowerCase();
   if (!RUSH_DAILY_LIMIT[rarity]) return 0;
   return rushDailyLimit(rarity, Number(row.level) || 1);

@@ -1,6 +1,7 @@
 /**
- * Grant premium SOL shop item after on-chain payment.
- * Client pays SOL, then calls with tx_signature + item_id.
+ * Grant premium shop item.
+ * - currency=sol (default): client pays SOL, passes tx_signature (pre-launch)
+ * - currency=g2u: debit gft_token_balance when G2U_PREMIUM_ENABLED=true
  */
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { requirePlayerFromRequest } from "../_shared/sessionJwt.ts";
@@ -13,18 +14,83 @@ import {
   utcIsoWeekId,
 } from "../_shared/economy.ts";
 
-const PREMIUM: Record<string, { name: string; priceSol: number }> = {
-  bot: { name: "Weekend Bot", priceSol: 0.01 },
-  grinder: { name: "+2K Daily Energy", priceSol: 0.01 },
-  whale: { name: "+5K Daily Energy", priceSol: 0.03 },
-  crate: { name: "The Vault Drop", priceSol: 0.05 },
-  x2_boost: { name: "Double Power", priceSol: 0.02 },
-  x3_boost: { name: "Triple Power", priceSol: 0.035 },
-  /** Star Badge — equipable on NFT sockets (inventory). Prefer gift/prize/Badge market. */
-  shard_badge: { name: "Star Badge", priceSol: 0.02 },
+/** Test pool ratio ~25 SOL / 100M G2U → 4_000_000 G2U per SOL */
+const G2U_PER_SOL = Number(Deno.env.get("G2U_PER_SOL") || 4_000_000);
+
+const PREMIUM: Record<
+  string,
+  { name: string; priceSol: number; priceG2u: number }
+> = {
+  bot: { name: "Weekend Bot", priceSol: 0.01, priceG2u: 0.01 * G2U_PER_SOL },
+  grinder: {
+    name: "+2K Daily Energy",
+    priceSol: 0.01,
+    priceG2u: 0.01 * G2U_PER_SOL,
+  },
+  whale: {
+    name: "+5K Daily Energy",
+    priceSol: 0.03,
+    priceG2u: 0.03 * G2U_PER_SOL,
+  },
+  crate: {
+    name: "The Vault Drop",
+    priceSol: 0.05,
+    priceG2u: 0.05 * G2U_PER_SOL,
+  },
+  x2_boost: {
+    name: "Double Power",
+    priceSol: 0.02,
+    priceG2u: 0.02 * G2U_PER_SOL,
+  },
+  x3_boost: {
+    name: "Triple Power",
+    priceSol: 0.035,
+    priceG2u: 0.035 * G2U_PER_SOL,
+  },
+  shard_badge: {
+    name: "Star Badge",
+    priceSol: 0.02,
+    priceG2u: 0.02 * G2U_PER_SOL,
+  },
 };
 
 const MASTER = "D4GufPTvp6tnzkaYGfombFLs48UjDANsxjMFJnSYz4Gh";
+
+function g2uPremiumEnabled(): boolean {
+  const v = String(Deno.env.get("G2U_PREMIUM_ENABLED") || "")
+    .trim()
+    .toLowerCase();
+  return ["1", "true", "yes", "on"].includes(v);
+}
+
+function bumpWeeklyBoost(inv: Record<string, unknown>) {
+  const weekId = utcIsoWeekId();
+  const wq =
+    inv.weekly_quests && typeof inv.weekly_quests === "object"
+      ? { ...(inv.weekly_quests as Record<string, unknown>) }
+      : {
+          weekId,
+          claimed: [],
+          daysTap500: [],
+          daysActive: [],
+          daysFull: [],
+          boostBuys: 0,
+        };
+  if (String(wq.weekId || "") !== weekId) {
+    inv.weekly_quests = {
+      weekId,
+      claimed: [],
+      daysTap500: [],
+      daysActive: [],
+      daysFull: [],
+      boostBuys: 1,
+    };
+  } else {
+    wq.boostBuys = (Number(wq.boostBuys) || 0) + 1;
+    wq.weekId = weekId;
+    inv.weekly_quests = wq;
+  }
+}
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -35,16 +101,80 @@ serve(async (req) => {
     const playerId = String(claims.sub);
     const body = await req.json().catch(() => ({}));
     const itemId = String(body.item_id || "").toLowerCase();
+    const currency = String(body.currency || "sol").toLowerCase();
     const txSignature = String(body.tx_signature || body.signature || "").trim();
     const catalog = PREMIUM[itemId];
     if (!catalog) throw new Error("Unknown premium item");
+
+    const sb = adminClient();
+
+    // —— $G2U path (post-launch) ——
+    if (currency === "g2u") {
+      if (!g2uPremiumEnabled()) {
+        throw new Error("Premium $G2U shop opens after launch (G2U_PREMIUM_ENABLED)");
+      }
+      const priceG2u = Math.round(Number(catalog.priceG2u) || 0);
+      if (priceG2u <= 0) throw new Error("Invalid G2U price");
+
+      const { data: row, error: selErr } = await sb
+        .from("players")
+        .select("inventory, has_made_purchase, gft_token_balance")
+        .eq("telegram_id", playerId)
+        .maybeSingle();
+      if (selErr) throw selErr;
+      if (!row) throw new Error("Player not found");
+
+      const bal = Number(row.gft_token_balance) || 0;
+      if (bal + 1e-9 < priceG2u) {
+        throw new Error(
+          `Not enough $G2U (need ${priceG2u.toLocaleString()}, have ${bal.toLocaleString()})`,
+        );
+      }
+      const nextBal = Math.round((bal - priceG2u) * 1e6) / 1e6;
+      const inv = invObj(row.inventory);
+      inv[itemId] = (Number(inv[itemId]) || 0) + 1;
+      bumpWeeklyBoost(inv);
+
+      const { error: upErr } = await sb
+        .from("players")
+        .update({
+          inventory: inv,
+          gft_token_balance: nextBal,
+          has_made_purchase: true,
+          last_updated: new Date().toISOString(),
+        })
+        .eq("telegram_id", playerId);
+      if (upErr) throw upErr;
+
+      await logEconomy(sb, {
+        player_id: playerId,
+        kind: "premium_grant",
+        delta: -priceG2u,
+        balance_after: nextBal,
+        ref: `g2u:${itemId}:${Date.now()}`,
+        meta: {
+          item_id: itemId,
+          currency: "g2u",
+          priceG2u,
+        },
+      });
+
+      return jsonResponse({
+        success: true,
+        already: false,
+        item_id: itemId,
+        currency: "g2u",
+        price_g2u: priceG2u,
+        gft_token_balance: nextBal,
+        inventory: inv,
+      });
+    }
+
+    // —— SOL path (default / pre-launch) ——
     if (!txSignature || txSignature.length < 32) {
       throw new Error("tx_signature required");
     }
 
-    const sb = adminClient();
-
-    // Idempotent: already granted this tx?
     const { data: prior } = await sb
       .from("economy_events")
       .select("id")
@@ -65,7 +195,6 @@ serve(async (req) => {
       });
     }
 
-    // Optional chain verify via Helius/public RPC
     const rpc =
       Deno.env.get("SOLANA_RPC_URL") ||
       Deno.env.get("VITE_SOLANA_RPC_URL") ||
@@ -89,7 +218,6 @@ serve(async (req) => {
         const tx = j?.result;
         if (!tx) {
           console.warn("premium-grant: tx not found yet", txSignature);
-          // allow grant if tx not indexed yet but signature provided — still ledger by signature
         } else if (tx.meta?.err) {
           throw new Error("On-chain transaction failed");
         }
@@ -109,32 +237,7 @@ serve(async (req) => {
 
     const inv = invObj(row.inventory);
     inv[itemId] = (Number(inv[itemId]) || 0) + 1;
-    const weekId = utcIsoWeekId();
-    const wq =
-      inv.weekly_quests && typeof inv.weekly_quests === "object"
-        ? { ...(inv.weekly_quests as Record<string, unknown>) }
-        : {
-            weekId,
-            claimed: [],
-            daysTap500: [],
-            daysActive: [],
-            daysFull: [],
-            boostBuys: 0,
-          };
-    if (String(wq.weekId || "") !== weekId) {
-      inv.weekly_quests = {
-        weekId,
-        claimed: [],
-        daysTap500: [],
-        daysActive: [],
-        daysFull: [],
-        boostBuys: 1,
-      };
-    } else {
-      wq.boostBuys = (Number(wq.boostBuys) || 0) + 1;
-      wq.weekId = weekId;
-      inv.weekly_quests = wq;
-    }
+    bumpWeeklyBoost(inv);
 
     const { error: upErr } = await sb
       .from("players")
@@ -150,21 +253,25 @@ serve(async (req) => {
       player_id: playerId,
       kind: "premium_grant",
       ref: txSignature,
-      meta: { item_id: itemId, priceSol: catalog.priceSol, master: MASTER },
+      meta: {
+        item_id: itemId,
+        currency: "sol",
+        priceSol: catalog.priceSol,
+        master: MASTER,
+      },
     });
 
     return jsonResponse({
       success: true,
       already: false,
       item_id: itemId,
+      currency: "sol",
       inventory: inv,
-      tx_signature: txSignature,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    const status = /authenticated|expired|signature|Invalid session|Not authenticated/i.test(
-      message,
-    )
+    const status = /authenticated|expired|signature|Invalid session|Not authenticated/i
+      .test(message)
       ? 401
       : 400;
     return jsonResponse({ error: message }, status);

@@ -181,6 +181,13 @@ export async function secureBadgeClaim(weekId) {
   return callSecureFunction('badge-claim-weekly', body);
 }
 
+/** Auto-grant badges from official weekly snapshot (idempotent). */
+export async function secureGrantWeeklyBadges(weekId) {
+  return callSecureFunction('grant-weekly-badges', {
+    ...(weekId ? { week_id: weekId } : {}),
+  });
+}
+
 /** Server-authoritative mining credit (requires JWT). */
 export async function secureCommitTaps({ batchId, taps }) {
   return callSecureFunction('commit-taps', {
@@ -267,10 +274,23 @@ export async function secureTaskClaim(taskId) {
   return callSecureFunction('task-claim', { task_id: taskId });
 }
 
-export async function securePremiumGrant(itemId, txSignature) {
-  return callSecureFunction('premium-grant', {
+export async function securePremiumGrant(itemId, txSignature, opts = {}) {
+  const currency = String(opts.currency || (txSignature ? 'sol' : 'g2u')).toLowerCase();
+  const body = {
     item_id: itemId,
-    tx_signature: txSignature,
+    currency,
+  };
+  if (currency === 'sol') {
+    body.tx_signature = txSignature;
+  }
+  return callSecureFunction('premium-grant', body);
+}
+
+/** Reload Echo/Fate/Rush/Shadow durability with $G2U (post-launch). */
+export async function secureNftDurabilityTopUp({ kind, percent = 1 } = {}) {
+  return callSecureFunction('nft-durability-topup', {
+    kind,
+    percent,
   });
 }
 

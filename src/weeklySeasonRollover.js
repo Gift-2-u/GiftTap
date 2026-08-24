@@ -9,13 +9,16 @@
  * Call this often-ish; the RPC is idempotent + advisory-locked.
  */
 import { supabase } from './supabaseClient';
+import { getPreviousUtcWeekId } from './weeklyQuestLogic';
+import { callSecureFunction, hasSecureSession } from './secureApi';
 
 let inFlight = null;
 let lastOkAt = 0;
 const MIN_GAP_MS = 60_000; // at most once per minute per tab
 
 /**
- * Ensure any finished week is snapshotted. Safe no-op if SQL not applied yet.
+ * Ensure any finished week is snapshotted + badges auto-granted.
+ * Safe no-op if SQL not applied yet.
  * @returns {Promise<object|null>}
  */
 export async function ensureWeeklySeasonRollover(opts = {}) {
@@ -37,6 +40,21 @@ export async function ensureWeeklySeasonRollover(opts = {}) {
       lastOkAt = Date.now();
       if (data?.snapped?.length) {
         console.log('weekly season rolled:', data);
+      }
+      // Always auto-grant from previous week's official snapshot (idempotent)
+      try {
+        if (hasSecureSession()) {
+          const prev = getPreviousUtcWeekId();
+          const grant = await callSecureFunction('grant-weekly-badges', {
+            week_id: prev,
+          });
+          if (grant?.granted || grant?.repaired) {
+            console.log('weekly badges auto-granted:', grant);
+          }
+          return { ...(data || { ok: true }), badges: grant };
+        }
+      } catch (ge) {
+        console.warn('weekly badge auto-grant', ge?.message || ge);
       }
       return data || { ok: true };
     } catch (e) {

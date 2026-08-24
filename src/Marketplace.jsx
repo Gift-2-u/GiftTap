@@ -419,8 +419,15 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, bumpEner
     },
   ];
 
-  /** SOL boosts only — not NFTs */
-  const premiumListings = [
+  /** After launch: VITE_G2U_PREMIUM=true → prices in $G2U (gft_token_balance). */
+  const G2U_PREMIUM =
+    String(import.meta.env.VITE_G2U_PREMIUM || '').toLowerCase() === 'true' ||
+    String(import.meta.env.VITE_G2U_PREMIUM || '') === '1';
+  /** Test pool ~4M G2U per SOL — keep in sync with premium-grant G2U_PER_SOL */
+  const G2U_PER_SOL = Number(import.meta.env.VITE_G2U_PER_SOL) || 4_000_000;
+
+  /** Premium boosts — SOL pre-launch, $G2U when flag on (not NFTs) */
+  const premiumListingsRaw = [
     {
       id: 'bot',
       name: 'Weekend Bot',
@@ -506,7 +513,18 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, bumpEner
       iconRing: 'rgba(192,132,252,0.55)',
       iconGlow: 'rgba(168,85,247,0.35)',
     },
-];
+  ];
+
+  const premiumListings = premiumListingsRaw.map((item) => {
+    if (!G2U_PREMIUM) return item;
+    const priceG2u = Math.round(Number(item.price) * G2U_PER_SOL);
+    return {
+      ...item,
+      price: priceG2u,
+      currency: 'G2U',
+      priceSol: item.price,
+    };
+  });
 
   /** Separate NFT marketplace (on-chain mints) */
   const fateListings = ['common', 'rare', 'epic', 'legendary'].map((key) => {
@@ -721,13 +739,8 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, bumpEner
             type: 'NFT',
             rarity: 'Special',
             collection: 'Gift2u Elves',
-            boost: 'Socket outside Fate / Echo / Rush / Shadow art',
-            perks: [
-              '1 Star socket per elf (Backpack — outside the image)',
-              'Echo +taps · Fate Mystery odds · Rush energy 500 · Shadow claim',
-              'Level-up SOL: 0.10 / 0.15 / 0.25 / 0.40 (total 0.90)',
-              'Unequip before selling the elf',
-            ],
+            boost: '',
+            perks: [],
             level: 1,
             attributes: [
               { trait_type: 'Level', value: '1' },
@@ -1520,6 +1533,39 @@ Daily claim active · Pack → NFT to see it.`,
     setTxStatus({ show: true, loading: true, message: `Initiating purchase for ${item.name}...`, success: false });
 
     try {
+      // Post-launch: pay with liquid $G2U (gft_token_balance)
+      if (G2U_PREMIUM || String(item.currency || '').toUpperCase() === 'G2U') {
+        if (!hasSecureSession()) {
+          throw new Error('Log in again to buy with $G2U (secure session required).');
+        }
+        setTxStatus({
+          show: true,
+          loading: true,
+          message: `Spending ${Number(item.price).toLocaleString()} $G2U…`,
+          success: false,
+        });
+        const data = await securePremiumGrant(item.id, null, { currency: 'g2u' });
+        const newInventory = data.inventory || {};
+        setLocalInventory(newInventory);
+        if (setStats) {
+          setStats({
+            ...stats,
+            inventory: newInventory,
+            has_made_purchase: true,
+            ...(data.gft_token_balance != null
+              ? { gft_token_balance: Number(data.gft_token_balance) }
+              : {}),
+          });
+        }
+        setTxStatus({
+          show: true,
+          loading: false,
+          message: `✅ Success! ${item.name} purchased with $G2U. Check Backpack!`,
+          success: true,
+        });
+        return;
+      }
+
       // 1. Get Secret Key (Now pulling securely from React State, not local storage)
       const storedSecret = decryptedPhrase;
       if (!storedSecret) {
@@ -3214,6 +3260,15 @@ Daily claim active · Pack → NFT to see it.`,
                   gameplayMode
                   maxUnlockedLevel={Number(maxUnlockedLevel) || Number(stats?.max_unlocked_level) || Number(player?.max_unlocked_level) || 4}
                   inventory={localInventory}
+                  gftTokenBalance={Number(stats?.gft_token_balance) || 0}
+                  onGftBalanceChange={(gft) => {
+                    if (setStats) {
+                      setStats((prev) => ({
+                        ...prev,
+                        gft_token_balance: gft,
+                      }));
+                    }
+                  }}
                   onInventoryChange={(inv, playerPatch) => {
                     setLocalInventory(inv);
                     if (setStats) {
@@ -3398,67 +3453,186 @@ Daily claim active · Pack → NFT to see it.`,
               ) : null}
             </div>
 
-            {/* Attributes — always has room; scrolls if many */}
-            <div
-              style={{
-                flex: '1 1 auto',
-                minHeight: 120,
-                maxHeight: '28vh',
-                overflowY: 'auto',
-                WebkitOverflowScrolling: 'touch',
-                textAlign: 'left',
-                background: '#111',
-                borderRadius: 10,
-                border: '1px solid #333',
-                padding: '8px 10px',
-                marginBottom: 8,
-              }}
-            >
-              <div style={{ color: '#888', fontSize: 10, fontWeight: 'bold', marginBottom: 6 }}>
-                ATTRIBUTES
-              </div>
-              {(nftDetail.attributes || []).length === 0 ? (
-                <div style={{ color: '#666', fontSize: 11 }}>No attributes</div>
-              ) : (
-                <div
-                  style={{
-                    display: 'grid',
-                    gridTemplateColumns: '1fr 1fr',
-                    gap: 6,
-                  }}
-                >
-                  {(nftDetail.attributes || []).map((a) => (
+            {/* Shop detail — same language as Backpack/Wallet (no on-chain attributes list) */}
+            {nftDetail.isFateMint ||
+            nftDetail.isEchoMint ||
+            nftDetail.isRushMint ||
+            nftDetail.isShadowMint ||
+            nftDetail.isStarMint ||
+            nftDetail.id === 'star_badge' ||
+            nftDetail.isNftMint ||
+            nftDetail.id === 'locksmith' ? (
+              <div
+                style={{
+                  flex: '1 1 auto',
+                  overflowY: 'auto',
+                  marginBottom: 8,
+                  minHeight: 0,
+                }}
+              >
+                {nftDetail.isStarMint || nftDetail.id === 'star_badge' ? (
+                  <div
+                    style={{
+                      marginBottom: 10,
+                      padding: 12,
+                      borderRadius: 12,
+                      border: '1px solid #333',
+                      background: '#0e0f14',
+                      textAlign: 'center',
+                    }}
+                  >
                     <div
-                      key={`${a.trait_type}-${a.value}`}
                       style={{
-                        background: '#1a1a1a',
-                        borderRadius: 8,
-                        padding: '6px 8px',
-                        minWidth: 0,
+                        color: '#888',
+                        fontSize: 10,
+                        textTransform: 'uppercase',
                       }}
                     >
-                      <div style={{ color: '#777', fontSize: 9, lineHeight: 1.25 }}>
-                        {a.trait_type}
+                      Level
+                    </div>
+                    <div
+                      style={{ color: '#c084fc', fontWeight: 'bold', fontSize: 22 }}
+                    >
+                      L{Number(nftDetail.level) || 1}
+                    </div>
+                  </div>
+                ) : (
+                  <div
+                    style={{
+                      marginBottom: 10,
+                      padding: 12,
+                      borderRadius: 12,
+                      border: '1px solid #333',
+                      background: '#0e0f14',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 12,
+                    }}
+                  >
+                    {nftDetail.isFateMint ||
+                    nftDetail.isEchoMint ||
+                    nftDetail.isRushMint ||
+                    nftDetail.isShadowMint ? (
+                      <span
+                        style={{
+                          width: 56,
+                          height: 56,
+                          borderRadius: '50%',
+                          flexShrink: 0,
+                          display: 'grid',
+                          placeItems: 'center',
+                          border: '2px solid #555',
+                          background: '#16161c',
+                          boxShadow: 'inset 0 0 0 6px #0a0a0e',
+                          fontSize: 22,
+                        }}
+                      />
+                    ) : (
+                      <span style={{ flex: 1, minWidth: 0 }}>
+                        <span
+                          style={{
+                            display: 'block',
+                            color: '#888',
+                            fontSize: 10,
+                            textTransform: 'uppercase',
+                            marginBottom: 2,
+                          }}
+                        >
+                          Walls cleared
+                        </span>
+                        <span
+                          style={{
+                            display: 'block',
+                            color: '#888',
+                            fontSize: 12,
+                            fontWeight: 'bold',
+                            lineHeight: 1.4,
+                          }}
+                        >
+                          — · next Wall-5
+                        </span>
+                      </span>
+                    )}
+                    {(nftDetail.isFateMint ||
+                      nftDetail.isEchoMint ||
+                      nftDetail.isRushMint ||
+                      nftDetail.isShadowMint) && <span style={{ flex: 1 }} />}
+                    <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                      <div
+                        style={{
+                          color: '#888',
+                          fontSize: 10,
+                          textTransform: 'uppercase',
+                        }}
+                      >
+                        Level
                       </div>
                       <div
                         style={{
-                          color:
-                            String(a.trait_type).toLowerCase() === 'level'
-                              ? '#c084fc'
-                              : '#fff',
-                          fontSize: 12,
+                          color: '#c084fc',
                           fontWeight: 'bold',
-                          lineHeight: 1.3,
-                          wordBreak: 'break-word',
+                          fontSize: 18,
                         }}
                       >
-                        {a.value}
+                        L{Number(nftDetail.level) || 1}
                       </div>
                     </div>
-                  ))}
-                </div>
-              )}
-            </div>
+                  </div>
+                )}
+
+                {nftDetail.isFateMint ||
+                nftDetail.isEchoMint ||
+                nftDetail.isRushMint ||
+                nftDetail.isShadowMint ? (
+                  <div
+                    style={{
+                      marginBottom: 8,
+                      padding: 12,
+                      borderRadius: 12,
+                      border: '1px solid #333',
+                      background: '#0e0f14',
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        marginBottom: 6,
+                      }}
+                    >
+                      <span style={{ color: '#ddd', fontSize: 12, fontWeight: 'bold' }}>
+                        Durability
+                      </span>
+                      <span style={{ color: '#4ade80', fontSize: 13, fontWeight: 'bold' }}>
+                        100%
+                      </span>
+                    </div>
+                    <div
+                      style={{
+                        height: 8,
+                        borderRadius: 999,
+                        background: '#1a1d24',
+                        overflow: 'hidden',
+                        marginBottom: 8,
+                      }}
+                    >
+                      <div
+                        style={{
+                          width: '100%',
+                          height: '100%',
+                          background: 'linear-gradient(90deg, #16a34a, #4ade80)',
+                        }}
+                      />
+                    </div>
+                    <div style={{ color: '#666', fontSize: 10, lineHeight: 1.35 }}>
+                      Starts at 100% when equipped · drains 1% / 1,000 taps · off at 0% ·
+                      reload with $G2U in Wallet / Backpack (1,000 G2U = 1%)
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
 
             {/* Footer pinned — Close + Mint always on screen */}
             <div style={{ flexShrink: 0, paddingTop: 2 }}>
@@ -3707,14 +3881,6 @@ Daily claim active · Pack → NFT to see it.`,
                 <>
                   Mint <strong>{itemToBuy.name}</strong> for{' '}
                   <strong style={{ color: '#14F195' }}>{itemToBuy.price} SOL</strong>?
-                  <br />
-                  <span style={{ fontSize: 12, color: '#ffd700', fontWeight: 'bold', display: 'block', marginTop: 10 }}>
-                    Socket outside Fate / Echo / Rush / Shadow
-                  </span>
-                  <span style={{ fontSize: 11, color: '#888', display: 'block', marginTop: 6, lineHeight: 1.4 }}>
-                    Equip in Backpack → NFT · level-up 0.10–0.40 SOL · max{' '}
-                    {STAR_WAVE1.maxPerWallet}/wallet
-                  </span>
                 </>
               ) : itemToBuy.isNftMint || itemToBuy.id === 'locksmith' ? (
                 <>

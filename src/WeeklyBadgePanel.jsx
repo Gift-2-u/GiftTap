@@ -49,7 +49,19 @@ export default function WeeklyBadgePanel({
     (async () => {
       setSnapLoading(true);
       try {
-        await ensureWeeklySeasonRollover({ force: true });
+        const roll = await ensureWeeklySeasonRollover({ force: true });
+        // Pull backpack if auto-grant just filled badges
+        if (roll?.badges && typeof onInventoryChange === 'function') {
+          try {
+            if (hasSecureSession()) {
+              await ensureSecureSession();
+              const claimed = await secureBadgeClaim(prevWeekId);
+              if (claimed?.inventory) onInventoryChange(claimed.inventory);
+            }
+          } catch {
+            /* claim optional if already auto-granted */
+          }
+        }
         const { data, error } = await supabase
           .from('weekly_leaderboard_snapshots')
           .select('rank, score, badge_tier, username, telegram_id')

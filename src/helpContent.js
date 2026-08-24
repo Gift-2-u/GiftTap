@@ -118,6 +118,14 @@ export const HELP_TIPS = {
       'Bonus G2U and NFT mints are paid from the Mystery vault (10% allocation).\n\n' +
       'Full drop table: Menu → Game Guide → Mystery Gift.',
   },
+  nft_durability: {
+    title: 'NFT durability',
+    body:
+      'Echo, Fate, Rush, and Shadow start at 100% durability when equipped.\n\n' +
+      'Drains 1% per 1,000 taps. At 0% the perk is fully off.\n\n' +
+      'Reload with $G2U in Wallet / Backpack → NFT (1,000 G2U per 1%).\n\n' +
+      'After launch, premium boosts are also bought with $G2U.',
+  },
   weekly_badges: {
     title: 'Weekly badges',
     body:

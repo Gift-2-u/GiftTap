@@ -170,7 +170,7 @@ serve(async (req) => {
       // Seller wallet must match account
       const { data: row, error: selErr } = await sb
         .from("players")
-        .select("username, wallet_address")
+        .select("username, wallet_address, inventory")
         .eq("telegram_id", playerId)
         .maybeSingle();
       if (selErr) throw selErr;
@@ -178,6 +178,36 @@ serve(async (req) => {
       const acctWallet = String(row.wallet_address || "").trim();
       if (acctWallet && acctWallet !== sellerWallet) {
         throw new Error("seller_wallet must match your game wallet");
+      }
+
+      // Mining elves: durability must be 100% before list/sell
+      {
+        const inv =
+          row.inventory && typeof row.inventory === "object"
+            ? (row.inventory as Record<string, unknown>)
+            : {};
+        const actives = [
+          inv.echo_active,
+          inv.fate_power,
+          inv.rush_active,
+          inv.shadow_active,
+        ];
+        for (const raw of actives) {
+          if (!raw || typeof raw !== "object") continue;
+          const a = raw as Record<string, unknown>;
+          const aid = String(a.asset_id || a.assetId || "");
+          if (aid && aid === assetId) {
+            const dur =
+              a.durability === undefined || a.durability === null
+                ? 100
+                : Number(a.durability);
+            if (Number.isFinite(dur) && dur + 1e-9 < 100) {
+              throw new Error(
+                "Reload durability to 100% before selling this NFT",
+              );
+            }
+          }
+        }
       }
 
       // Cancel if already active on this asset

@@ -48,6 +48,15 @@ serve(async (req) => {
       throw new Error("No Shadow equipped — mint or Equip Shadow first");
     }
     const a = active as Record<string, unknown>;
+    const dur =
+      a.durability === undefined || a.durability === null
+        ? 100
+        : Math.max(0, Number(a.durability) || 0);
+    if (dur <= 0) {
+      throw new Error(
+        "Shadow durability is 0% — reload with $G2U in Wallet / Backpack NFT",
+      );
+    }
     const rarity = String(a.rarity || "").toLowerCase();
     const level = Math.floor(Number(a.level) || 1);
     const hours = Number(a.hours) || shadowHours(rarity, level);

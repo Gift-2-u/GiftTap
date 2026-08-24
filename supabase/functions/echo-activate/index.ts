@@ -20,6 +20,7 @@ import {
   ECHO_MULTI,
   echoMultiplier,
 } from "../_shared/economy.ts";
+import { ensureNftDurabilityOnActivate } from "../_shared/nftDurability.ts";
 
 const RARITIES = new Set(Object.keys(ECHO_MULTI));
 
@@ -56,13 +57,20 @@ serve(async (req) => {
       if (level < 1) level = 1;
       if (level > 5) level = 5;
       const assetId = String(body.asset_id || body.assetId || "").trim() || null;
-      inv.echo_active = {
-        rarity,
-        level,
-        asset_id: assetId,
-        multi: echoMultiplier(rarity, level),
-        activated_at: new Date().toISOString(),
-      };
+      const prev =
+        inv.echo_active && typeof inv.echo_active === "object"
+          ? (inv.echo_active as Record<string, unknown>)
+          : null;
+      inv.echo_active = ensureNftDurabilityOnActivate(
+        {
+          rarity,
+          level,
+          asset_id: assetId,
+          multi: echoMultiplier(rarity, level),
+          activated_at: new Date().toISOString(),
+        },
+        prev,
+      );
     }
 
     const { data: updated, error: upErr } = await sb
