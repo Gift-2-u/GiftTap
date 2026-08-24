@@ -136,7 +136,8 @@ serve(async (req) => {
     } else if (itemId === "refill") {
       last_energy = ENERGY_CAP;
       updates.last_energy = ENERGY_CAP;
-      updates.last_updated = new Date(now).toISOString();
+      updates.energy_at = new Date(now).toISOString();
+      // do not touch last_updated (login/last-seen only)
     } else if (itemId === "bot") {
       updates.bot_expires = endOfUtcDay(2);
     } else if (itemId === "grinder") {
@@ -235,9 +236,9 @@ serve(async (req) => {
       inventory: outInv,
       shard_balance: Number(verified?.shard_balance) || shard_balance,
       last_energy: itemId === "refill" ? outEnergy : undefined,
-      last_updated:
-        itemId === "refill" && updates.last_updated != null
-          ? String(updates.last_updated)
+      energy_at:
+        itemId === "refill" && updates.energy_at != null
+          ? String(updates.energy_at)
           : undefined,
       updates: { ...updates, inventory: outInv },
       daily_usage: outDaily,

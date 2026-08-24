@@ -48,6 +48,7 @@ const PLAYER_SELECT = [
   "daily_taps",
   "last_tap_date",
   "last_energy",
+  "energy_at",
   "max_unlocked_level",
   "max_daily_limit",
   "tap_power",
@@ -89,20 +90,27 @@ serve(async (req) => {
     if (error) throw error;
     if (!player) throw new Error("Player not found");
 
-    // This player only: catch up energy, then stamp last_updated = now (last seen in game).
-    // Always write last_energy with last_updated so the regen clock stays correct.
+    // This player only on login:
+    //  - catch up energy from energy_at (regen clock) — NOT from last_updated
+    //  - stamp last_updated = now (last seen / login)
+    //  - stamp energy_at = now with caught-up last_energy
     try {
       const nowMs = Date.now();
       const nowIso = new Date(nowMs).toISOString();
+      const energyAnchor =
+        (player as Record<string, unknown>).energy_at != null
+          ? String((player as Record<string, unknown>).energy_at)
+          : (player.last_updated as string | null);
       const energy = energyFromAnchor(
         Number(player.last_energy),
-        player.last_updated as string | null,
+        energyAnchor,
         nowMs,
       );
       const { data: touched, error: touchErr } = await supabase
         .from("players")
         .update({
           last_energy: energy,
+          energy_at: nowIso,
           last_updated: nowIso,
         })
         .eq("telegram_id", playerId)
@@ -111,10 +119,10 @@ serve(async (req) => {
       if (!touchErr && touched) {
         player = touched;
       } else if (touchErr) {
-        console.warn("login last_updated stamp", touchErr.message);
+        console.warn("login stamp", touchErr.message);
       }
     } catch (e) {
-      console.warn("login last_updated stamp", e);
+      console.warn("login stamp", e);
     }
 
     // Secrets only as booleans — from player_secrets (never on players table)

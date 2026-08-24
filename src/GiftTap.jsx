@@ -2120,7 +2120,7 @@ const GiftTapGame = () => {
           await ensureSecureSession();
           const st = await secureVaultStatus();
           setNeedsPassword(st?.has_password === false);
-          // Stamp this player's last_updated (last seen) + catch up energy
+          // Stamp this player's last_updated (last seen) + catch up energy via energy_at
           const state = await fetchPlayerState();
           if (state?.player) {
             if (state.player.last_updated != null) {
@@ -2128,6 +2128,9 @@ const GiftTapGame = () => {
             }
             if (state.player.last_energy != null) {
               playerRow.last_energy = state.player.last_energy;
+            }
+            if (state.player.energy_at != null) {
+              playerRow.energy_at = state.player.energy_at;
             }
           }
         } catch {
@@ -2345,13 +2348,12 @@ const GiftTapGame = () => {
         } else {
           setWallSnoozedFor(null);
         }
-        // Provisional energy from DB (recovery math below overwrites with wall-clock regen)
+        // Provisional energy from DB — regen clock is energy_at (not last_updated login stamp)
         const _en = Number.isFinite(Number(playerRow.last_energy))
           ? Math.max(0, Math.min(ENERGY_CAP, Number(playerRow.last_energy)))
           : 0;
-        const _enAt = playerRow.last_updated
-          ? new Date(playerRow.last_updated).getTime()
-          : Date.now();
+        const _enAtRaw = playerRow.energy_at || playerRow.last_updated;
+        const _enAt = _enAtRaw ? new Date(_enAtRaw).getTime() : Date.now();
         energyAnchorRef.current = { value: _en, at: _enAt };
         setEnergy(energyFromAnchor(_en, _enAt));
         optimisticEnergy.current = energyFromAnchor(_en, _enAt);
@@ -2453,19 +2455,19 @@ const GiftTapGame = () => {
             setMaxDailyLimit(playerRow.max_daily_limit || 1000);
         }
 
-        // --- 2. SEARCH FOR THE ENERGY RECOVERY (Around line 65 of your snippet) ---
-        // Fallback to 'now' if last_updated is missing to prevent NaN errors
-        const lastDate = playerRow.last_updated ? new Date(playerRow.last_updated).getTime() : new Date().getTime();
+        // Energy recovery: regen clock is energy_at (NOT last_updated — that is login only).
+        const energyAtRaw = playerRow.energy_at || playerRow.last_updated;
+        const lastDate = energyAtRaw
+          ? new Date(energyAtRaw).getTime()
+          : new Date().getTime();
         const now = new Date().getTime();
         const secondsPassed = Math.floor((now - lastDate) / 1000);
 
-        // A. Energy Recovery Math (wall-clock from last_energy + last_updated)
         // last_energy === 0 is valid (drained). Do NOT treat 0 as missing and force 500.
         const rawEn = Number(playerRow.last_energy);
         const dbEnergy = Number.isFinite(rawEn)
           ? Math.max(0, Math.min(ENERGY_CAP, rawEn))
           : ENERGY_CAP;
-        // Anchor at last save time so remaining time regenerates correctly
         energyAnchorRef.current = {
           value: dbEnergy,
           at: lastDate,
@@ -2474,19 +2476,22 @@ const GiftTapGame = () => {
         setEnergy(recoveredEnergy);
         optimisticEnergy.current = recoveredEnergy;
         
-        // 🚨 NEW: B. Weekend Bot (Offline Mining) Multi-Day Math
+        // Weekend Bot (Offline Mining) — use last login / last play for bot window
         let offlineShardsEarned = 0;
         const botExpiresMs = playerRow.bot_expires ? new Date(playerRow.bot_expires).getTime() : 0;
+        const botSinceMs = playerRow.last_updated
+          ? new Date(playerRow.last_updated).getTime()
+          : lastDate;
         
         // Ensure the bot was actually active at some point since they last played
-        if (botExpiresMs > lastDate) {
+        if (botExpiresMs > botSinceMs) {
             
             const currentMaxLimit = Number(playerRow.max_daily_limit) || 1000;
             const BOT_SHARDS_PER_SECOND = currentMaxLimit / 86400; // Takes 24h to mine 100% of limit
             
             const botEndMs = Math.min(now, botExpiresMs); // Stops calculating if bot expired
             
-            let simDateMs = lastDate;
+            let simDateMs = botSinceMs;
             let simDailyTaps = Number(playerRow.daily_taps) || 0;
             
             // 1. Simulate day-by-day to perfectly handle midnight resets
@@ -3359,7 +3364,8 @@ const GiftTapGame = () => {
             // - While bursting, only nudge DOWN by this batch's spend — not a cliff to 0.
             // - Never snap UP to 500 mid-burst.
             if (Number.isFinite(en) && flushEpoch === energyEpochRef.current) {
-              const atMs = p.last_updated ? Date.parse(p.last_updated) : Date.now();
+              const atRaw = p.energy_at || p.last_updated;
+              const atMs = atRaw ? Date.parse(atRaw) : Date.now();
               const serverLive = catchUpEnergyAnchor({
                 value: en,
                 at: Number.isFinite(atMs) ? atMs : Date.now(),
@@ -4806,9 +4812,8 @@ const GiftTapGame = () => {
                 // resetting the bar to 500 after Instant Refill.
                 if (Number.isFinite(raw)) {
                   const base = Math.max(0, Math.min(ENERGY_CAP, raw));
-                  const atMs = payload.new.last_updated
-                    ? new Date(payload.new.last_updated).getTime()
-                    : Date.now();
+                  const atRaw = payload.new.energy_at || payload.new.last_updated;
+                  const atMs = atRaw ? new Date(atRaw).getTime() : Date.now();
                   const en = energyFromAnchor(base, atMs);
                   const localEn = Number(optimisticEnergy.current);
                   // Never snap UP from realtime while local already spent lower
@@ -4932,7 +4937,7 @@ const GiftTapGame = () => {
         const { data: row, error } = await supabase
           .from('players')
           .select(
-            'shard_balance, lifetime_taps, season_shards, daily_taps, last_tap_date, last_updated, last_energy, max_unlocked_level, max_daily_limit, tap_power, inventory, frenzy_expires, efficiency_expires, energy_boost_expires, limit_boost_amount, limit_boost_expires, current_streak, daily_ads_watched, last_ad_date, ad_energy_boost, ad_energy_expires',
+            'shard_balance, lifetime_taps, season_shards, daily_taps, last_tap_date, last_updated, energy_at, last_energy, max_unlocked_level, max_daily_limit, tap_power, inventory, frenzy_expires, efficiency_expires, energy_boost_expires, limit_boost_amount, limit_boost_expires, current_streak, daily_ads_watched, last_ad_date, ad_energy_boost, ad_energy_expires',
           )
           .eq(DB_PLAYER_ID, playerId)
           .maybeSingle();
@@ -4966,12 +4971,9 @@ const GiftTapGame = () => {
           nextDaily = Math.max(dbDaily, localDaily);
         }
 
-        // Energy: server last_energy + last_updated is authority (0 is valid).
-        // NEVER Math.max(local, server) — a stale local 500 (or unflushed drain)
-        // was filling the bar after ~2 min away (should be ~80 from 0, not 500).
-        const lastMs = row.last_updated
-          ? new Date(row.last_updated).getTime()
-          : Date.now();
+        // Energy: last_energy + energy_at (regen clock). last_updated is login only.
+        const energyAtRaw = row.energy_at || row.last_updated;
+        const lastMs = energyAtRaw ? new Date(energyAtRaw).getTime() : Date.now();
         const rawEn = Number(row.last_energy);
         let nextEnergy;
         if (Number.isFinite(rawEn)) {

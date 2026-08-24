@@ -1,0 +1,1 @@
+{"query": "select username, last_energy, last_updated, now() as db_now, extract(epoch from (now() - last_updated)) as seconds_since_lu, least(500, coalesce(last_energy,0) + floor(extract(epoch from (now() - last_updated))/1.5)) as expected_if_same_utc_day from players where lower(username)='lats' limit 3"}

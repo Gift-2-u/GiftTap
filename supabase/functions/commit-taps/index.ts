@@ -185,12 +185,12 @@ serve(async (req) => {
     let { data: row, error: selErr } = await sb
       .from("players")
       .select(
-        "telegram_id, username, shard_balance, lifetime_taps, season_shards, weekly_shards, weekly_week_id, daily_taps, daily_shards, last_energy, last_updated, last_tap_date, current_streak, max_unlocked_level, max_daily_limit, inventory, frenzy_expires, efficiency_expires, energy_boost_expires, limit_boost_amount, limit_boost_expires, ad_energy_boost, ad_energy_expires, premium_multiplier, premium_multiplier_expires",
+        "telegram_id, username, shard_balance, lifetime_taps, season_shards, weekly_shards, weekly_week_id, daily_taps, daily_shards, last_energy, energy_at, last_updated, last_tap_date, current_streak, max_unlocked_level, max_daily_limit, inventory, frenzy_expires, efficiency_expires, energy_boost_expires, limit_boost_amount, limit_boost_expires, ad_energy_boost, ad_energy_expires, premium_multiplier, premium_multiplier_expires",
       )
       .eq("telegram_id", playerId)
       .maybeSingle();
-    // Until migration 20260822_daily_shards is applied, fall back without daily_shards
-    if (selErr && /daily_shards/i.test(String(selErr.message || ""))) {
+    // Fallbacks if newer columns not migrated yet
+    if (selErr && /daily_shards|energy_at/i.test(String(selErr.message || ""))) {
       ({ data: row, error: selErr } = await sb
         .from("players")
         .select(
@@ -206,13 +206,16 @@ serve(async (req) => {
     const today = utcTodayStr(now);
     const inv = invObj(row.inventory);
 
-    // Energy regen from last save timestamp
+    // Energy regen clock = energy_at (NOT last_updated — that is login/last-seen only)
+    const energyAnchorIso =
+      (row as Record<string, unknown>).energy_at != null
+        ? String((row as Record<string, unknown>).energy_at)
+        : row.last_updated;
     const energy = energyFromAnchor(
       Number(row.last_energy),
-      row.last_updated,
+      energyAnchorIso,
       now.getTime(),
     );
-
     // Effective daily CAP (persisted to max_daily_limit). daily_taps = raw clicks.
     const maxLimit = effectiveDailyLimit(row as Record<string, unknown>, now);
 
@@ -274,19 +277,20 @@ serve(async (req) => {
       const storedFinite = Number.isFinite(storedEnergy) ? storedEnergy : 0;
       const healLtd = dailyTaps > 0 && prevLtd !== today;
       const nowIso = now.toISOString();
-      // Persist regen'd energy WITH last_updated. Never bump last_updated alone —
-      // that resets the regen clock while last_energy stays 0 and freezes mining
-      // after a second battery / Instant Refill until the client refreshes.
+      // Persist regen on energy_at only — never touch last_updated (login stamp).
       let persistedAnchor = false;
       if (healLtd || energy > storedFinite + 0.001) {
         const patch: Record<string, unknown> = {
           last_energy: energy,
-          last_updated: nowIso,
+          energy_at: nowIso,
         };
         if (healLtd) patch.last_tap_date = today;
         await sb.from("players").update(patch).eq("telegram_id", playerId);
         persistedAnchor = true;
       }
+      const energyAtOut = persistedAnchor
+        ? nowIso
+        : (energyAnchorIso || nowIso);
       return jsonResponse({
         success: true,
         taps: 0,
@@ -301,8 +305,9 @@ serve(async (req) => {
           weekly_week_id: row.weekly_week_id,
           daily_taps: dailyTaps,
           last_energy: energy,
-          // Only advance client anchor when we actually wrote the catch-up
-          last_updated: persistedAnchor ? nowIso : (row.last_updated || nowIso),
+          energy_at: energyAtOut,
+          // last_updated unchanged (login/last-seen) — client energy uses energy_at
+          last_updated: row.last_updated || nowIso,
           // If they already have today's progress, always surface today so client won't day-roll wipe
           last_tap_date: dailyTaps > 0 ? today : (prevLtd || null),
           current_streak: streak,
@@ -313,7 +318,6 @@ serve(async (req) => {
         },
       });
     }
-
     // First valid tap of UTC day → streak
     if (prevLtd !== today) {
       streak = streakAfterPlayDay(prevLtd, streak, today);
@@ -384,6 +388,7 @@ serve(async (req) => {
       echoMulti > 1 ? echoMulti : 1,
     );
 
+    const nowIso = now.toISOString();
     const updates: Record<string, unknown> = {
       shard_balance: nextBal,
       lifetime_taps: nextLife,
@@ -394,19 +399,28 @@ serve(async (req) => {
       daily_shards: nextDailyShards,
       max_daily_limit: maxLimit,
       last_energy: finalEnergy,
+      energy_at: nowIso,
       last_tap_date: today,
       current_streak: streak,
       inventory: inv,
       tap_power: tapPowerAfter,
-      last_updated: now.toISOString(),
+      // do NOT write last_updated here — that is login/last-seen only
     };
 
     let { error: upErr } = await sb
       .from("players")
       .update(updates)
       .eq("telegram_id", playerId);
-    if (upErr && /daily_shards/i.test(String(upErr.message || ""))) {
-      const { daily_shards: _drop, ...rest } = updates;
+    if (upErr && /daily_shards|energy_at/i.test(String(upErr.message || ""))) {
+      const rest = { ...updates };
+      if (/daily_shards/i.test(String(upErr.message || ""))) {
+        delete rest.daily_shards;
+      }
+      if (/energy_at/i.test(String(upErr.message || ""))) {
+        delete rest.energy_at;
+        // legacy fallback only if column missing
+        rest.last_updated = nowIso;
+      }
       ({ error: upErr } = await sb
         .from("players")
         .update(rest)
