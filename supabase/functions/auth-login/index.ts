@@ -122,6 +122,17 @@ serve(async (req) => {
     const ok = await verifyPassword(pass, password_hash);
     if (!ok) throw new Error("Wrong password.");
 
+    // last_updated = this player logged in (NOT taps — those use last_tap_date)
+    const loginAt = new Date().toISOString();
+    try {
+      await supabase
+        .from("players")
+        .update({ last_updated: loginAt })
+        .eq("telegram_id", String(row.telegram_id));
+    } catch (luErr) {
+      console.warn("login last_updated", luErr);
+    }
+
     let session_token: string | null = null;
     let expires_at: string | null = null;
     try {
@@ -150,6 +161,7 @@ serve(async (req) => {
         wallet_address: row.wallet_address,
         has_beta_access: row.has_beta_access !== false,
         has_vault,
+        last_updated: loginAt,
         session_token,
         expires_at,
       }),

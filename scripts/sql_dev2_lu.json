@@ -1,0 +1,1 @@
+{"query": "select username, last_updated, energy_at, last_energy from players where lower(username)='dev2' limit 1"}

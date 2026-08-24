@@ -150,7 +150,7 @@ export async function sumBatchEnergyThisWeek(
  * Build the live weekly board (READ-ONLY for players rows).
  * Never mass-UPDATEs players / last_updated. Scores come from:
  *   ledger + players.weekly_* + tap_batches (computed in memory).
- * Per-player weekly_* writes happen only in commit-taps / healPlayerWeekly(self).
+ * Per-player weekly_* writes happen only in commit-taps (no heal).
  */
 export async function reconcileAllWeeklyScores(
   sb: SupabaseClient,
@@ -334,77 +334,3 @@ export async function reconcileAllWeeklyScores(
   };
 }
 
-/**
- * Heal ONE player only (login / player-state for that JWT).
- * Never bumps last_updated (energy regen clock — commit-taps / refill only).
- */
-export async function healPlayerWeekly(
-  sb: SupabaseClient,
-  playerId: string,
-  player: Record<string, unknown>,
-): Promise<Record<string, unknown>> {
-  const now = new Date();
-  const weekId = utcIsoWeekId(now);
-  const weekStart = isoWeekStartUtc(now).toISOString();
-
-  let batchEnergy = 0;
-  try {
-    const { data } = await sb
-      .from("tap_batches")
-      .select("energy_spent, taps")
-      .eq("player_id", playerId)
-      .gte("created_at", weekStart);
-    for (const r of data || []) {
-      const e = Number(r.energy_spent);
-      batchEnergy += Number.isFinite(e) && e > 0 ? e : Math.max(0, Number(r.taps) || 0);
-    }
-  } catch {
-    /* ignore */
-  }
-
-  const trueScore = computeTrueWeeklyScore({
-    weekId,
-    weeklyWeekId: player.weekly_week_id as string,
-    weeklyShards: Number(player.weekly_shards) || 0,
-    dailyTaps: Number(player.daily_taps) || 0,
-    lastTapDate: player.last_tap_date as string,
-    inventory: player.inventory,
-    batchEnergy,
-  });
-
-  const curWeek = String(player.weekly_week_id || "");
-  const curScore = Math.max(0, Number(player.weekly_shards) || 0);
-  if (trueScore <= 0) return player;
-  if (curWeek === weekId && curScore + 0.0001 >= trueScore) return player;
-
-  const inv = invObj(player.inventory);
-  inv.weekly_lb = { weekId, score: trueScore };
-  // This player only. Never include last_updated (energy clock).
-  const { data: fixed, error } = await sb
-    .from("players")
-    .update({
-      weekly_shards: trueScore,
-      weekly_week_id: weekId,
-      inventory: inv,
-    })
-    .eq("telegram_id", playerId)
-    .select("weekly_shards, weekly_week_id, inventory")
-    .maybeSingle();
-  if (error || !fixed) return player;
-  try {
-    await sb.rpc("upsert_weekly_score_ledger", {
-      p_week_id: weekId,
-      p_telegram_id: playerId,
-      p_username: String(player.username || ""),
-      p_score: trueScore,
-    });
-  } catch {
-    /* optional */
-  }
-  return {
-    ...player,
-    weekly_shards: fixed.weekly_shards,
-    weekly_week_id: fixed.weekly_week_id,
-    inventory: fixed.inventory,
-  };
-}

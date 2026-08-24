@@ -2120,7 +2120,12 @@ const GiftTapGame = () => {
           await ensureSecureSession();
           const st = await secureVaultStatus();
           setNeedsPassword(st?.has_password === false);
-          // Stamp this player's last_updated (last seen) + catch up energy via energy_at
+        } catch {
+          setNeedsPassword(false);
+        }
+        // LOGIN stamp: last_updated for this player only (never tied to taps)
+        try {
+          await ensureSecureSession();
           const state = await fetchPlayerState();
           if (state?.player) {
             if (state.player.last_updated != null) {
@@ -2132,9 +2137,11 @@ const GiftTapGame = () => {
             if (state.player.energy_at != null) {
               playerRow.energy_at = state.player.energy_at;
             }
+          } else {
+            console.warn('login last_updated stamp skipped', state?.error);
           }
-        } catch {
-          setNeedsPassword(false);
+        } catch (e) {
+          console.warn('login last_updated stamp failed', e?.message || e);
         }
         
         setBalances({ 

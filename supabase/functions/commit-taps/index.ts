@@ -277,7 +277,7 @@ serve(async (req) => {
       const storedFinite = Number.isFinite(storedEnergy) ? storedEnergy : 0;
       const healLtd = dailyTaps > 0 && prevLtd !== today;
       const nowIso = now.toISOString();
-      // Persist regen on energy_at only — never touch last_updated (login stamp).
+      // Regen on energy_at only. last_updated = login only (never on taps).
       let persistedAnchor = false;
       if (healLtd || energy > storedFinite + 0.001) {
         const patch: Record<string, unknown> = {
@@ -306,7 +306,6 @@ serve(async (req) => {
           daily_taps: dailyTaps,
           last_energy: energy,
           energy_at: energyAtOut,
-          // last_updated unchanged (login/last-seen) — client energy uses energy_at
           last_updated: row.last_updated || nowIso,
           // If they already have today's progress, always surface today so client won't day-roll wipe
           last_tap_date: dailyTaps > 0 ? today : (prevLtd || null),
@@ -400,11 +399,11 @@ serve(async (req) => {
       max_daily_limit: maxLimit,
       last_energy: finalEnergy,
       energy_at: nowIso,
+      // last_tap_date = day they tapped (daily). last_updated is LOGIN only — not here.
       last_tap_date: today,
       current_streak: streak,
       inventory: inv,
       tap_power: tapPowerAfter,
-      // do NOT write last_updated here — that is login/last-seen only
     };
 
     let { error: upErr } = await sb
