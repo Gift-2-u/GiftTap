@@ -155,6 +155,7 @@ import {
 // DB_PLAYER_ID === 'telegram_id' (legacy Supabase column — still the player primary key)
 
 import { hasLocksmith, listGiftNfts } from './locksmith';
+import { RPC_URL } from './rpc';
 import AirdropBoard from './AirdropBoard';
 import {
   computeAirdropProgress,
@@ -211,6 +212,7 @@ import {
   secureGetVault,
   secureSetVaultIfEmpty,
   secureVaultStatus,
+  secureAdReward,
   fetchWeeklyBoard,
   fetchAirdropBoard,
 } from './secureApi';
@@ -1320,56 +1322,18 @@ const GiftTapGame = () => {
       if (result && result.success) {
         console.log(`Ad OK via ${result.network}`);
 
-        const newAdsCount = dailyAdsWatched + 1;
-        const today = new Date().toISOString().split('T')[0];
-        // End of UTC day (same clock as Expanded Battery / daily shop limits)
-        const nowUtc = new Date();
-        const midnightUtcTonight = new Date(Date.UTC(
-          nowUtc.getUTCFullYear(),
-          nowUtc.getUTCMonth(),
-          nowUtc.getUTCDate(),
-          23, 59, 59, 999,
-        ));
-        const nextAdBoost = (Number(stats.ad_energy_boost) || 0) + 100;
-        // Effective day cap = base/Rush + battery + tasks + ads (not double-count max_daily_limit)
-        let baseCap = 1000;
-        const invRush = inventoryRef.current || stats?.inventory || {};
-        const rush = invRush?.rush_active;
-        if (rush && typeof rush === 'object') {
-          const rl = Math.max(1, Math.min(5, Number(rush.level) || 1));
-          baseCap = 1000 + rl * 500; // mirror Rush ladder if present — server is authority
-        }
-        let effectiveCap = baseCap;
-        if (stats.energy_boost_expires && new Date(stats.energy_boost_expires) > nowUtc) {
-          effectiveCap += 1000;
-        }
-        if (stats.limit_boost_expires && new Date(stats.limit_boost_expires) > nowUtc) {
-          effectiveCap += Number(stats.limit_boost_amount) || 0;
-        }
-        const tlb = (inventoryRef.current || stats?.inventory || {}).task_limit_boost;
-        if (tlb?.expires && new Date(tlb.expires) > nowUtc) {
-          effectiveCap += Number(tlb.amount) || 0;
-        }
-        effectiveCap += nextAdBoost;
-
+        // Server computes ad boost + max_daily_limit (client cannot set the cap)
+        await ensureSecureSession();
+        const data = await secureAdReward();
+        const newAdsCount = Number(data.daily_ads_watched) || dailyAdsWatched + 1;
+        const newMaxLimit = Number(data.max_daily_limit) || maxDailyLimit;
         const dbUpdates = {
-          max_daily_limit: effectiveCap,
+          max_daily_limit: newMaxLimit,
           daily_ads_watched: newAdsCount,
-          last_ad_date: today,
-          limit_boost_amount: stats.limit_boost_amount,
-          limit_boost_expires: stats.limit_boost_expires,
-          ad_energy_boost: nextAdBoost,
-          ad_energy_expires: midnightUtcTonight.toISOString(),
-          // no last_updated — would freeze the 500 energy regen clock
+          last_ad_date: data.last_ad_date || new Date().toISOString().slice(0, 10),
+          ad_energy_boost: Number(data.ad_energy_boost) || 0,
+          ad_energy_expires: data.ad_energy_expires || null,
         };
-        const newMaxLimit = effectiveCap;
-
-        const { error } = await supabase
-          .from('players')
-          .update(dbUpdates)
-          .eq(DB_PLAYER_ID, playerId);
-
-        if (error) throw error;
 
         setMaxDailyLimit(newMaxLimit);
         setDailyAdsWatched(newAdsCount);
@@ -2009,38 +1973,27 @@ const GiftTapGame = () => {
     switchLeaderboardTab('Season');
   };
 
-  // 🚨 NEW FUNCTION: Bypasses the database and reads the live blockchain
+  // Read live chain balances for UI only — never write sol_balance/usdc_balance from the client.
   const syncBlockchainBalances = async (walletAddress) => {
       try {
           console.log("Fetching live balances directly from Solana...");
-          const connection = new Connection("https://mainnet.helius-rpc.com/?api-key=538f6c8f-c773-46a2-939c-6d48c75b2226", 'confirmed');
+          const connection = new Connection(RPC_URL, 'confirmed');
           const pubKey = new PublicKey(walletAddress);
 
-          // 1. Get Live SOL Balance
           const lamports = await connection.getBalance(pubKey);
           const liveSol = lamports / 1000000000;
 
-          // 2. Get Live USDC Balance (Using the official USDC Smart Contract)
           const usdcMint = new PublicKey("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v");
           const usdcAccounts = await connection.getParsedTokenAccountsByOwner(pubKey, { mint: usdcMint });
           const liveUsdc = usdcAccounts.value.length > 0 
               ? usdcAccounts.value[0].account.data.parsed.info.tokenAmount.uiAmount 
               : 0;
 
-          // 3. Force React to update the UI instantly (This fixes your MAX button and headers!)
           setBalances(prev => ({
               ...prev,
               sol: liveSol,
               usdc: liveUsdc
           }));
-
-          // 4. Tell Supabase the new numbers so the database matches the blockchain
-          await supabase
-              .from('players')
-              .update({ sol_balance: liveSol, usdc_balance: liveUsdc })
-              .eq(DB_PLAYER_ID, playerId);
-
-          console.log("UI and Database successfully synced with Blockchain!");
       } catch (err) {
           console.error("Live balance sync failed:", err);
       }
@@ -3550,10 +3503,26 @@ const GiftTapGame = () => {
                   false,
                 );
               } else {
-                notify(
-                  'Daily tap limit reached for this UTC day. Expanded Battery (+1000) is in Shop → Free.',
-                  false,
-                );
+                setAppNotice({
+                  show: true,
+                  message:
+                    "Daily limit reached for this UTC day.\n\n" +
+                    "Want to keep playing? Expanded Battery adds +1,000 max taps until UTC midnight (Shop · Free).",
+                  loading: false,
+                  success: false,
+                  title: "Daily limit reached",
+                  confirm: {
+                    confirmLabel: "Expanded Battery",
+                    cancelLabel: "OK",
+                    confirmDanger: false,
+                    resolve: (ok) => {
+                      if (ok) {
+                        setShopFocusTab("upgrades");
+                        setCurrentPage("shop");
+                      }
+                    },
+                  },
+                });
               }
             }
           }
@@ -4061,9 +4030,11 @@ const GiftTapGame = () => {
       }
       let currentStreak = Math.max(0, Number(streakRef.current) || Number(streak) || 0);
 
-      // 1. CALCULATE THE TRUE LIMIT (Surgical Fix)
-      let currentMaxLimit = Number(maxDailyLimit) || 1000;
-      // Rush (Energy) replaces base 1000
+      // Same formula as HUD dynamicMaxLimit / server effectiveDailyLimit.
+      // Do NOT start from maxDailyLimit then add boosts again (that double-counted
+      // and let taps climb past the real cap until flush snapped back).
+      const clickTime = new Date();
+      let currentMaxLimit = 1000;
       {
         const ra = (inventoryRef.current || stats?.inventory || {}).rush_active;
         if (ra && typeof ra === 'object') {
@@ -4071,28 +4042,24 @@ const GiftTapGame = () => {
           if (cap > 0) currentMaxLimit = cap;
         }
       }
-      const clickTime = new Date();
-
-      // Add the Ad Boost (+1000)
       if (stats.energy_boost_expires && clickTime < new Date(stats.energy_boost_expires)) {
         currentMaxLimit += 1000;
       }
-      // Add the Premium Boost (+2000)
       if (stats.limit_boost_expires && clickTime < new Date(stats.limit_boost_expires)) {
-        currentMaxLimit += (Number(stats.limit_boost_amount) || 0);
+        currentMaxLimit += Number(stats.limit_boost_amount) || 0;
       }
-      // Task rewards: +daily limit until UTC midnight
       currentMaxLimit += getTaskLimitBoost(stats, clickTime);
+      if (stats.ad_energy_expires && clickTime < new Date(stats.ad_energy_expires)) {
+        currentMaxLimit += Math.max(0, Number(stats.ad_energy_boost) || 0);
+      }
 
       // 2. Use currentDailyTaps (already 0 after midnight), not stale dailyTaps state
       if (currentDailyTaps >= currentMaxLimit) {
-        // Ensure "drain daily limit" weekly quest counts even when further taps are blocked
         recordWeeklyDailyProgress(
           Math.max(currentDailyTaps, Number(optimisticDaily.current) || 0),
           currentMaxLimit,
           now,
         );
-        // Daily limit only — Expanded Battery or OK (no notification prompt)
         setAppNotice({
           show: true,
           message:
@@ -4641,7 +4608,7 @@ const GiftTapGame = () => {
         notify(`Initiating SOL transaction for Level ${wallData.targetLevel}... Please wait.`);
 
         // --- 2. Setup Connection & Keypair (Using the decrypted storedSecret) ---
-        const connection = new Connection("https://mainnet.helius-rpc.com/?api-key=538f6c8f-c773-46a2-939c-6d48c75b2226", 'confirmed');
+        const connection = new Connection(RPC_URL, 'confirmed');
         
         let playerKeypair;
         if (storedSecret.includes(" ")) {
@@ -5139,24 +5106,7 @@ const GiftTapGame = () => {
         projectFee: 0.0005 // Your fixed Gift launch fee
       });
 
-      // --- SURGICAL FIX: Targeted Update ---
-      // We use .update() instead of .upsert() because we only want to change 
-      // the wallet balances. This protects your Energy and 3200 Boost.
-      const { data: updatedData, error: updateError } = await supabase
-        .from('players')
-        .update({
-          sol_balance: realSol,
-          usdc_balance: realUsdc,
-          // Never last_updated — that is the energy regen clock, not a wallet stamp.
-        })
-        .eq(DB_PLAYER_ID, playerId)
-        .select();
-
-      if (updateError) {
-        console.error("❌ Wallet Sync Error:", updateError.message);
-      } else {
-          console.log("✅ Sync Successful for ID:", playerId, updatedData); 
-      }
+      // Chain balances stay UI-only — never write sol_balance/usdc_balance from the client.
       
     } catch (err) { 
       console.error("Balance/Fee fetch failed", err); 
@@ -5187,7 +5137,7 @@ const GiftTapGame = () => {
           }
 
           // 2. Setup Connection & Keypair (Matching your marketplace logic)
-          const connection = new Connection("https://mainnet.helius-rpc.com/?api-key=538f6c8f-c773-46a2-939c-6d48c75b2226", 'confirmed');
+          const connection = new Connection(RPC_URL, 'confirmed');
           
           let playerKeypair;
           if (storedSecret.includes(" ")) {
@@ -5268,7 +5218,7 @@ const GiftTapGame = () => {
 
           // 2. Setup Connection & Keypair
           // We use your Helius RPC here
-          const connection = new Connection("https://mainnet.helius-rpc.com/?api-key=538f6c8f-c773-46a2-939c-6d48c75b2226", 'confirmed');
+          const connection = new Connection(RPC_URL, 'confirmed');
           const playerKeypair = Keypair.fromSecretKey(bs58.decode(storedSecret));
 
           // 3. Check Real SOL Balance (Player needs enough for withdrawal + fee + rent)
@@ -5616,7 +5566,7 @@ const GiftTapGame = () => {
       }
 
       // 2. SETUP CONNECTION
-      const connection = new Connection("https://mainnet.helius-rpc.com/?api-key=538f6c8f-c773-46a2-939c-6d48c75b2226", 'confirmed');
+      const connection = new Connection(RPC_URL, 'confirmed');
       
       // 3. PREPARE JUPITER INPUTS
       const inputMint = TOKEN_MINTS[swapFromToken];

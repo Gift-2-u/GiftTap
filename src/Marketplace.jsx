@@ -38,6 +38,7 @@ import {
   loadEchoCmConfig,
 } from './mintEcho';
 import { echoDescription, ECHO_MULTI } from './echo';
+import { RPC_URL } from './rpc';
 import {
   RUSH_CM,
   mintRushWave1,
@@ -1573,7 +1574,7 @@ Daily claim active · Pack → NFT to see it.`,
       }
 
       // 2. Setup Connection & Keypair
-      const connection = new Connection("https://mainnet.helius-rpc.com/?api-key=538f6c8f-c773-46a2-939c-6d48c75b2226", 'confirmed');
+      const connection = new Connection(RPC_URL, 'confirmed');
       
       let playerKeypair;
       if (storedSecret.includes(" ")) {

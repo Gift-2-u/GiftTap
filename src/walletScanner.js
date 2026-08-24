@@ -5,7 +5,7 @@ export const scanWalletForGear = async (walletAddress) => {
 
   // We use a public RPC that supports the DAS API (Helius is standard for this)
   // Note: For production, you will want to get a free API key from Helius.dev or QuickNode
-  const RPC_URL = "https://mainnet.helius-rpc.com/?api-key=YOUR_HELIUS_API_KEY"; 
+  const RPC_URL = import.meta.env.VITE_SOLANA_RPC_URL || 'https://api.mainnet-beta.solana.com';
 
   try {
     const response = await fetch(RPC_URL, {

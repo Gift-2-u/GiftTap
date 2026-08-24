@@ -8,7 +8,11 @@ import {
   SHARD_SHOP,
   invObj,
   utcIsoWeekId,
+  effectiveDailyLimit,
 } from "../_shared/economy.ts";
+
+const AD_DAILY_MAX = 10;
+const AD_CAP_PER_WATCH = 100;
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -20,6 +24,81 @@ serve(async (req) => {
     const playerId = String(claims.sub);
     const body = await req.json().catch(() => ({}));
     const itemId = String(body.item_id || body.itemId || "").toLowerCase();
+
+    // Rewarded ad → +100 daily tap capacity (server authority; client cannot set the cap)
+    if (itemId === "ad_watch" || body.action === "ad_reward") {
+      const sb = adminClient();
+      const { data: row, error: selErr } = await sb
+        .from("players")
+        .select(
+          "daily_ads_watched, last_ad_date, ad_energy_boost, ad_energy_expires, energy_boost_expires, limit_boost_amount, limit_boost_expires, inventory, max_daily_limit",
+        )
+        .eq("telegram_id", playerId)
+        .maybeSingle();
+      if (selErr) throw selErr;
+      if (!row) throw new Error("Player not found");
+
+      const today = new Date().toISOString().slice(0, 10);
+      const lastAd = row.last_ad_date ? String(row.last_ad_date).slice(0, 10) : "";
+      let ads = Number(row.daily_ads_watched) || 0;
+      if (lastAd !== today) ads = 0;
+      if (ads >= AD_DAILY_MAX) {
+        throw new Error(`Daily ad limit reached (${AD_DAILY_MAX}/${AD_DAILY_MAX})`);
+      }
+
+      const now = new Date();
+      const midnightUtc = new Date(
+        Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 23, 59, 59, 999),
+      );
+      const adExpOk =
+        row.ad_energy_expires &&
+        new Date(String(row.ad_energy_expires)).getTime() > now.getTime() &&
+        lastAd === today;
+      const nextAdBoost =
+        (adExpOk ? Math.max(0, Number(row.ad_energy_boost) || 0) : 0) +
+        AD_CAP_PER_WATCH;
+      const newAds = ads + 1;
+
+      const patchRow = {
+        ...row,
+        ad_energy_boost: nextAdBoost,
+        ad_energy_expires: midnightUtc.toISOString(),
+      };
+      const effectiveCap = effectiveDailyLimit(patchRow, now);
+
+      const { error: upErr } = await sb
+        .from("players")
+        .update({
+          daily_ads_watched: newAds,
+          last_ad_date: today,
+          ad_energy_boost: nextAdBoost,
+          ad_energy_expires: midnightUtc.toISOString(),
+          max_daily_limit: effectiveCap,
+          last_updated: now.toISOString(),
+        })
+        .eq("telegram_id", playerId);
+      if (upErr) throw upErr;
+
+      await logEconomy(sb, {
+        player_id: playerId,
+        kind: "ad_watch",
+        delta: 0,
+        balance_after: null,
+        ref: "ad_watch",
+        meta: { ads: newAds, ad_boost: nextAdBoost, max_daily_limit: effectiveCap },
+      });
+
+      return jsonResponse({
+        success: true,
+        item_id: "ad_watch",
+        daily_ads_watched: newAds,
+        last_ad_date: today,
+        ad_energy_boost: nextAdBoost,
+        ad_energy_expires: midnightUtc.toISOString(),
+        max_daily_limit: effectiveCap,
+      });
+    }
+
     const catalog = SHARD_SHOP[itemId];
     if (!catalog) {
       throw new Error("Unknown shard shop item (frenzy|battery|refill)");

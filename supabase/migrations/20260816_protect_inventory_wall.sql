@@ -52,6 +52,12 @@ BEGIN
   NEW.sol_balance := OLD.sol_balance;
   NEW.usdc_balance := OLD.usdc_balance;
   NEW.max_unlocked_level := OLD.max_unlocked_level;
+  -- Daily cap / ads — Edge only (stops client inflating max_daily_limit)
+  NEW.max_daily_limit := OLD.max_daily_limit;
+  NEW.daily_ads_watched := OLD.daily_ads_watched;
+  NEW.last_ad_date := OLD.last_ad_date;
+  NEW.ad_energy_boost := OLD.ad_energy_boost;
+  NEW.ad_energy_expires := OLD.ad_energy_expires;
 
   -- Timed buffs / multipliers — only Edge may start these (stops free frenzy etc.)
   NEW.frenzy_expires := OLD.frenzy_expires;
