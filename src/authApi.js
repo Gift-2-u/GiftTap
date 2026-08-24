@@ -5,11 +5,29 @@
 
 import CryptoJS from 'crypto-js';
 import { Keypair } from '@solana/web3.js';
-import bs58 from 'bs58';
+import * as bip39 from 'bip39';
+import { derivePath } from 'ed25519-hd-key';
 import { supabase } from './supabaseClient';
 import { vaultSaltFor, applyAuthSession, setSessionToken } from './playerIdentity';
 
 const USERNAME_RE = /^[a-zA-Z0-9_]{3,20}$/;
+const SOLANA_PATH = "m/44'/501'/0'/0'";
+
+/** Same mint path as create-user-wallet Edge — always 12 BIP39 words (never raw base58). */
+function mintMnemonicWallet() {
+  const mnemonic = bip39.generateMnemonic();
+  const seed = bip39.mnemonicToSeedSync(mnemonic);
+  const seedHex = Array.from(seed)
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('');
+  const { key } = derivePath(SOLANA_PATH, seedHex);
+  const keypair = Keypair.fromSeed(key);
+  return {
+    publicKey: keypair.publicKey.toBase58(),
+    secret: mnemonic,
+    mnemonic,
+  };
+}
 
 function bytesToB64(bytes) {
   let s = '';
@@ -68,41 +86,12 @@ function encryptVault(secret, playerId) {
 }
 
 /**
- * Create Solana wallet. Prefer edge function (12-word phrase); fallback Keypair.generate().
+ * Create Solana wallet for signup (no JWT yet).
+ * Always returns a 12-word BIP39 mnemonic — never a raw base58 secret key.
+ * (Edge create-user-wallet needs a session JWT, so signup mints locally the same way.)
  */
-async function createSolanaWallet(playerId, username) {
-  const base = (import.meta.env.VITE_SUPABASE_URL || '').replace(/\/$/, '');
-  const anon = import.meta.env.VITE_SUPABASE_ANON_KEY;
-
-  if (base && anon) {
-    try {
-      const res = await fetch(`${base}/functions/v1/create-user-wallet`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${anon}`,
-        },
-        body: JSON.stringify({ telegram_id: playerId, username }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (data.publicKey && (data.mnemonic || data.secretKey)) {
-        return {
-          publicKey: data.publicKey,
-          secret: data.mnemonic || data.secretKey,
-        };
-      }
-      console.warn('create-user-wallet failed, using local keypair:', data.error || res.status);
-    } catch (e) {
-      console.warn('create-user-wallet network error, using local keypair:', e);
-    }
-  }
-
-  // Fallback — always produces a valid wallet_address (base58 secret, not 12 words)
-  const kp = Keypair.generate();
-  return {
-    publicKey: kp.publicKey.toBase58(),
-    secret: bs58.encode(kp.secretKey),
-  };
+async function createSolanaWallet(_playerId, _username) {
+  return mintMnemonicWallet();
 }
 
 export function formatAuthError(err) {
@@ -152,23 +141,15 @@ export async function registerAccount(username, password, captchaToken = '') {
   }
 
   // Create wallet locally first (Edge create-user-wallet needs JWT after account exists)
-  const playerIdPreview = crypto.randomUUID
-    ? crypto.randomUUID()
-    : `web_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
   let wallet;
   try {
-    wallet = await createSolanaWallet(playerIdPreview, cleanName);
-  } catch {
-    wallet = null;
+    wallet = await createSolanaWallet(null, cleanName);
+  } catch (e) {
+    console.warn('mintMnemonicWallet retry', e?.message || e);
+    wallet = mintMnemonicWallet();
   }
-  if (!wallet?.publicKey) {
-    const { Keypair } = await import('@solana/web3.js');
-    const bs58mod = await import('bs58');
-    const kp = Keypair.generate();
-    wallet = {
-      publicKey: kp.publicKey.toBase58(),
-      secret: bs58mod.default.encode(kp.secretKey),
-    };
+  if (!wallet?.publicKey || !wallet?.secret || !String(wallet.secret).includes(' ')) {
+    wallet = mintMnemonicWallet();
   }
 
   // Encrypt vault for optional pass-through to auth-register (stored in player_secrets)

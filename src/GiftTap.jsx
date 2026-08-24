@@ -2628,8 +2628,9 @@ const GiftTapGame = () => {
             setIsDataLoaded(true);
           } else if (result && result.publicKey) {
             // Vault set-once via Edge only (anon cannot read/write encrypted_vault)
-            const rawSecret = result.mnemonic || result.secretKey || null;
-            if (rawSecret) {
+            // Only store/show BIP39 12 words — never a raw base58 secret key
+            const rawSecret = result.mnemonic || null;
+            if (rawSecret && String(rawSecret).trim().includes(' ')) {
               const enc = encryptWallet(rawSecret, invisibleKey);
               try {
                 await secureSetVaultIfEmpty(enc);
@@ -2637,6 +2638,7 @@ const GiftTapGame = () => {
                 console.warn('vault set_if_empty', ve?.message || ve);
               }
               setDecryptedPhrase(rawSecret);
+              setGeneratedSecret(rawSecret);
               setMustBackup(true);
               localStorage.removeItem(`wallet_backed_up_${userId}`);
             }
@@ -2904,8 +2906,8 @@ const GiftTapGame = () => {
     setIsLoading(true);
     setIsDataLoaded(false);
     if (walletAddress) setPlayerWallet(walletAddress);
-    // New accounts: wallet already created at signup — force backup once
-    if (isNew && mnemonic) {
+    // New accounts: wallet already created at signup — force backup once (12 words only)
+    if (isNew && mnemonic && String(mnemonic).trim().includes(' ')) {
       setDecryptedPhrase(mnemonic);
       setGeneratedSecret(mnemonic);
       setMustBackup(true);
