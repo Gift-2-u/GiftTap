@@ -17,30 +17,35 @@ export default function DurabilityReloadModal({
   gftBalance = 0,
   busy = false,
 }) {
-  const room = Math.max(
+  // Match the bar display (rounded %). Avoid "100% · room 1%" from float leftovers.
+  const shownPct = Math.max(
     0,
-    Math.ceil(NFT_DURABILITY_MAX - Number(currentPct || 0)),
+    Math.min(NFT_DURABILITY_MAX, Math.round(Number(currentPct) || 0)),
   );
+  const room = Math.max(0, NFT_DURABILITY_MAX - shownPct);
   const [percent, setPercent] = useState(1);
   const [g2uInput, setG2uInput] = useState(String(NFT_DURABILITY_G2U_PER_PERCENT));
 
   useEffect(() => {
     if (!open) return;
-    const startPct = room > 0 ? 1 : 0;
+    // Default to max fill (room %)
+    const startPct = room > 0 ? room : 0;
     setPercent(startPct);
     setG2uInput(String(startPct * NFT_DURABILITY_G2U_PER_PERCENT));
   }, [open, room]);
 
+  const maxCost = room * NFT_DURABILITY_G2U_PER_PERCENT;
   const cost = useMemo(
     () => Math.max(0, Math.floor(Number(percent) || 0) * NFT_DURABILITY_G2U_PER_PERCENT),
     [percent],
   );
-  const after = Math.min(
-    NFT_DURABILITY_MAX,
-    Math.round((Number(currentPct) || 0) + (Number(percent) || 0)),
-  );
   const bal = Number(gftBalance) || 0;
-  const canPay = room > 0 && percent >= 1 && bal + 1e-9 >= cost;
+  const canAccept = room > 0 && percent >= 1;
+  const [notice, setNotice] = useState(null);
+
+  useEffect(() => {
+    if (!open) setNotice(null);
+  }, [open]);
 
   const applyPercent = (raw) => {
     let p = Math.floor(Number(raw) || 0);
@@ -103,8 +108,7 @@ export default function DurabilityReloadModal({
           Reload durability
         </h3>
         <p style={{ margin: '0 0 12px', color: '#888', fontSize: 12, lineHeight: 1.4 }}>
-          {kindLabel} · now {Math.round(Number(currentPct) || 0)}%
-          {room <= 0 ? ' · already full' : ` · room ${room}%`}
+          {kindLabel} · {shownPct}%
         </p>
 
         <div
@@ -187,19 +191,33 @@ export default function DurabilityReloadModal({
           </button>
         </div>
 
-        <div style={{ color: '#666', fontSize: 11, marginBottom: 12, lineHeight: 1.4 }}>
-          After reload: <span style={{ color: '#4ade80', fontWeight: 'bold' }}>{after}%</span>
-          {' · '}
-          Cost:{' '}
+        <div style={{ color: '#ccc', fontSize: 13, marginBottom: 6, lineHeight: 1.4 }}>
+          Max reload {room}% ={' '}
           <span style={{ color: '#ffd700', fontWeight: 'bold' }}>
-            {cost.toLocaleString()} $G2U
+            {maxCost.toLocaleString()} G2U
           </span>
-          <br />
-          Balance: {Math.floor(bal).toLocaleString()} $G2U
-          {!canPay && percent >= 1 && room > 0 ? (
-            <span style={{ color: '#f87171' }}> · not enough $G2U</span>
-          ) : null}
         </div>
+        <div style={{ color: '#888', fontSize: 12, marginBottom: 12 }}>
+          Balance: {Math.floor(bal).toLocaleString()} G2U
+        </div>
+
+        {notice ? (
+          <div
+            style={{
+              marginBottom: 12,
+              padding: '10px 12px',
+              borderRadius: 10,
+              border: '1px solid #f8717166',
+              background: 'rgba(248,113,113,0.12)',
+              color: '#fca5a5',
+              fontSize: 12,
+              fontWeight: 'bold',
+              textAlign: 'center',
+            }}
+          >
+            {notice}
+          </div>
+        ) : null}
 
         <div style={{ display: 'flex', gap: 8 }}>
           <button
@@ -221,19 +239,28 @@ export default function DurabilityReloadModal({
           </button>
           <button
             type="button"
-            disabled={busy || !canPay}
-            onClick={() => onAccept?.(percent)}
+            disabled={busy || !canAccept}
+            onClick={() => {
+              if (bal + 1e-9 < cost) {
+                setNotice(
+                  `Not enough G2U (need ${cost.toLocaleString()}, have ${Math.floor(bal).toLocaleString()})`,
+                );
+                return;
+              }
+              setNotice(null);
+              onAccept?.(percent);
+            }}
             style={{
               flex: 1,
               padding: 12,
               borderRadius: 10,
               border: 'none',
-              background: canPay
+              background: canAccept
                 ? 'linear-gradient(90deg, #16a34a, #4ade80)'
                 : '#333',
-              color: canPay ? '#000' : '#666',
+              color: canAccept ? '#000' : '#666',
               fontWeight: 'bold',
-              cursor: busy || !canPay ? 'not-allowed' : 'pointer',
+              cursor: busy || !canAccept ? 'not-allowed' : 'pointer',
             }}
           >
             {busy ? '…' : 'Accept'}

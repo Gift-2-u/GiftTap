@@ -10,13 +10,12 @@ import {
   getSwapAccess,
   quoteShardSwap,
   inventoryAfterSwap,
-  inventoryAfterUnlockBurn,
   inventoryAfterDurabilityTopUp,
   getDailySwapUsed,
   getSwapDurability,
   durabilityRemainingShards,
 } from './shardSwap';
-import SwapBadgeCard from './SwapBadgeCard';
+// SwapBadgeCard kept in repo — UI hidden (Locksmith-only swap path in game)
 import { supabase } from './supabaseClient';
 import { DB_PLAYER_ID, getPlayerId } from './playerIdentity';
 
@@ -1092,111 +1091,19 @@ export default function GameWalletActionModals({
               <p style={{ fontSize: 11, color: '#f87171', marginTop: 8 }}>{shardQuote.error}</p>
             )}
 
-            {(swapAccess.tier === 'free' || swapAccess.tier === 'empty' || (!!inventory?.swap_unlocked && !hasLocksmithNft)) && (
-              <div style={{ marginTop: 12, marginBottom: 4 }}>
-                <SwapBadgeCard
-                  inventory={inventory || {}}
-                  editionNumber={1}
-                  editionTotal={20000}
-                  compact
-                  onMint={() =>
-                    setStatus({
-                      show: true,
-                      loading: false,
-                      message: 'Mint opens later for Access Card Lv5+.',
-                      success: false,
-                    })
-                  }
-                />
-              </div>
-            )}
-
-            <p
-              style={{
-                fontSize: '11px',
-                color: '#666',
-                marginTop: '12px',
-                textAlign: 'center',
-                lineHeight: 1.4,
-              }}
-            >
-              Free path: L5 + Swap Access Card (durability % drains by volume, top up with G2U). Locksmith permanent.
-            </p>
-
-            {!swapAccess.allowed && (
-              <button
-                type="button"
-                disabled={
-                  shardBusy ||
-                  !playerId ||
-                  currentLevel < SHARD_SWAP_CONFIG.freeUnlockMinLevel ||
-                  balShards < SHARD_SWAP_CONFIG.freeUnlockBurnShards ||
-                  !!(inventory?.swap_unlocked || inventory?.swap_unlock_burned)
-                }
-                onClick={async () => {
-                  const cost = SHARD_SWAP_CONFIG.freeUnlockBurnShards;
-                  if (currentLevel < SHARD_SWAP_CONFIG.freeUnlockMinLevel) {
-                    setStatus({
-                      show: true,
-                      loading: false,
-                      message: `Need Level ${SHARD_SWAP_CONFIG.freeUnlockMinLevel}+ first`,
-                      success: false,
-                      txid: null,
-                    });
-                    return;
-                  }
-                  if (balShards < cost) return;
-                  setShardBusy(true);
-                  try {
-                    const newBal = Math.round((balShards - cost) * 1000) / 1000;
-                    const nextInv = inventoryAfterUnlockBurn(inventory);
-                    const { error } = await supabase
-                      .from('players')
-                      .update({
-                        shard_balance: newBal,
-                        inventory: nextInv,
-                        last_updated: new Date().toISOString(),
-                      })
-                      .eq(DB_PLAYER_ID, String(playerId));
-                    if (error) throw error;
-                    setInventory(nextInv);
-                    onSuccess?.();
-                    setStatus({
-                      show: true,
-                      loading: false,
-                      message: '✅ Swap Badge at 100% durability',
-                      success: true,
-                      txid: null,
-                    });
-                  } catch (e) {
-                    setStatus({
-                      show: true,
-                      loading: false,
-                      message: e?.message || 'Unlock failed',
-                      success: false,
-                      txid: null,
-                    });
-                  } finally {
-                    setShardBusy(false);
-                  }
-                }}
+            {/* Swap Access Card UI hidden — keep SwapBadgeCard.jsx / shardSwap.js for later */}
+            {!hasLocksmithNft && !swapAccess.allowed && (
+              <p
                 style={{
-                  width: '100%',
-                  background: '#2a2d34',
-                  color: '#fff',
-                  border: '1px solid #4ade80',
-                  padding: '14px',
-                  borderRadius: '30px',
-                  fontWeight: 'bold',
-                  fontSize: '14px',
+                  fontSize: '11px',
+                  color: '#888',
                   marginTop: '12px',
-                  cursor: 'pointer',
+                  textAlign: 'center',
+                  lineHeight: 1.4,
                 }}
               >
-                {currentLevel < SHARD_SWAP_CONFIG.freeUnlockMinLevel
-                  ? `Need Level ${SHARD_SWAP_CONFIG.freeUnlockMinLevel} first`
-                  : `Buy Access Card (${SHARD_SWAP_CONFIG.freeUnlockBurnShards.toLocaleString()} shards) · L${SHARD_SWAP_CONFIG.freeUnlockMinLevel}+`}
-              </button>
+                Shard → G2U swap needs GiftLocksmith.
+              </p>
             )}
 
             <button

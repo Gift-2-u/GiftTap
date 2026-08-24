@@ -7784,36 +7784,7 @@ const GiftTapGame = () => {
                   }}
                 >
 
-                {/* Access Card (free path) — unified NFT-style panel */}
-                {!hasLocksmithNft && (
-                  <div style={{ marginBottom: 12 }}>
-                    <SwapBadgeCard
-                      inventory={stats.inventory || {}}
-                      editionNumber={1}
-                      editionTotal={SHARD_SWAP_CONFIG.freeAccessCardEditionTotal || 20000}
-                      dailyCapShards={SHARD_SWAP_CONFIG.free.dailyCapShards}
-                      compact
-                      levelUpBusy={shardSwapBusy}
-                      levelUpCostGft={
-                        hasSwapLicense(stats.inventory)
-                          ? badgeLevelUpCostGft(getSwapBadgeLevel(stats.inventory))
-                          : null
-                      }
-                      canAffordLevelUp={
-                        hasSwapLicense(stats.inventory) &&
-                        badgeLevelUpCostGft(getSwapBadgeLevel(stats.inventory)) != null &&
-                        (Number(balances.G2U) || 0) >=
-                          (badgeLevelUpCostGft(getSwapBadgeLevel(stats.inventory)) || 0)
-                      }
-                      onLevelUp={levelUpSwapBadge}
-                      onMint={() => {
-                        notify(
-                          'Mint opens later — card Lv5+ holders can mint and sell Access Cards. Not live yet.',
-                        );
-                      }}
-                    />
-                  </div>
-                )}
+                {/* Swap Access Card UI hidden — SwapBadgeCard.jsx / shardSwap.js kept in repo */}
 
                 {/* GiftLocksmith — real NFT art (click for perks) */}
                 {hasLocksmithNft && (
@@ -8019,49 +7990,18 @@ const GiftTapGame = () => {
                   )}
                 </div>
 
-                {!swapAccess.allowed && (
-                  <button
-                    type="button"
-                    disabled={
-                      shardSwapBusy ||
-                      currentLevel < SHARD_SWAP_CONFIG.freeUnlockMinLevel ||
-                      balance < SHARD_SWAP_CONFIG.freeUnlockBurnShards ||
-                      !!(stats.inventory?.swap_unlocked || stats.inventory?.swap_unlock_burned)
-                    }
-                    onClick={buySwapLicense}
+                {!hasLocksmithNft && !swapAccess.allowed && (
+                  <p
                     style={{
-                      width: '100%',
-                      background:
-                        currentLevel >= SHARD_SWAP_CONFIG.freeUnlockMinLevel &&
-                        balance >= SHARD_SWAP_CONFIG.freeUnlockBurnShards
-                          ? '#2a2d34'
-                          : '#222',
-                      color:
-                        currentLevel >= SHARD_SWAP_CONFIG.freeUnlockMinLevel &&
-                        balance >= SHARD_SWAP_CONFIG.freeUnlockBurnShards
-                          ? '#fff'
-                          : '#666',
-                      border: '1px solid #4ade80',
-                      padding: '14px',
-                      borderRadius: '30px',
-                      fontWeight: 'bold',
-                      fontSize: '13px',
-                      marginTop: '12px',
-                      cursor:
-                        currentLevel >= SHARD_SWAP_CONFIG.freeUnlockMinLevel &&
-                        balance >= SHARD_SWAP_CONFIG.freeUnlockBurnShards
-                          ? 'pointer'
-                          : 'not-allowed',
+                      fontSize: 11,
+                      color: '#888',
+                      textAlign: 'center',
+                      marginTop: 12,
+                      lineHeight: 1.4,
                     }}
                   >
-                    {shardSwapBusy
-                      ? 'Working…'
-                      : currentLevel < SHARD_SWAP_CONFIG.freeUnlockMinLevel
-                        ? `Need Level ${SHARD_SWAP_CONFIG.freeUnlockMinLevel} first (you: ${currentLevel})`
-                        : stats.inventory?.swap_unlock_burned || stats.inventory?.swap_unlocked
-                          ? 'Badge owned — need Level 5+ or top up'
-                          : `Get Access Card (${SHARD_SWAP_CONFIG.freeUnlockBurnShards.toLocaleString()} shards) · L${SHARD_SWAP_CONFIG.freeUnlockMinLevel}+`}
-                  </button>
+                    Shard → G2U swap needs GiftLocksmith.
+                  </p>
                 )}
 
                 <button 
