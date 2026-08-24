@@ -58,9 +58,10 @@ serve(async (req) => {
           const claimKey = `weekly_badge:${weekId}:award`;
           if (!log.includes(claimKey)) log.push(claimKey);
           inv.claim_log = log.sort();
+          // Do not bump last_updated (energy regen clock)
           await sb
             .from("players")
-            .update({ inventory: inv, last_updated: new Date().toISOString() })
+            .update({ inventory: inv })
             .eq("telegram_id", playerId);
           repaired = true;
         }
@@ -135,9 +136,10 @@ serve(async (req) => {
     if (!log.includes(claimKey)) log.push(claimKey);
     inv.claim_log = log.sort();
 
+    // Do not bump last_updated (energy regen clock)
     const { error: upErr } = await sb
       .from("players")
-      .update({ inventory: inv, last_updated: new Date().toISOString() })
+      .update({ inventory: inv })
       .eq("telegram_id", playerId);
     if (upErr) throw upErr;
 

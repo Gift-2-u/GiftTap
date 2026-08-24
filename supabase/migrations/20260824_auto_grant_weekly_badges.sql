@@ -85,8 +85,9 @@ BEGIN
     END IF;
     inv := jsonb_set(inv, '{claim_log}', log, true);
 
+    -- inventory only — never bump last_updated (energy regen clock)
     UPDATE public.players
-    SET inventory = inv, last_updated = now()
+    SET inventory = inv
     WHERE telegram_id::text = r.pid;
   END LOOP;
 
