@@ -109,7 +109,9 @@ export function isWeeklyFloorEligible(score, floor) {
 
 /**
  * First UTC ISO week that uses %-based badge cuts (this week W34 stays legacy).
- * Of eligible N — top 10% Diamond, next 15% Gold, next 25% Silver, rest Bronze
+ * Of eligible N — if N≤4: #1 D · #2 G · #3 S · #4 B.
+ * If N>4: top 10% Diamond, next 15% Gold, next 25% Silver, rest Bronze
+ * (never 0 Diamond/Gold from floor% on a tiny board).
  * (W34 and earlier used fixed #1–#10 ranks in code.)
  */
 export const WEEKLY_PERCENT_BADGES_FROM_WEEK = '2026-W35';

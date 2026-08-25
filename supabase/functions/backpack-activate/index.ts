@@ -13,7 +13,7 @@ import {
   effectiveDailyLimit,
 } from "../_shared/economy.ts";
 
-const ENERGY_CAP = 500;
+const ENERGY_CAP_DEFAULT = 500;
 
 const ACTIVATABLE = new Set([
   "frenzy",
@@ -26,7 +26,16 @@ const ACTIVATABLE = new Set([
   "crate",
   "x2_boost",
   "x3_boost",
+  "expanded_energy",
 ]);
+
+function energyCapFromInv(inv: Record<string, unknown>, nowMs = Date.now()): number {
+  const b = inv?.energy_cap_boost as { cap?: number; expires?: string } | undefined;
+  if (!b?.expires) return ENERGY_CAP_DEFAULT;
+  if (new Date(String(b.expires)).getTime() <= nowMs) return ENERGY_CAP_DEFAULT;
+  const cap = Math.floor(Number(b.cap) || 0);
+  return cap >= 1000 ? 1000 : ENERGY_CAP_DEFAULT;
+}
 
 function endOfUtcDay(offsetDays = 0, from = new Date()): string {
   const d = new Date(
@@ -112,6 +121,7 @@ serve(async (req) => {
 
     let shard_balance = Number(row.shard_balance) || 0;
     let last_energy = Number(row.last_energy);
+    const ENERGY_CAP = energyCapFromInv(inv, now);
     if (!Number.isFinite(last_energy)) last_energy = ENERGY_CAP;
 
     if (itemId === "frenzy") {
@@ -152,6 +162,18 @@ serve(async (req) => {
     } else if (itemId === "x3_boost") {
       updates.premium_multiplier = 3;
       updates.premium_multiplier_expires = endOfUtcDay(6);
+    } else if (itemId === "expanded_energy") {
+      // Battery bar 500 → 1000 until end of UTC day (inventory flag — no new DB column)
+      inv.energy_cap_boost = {
+        cap: 1000,
+        expires: endOfUtcDay(0),
+      };
+      updates.inventory = inv;
+      // Raise bar toward new cap if already near old full (500)
+      if (Number.isFinite(last_energy) && last_energy >= ENERGY_CAP_DEFAULT - 0.001) {
+        updates.last_energy = 1000;
+        updates.energy_at = new Date(now).toISOString();
+      }
     }
 
     // Try with daily_usage column; if column missing, retry inventory-only

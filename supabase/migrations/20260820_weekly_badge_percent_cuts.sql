@@ -38,12 +38,17 @@ BEGIN
 
   use_pct := (p_week_id IS NOT NULL AND btrim(p_week_id) <> '' AND p_week_id >= from_week);
 
-  IF NOT use_pct THEN
+  -- Tiny board (≤4 eligible): #1 Diamond · #2 Gold · #3 Silver · #4 Bronze
+  -- (10% of 4 = 0.4 → floor 0, so % alone cannot award Diamond yet)
+  IF (NOT use_pct) OR n <= 4 THEN
+    IF n >= 1 AND p_rank > n THEN
+      RETURN NULL;
+    END IF;
     RETURN CASE
       WHEN p_rank = 1 THEN 'diamond'
       WHEN p_rank = 2 THEN 'gold'
       WHEN p_rank = 3 THEN 'silver'
-      WHEN p_rank BETWEEN 4 AND 10 THEN 'bronze'
+      WHEN p_rank >= 4 THEN 'bronze'
       ELSE NULL
     END;
   END IF;
@@ -52,6 +57,7 @@ BEGIN
     RETURN NULL;
   END IF;
 
+  -- Pure % of eligible N (examples: 10×10%=1 Diamond, 20×10%=2 Diamonds)
   d := floor(n * 0.10)::int;
   g := floor(n * 0.15)::int;
   s := floor(n * 0.25)::int;

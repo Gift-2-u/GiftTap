@@ -1,1 +1,1 @@
-{"query": "select public.utc_iso_week_id(now()) as current_week, public.previous_utc_iso_week_id(now()) as previous_week"}
+{"query": "select r as rank, public.weekly_badge_tier_for_rank(r, 4, '2026-W35') as tier from generate_series(1,4) r"}

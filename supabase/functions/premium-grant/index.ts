@@ -41,6 +41,11 @@ const PREMIUM: Record<
     name: "Triple Power",
     priceSol: 0.035,
     priceG2u: 0.035 * G2U_PER_SOL},
+  /** Battery bar 500→1000 until UTC midnight — fixed 500 $G2U after launch */
+  expanded_energy: {
+    name: "Expanded Energy",
+    priceSol: 500 / G2U_PER_SOL,
+    priceG2u: 500},
   shard_badge: {
     name: "Star Badge",
     priceSol: 0.02,

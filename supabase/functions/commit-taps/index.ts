@@ -21,30 +21,40 @@ import {
   durabilitySnapshot,
 } from "../_shared/nftDurability.ts";
 
-const ENERGY_CAP = 500;
+const ENERGY_CAP_DEFAULT = 500;
 const ENERGY_SECONDS_PER_POINT = 1.5;
 
 function utcDayStr(ms: number): string {
   return new Date(ms).toISOString().slice(0, 10);
 }
 
+/** Active Expanded Energy (inventory) → 1000 until UTC expiry; else 500. */
+function energyCapFromInv(inv: Record<string, unknown>, nowMs = Date.now()): number {
+  const b = inv?.energy_cap_boost as { cap?: number; expires?: string } | undefined;
+  if (!b?.expires) return ENERGY_CAP_DEFAULT;
+  if (new Date(String(b.expires)).getTime() <= nowMs) return ENERGY_CAP_DEFAULT;
+  const cap = Math.floor(Number(b.cap) || 0);
+  return cap >= 1000 ? 1000 : ENERGY_CAP_DEFAULT;
+}
+
 function energyFromAnchor(
   value: number,
   atIso: string | null | undefined,
   nowMs = Date.now(),
+  cap = ENERGY_CAP_DEFAULT,
 ): number {
   const at = atIso ? Date.parse(String(atIso)) : NaN;
-  // New UTC day since last energy anchor → full 500 bar
+  // New UTC day since last energy anchor → full bar (current cap)
   if (Number.isFinite(at) && utcDayStr(at) < utcDayStr(nowMs)) {
-    return ENERGY_CAP;
+    return cap;
   }
   const base = Number.isFinite(Number(value))
-    ? Math.max(0, Math.min(ENERGY_CAP, Number(value)))
-    : ENERGY_CAP;
+    ? Math.max(0, Math.min(cap, Number(value)))
+    : cap;
   const t0 = Number.isFinite(at) ? at : nowMs;
   const seconds = Math.max(0, Math.floor((nowMs - t0) / 1000));
   const gained = Math.floor(seconds / ENERGY_SECONDS_PER_POINT);
-  return Math.min(ENERGY_CAP, base + gained);
+  return Math.min(cap, base + gained);
 }
 
 function calculateLevel(taps: number): number {
@@ -211,10 +221,12 @@ serve(async (req) => {
       (row as Record<string, unknown>).energy_at != null
         ? String((row as Record<string, unknown>).energy_at)
         : row.last_updated;
+    const ENERGY_CAP = energyCapFromInv(inv, now.getTime());
     const energy = energyFromAnchor(
       Number(row.last_energy),
       energyAnchorIso,
       now.getTime(),
+      ENERGY_CAP,
     );
     // Effective daily CAP (persisted to max_daily_limit). daily_taps = raw clicks.
     const maxLimit = effectiveDailyLimit(row as Record<string, unknown>, now);

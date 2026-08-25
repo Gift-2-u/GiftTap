@@ -29,26 +29,37 @@ function streakAfterPlayDay(prevLtd, prevStreak, today = utcTodayStr()) {
   return 1;
 }
 
-/** Battery energy pool (not daily limit). 1 point every ENERGY_SECONDS_PER_POINT, cap ENERGY_CAP. */
-const ENERGY_CAP = 500;
+/** Battery energy pool (not daily limit). Default 500; Expanded Energy → 1000 for 1 UTC day. */
+const ENERGY_CAP_DEFAULT = 500;
 const ENERGY_SECONDS_PER_POINT = 1.5; // 1 energy / 1.5s → full 500 in ~12.5 min
 
-/** Recover energy from a stored (value, timestampMs) using wall clock. New UTC day → 500. */
-function energyFromAnchor(value, atMs, nowMs = Date.now()) {
+function energyCapFromInv(inv, nowMs = Date.now()) {
+  const b = inv?.energy_cap_boost;
+  if (!b?.expires) return ENERGY_CAP_DEFAULT;
+  if (new Date(b.expires).getTime() <= nowMs) return ENERGY_CAP_DEFAULT;
+  const cap = Math.floor(Number(b.cap) || 0);
+  return cap >= 1000 ? 1000 : ENERGY_CAP_DEFAULT;
+}
+
+/** Recover energy from a stored (value, timestampMs) using wall clock. New UTC day → full cap. */
+function energyFromAnchor(value, atMs, nowMs = Date.now(), cap = ENERGY_CAP_DEFAULT) {
   const at = Number(atMs);
   if (Number.isFinite(at)) {
     const anchorDay = new Date(at).toISOString().slice(0, 10);
     const today = new Date(nowMs).toISOString().slice(0, 10);
-    if (anchorDay < today) return ENERGY_CAP;
+    if (anchorDay < today) return cap;
   }
   const base = Number.isFinite(Number(value))
-    ? Math.max(0, Math.min(ENERGY_CAP, Number(value)))
-    : ENERGY_CAP;
+    ? Math.max(0, Math.min(cap, Number(value)))
+    : cap;
   const t0 = Number.isFinite(at) ? at : nowMs;
   const seconds = Math.max(0, (nowMs - t0) / 1000);
   const gained = Math.floor(seconds / ENERGY_SECONDS_PER_POINT);
-  return Math.min(ENERGY_CAP, base + gained);
+  return Math.min(cap, base + gained);
 }
+
+/** @deprecated use ENERGY_CAP_DEFAULT / energyCapFromInv — kept as alias for older call sites */
+const ENERGY_CAP = ENERGY_CAP_DEFAULT;
 
 const ENERGY_STEP_MS = ENERGY_SECONDS_PER_POINT * 1000;
 
@@ -57,31 +68,31 @@ const ENERGY_STEP_MS = ENERGY_SECONDS_PER_POINT * 1000;
  * toward the next +1 so regen continues during rapid tapping.
  * @returns {{ value: number, at: number }}
  */
-function spendEnergyFromAnchor(anchor, cost, nowMs = Date.now()) {
+function spendEnergyFromAnchor(anchor, cost, nowMs = Date.now(), cap = ENERGY_CAP_DEFAULT) {
   const stepMs = ENERGY_STEP_MS;
   const prevVal = Number.isFinite(Number(anchor?.value))
-    ? Math.max(0, Math.min(ENERGY_CAP, Number(anchor.value)))
-    : ENERGY_CAP;
+    ? Math.max(0, Math.min(cap, Number(anchor.value)))
+    : cap;
   const prevAt = Number.isFinite(Number(anchor?.at)) ? Number(anchor.at) : nowMs;
   const elapsed = Math.max(0, nowMs - prevAt);
   const wholeSteps = Math.floor(elapsed / stepMs);
   const residual = elapsed - wholeSteps * stepMs;
-  let energy = Math.min(ENERGY_CAP, prevVal + wholeSteps);
+  let energy = Math.min(cap, prevVal + wholeSteps);
   const spend = Math.max(0, Number(cost) || 0);
-  energy = Math.max(0, Math.min(ENERGY_CAP, energy - spend));
+  energy = Math.max(0, Math.min(cap, energy - spend));
   // Keep leftover ms so the next point still arrives on the 1.5s wall clock
   return { value: energy, at: nowMs - residual };
 }
 
-/** Regen-only catch-up (no spend), preserves residual time. New UTC day → full 500. */
-function catchUpEnergyAnchor(anchor, nowMs = Date.now()) {
+/** Regen-only catch-up (no spend), preserves residual time. New UTC day → full cap. */
+function catchUpEnergyAnchor(anchor, nowMs = Date.now(), cap = ENERGY_CAP_DEFAULT) {
   const prevAt = Number.isFinite(Number(anchor?.at)) ? Number(anchor.at) : nowMs;
   const prevDay = new Date(prevAt).toISOString().slice(0, 10);
   const today = new Date(nowMs).toISOString().slice(0, 10);
   if (prevDay < today) {
-    return { value: ENERGY_CAP, at: nowMs };
+    return { value: cap, at: nowMs };
   }
-  return spendEnergyFromAnchor(anchor, 0, nowMs);
+  return spendEnergyFromAnchor(anchor, 0, nowMs, cap);
 }
 
 /** One-time task rewards that expand daily tap limit until UTC midnight. */
@@ -2432,7 +2443,8 @@ const GiftTapGame = () => {
           value: dbEnergy,
           at: lastDate,
         };
-        const recoveredEnergy = energyFromAnchor(dbEnergy, lastDate, now);
+        const eCapLoad = energyCapFromInv(playerRow.inventory || inv || {}, now);
+        const recoveredEnergy = energyFromAnchor(dbEnergy, lastDate, now, eCapLoad);
         setEnergy(recoveredEnergy);
         optimisticEnergy.current = recoveredEnergy;
         
@@ -3040,7 +3052,8 @@ const GiftTapGame = () => {
 
   /** Apply wall-clock regen into React state + optimistic ref. Safe after sleep. */
   const applyEnergyCatchUp = useCallback(() => {
-    const nextAnchor = catchUpEnergyAnchor(energyAnchorRef.current);
+    const cap = energyCapFromInv(inventoryRef.current || stats?.inventory || {});
+    const nextAnchor = catchUpEnergyAnchor(energyAnchorRef.current, Date.now(), cap);
     const next = nextAnchor.value;
     if (
       next !== Number(energyAnchorRef.current.value) ||
@@ -3054,7 +3067,7 @@ const GiftTapGame = () => {
       energyAnchorRef.current = nextAnchor;
     }
     return next;
-  }, []);
+  }, [stats?.inventory]);
 
   useEffect(() => {
     // Poll often enough for UI; catch-up uses Date.now() so sleep gaps are fully credited.
@@ -4104,7 +4117,8 @@ const GiftTapGame = () => {
 
       // Credit sleep/background time before deciding if player can tap (keep residual)
       {
-        const caught = catchUpEnergyAnchor(energyAnchorRef.current);
+        const eCap = energyCapFromInv(inventoryRef.current || stats?.inventory || {});
+        const caught = catchUpEnergyAnchor(energyAnchorRef.current, Date.now(), eCap);
         energyAnchorRef.current = caught;
         optimisticEnergy.current = caught.value;
         if (caught.value !== Number(energy)) setEnergy(caught.value);
@@ -4302,10 +4316,12 @@ const GiftTapGame = () => {
       }
       // Regen continues on the 1.5s clock even while tapping (preserve residual ms)
       {
+        const eCap = energyCapFromInv(inventoryRef.current || stats?.inventory || {});
         const spent = spendEnergyFromAnchor(
           energyAnchorRef.current,
           totalCost,
           Date.now(),
+          eCap,
         );
         energyAnchorRef.current = spent;
         optimisticEnergy.current = spent.value;
@@ -5715,6 +5731,11 @@ const GiftTapGame = () => {
     dynamicMaxLimit += Math.max(0, Number(stats.ad_energy_boost) || 0);
   }
 
+  const dynamicEnergyCap = energyCapFromInv(
+    inventoryRef.current || stats?.inventory || {},
+    now.getTime(),
+  );
+
   const handleCopyPhrase = async () => {
     // Pure state-only retrieval. Zero browser storage.
     const phraseToCopy = decryptedPhrase || generatedSecret;
@@ -6507,7 +6528,7 @@ const GiftTapGame = () => {
                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', width: '45%', maxWidth: '160px' }}>
                      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
                        <p style={{ ...styles.energy, margin: '0', fontSize: '12px', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: 5, justifyContent: 'center' }}>
-                         ⚡ {energy} / 500
+                         ⚡ {energy} / {dynamicEnergyCap}
                          <HelpTip tipKey="energy_daily" size={14} onOpenPlaybook={() => setIsWhitepaperOpen(true)} />
                        </p>
                      </div>
@@ -6515,7 +6536,7 @@ const GiftTapGame = () => {
                      <div style={{ width: '100%', height: '6px', background: 'rgba(0, 0, 0, 0.6)', borderRadius: '4px', overflow: 'hidden', border: '1px solid #444' }}>
                         <div style={{
                           height: '100%',
-                          width: `${Math.min((Number(energy) / ENERGY_CAP) * 100, 100)}%`,
+                          width: `${Math.min((Number(energy) / dynamicEnergyCap) * 100, 100)}%`,
                           background: Number(energy) <= 0 ? '#ff4d4d' : 'linear-gradient(90deg,#38bdf8,#4ade80)',
                           transition: 'width 0.15s ease'
                         }} />

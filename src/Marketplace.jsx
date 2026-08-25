@@ -514,11 +514,29 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, bumpEner
       iconRing: 'rgba(192,132,252,0.55)',
       iconGlow: 'rgba(168,85,247,0.35)',
     },
+    {
+      id: 'expanded_energy',
+      name: 'Expanded Energy',
+      type: 'Power',
+      rarity: 'Epic',
+      boost: 'Battery 500 → 1000 for 1 UTC day (like Expanded Battery, for energy)',
+      duration: '1 Day (UTC)',
+      price: 500 / G2U_PER_SOL,
+      currency: 'SOL',
+      priceG2uFixed: 500,
+      iconFrom: '#4ade80',
+      iconTo: '#166534',
+      iconRing: 'rgba(74,222,128,0.5)',
+      iconGlow: 'rgba(34,197,94,0.3)',
+    },
   ];
 
   const premiumListings = premiumListingsRaw.map((item) => {
     if (!G2U_PREMIUM) return item;
-    const priceG2u = Math.round(Number(item.price) * G2U_PER_SOL);
+    const priceG2u =
+      item.priceG2uFixed != null
+        ? Math.round(Number(item.priceG2uFixed))
+        : Math.round(Number(item.price) * G2U_PER_SOL);
     return {
       ...item,
       price: priceG2u,
@@ -1964,6 +1982,13 @@ Daily claim active · Pack → NFT to see it.`,
     if (item.id === 'x3_boost') {
       dbUpdates.premium_multiplier = 3;
       dbUpdates.premium_multiplier_expires = sevenDayExpireUtc.toISOString();
+    }
+    if (item.id === 'expanded_energy') {
+      newInventory.energy_cap_boost = {
+        cap: 1000,
+        expires: midnightUtcTonight.toISOString(),
+      };
+      dbUpdates.inventory = newInventory;
     }
 
     try {
