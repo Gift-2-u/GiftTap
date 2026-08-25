@@ -4,7 +4,7 @@
  * - 1 badge per player per UTC week from weekly ranks (battle-tap later can grant more).
  * - Backpack stores counts: badge_bronze / badge_silver / badge_gold / badge_diamond
  * - Mystery gift burn costs (any single tier):
- *     3 Diamond · 4 Gold · 5 Silver · 10 Bronze
+ *     2 Diamond · 3 Gold · 4 Silver · 5 Bronze
  * - CLAIM RULE: badge week award is once-only; box open burns badges (once per open).
  */
 
@@ -484,9 +484,9 @@ export const MYSTERY_NFT_ROLL = [
 ];
 
 const MYSTERY_SHARD_AMOUNTS = {
-  bronze: { bonus_g2u: 2500, shards_bulk: 800 },
-  silver: { bonus_g2u: 8000, shards_bulk: 2000 },
-  gold: { bonus_g2u: 20000, shards_bulk: 5000 },
+  bronze: { bonus_g2u: 5000, shards_bulk: 5000 },
+  silver: { bonus_g2u: 15000, shards_bulk: 10000 },
+  gold: { bonus_g2u: 25000, shards_bulk: 15000 },
   diamond: { bonus_g2u: 50000, shards_bulk: 0 },
 };
 

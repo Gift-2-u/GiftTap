@@ -1795,7 +1795,10 @@ const GiftTapGame = () => {
           .limit(100);
         if (error) console.warn('Leaderboard fetch:', error.message || error);
         if (!stillThisTab()) return;
-        const rows = data || [];
+        // No taps = not on All-time board
+        const rows = (data || []).filter(
+          (r) => (Number(r.lifetime_taps) || Number(r.score) || 0) > 0,
+        );
         setLeaderboard(rows);
         leaderboardCacheRef.current.all_time = { rows };
         // Keep All-time tab badge in sync with the real #1 on the board

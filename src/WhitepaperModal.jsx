@@ -162,7 +162,7 @@ const WhitepaperModal = ({ isWhitepaperOpen, setIsWhitepaperOpen, onClose }) => 
       content:
         "Open Shop → Pack → Badges. Burn weekly rank badges to open Mystery Gift (one tier per open).\n\n" +
         "Burn cost (single tier):\n" +
-        "• 3 Diamond · 4 Gold · 5 Silver · 10 Bronze\n\n" +
+        "• 2 Diamond · 3 Gold · 4 Silver · 5 Bronze\n\n" +
         "Weekly badges (Ranks → Weekly, after week freezes):\n" +
         "• Diamond = top 10% · Gold = next 15% · Silver = next 25% · Bronze = rest eligible\n\n" +
         "DROP RATES by badge tier burned (each column = 100%):\n\n" +
@@ -176,6 +176,9 @@ const WhitepaperModal = ({ isWhitepaperOpen, setIsWhitepaperOpen, onClose }) => 
         "If Exclusive hits: Fate/Echo/Rush/Shadow Common 20% each · Locksmith 10% · Star 10%.\n" +
         "Free Boost splits: Frenzy / Battery / Refill (~⅓ each).\n" +
         "Premium Boost splits: Bot / +2K / +5K / x2 / x3 (20% each).\n" +
+        "Prize amounts by burn tier:\n" +
+        "• Bonus G2U: Diamond 50,000 · Gold 25,000 · Silver 15,000 · Bronze 5,000\n" +
+        "• G2Ushards → shard_balance: Gold 15,000 · Silver 10,000 · Bronze 5,000 · Diamond none\n\n" +
         "G2Ushards bulk credits mining balance immediately.\n" +
         "Bonus G2U + Exclusive NFT mints are paid from the Mystery vault (10% of max $G2U supply) to your game wallet when payouts are live.\n\n" +
         "Independent roll per open. Not financial advice; prizes can change for balance/fair play.",

@@ -114,10 +114,10 @@ export function tierFromRank(
 }
 
 export const MYSTERY_COSTS: Record<string, number> = {
-  diamond: 3,
-  gold: 4,
-  silver: 5,
-  bronze: 10,
+  diamond: 2,
+  gold: 3,
+  silver: 4,
+  bronze: 5,
 };
 
 /**
@@ -155,11 +155,11 @@ export const MYSTERY_ODDS: Record<string, Record<string, number>> = {
   },
 };
 
-/** G2Ushards bulk (mining balance) + placeholder Bonus G2U (SPL) amounts by burn tier */
+/** Bonus G2U (SPL, queued/vault) + G2Ushards bulk → shard_balance only */
 export const MYSTERY_SHARD_AMOUNTS: Record<string, Record<string, number>> = {
-  bronze: { bonus_g2u: 2500, shards_bulk: 800 },
-  silver: { bonus_g2u: 8000, shards_bulk: 2000 },
-  gold: { bonus_g2u: 20000, shards_bulk: 5000 },
+  bronze: { bonus_g2u: 5000, shards_bulk: 5000 },
+  silver: { bonus_g2u: 15000, shards_bulk: 10000 },
+  gold: { bonus_g2u: 25000, shards_bulk: 15000 },
   diamond: { bonus_g2u: 50000, shards_bulk: 0 },
 };
 
