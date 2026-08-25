@@ -79,7 +79,20 @@ export default defineConfig(({ mode }) => {
     },
     server: {
       watch: {
-        ignored: ['**/src/components/TapGame/**'],
+        ignored: [
+          '**/src/components/TapGame/**',
+          '**/target/**',
+          '**/programs/**',
+          '**/seeker/**',
+          '**/token_website/**',
+          'gift_memecoin/**',
+          '**/dist/**',
+          '**/test-ledger/**',
+          '**/.git/**',
+          '**/node_modules/**',
+          '**/supabase/**',
+          '**/Gift2u elves nft/**',
+        ],
       },
     },
     define: {

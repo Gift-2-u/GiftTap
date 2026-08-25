@@ -775,9 +775,30 @@ const StakingPage = () => {
   );
 };
 
+const AIRDROP_ENDS_AT = new Date('2026-09-30T23:59:59Z').getTime();
+
+function formatCountdown(msLeft) {
+  if (msLeft <= 0) return null;
+  const days = Math.floor(msLeft / (1000 * 60 * 60 * 24));
+  const hours = Math.floor((msLeft % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+  const mins = Math.floor((msLeft % (1000 * 60 * 60)) / (1000 * 60));
+  const secs = Math.floor((msLeft % (1000 * 60)) / 1000);
+  const pad = (n) => String(n).padStart(2, '0');
+  if (days > 0) return `${days}d ${pad(hours)}h ${pad(mins)}m ${pad(secs)}s`;
+  return `${pad(hours)}h ${pad(mins)}m ${pad(secs)}s`;
+}
+
 const HomePage = () => {
   const { connection } = useConnection();
   const wallet = useWallet();
+  const [airdropLeft, setAirdropLeft] = useState(() => formatCountdown(AIRDROP_ENDS_AT - Date.now()));
+
+  useEffect(() => {
+    const tick = () => setAirdropLeft(formatCountdown(AIRDROP_ENDS_AT - Date.now()));
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, []);
 
   return (
     <main className="w-full flex-grow flex flex-col items-center py-12 sm:py-20 px-4 sm:px-6 text-center overflow-x-hidden">
@@ -823,9 +844,14 @@ const HomePage = () => {
             />
           </div>
           <div className="flex-1 min-w-0 text-center sm:text-left">
-            <p className="text-purple-200 text-xs sm:text-sm font-black tracking-[0.2em] uppercase mb-1">
-              Q4 launch · Community allocation
-            </p>
+            <div className="inline-flex flex-col sm:flex-row sm:items-baseline gap-0.5 sm:gap-2 rounded-xl px-3 py-1.5 mb-2 bg-black/35 border border-cyan-300/40">
+              <span className="text-cyan-200 text-[10px] sm:text-xs font-black tracking-[0.15em] uppercase">
+                Airdrop ends
+              </span>
+              <span className="text-cyan-100 text-sm sm:text-base font-black tabular-nums tracking-wide">
+                {airdropLeft ? airdropLeft : 'ENDED'}
+              </span>
+            </div>
             <h3 className="text-3xl sm:text-4xl md:text-5xl font-black leading-tight mb-2 bg-gradient-to-r from-fuchsia-300 via-yellow-200 to-cyan-300 bg-clip-text text-transparent">
               G2U Airdrop
             </h3>

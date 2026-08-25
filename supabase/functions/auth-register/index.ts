@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.7";
+import { PublicKey } from "npm:@solana/web3.js";
 import { mintSessionJwt } from "../_shared/sessionJwt.ts";
 import { verifyTurnstileToken } from "../_shared/turnstile.ts";
 
@@ -11,6 +12,20 @@ const corsHeaders = {
 };
 
 const USERNAME_RE = /^[a-zA-Z0-9_]{3,20}$/;
+
+/** Reject probe junk like "test123" — must be a real Solana pubkey. */
+function requireSolanaWallet(raw: unknown): string {
+  const s = String(raw || "").trim();
+  if (!s) throw new Error("wallet_address is required");
+  if (s.length < 32 || s.length > 44) {
+    throw new Error("Invalid Solana wallet_address");
+  }
+  try {
+    return new PublicKey(s).toBase58();
+  } catch {
+    throw new Error("Invalid Solana wallet_address");
+  }
+}
 
 function b64(buf: ArrayBuffer | Uint8Array) {
   const bytes = buf instanceof Uint8Array ? buf : new Uint8Array(buf);
@@ -57,9 +72,7 @@ serve(async (req) => {
       captchaToken,
       req.headers.get("cf-connecting-ip") || req.headers.get("x-forwarded-for"),
     );
-    const wallet_address = body.wallet_address
-      ? String(body.wallet_address)
-      : null;
+    const wallet_address = requireSolanaWallet(body.wallet_address);
     const encrypted_vault = body.encrypted_vault
       ? String(body.encrypted_vault)
       : null;
@@ -104,8 +117,8 @@ serve(async (req) => {
       lifetime_taps: 0,
       sol_balance: 0,
       usdc_balance: 0,
+      wallet_address,
     };
-    if (wallet_address) insertRow.wallet_address = wallet_address;
 
     const { error: insertError } = await supabase.from("players").insert(insertRow);
     if (insertError) {
