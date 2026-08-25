@@ -58,7 +58,12 @@ export function getMysteryVaultConfig(): MysteryVaultConfig {
     env("MYSTERY_VAULT_PUBKEY") ||
     env("MYSTERY_VAULT_WALLET") ||
     env("MYSTERY_GIFT_VAULT");
-  const g2uMint = env("G2U_MINT") || env("G2U_TOKEN_MINT") || env("GFT_MINT");
+  // Canonical Gift2U SPL mint (same as src/config.js MINT_ADDRESS)
+  const g2uMint =
+    env("G2U_MINT") ||
+    env("G2U_TOKEN_MINT") ||
+    env("GFT_MINT") ||
+    "EvFu9qKTNi3wWDbgnm5qmZjLFUHDN3o4A8HjUrqaGMBR";
   const hasSecret = !!(
     env("MYSTERY_VAULT_SECRET") ||
     env("MYSTERY_VAULT_PRIVATE_KEY") ||

@@ -167,6 +167,7 @@ import {
 
 import { hasLocksmith, listGiftNfts } from './locksmith';
 import { RPC_URL } from './rpc';
+import { TOKEN_MINTS, TREASURY_TOKEN_ACCOUNTS } from './gameWalletActions';
 import AirdropBoard from './AirdropBoard';
 import {
   computeAirdropProgress,
@@ -254,11 +255,7 @@ import {
 import { echoMultiplier } from './echo';
 import { rushDailyLimit } from './rush';
 
-const TOKEN_MINTS = {
-  SOL: "So11111111111111111111111111111111111111112",
-  USDC: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
-  G2U: "EvFu9qKTNi3wWDbgnm5qmZjLFUHDN3o4A8HjUrqaGMBR" // <-- Replace with real G2U mint
-};
+// TOKEN_MINTS / TREASURY_TOKEN_ACCOUNTS — canonical G2U mint from config via gameWalletActions
 
 // --- 1. CLOUD STORAGE HELPERS ---
 const saveToCloud = (key, value) => {
@@ -5600,13 +5597,7 @@ const GiftTapGame = () => {
 
       if (quoteResponse.error) throw new Error(quoteResponse.error);
 
-      // 5. FETCH ASSEMBLED TRANSACTION
-      const TREASURY_TOKEN_ACCOUNTS = {
-        'USDC': 'H5nSSix2Q4xrSPJCn8f4tY2FNDRazeUot1MNcgATYKEq',
-        'G2U': 'Paste_Your_G2U_Token_Account_Here',
-        'SOL': 'GwEPP1njWswga8JoCnQ7AyvJJeqxkx8GzW5o5HFsN1F1' 
-      };
-
+      // 5. FETCH ASSEMBLED TRANSACTION (fee ATA from gameWalletActions / G2U mint)
       const activeFeeAccount = TREASURY_TOKEN_ACCOUNTS[swapToToken]; 
 
       const { swapTransaction } = await (

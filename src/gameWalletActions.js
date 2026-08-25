@@ -15,9 +15,11 @@ import {
   VersionedTransaction,
   LAMPORTS_PER_SOL,
 } from '@solana/web3.js';
+import { getAssociatedTokenAddressSync } from '@solana/spl-token';
 import { supabase } from './supabaseClient';
 import { DB_PLAYER_ID, vaultSaltFor, getPlayerId } from './playerIdentity';
 import { keypairFromMnemonic } from './solanaWallet';
+import { MINT_ADDRESS } from './config';
 
 export const RPC_URL =
   import.meta.env.VITE_SOLANA_RPC_URL ||
@@ -25,15 +27,17 @@ export const RPC_URL =
 
 export const TREASURY = new PublicKey('8G7uEcPS6dwA5wW9bGoqi98EzBunF8trjbbFJkgkvBPm');
 
+/** SPL mints — G2U always from config.js (canonical mint). */
 export const TOKEN_MINTS = {
   SOL: 'So11111111111111111111111111111111111111112',
   USDC: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
-  G2U: 'YOUR_G2U_MINT_ADDRESS_HERE',
+  G2U: MINT_ADDRESS.toBase58(),
 };
 
+/** Jupiter platform fee ATAs (token accounts for each mint under TREASURY). */
 export const TREASURY_TOKEN_ACCOUNTS = {
   USDC: 'H5nSSix2Q4xrSPJCn8f4tY2FNDRazeUot1MNcgATYKEq',
-  G2U: 'Paste_Your_G2U_Token_Account_Here',
+  G2U: getAssociatedTokenAddressSync(MINT_ADDRESS, TREASURY).toBase58(),
   SOL: 'GwEPP1njWswga8JoCnQ7AyvJJeqxkx8GzW5o5HFsN1F1',
 };
 

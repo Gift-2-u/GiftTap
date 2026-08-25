@@ -28,19 +28,16 @@ import RoadmapPage from './RoadmapPage';
 import AirdropPage from './AirdropPage';
 import { getPlayerId, isLoggedIn } from './playerIdentity';
 import { SOCIAL_LINKS } from './socialLinks';
+import { PROGRAM_ID, MINT_ADDRESS } from './config';
 import idl from "../target/idl/gift_staking.json";
 import '@solana/wallet-adapter-react-ui/styles.css';
 
 // Lazy-load game so homepage can load without pulling the full game first
 const TapGame = lazy(() => import('./GiftTap'));
 
-// --- CONSTANTS ---
-const PROGRAM_ID = new PublicKey("CX5aqenEeWvfwvhF8Xek8Dd6sVPn8uHRhXafbKQvUAxy");
-const MINT_ADDRESS = new PublicKey("3UL9MdHnmtAh6KBdDwLtyxFWVEgGQHLiwN2cg3FPWEis");
-
 const [vaultAuthority] = PublicKey.findProgramAddressSync(
   [Buffer.from("vault")],
-  PROGRAM_ID // Your '8pWy3...' address
+  PROGRAM_ID,
 );
 
 

@@ -1,7 +1,13 @@
 /**
- * Upload Gift2U logo + JSON to Irys, create Metaplex Token Metadata on mainnet.
+ * Upload Gift2U logo + JSON to Irys, create or update Metaplex Token Metadata.
  *
+ * Create (first time):
  *   CONFIRM_MAINNET=yes node scripts/token/create-g2u-metadata.mjs
+ *
+ * Update URI/description (BirdEye etc. read on-chain uri):
+ *   UPDATE_METADATA=yes CONFIRM_MAINNET=yes node scripts/token/create-g2u-metadata.mjs
+ *
+ * Uses update authority keypair (KEYPAIR_PATH). Description has no vault/staking.
  */
 import fs from "fs";
 import path from "path";
@@ -17,6 +23,7 @@ import {
 import { irysUploader } from "@metaplex-foundation/umi-uploader-irys";
 import {
   createV1,
+  updateV1,
   findMetadataPda,
   mplTokenMetadata,
   TokenStandard,
@@ -28,8 +35,13 @@ const ROOT = path.resolve(__dirname, "../..");
 const MINT = process.env.G2U_MINT || "EvFu9qKTNi3wWDbgnm5qmZjLFUHDN3o4A8HjUrqaGMBR";
 const NAME = process.env.G2U_NAME || "Gift2U";
 const SYMBOL = process.env.G2U_SYMBOL || "G2U";
+const DESCRIPTION =
+  process.env.G2U_DESCRIPTION || "Gift2U ($G2U) — utility token for Gift Tap.";
 const CLUSTER = process.env.CLUSTER || "mainnet";
 const CONFIRM = (process.env.CONFIRM_MAINNET || "").toLowerCase();
+const DO_UPDATE = ["1", "true", "yes", "on"].includes(
+  (process.env.UPDATE_METADATA || "").toLowerCase(),
+);
 const RPC_URL =
   process.env.RPC_URL ||
   process.env.VITE_SOLANA_RPC_URL ||
@@ -57,8 +69,10 @@ async function main() {
   }
   if (!fs.existsSync(LOGO)) throw new Error(`Missing logo: ${LOGO}`);
 
+  console.log("Mode:", DO_UPDATE ? "UPDATE metadata URI" : "CREATE metadata");
   console.log("Mint:", MINT);
   console.log("Name/Symbol:", NAME, "/", SYMBOL);
+  console.log("Description:", DESCRIPTION);
   console.log("Logo:", LOGO);
   console.log("RPC:", RPC_URL.replace(/api-key=[^&]+/i, "api-key=***"));
 
@@ -81,6 +95,7 @@ async function main() {
     ? JSON.parse(fs.readFileSync(partialPath, "utf8"))
     : {};
 
+  // Keep existing Irys image unless missing; always re-upload JSON on UPDATE
   let imageUri = partial.imageUri;
   if (!imageUri) {
     console.log("\nUploading logo to Irys…");
@@ -94,22 +109,41 @@ async function main() {
   }
   console.log("Image URI:", imageUri);
 
-  let metadataUri = partial.metadataUri;
+  let metadataUri = DO_UPDATE ? null : partial.metadataUri;
   if (!metadataUri) {
     console.log("Uploading metadata JSON…");
-    metadataUri = await umi.uploader.uploadJson({
+    // Prefer site copy when present
+    const siteJsonPath = path.join(ROOT, "public", "g2u-token.json");
+    let payload = {
       name: NAME,
       symbol: SYMBOL,
-      description:
-        "Gift2U ($G2U) — utility token for Gift Tap: vault, staking, markets, and ecosystem rewards. https://gift2u.fun",
+      description: DESCRIPTION,
       image: imageUri,
       external_url: "https://gift2u.fun",
       properties: {
         category: "image",
         files: [{ uri: imageUri, type: "image/png" }],
       },
-    });
+    };
+    if (fs.existsSync(siteJsonPath)) {
+      const site = JSON.parse(fs.readFileSync(siteJsonPath, "utf8"));
+      payload = {
+        ...site,
+        name: NAME,
+        symbol: SYMBOL,
+        description: DESCRIPTION,
+        image: imageUri,
+        external_url: site.external_url || "https://gift2u.fun",
+        properties: {
+          ...(site.properties || {}),
+          category: "image",
+          files: [{ uri: imageUri, type: "image/png" }],
+        },
+      };
+    }
+    metadataUri = await umi.uploader.uploadJson(payload);
     partial.metadataUri = metadataUri;
+    partial.description = DESCRIPTION;
     fs.writeFileSync(partialPath, JSON.stringify(partial, null, 2));
   }
   console.log("Metadata URI:", metadataUri);
@@ -118,36 +152,65 @@ async function main() {
   const metadataPda = findMetadataPda(umi, { mint });
   console.log("Metadata PDA:", metadataPda[0]);
 
-  console.log("\nCreating on-chain Token Metadata…");
-  const result = await createV1(umi, {
-    mint,
-    authority: umi.identity,
-    payer: umi.identity,
-    updateAuthority: umi.identity,
-    name: NAME,
-    symbol: SYMBOL,
-    uri: metadataUri,
-    sellerFeeBasisPoints: percentAmount(0),
-    tokenStandard: TokenStandard.Fungible,
-  }).sendAndConfirm(umi);
+  let signature;
+  if (DO_UPDATE) {
+    console.log("\nUpdating on-chain Token Metadata URI…");
+    const result = await updateV1(umi, {
+      mint,
+      authority: umi.identity,
+      data: {
+        name: NAME,
+        symbol: SYMBOL,
+        uri: metadataUri,
+        sellerFeeBasisPoints: 0,
+        creators: [
+          {
+            address: umi.identity.publicKey,
+            verified: true,
+            share: 100,
+          },
+        ],
+      },
+    }).sendAndConfirm(umi);
+    signature = sigOf(result);
+    console.log("\nMetadata updated");
+  } else {
+    console.log("\nCreating on-chain Token Metadata…");
+    const result = await createV1(umi, {
+      mint,
+      authority: umi.identity,
+      payer: umi.identity,
+      updateAuthority: umi.identity,
+      name: NAME,
+      symbol: SYMBOL,
+      uri: metadataUri,
+      sellerFeeBasisPoints: percentAmount(0),
+      tokenStandard: TokenStandard.Fungible,
+    }).sendAndConfirm(umi);
+    signature = sigOf(result);
+    console.log("\nMetadata created");
+  }
 
-  const signature = sigOf(result);
   const out = {
     mint: MINT,
     name: NAME,
     symbol: SYMBOL,
+    description: DESCRIPTION,
     imageUri,
     metadataUri,
     metadataPda: String(metadataPda[0]),
     signature,
+    mode: DO_UPDATE ? "update" : "create",
     createdAt: new Date().toISOString(),
   };
   fs.writeFileSync(
     path.join(outDir, "g2u-metadata-result.json"),
     JSON.stringify(out, null, 2),
   );
-  console.log("\nMetadata created");
   console.log(JSON.stringify(out, null, 2));
+  console.log(
+    "\nBirdEye/Solscan may cache for a while — check metadata URI above.",
+  );
 }
 
 main().catch((e) => {
