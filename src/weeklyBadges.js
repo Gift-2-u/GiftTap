@@ -130,11 +130,22 @@ export function weekUsesPercentBadges(weekId) {
 }
 
 /**
- * How many of each tier for N eligible players (new %-based rules).
+ * How many of each tier for N eligible players.
+ * N≤4: 1 D · 1 G · 1 S · rest B (one seat each for ranks 1–4).
+ * N>4: pure floor(N×%) — e.g. 10→1 Diamond, 20→2 Diamonds.
  */
 export function weeklyBadgeTierCounts(totalEligible) {
   const n = Math.max(0, Math.floor(Number(totalEligible) || 0));
   if (n < 1) return { diamond: 0, gold: 0, silver: 0, bronze: 0, total: 0 };
+  if (n <= 4) {
+    return {
+      diamond: n >= 1 ? 1 : 0,
+      gold: n >= 2 ? 1 : 0,
+      silver: n >= 3 ? 1 : 0,
+      bronze: n >= 4 ? n - 3 : 0,
+      total: n,
+    };
+  }
   const diamond = Math.floor(n * WEEKLY_BADGE_CUTS.diamondPct);
   const gold = Math.floor(n * WEEKLY_BADGE_CUTS.goldPct);
   const silver = Math.floor(n * WEEKLY_BADGE_CUTS.silverPct);
@@ -155,19 +166,23 @@ export function badgeTierForWeeklyRank(rank, totalEligible, weekId) {
   const r = Math.floor(Number(rank) || 0);
   if (r < 1) return null;
 
-  // Without weekId, stay legacy unless caller opts into % by passing weekId >= W35
   const usePct = weekUsesPercentBadges(weekId);
+  const n = Math.max(0, Math.floor(Number(totalEligible) || 0));
 
-  // Legacy top-10 fixed (through 2026-W34)
-  if (!usePct) {
+  // Legacy top-10 fixed (through 2026-W34), or tiny board (≤4): #1 D · #2 G · #3 S · #4 B
+  if (!usePct || n <= 4) {
+    if (usePct && n >= 1 && r > n) return null;
     if (r === 1) return 'diamond';
     if (r === 2) return 'gold';
     if (r === 3) return 'silver';
-    if (r >= 4 && r <= 10) return 'bronze';
+    if (!usePct) {
+      if (r >= 4 && r <= 10) return 'bronze';
+      return null;
+    }
+    if (r >= 4 && r <= n) return 'bronze';
     return null;
   }
 
-  const n = Math.max(0, Math.floor(Number(totalEligible) || 0));
   if (n < 1 || r > n) return null;
   const { diamond, gold, silver } = weeklyBadgeTierCounts(n);
   if (r <= diamond) return 'diamond';

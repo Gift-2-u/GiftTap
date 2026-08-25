@@ -1,1 +1,0 @@
-{"query": "select column_name, column_default from information_schema.columns where table_schema='public' and table_name='players' and column_name in ('last_updated','updated_at')"}

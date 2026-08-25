@@ -257,7 +257,7 @@ import { rushDailyLimit } from './rush';
 const TOKEN_MINTS = {
   SOL: "So11111111111111111111111111111111111111112",
   USDC: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
-  G2U: "YOUR_G2U_MINT_ADDRESS_HERE" // <-- Replace with real G2U mint
+  G2U: "EvFu9qKTNi3wWDbgnm5qmZjLFUHDN3o4A8HjUrqaGMBR" // <-- Replace with real G2U mint
 };
 
 // --- 1. CLOUD STORAGE HELPERS ---

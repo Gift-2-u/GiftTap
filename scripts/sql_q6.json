@@ -1,1 +1,0 @@
-{"query": "select jobname, schedule, left(command,160) as command from cron.job where command ilike '%weekly%' or jobname ilike '%weekly%'"}

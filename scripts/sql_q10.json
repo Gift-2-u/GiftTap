@@ -1,1 +1,0 @@
-{"query": "select telegram_id, username, inventory->>'badge_silver' as badge_silver from players where lower(username)='dev' or username ilike '%dev%' limit 10"}

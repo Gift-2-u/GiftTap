@@ -1,1 +1,0 @@
-{"query": "select created_at, kind, delta, meta from economy_ledger where player_id in (select telegram_id::text from players where lower(username)='lats') order by created_at desc limit 15"}

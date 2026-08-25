@@ -1,7 +1,7 @@
 -- =============================================================================
--- Auto-grant weekly badges when a week is snapshotted (no manual claim required).
--- Also backfills any finished weeks that have snapshots but missing backpack badges.
--- Paste into Supabase SQL Editor if needed.
+-- Auto-grant weekly badges ONCE when a week is first snapshotted.
+-- Hourly cron may call ensure_weekly_leaderboard_rollover — if snapshot already
+-- exists, it does nothing (no rewrite of last week's winners).
 -- =============================================================================
 
 CREATE OR REPLACE FUNCTION public.grant_weekly_badges_from_snapshot(p_week_id text)
@@ -45,9 +45,7 @@ BEGIN
 
     INSERT INTO public.badge_grants (player_id, week_id, rank, tier)
     VALUES (r.pid, r.week_id, r.rank, r.tier)
-    ON CONFLICT (player_id, week_id) DO UPDATE
-      SET rank = EXCLUDED.rank,
-          tier = EXCLUDED.tier;
+    ON CONFLICT (player_id, week_id) DO NOTHING;
 
     SELECT coalesce(inventory, '{}'::jsonb) INTO inv
     FROM public.players
@@ -58,10 +56,13 @@ BEGIN
     END IF;
 
     n := coalesce((inv ->> item)::int, 0);
-    IF n < 1 THEN
-      inv := inv || jsonb_build_object(item, 1);
-      granted := granted + 1;
+    -- Already has this week's badge in backpack → do not rewrite the player
+    IF n >= 1 THEN
+      CONTINUE;
     END IF;
+
+    inv := inv || jsonb_build_object(item, 1);
+    granted := granted + 1;
 
     inv := inv || jsonb_build_object(
       'weekly_badge_award',
@@ -85,7 +86,7 @@ BEGIN
     END IF;
     inv := jsonb_set(inv, '{claim_log}', log, true);
 
-    -- inventory only — never bump last_updated (energy regen clock)
+    -- inventory only — never last_updated
     UPDATE public.players
     SET inventory = inv
     WHERE telegram_id::text = r.pid;
@@ -171,28 +172,8 @@ BEGIN
     END;
   END LOOP;
 
-  -- If previous week already snapshotted but badges never auto-granted, grant now
-  BEGIN
-    IF EXISTS (
-      SELECT 1 FROM public.weekly_leaderboard_snapshots s
-      WHERE s.week_id = v_prev AND s.badge_tier IS NOT NULL
-      LIMIT 1
-    ) THEN
-      v_granted := public.grant_weekly_badges_from_snapshot(v_prev);
-      v_snapped := v_snapped || jsonb_build_array(
-        jsonb_build_object(
-          'week_id', v_prev,
-          'rows', 0,
-          'badges_granted', v_granted,
-          'backfill', true
-        )
-      );
-    END IF;
-  EXCEPTION WHEN OTHERS THEN
-    v_snapped := v_snapped || jsonb_build_array(
-      jsonb_build_object('week_id', v_prev, 'backfill_error', SQLERRM)
-    );
-  END;
+  -- No hourly backfill of previous week. Snapshot already exists → do nothing.
+  -- Grant runs only once above, immediately after a NEW snapshot.
 
   RETURN jsonb_build_object(
     'ok', true,
@@ -204,21 +185,3 @@ END;
 $$;
 
 GRANT EXECUTE ON FUNCTION public.ensure_weekly_leaderboard_rollover() TO anon, authenticated, service_role;
-
--- Immediate: grant badges for last finished week (and any snapshotted weeks missing grants)
-DO $$
-DECLARE
-  w text;
-  g int;
-BEGIN
-  FOR w IN
-    SELECT DISTINCT week_id
-    FROM public.weekly_leaderboard_snapshots
-    WHERE badge_tier IS NOT NULL
-      AND week_id IS DISTINCT FROM public.utc_iso_week_id(now())
-    ORDER BY 1
-  LOOP
-    g := public.grant_weekly_badges_from_snapshot(w);
-    RAISE NOTICE 'auto-granted badges for % (new inventory fills ~%)', w, g;
-  END LOOP;
-END $$;

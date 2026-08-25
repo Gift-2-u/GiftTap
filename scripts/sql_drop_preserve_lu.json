@@ -1,1 +1,0 @@
-{"query": "DROP TRIGGER IF EXISTS trg_preserve_last_updated_unless_energy ON public.players; DROP FUNCTION IF EXISTS public.preserve_last_updated_unless_energy();"}

@@ -348,7 +348,9 @@ GRANT EXECUTE ON FUNCTION public.utc_iso_week_id(timestamptz) TO anon, authentic
 GRANT EXECUTE ON FUNCTION public.previous_utc_iso_week_id(timestamptz) TO anon, authenticated, service_role;
 
 -- ---------------------------------------------------------------------------
--- pg_cron: every hour at minute 1 UTC (covers Monday 00:00 UTC week flip)
+-- pg_cron: once per week at Monday 00:00 UTC (ISO week flip)
+-- Same idea as season: monthly_season_rollover uses '0 0 1 * *'
+-- Weekly uses '0 0 * * 1' → snapshot finished week + grant once; no hourly rewrite.
 -- If extension is not available on the project, this block is a no-op.
 -- ---------------------------------------------------------------------------
 DO $$
@@ -370,13 +372,10 @@ BEGIN
 
   PERFORM cron.schedule(
     'weekly_leaderboard_auto_rollover',
-    '1 * * * *',
+    '0 0 * * 1',
     $cron$ SELECT public.ensure_weekly_leaderboard_rollover(); $cron$
   );
-  RAISE NOTICE 'Scheduled pg_cron job weekly_leaderboard_auto_rollover';
+  RAISE NOTICE 'Scheduled pg_cron job weekly_leaderboard_auto_rollover (Mon 00:00 UTC)';
 EXCEPTION WHEN OTHERS THEN
   RAISE NOTICE 'Could not schedule pg_cron job: %', SQLERRM;
 END $$;
-
--- Run once now so previous week is frozen if already past
-SELECT public.ensure_weekly_leaderboard_rollover();
