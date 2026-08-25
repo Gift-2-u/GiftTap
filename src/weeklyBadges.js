@@ -60,10 +60,10 @@ export function badgeImageForTier(tier) {
 
 /** Burn cost to open mystery gift (one tier only per open) */
 export const MYSTERY_BOX_COSTS = {
-  diamond: 3,
-  gold: 4,
-  silver: 5,
-  bronze: 10,
+  diamond: 2,
+  gold: 3,
+  silver: 4,
+  bronze: 5,
 };
 
 export const BADGE_ITEM_IDS = Object.values(BADGE_TIERS).map((t) => t.itemId);
@@ -131,26 +131,36 @@ export function weekUsesPercentBadges(weekId) {
 
 /**
  * How many of each tier for N eligible players.
- * N≤4: 1 D · 1 G · 1 S · rest B (one seat each for ranks 1–4).
- * N>4: pure floor(N×%) — e.g. 10→1 Diamond, 20→2 Diamonds.
+ *
+ * Always keep the 4-tier winners board by rank:
+ *   1→≥1 Diamond, 2→≥1 Gold, 3→≥1 Silver (bronze = everyone else).
+ * Percents (10% / 15% / 25%) use Math.round so more seats open when
+ * N×% grows enough (e.g. 15→1.5 D rounds to 2, 2.25 G→2, 3.75 S→4).
  */
 export function weeklyBadgeTierCounts(totalEligible) {
   const n = Math.max(0, Math.floor(Number(totalEligible) || 0));
   if (n < 1) return { diamond: 0, gold: 0, silver: 0, bronze: 0, total: 0 };
-  if (n <= 4) {
-    return {
-      diamond: n >= 1 ? 1 : 0,
-      gold: n >= 2 ? 1 : 0,
-      silver: n >= 3 ? 1 : 0,
-      bronze: n >= 4 ? n - 3 : 0,
-      total: n,
+
+  let diamond = Math.max(n >= 1 ? 1 : 0, Math.round(n * WEEKLY_BADGE_CUTS.diamondPct));
+  let gold = Math.max(n >= 2 ? 1 : 0, Math.round(n * WEEKLY_BADGE_CUTS.goldPct));
+  let silver = Math.max(n >= 3 ? 1 : 0, Math.round(n * WEEKLY_BADGE_CUTS.silverPct));
+
+  // Never allocate more paid seats than players (trim silver → gold → diamond).
+  let paid = diamond + gold + silver;
+  if (paid > n) {
+    let over = paid - n;
+    const cut = (v) => {
+      const take = Math.min(v, over);
+      over -= take;
+      return v - take;
     };
+    silver = cut(silver);
+    gold = cut(gold);
+    diamond = cut(diamond);
+    paid = diamond + gold + silver;
   }
-  const diamond = Math.floor(n * WEEKLY_BADGE_CUTS.diamondPct);
-  const gold = Math.floor(n * WEEKLY_BADGE_CUTS.goldPct);
-  const silver = Math.floor(n * WEEKLY_BADGE_CUTS.silverPct);
-  let bronze = n - diamond - gold - silver;
-  if (bronze < 0) bronze = 0;
+
+  const bronze = Math.max(0, n - paid);
   return { diamond, gold, silver, bronze, total: n };
 }
 
@@ -169,20 +179,16 @@ export function badgeTierForWeeklyRank(rank, totalEligible, weekId) {
   const usePct = weekUsesPercentBadges(weekId);
   const n = Math.max(0, Math.floor(Number(totalEligible) || 0));
 
-  // Legacy top-10 fixed (through 2026-W34), or tiny board (≤4): #1 D · #2 G · #3 S · #4 B
-  if (!usePct || n <= 4) {
-    if (usePct && n >= 1 && r > n) return null;
+  // Legacy top-10 fixed (through 2026-W34)
+  if (!usePct) {
     if (r === 1) return 'diamond';
     if (r === 2) return 'gold';
     if (r === 3) return 'silver';
-    if (!usePct) {
-      if (r >= 4 && r <= 10) return 'bronze';
-      return null;
-    }
-    if (r >= 4 && r <= n) return 'bronze';
+    if (r >= 4 && r <= 10) return 'bronze';
     return null;
   }
 
+  // %-era: rank seats + round(N×%) via weeklyBadgeTierCounts
   if (n < 1 || r > n) return null;
   const { diamond, gold, silver } = weeklyBadgeTierCounts(n);
   if (r <= diamond) return 'diamond';

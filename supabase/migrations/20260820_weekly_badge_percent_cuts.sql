@@ -38,9 +38,8 @@ BEGIN
 
   use_pct := (p_week_id IS NOT NULL AND btrim(p_week_id) <> '' AND p_week_id >= from_week);
 
-  -- Tiny board (≤4 eligible): #1 Diamond · #2 Gold · #3 Silver · #4 Bronze
-  -- (10% of 4 = 0.4 → floor 0, so % alone cannot award Diamond yet)
-  IF (NOT use_pct) OR n <= 4 THEN
+  -- Legacy top-10 fixed (through 2026-W34)
+  IF NOT use_pct THEN
     IF n >= 1 AND p_rank > n THEN
       RETURN NULL;
     END IF;
@@ -48,7 +47,7 @@ BEGIN
       WHEN p_rank = 1 THEN 'diamond'
       WHEN p_rank = 2 THEN 'gold'
       WHEN p_rank = 3 THEN 'silver'
-      WHEN p_rank >= 4 THEN 'bronze'
+      WHEN p_rank >= 4 AND p_rank <= 10 THEN 'bronze'
       ELSE NULL
     END;
   END IF;
@@ -57,10 +56,24 @@ BEGIN
     RETURN NULL;
   END IF;
 
-  -- Pure % of eligible N (examples: 10×10%=1 Diamond, 20×10%=2 Diamonds)
-  d := floor(n * 0.10)::int;
-  g := floor(n * 0.15)::int;
-  s := floor(n * 0.25)::int;
+  -- Rank seats + round(N×%): always ≥1 D/G/S when those ranks exist;
+  -- percents add more seats when N×% rounds up (15→2D, 2G, 4S).
+  d := GREATEST(CASE WHEN n >= 1 THEN 1 ELSE 0 END, ROUND(n * 0.10)::int);
+  g := GREATEST(CASE WHEN n >= 2 THEN 1 ELSE 0 END, ROUND(n * 0.15)::int);
+  s := GREATEST(CASE WHEN n >= 3 THEN 1 ELSE 0 END, ROUND(n * 0.25)::int);
+
+  IF d + g + s > n THEN
+    -- Trim silver → gold → diamond if over-allocated
+    IF d + g + s > n THEN
+      s := GREATEST(0, s - ((d + g + s) - n));
+    END IF;
+    IF d + g + s > n THEN
+      g := GREATEST(0, g - ((d + g + s) - n));
+    END IF;
+    IF d + g + s > n THEN
+      d := GREATEST(0, d - ((d + g + s) - n));
+    END IF;
+  END IF;
 
   IF p_rank <= d THEN RETURN 'diamond'; END IF;
   IF p_rank <= d + g THEN RETURN 'gold'; END IF;
