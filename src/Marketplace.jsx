@@ -2086,11 +2086,13 @@ Daily claim active · Pack → NFT to see it.`,
       }
       const reward = data.reward || {};
       const dest = reward.dest || data.dest || 'backpack';
-      const destLine =
-        dest === 'wallet'
+      const minted = reward.type === 'nft_minted' && reward.asset;
+      const destLine = minted
+        ? `Minted on-chain → your game wallet / backpack (${String(reward.asset).slice(0, 8)}…)`
+        : dest === 'wallet'
           ? 'Reserved for SPL $G2U to your game wallet (when Mystery wallet is live)'
           : dest === 'wallet_nft'
-            ? 'Queued for mint to your game wallet (Mystery pays CM fee)'
+            ? 'Queued for mint — vault will mint to your game wallet when ready'
             : dest === 'balance'
               ? 'Added to your G2Ushards balance'
               : 'Added to Backpack — open Pack to activate';
@@ -2099,9 +2101,10 @@ Daily claim active · Pack → NFT to see it.`,
         tier,
         label: reward.label || 'Mystery prize',
         prizeId: reward.prizeId || '',
-        dest,
+        dest: minted ? 'wallet_nft_minted' : dest,
         destLine,
         amount: reward.amount || data.balance_delta || data.g2u_delta || null,
+        asset: reward.asset || null,
       });
     } catch (e) {
       console.error('mystery open', e);

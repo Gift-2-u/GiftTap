@@ -6,7 +6,7 @@
  *   premium_boost → bot | grinder | whale | x2 | x3 (20%) → inventory
  *   shards_bulk   → shard_balance (G2Ushards) immediately
  *   bonus_g2u     → paid from Mystery vault (10% allocation) when live; else queued
- *   exclusive_nft → CM mint paid by Mystery vault when live; else queued
+ *   exclusive_nft → vault CM mint + transfer to player pubkey (no player keys); else queued
  *
  * Payer wallet = MYSTERY_VAULT_* (see _shared/mysteryVault.ts). Not treasury/LP.
  */
@@ -26,6 +26,7 @@ import {
 import {
   getMysteryVaultConfig,
   mysteryVaultPublicMeta,
+  mintMysteryNftToPlayer,
 } from "../_shared/mysteryVault.ts";
 
 serve(async (req) => {
@@ -99,25 +100,61 @@ serve(async (req) => {
       inv.mystery_g2u_queue = queue.slice(-50);
       inv.mystery_g2u_payer = vault.pubkey || inv.mystery_g2u_payer || null;
     } else if (reward.type === "nft_pending" && reward.nftKind) {
-      // Exclusive NFT — Mystery vault pays CM mint to player's game wallet when live.
-      inv.exclusive_nft_voucher = (Number(inv.exclusive_nft_voucher) || 0) + 1;
-      const q = Array.isArray(inv.mystery_nft_pending)
-        ? [...(inv.mystery_nft_pending as unknown[])]
-        : [];
-      q.push({
-        id: `mnft_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-        kind: reward.nftKind,
-        rarity: reward.nftRarity || "common",
-        label: reward.label,
-        burn: tier,
-        at: new Date().toISOString(),
-        status: vault.nftMintReady ? "ready_to_mint" : "pending_mint",
-        payer: vault.pubkey || null,
-        payer_source: vault.source,
-        to_wallet: playerWallet,
+      // Exclusive NFT — vault mints, then transfers to player pubkey (no player secrets).
+      const mint = await mintMysteryNftToPlayer({
+        kind: String(reward.nftKind),
+        rarity: String(reward.nftRarity || "common"),
+        playerId,
+        playerWallet: String(playerWallet || ""),
       });
-      inv.mystery_nft_pending = q.slice(-30);
-      inv.mystery_nft_payer = vault.pubkey || inv.mystery_nft_payer || null;
+
+      if (mint.ok && mint.asset) {
+        reward.label = `${mint.name || reward.label} minted → your game wallet`;
+        reward.pending = false;
+        reward.type = "nft_minted";
+        (reward as { asset?: string }).asset = mint.asset;
+        (reward as { signature?: string }).signature = mint.signature;
+        inv.mystery_nft_payer = vault.pubkey || inv.mystery_nft_payer || null;
+        const minted = Array.isArray(inv.mystery_nft_minted)
+          ? [...(inv.mystery_nft_minted as unknown[])]
+          : [];
+        minted.push({
+          id: `mnft_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+          kind: reward.nftKind,
+          rarity: reward.nftRarity || "common",
+          label: reward.label,
+          asset: mint.asset,
+          signature: mint.signature || null,
+          transfer_signature: mint.transferSignature || null,
+          burn: tier,
+          at: new Date().toISOString(),
+          status: "minted",
+          to_wallet: mint.owner || playerWallet,
+          payer: vault.pubkey || null,
+        });
+        inv.mystery_nft_minted = minted.slice(-30);
+      } else {
+        inv.exclusive_nft_voucher =
+          (Number(inv.exclusive_nft_voucher) || 0) + 1;
+        const q = Array.isArray(inv.mystery_nft_pending)
+          ? [...(inv.mystery_nft_pending as unknown[])]
+          : [];
+        q.push({
+          id: `mnft_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+          kind: reward.nftKind,
+          rarity: reward.nftRarity || "common",
+          label: reward.label,
+          burn: tier,
+          at: new Date().toISOString(),
+          status: vault.nftMintReady ? "ready_to_mint" : "pending_mint",
+          error: mint.error || null,
+          payer: vault.pubkey || null,
+          payer_source: vault.source,
+          to_wallet: playerWallet,
+        });
+        inv.mystery_nft_pending = q.slice(-30);
+        inv.mystery_nft_payer = vault.pubkey || inv.mystery_nft_payer || null;
+      }
     }
 
     const opens = Array.isArray(inv.mystery_opens)
