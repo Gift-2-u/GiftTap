@@ -299,7 +299,15 @@ export const SHARD_SHOP: Record<string, { name: string; cost: number }> = {
   battery: { name: "Expanded Battery", cost: 750 },
   // heavy retired from catalog — replace later
   refill: { name: "Instant Refill", cost: 300 },
+  /** Weekly badges for Mystery (in-game shards only; stop-buy in shop-buy) */
+  badge_bronze: { name: "Bronze Badge", cost: 10000 },
+  badge_silver: { name: "Silver Badge", cost: 30000 },
 };
+
+/** Shared stop-buy for badge_bronze / badge_silver shop purchases */
+export const BADGE_SHOP_DAY_CAP = 1;
+export const BADGE_SHOP_WEEK_CAP = 3;
+export const BADGE_SHOP_ITEM_IDS = new Set(["badge_bronze", "badge_silver"]);
 
 export function invObj(raw: unknown): Record<string, unknown> {
   if (raw && typeof raw === "object" && !Array.isArray(raw)) {

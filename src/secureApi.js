@@ -360,21 +360,25 @@ export async function fetchWeeklyBoard(limit = 200) {
 }
 
 /**
- * Public airdrop qualified board (L5+): name, level, bonus %.
- * Optional viewer_id + viewer_has_nft so "you" includes Locksmith NFT bonus.
+ * Airdrop qualified board (L5+): name, level, bonus %.
+ * % is absolute from each player's stored NFT snapshot (+ level/taps/etc).
+ * Pass viewerNfts (array) while logged in to refresh YOUR snapshot, then all rows
+ * use snapshots — so TwrLtr/lats % match on every device.
  */
 export async function fetchAirdropBoard({
   limit = 100,
   viewerId = null,
   viewerHasNft = false,
   viewerNfts = null,
+  syncNfts = false,
 } = {}) {
   const body = { limit };
   if (viewerId) body.viewer_id = String(viewerId);
   if (viewerHasNft) body.viewer_has_nft = true;
-  if (Array.isArray(viewerNfts) && viewerNfts.length) {
+  if (Array.isArray(viewerNfts)) {
     body.viewer_nfts = viewerNfts.slice(0, 40);
   }
+  if (syncNfts) body.sync_nfts = true;
   return callSecureFunction('airdrop-board', body);
 }
 

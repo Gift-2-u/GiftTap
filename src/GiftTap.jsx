@@ -1526,10 +1526,11 @@ const GiftTapGame = () => {
         leaderboardCacheRef.current.Airdrop = { rows, you, qualified: qCount };
         setLeaderboardLoading(false);
 
-        // Background: refine "you" with on-chain NFT list (does not blank the board)
+        // Background: scan wallet → save YOUR NFT snapshot → reload board (absolute %)
         if (playerWallet) {
           (async () => {
             try {
+              await ensureSecureSession();
               const owned = await listGiftNfts(playerWallet);
               const viewerNfts = Array.isArray(owned)
                 ? owned.map((n) => ({
@@ -1538,12 +1539,12 @@ const GiftTapGame = () => {
                     name: n.name,
                   }))
                 : [];
-              if (!viewerNfts.length && !hasLocksmithNft) return;
               const refined = await fetchAirdropBoard({
                 limit: 100,
                 viewerId: playerId || null,
                 viewerHasNft: !!hasLocksmithNft || viewerNfts.length > 0,
                 viewerNfts,
+                syncNfts: true,
               });
               if (!stillThisTab()) return;
               const r2 = (Array.isArray(refined?.rows) ? refined.rows : []).map((r) => ({

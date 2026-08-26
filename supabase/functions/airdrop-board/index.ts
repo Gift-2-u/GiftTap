@@ -1,14 +1,66 @@
 /**
  * airdrop-board — public list of L5-qualified players for Ranks → Airdrop.
  * Columns: username, level, bonus %. Sorted by % then level then taps.
- * No player JWT required (service_role read).
+ *
+ * FAIR %: NFT bonus comes from each player's stored inventory.airdrop_nft snapshot —
+ * NOT from "viewer only" live wallet (that made TwrLtr/lats % swap per device).
+ * Authed viewers may refresh THEIR snapshot via viewer_nfts, then board uses snapshots for all.
  */
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { adminClient, corsHeaders, jsonResponse } from "../_shared/economy.ts";
+import {
+  adminClient,
+  corsHeaders,
+  jsonResponse,
+  invObj,
+} from "../_shared/economy.ts";
+import { requirePlayerFromRequest } from "../_shared/sessionJwt.ts";
 import {
   L5_MAX_UNLOCKED,
   scoreAirdropPlayer,
+  scoreNftAirdropBonus,
+  type NftPiece,
 } from "../_shared/airdropScore.ts";
+
+function normalizeViewerNfts(raw: unknown): NftPiece[] {
+  if (!Array.isArray(raw)) return [];
+  const out: NftPiece[] = [];
+  for (const n of raw.slice(0, 40)) {
+    if (!n || typeof n !== "object") continue;
+    const o = n as Record<string, unknown>;
+    out.push({
+      kind: o.kind != null ? String(o.kind) : undefined,
+      rarity: o.rarity != null ? String(o.rarity) : undefined,
+      name: o.name != null ? String(o.name) : undefined,
+    });
+  }
+  return out;
+}
+
+function snapshotFromNfts(nfts: NftPiece[]) {
+  const scored = scoreNftAirdropBonus(nfts);
+  return {
+    nfts,
+    bonus: scored.totalNftBonus,
+    hasLocksmith: scored.hasLocksmith,
+    hasNft: scored.hasNft,
+    updated_at: new Date().toISOString(),
+  };
+}
+
+function nftsFromInventory(inv: Record<string, unknown>): NftPiece[] {
+  const snap = inv.airdrop_nft;
+  if (!snap || typeof snap !== "object" || Array.isArray(snap)) return [];
+  const s = snap as Record<string, unknown>;
+  if (Array.isArray(s.nfts)) return normalizeViewerNfts(s.nfts);
+  return [];
+}
+
+function nftBonusFromInventory(inv: Record<string, unknown>): number | undefined {
+  const snap = inv.airdrop_nft;
+  if (!snap || typeof snap !== "object" || Array.isArray(snap)) return undefined;
+  const b = Number((snap as Record<string, unknown>).bonus);
+  return Number.isFinite(b) ? Math.max(0, Math.floor(b)) : undefined;
+}
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -17,11 +69,43 @@ serve(async (req) => {
   try {
     const body = await req.json().catch(() => ({}));
     const limit = Math.min(Math.max(Number(body.limit) || 100, 1), 300);
-    const viewerId = body.viewer_id ? String(body.viewer_id) : "";
-    const viewerHasNft = !!body.viewer_has_nft;
-    const viewerNfts = Array.isArray(body.viewer_nfts) ? body.viewer_nfts : [];
+    const viewerIdHint = body.viewer_id ? String(body.viewer_id) : "";
+    const viewerNfts = normalizeViewerNfts(body.viewer_nfts);
 
     const sb = adminClient();
+
+    // Optional auth — only the logged-in player may refresh their NFT snapshot
+    let authedId = "";
+    try {
+      const claims = await requirePlayerFromRequest(req);
+      authedId = String(claims.sub || "").trim();
+    } catch {
+      /* public board read */
+    }
+
+    const viewerId = authedId || viewerIdHint;
+
+    // Only refresh snapshot when client sends an NFT list (or explicit sync_nfts).
+    // Do NOT key off viewer_has_nft alone — empty nfts would wipe a good snapshot.
+    if (authedId && (Array.isArray(body.viewer_nfts) || body.sync_nfts === true)) {
+      const { data: me, error: meErr } = await sb
+        .from("players")
+        .select("inventory")
+        .eq("telegram_id", authedId)
+        .maybeSingle();
+      if (!meErr && me) {
+        const inv = invObj(me.inventory);
+        // Empty list clears stale NFT % (sold / moved wallets)
+        inv.airdrop_nft = snapshotFromNfts(viewerNfts);
+        await sb
+          .from("players")
+          .update({
+            inventory: inv,
+            last_updated: new Date().toISOString(),
+          })
+          .eq("telegram_id", authedId);
+      }
+    }
 
     // Qualified = cleared Level 5 wall (max_unlocked_level >= 9)
     const { data: rows, error } = await sb
@@ -31,7 +115,7 @@ serve(async (req) => {
       )
       .gte("max_unlocked_level", L5_MAX_UNLOCKED)
       .order("lifetime_taps", { ascending: false })
-      .limit(Math.min(limit * 3, 500)); // over-fetch then sort by bonus %
+      .limit(Math.min(limit * 3, 500));
     if (error) throw error;
 
     const list = Array.isArray(rows) ? rows : [];
@@ -39,11 +123,9 @@ serve(async (req) => {
       .map((r) => String(r.telegram_id || "").trim())
       .filter(Boolean);
 
-    // Batch referral counts for friends bonuses
     const friends1k = new Map<string, number>();
     const friendsL5 = new Map<string, number>();
     if (ids.length > 0) {
-      // Chunk .in() to stay under URL / payload limits
       const chunkSize = 80;
       for (let i = 0; i < ids.length; i += chunkSize) {
         const chunk = ids.slice(i, i + chunkSize);
@@ -75,16 +157,18 @@ serve(async (req) => {
         : [];
       const hasIap =
         !!r.has_made_purchase || completedTasks.includes("first_purchase");
-      // NFT stack: viewer can send full wallet list (Locksmith + elves by rarity).
-      // Other players: no live DAS — NFT % omitted until snapshot/cache.
-      const isViewer = !!(viewerId && id === viewerId);
+      const inv = invObj(r.inventory);
+      const snapNfts = nftsFromInventory(inv);
+      const snapBonus = nftBonusFromInventory(inv);
       const scored = scoreAirdropPlayer({
         lifetimeTaps: Number(r.lifetime_taps) || 0,
         maxUnlockedLevel: Number(r.max_unlocked_level) || 0,
         streak: Number(r.current_streak) || 0,
         hasIap,
-        hasNft: isViewer ? viewerHasNft : false,
-        nfts: isViewer ? viewerNfts : [],
+        // Absolute: same NFT source for every row (stored snapshot)
+        nfts: snapNfts,
+        nftBonus: snapNfts.length ? undefined : snapBonus,
+        hasNft: snapNfts.length > 0 || (snapBonus != null && snapBonus > 0),
         friendsTaps1000: friends1k.get(id) || 0,
         friendsL5: friendsL5.get(id) || 0,
       });
@@ -136,7 +220,7 @@ serve(async (req) => {
       rows: trimmed,
       you,
       note:
-        "Qualified = Level 5 wall cleared. % = airdrop bonus weight. Your row includes Locksmith +25% and each other elf by rarity.",
+        "Qualified = Level 5 wall cleared. % is absolute (level/taps/streak/IAP/friends + each player's NFT snapshot). Open Airdrop once while logged in to refresh your NFT %.",
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

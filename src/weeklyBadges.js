@@ -66,6 +66,27 @@ export const MYSTERY_BOX_COSTS = {
   bronze: 5,
 };
 
+/**
+ * Free shop: buy Bronze/Silver with G2Ushards (keep in sync with economy.ts SHARD_SHOP).
+ * Shared caps: 1 badge / UTC day, 3 / UTC week (either tier).
+ */
+export const BADGE_SHARD_SHOP = {
+  badge_bronze: {
+    itemId: 'badge_bronze',
+    tier: 'bronze',
+    cost: 10000,
+    name: 'Bronze Badge',
+  },
+  badge_silver: {
+    itemId: 'badge_silver',
+    tier: 'silver',
+    cost: 30000,
+    name: 'Silver Badge',
+  },
+};
+export const BADGE_SHOP_DAY_CAP = 1;
+export const BADGE_SHOP_WEEK_CAP = 3;
+
 export const BADGE_ITEM_IDS = Object.values(BADGE_TIERS).map((t) => t.itemId);
 
 /**
@@ -501,10 +522,10 @@ export const MYSTERY_ODDS_BY_TIER = {
   },
   silver: {
     exclusive_nft: 0.5,
-    bonus_g2u: 20,
+    bonus_g2u: 17,
     premium_boost: 23,
-    free_boost: 30,
-    shards_bulk: 26.5,
+    free_boost: 31,
+    shards_bulk: 28.5,
   },
   gold: {
     exclusive_nft: 1,

@@ -75,6 +75,9 @@ import {
   canOpenMysteryWith,
   MYSTERY_ODDS_BY_TIER,
   badgeCatalogForBackpack,
+  BADGE_SHARD_SHOP,
+  BADGE_SHOP_DAY_CAP,
+  BADGE_SHOP_WEEK_CAP,
 } from './weeklyBadges';
 import {
   SHARD_BADGE,
@@ -417,6 +420,32 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, bumpEner
       iconTo: '#854d0e',
       iconRing: 'rgba(250,204,21,0.45)',
       iconGlow: 'rgba(250,204,21,0.25)',
+    },
+    {
+      id: 'badge_bronze',
+      name: BADGE_SHARD_SHOP.badge_bronze.name,
+      desc: 'For Mystery Gift · 1/day · 3/week',
+      duration: 'Keep in Backpack',
+      cost: BADGE_SHARD_SHOP.badge_bronze.cost,
+      isBadgeShop: true,
+      iconUrl: BADGE_TIERS.bronze.image,
+      iconFrom: '#cd7f32',
+      iconTo: '#5c3a1a',
+      iconRing: 'rgba(205,127,50,0.5)',
+      iconGlow: 'rgba(205,127,50,0.25)',
+    },
+    {
+      id: 'badge_silver',
+      name: BADGE_SHARD_SHOP.badge_silver.name,
+      desc: 'For Mystery Gift · 1/day · 3/week',
+      duration: 'Keep in Backpack',
+      cost: BADGE_SHARD_SHOP.badge_silver.cost,
+      isBadgeShop: true,
+      iconUrl: BADGE_TIERS.silver.image,
+      iconFrom: '#c0c0c0',
+      iconTo: '#4a4a4a',
+      iconRing: 'rgba(192,192,192,0.5)',
+      iconGlow: 'rgba(192,192,192,0.25)',
     },
   ];
 
@@ -2459,6 +2488,18 @@ Daily claim active · Pack → NFT to see it.`,
             <p style={{ color: '#666', fontSize: 11, margin: '0 0 12px', textAlign: 'center' }}>
               Free · pay with G2Ushards · then use items from Backpack
             </p>
+            <p
+              style={{
+                color: '#888',
+                fontSize: 10,
+                margin: '0 0 12px',
+                textAlign: 'center',
+                lineHeight: 1.4,
+              }}
+            >
+              Bronze / Silver badges: in-game shards only · max {BADGE_SHOP_DAY_CAP}/day ·{' '}
+              {BADGE_SHOP_WEEK_CAP}/week · Gold / Diamond from Weekly ranks
+            </p>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '10px' }}>
               {shardListings.map((item) => {
                 let isActive = false;
@@ -2472,7 +2513,21 @@ Daily claim active · Pack → NFT to see it.`,
                 }
 
                 const canAfford = balance >= item.cost;
-                const isDisabled = isActive || !canAfford;
+                const badgeQuota = (() => {
+                  if (!item.isBadgeShop) return null;
+                  const raw = localInventory?.badge_shop || stats?.inventory?.badge_shop || {};
+                  const today = new Date().toISOString().slice(0, 10);
+                  const weekId = getUtcWeekId();
+                  let dayQty = Math.max(0, Math.floor(Number(raw.dayQty) || 0));
+                  let weekQty = Math.max(0, Math.floor(Number(raw.weekQty) || 0));
+                  if (String(raw.day || '') !== today) dayQty = 0;
+                  if (String(raw.weekId || '') !== weekId) weekQty = 0;
+                  const dayLeft = Math.max(0, BADGE_SHOP_DAY_CAP - dayQty);
+                  const weekLeft = Math.max(0, BADGE_SHOP_WEEK_CAP - weekQty);
+                  return { dayLeft, weekLeft, blocked: dayLeft <= 0 || weekLeft <= 0 };
+                })();
+                const isDisabled =
+                  isActive || !canAfford || !!(badgeQuota && badgeQuota.blocked);
 
                 return (
                   <div
@@ -2521,7 +2576,11 @@ Daily claim active · Pack → NFT to see it.`,
                     >
                       {item.desc}
                       <br />
-                      <span style={{ color: '#888', fontSize: '9px' }}>⏱️ {item.duration}</span>
+                      <span style={{ color: '#888', fontSize: '9px' }}>
+                        {badgeQuota
+                          ? `Left today ${badgeQuota.dayLeft} · week ${badgeQuota.weekLeft}`
+                          : `⏱️ ${item.duration}`}
+                      </span>
                     </div>
 
                     <div
@@ -2565,10 +2624,15 @@ Daily claim active · Pack → NFT to see it.`,
                           width: '100%',
                           background: isActive
                             ? '#555'
-                            : canAfford
+                            : canAfford && !(badgeQuota && badgeQuota.blocked)
                               ? '#4ade80'
                               : '#333',
-                          color: isActive ? '#fff' : canAfford ? '#000' : '#666',
+                          color:
+                            isActive
+                              ? '#fff'
+                              : canAfford && !(badgeQuota && badgeQuota.blocked)
+                                ? '#000'
+                                : '#666',
                           border: 'none',
                           padding: '6px 0',
                           borderRadius: '6px',
@@ -2577,7 +2641,15 @@ Daily claim active · Pack → NFT to see it.`,
                           cursor: isDisabled ? 'not-allowed' : 'pointer',
                         }}
                       >
-                        {isActive ? 'Active' : canAfford ? 'Buy' : 'Need shards'}
+                        {isActive
+                          ? 'Active'
+                          : badgeQuota && badgeQuota.dayLeft <= 0
+                            ? 'Day limit'
+                            : badgeQuota && badgeQuota.weekLeft <= 0
+                              ? 'Week limit'
+                              : canAfford
+                                ? 'Buy'
+                                : 'Need shards'}
                       </button>
                     </div>
                   </div>

@@ -9,10 +9,36 @@ import {
   invObj,
   utcIsoWeekId,
   effectiveDailyLimit,
+  BADGE_SHOP_DAY_CAP,
+  BADGE_SHOP_WEEK_CAP,
+  BADGE_SHOP_ITEM_IDS,
 } from "../_shared/economy.ts";
 
 const AD_DAILY_MAX = 10;
 const AD_CAP_PER_WATCH = 100;
+
+function utcTodayStr(d = new Date()): string {
+  return d.toISOString().slice(0, 10);
+}
+
+/** Normalize / roll badge_shop stop-buy tracker for current UTC day + week. */
+function normalizeBadgeShop(
+  raw: unknown,
+  today: string,
+  weekId: string,
+): { day: string; dayQty: number; weekId: string; weekQty: number } {
+  const o =
+    raw && typeof raw === "object" && !Array.isArray(raw)
+      ? (raw as Record<string, unknown>)
+      : {};
+  let dayQty = Math.max(0, Math.floor(Number(o.dayQty) || 0));
+  let weekQty = Math.max(0, Math.floor(Number(o.weekQty) || 0));
+  const day = String(o.day || "");
+  const w = String(o.weekId || "");
+  if (day !== today) dayQty = 0;
+  if (w !== weekId) weekQty = 0;
+  return { day: today, dayQty, weekId, weekQty };
+}
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -101,9 +127,12 @@ serve(async (req) => {
 
     const catalog = SHARD_SHOP[itemId];
     if (!catalog) {
-      throw new Error("Unknown shard shop item (frenzy|battery|refill)");
+      throw new Error(
+        "Unknown shard shop item (frenzy|battery|refill|badge_bronze|badge_silver)",
+      );
     }
     const cost = catalog.cost;
+    const isBadgeShop = BADGE_SHOP_ITEM_IDS.has(itemId);
 
     const sb = adminClient();
     const { data: row, error: selErr } = await sb
@@ -120,27 +149,60 @@ serve(async (req) => {
     }
 
     const inv = invObj(row.inventory);
+    const weekId = utcIsoWeekId();
+    const today = utcTodayStr();
+    let badgeShop = normalizeBadgeShop(inv.badge_shop, today, weekId);
+
+    if (isBadgeShop) {
+      if (badgeShop.dayQty >= BADGE_SHOP_DAY_CAP) {
+        throw new Error(
+          `Badge shop limit: ${BADGE_SHOP_DAY_CAP} per UTC day (come back tomorrow)`,
+        );
+      }
+      if (badgeShop.weekQty >= BADGE_SHOP_WEEK_CAP) {
+        throw new Error(
+          `Badge shop limit: ${BADGE_SHOP_WEEK_CAP} per UTC week`,
+        );
+      }
+    }
+
     inv[itemId] = (Number(inv[itemId]) || 0) + 1;
 
-    // Weekly quest boost-buy counter
-    const weekId = utcIsoWeekId();
-    const wq =
-      inv.weekly_quests && typeof inv.weekly_quests === "object"
-        ? { ...(inv.weekly_quests as Record<string, unknown>) }
-        : { weekId, claimed: [], daysTap500: [], daysActive: [], daysFull: [], boostBuys: 0 };
-    if (String(wq.weekId || "") !== weekId) {
-      inv.weekly_quests = {
+    if (isBadgeShop) {
+      badgeShop = {
+        day: today,
+        dayQty: badgeShop.dayQty + 1,
         weekId,
-        claimed: [],
-        daysTap500: [],
-        daysActive: [],
-        daysFull: [],
-        boostBuys: 1,
+        weekQty: badgeShop.weekQty + 1,
       };
+      inv.badge_shop = badgeShop;
     } else {
-      wq.boostBuys = (Number(wq.boostBuys) || 0) + 1;
-      wq.weekId = weekId;
-      inv.weekly_quests = wq;
+      // Weekly quest boost-buy counter (not for badge shop)
+      const wq =
+        inv.weekly_quests && typeof inv.weekly_quests === "object"
+          ? { ...(inv.weekly_quests as Record<string, unknown>) }
+          : {
+              weekId,
+              claimed: [],
+              daysTap500: [],
+              daysActive: [],
+              daysFull: [],
+              boostBuys: 0,
+            };
+      if (String(wq.weekId || "") !== weekId) {
+        inv.weekly_quests = {
+          weekId,
+          claimed: [],
+          daysTap500: [],
+          daysActive: [],
+          daysFull: [],
+          boostBuys: 1,
+        };
+      } else {
+        wq.boostBuys = (Number(wq.boostBuys) || 0) + 1;
+        wq.weekId = weekId;
+        inv.weekly_quests = wq;
+      }
     }
 
     const nextBalance = Math.round((balance - cost) * 1000) / 1000;
@@ -161,7 +223,17 @@ serve(async (req) => {
       delta: -cost,
       balance_after: nextBalance,
       ref: itemId,
-      meta: { name: catalog.name, cost },
+      meta: {
+        name: catalog.name,
+        cost,
+        ...(isBadgeShop
+          ? {
+              badge_shop: true,
+              dayQty: badgeShop.dayQty,
+              weekQty: badgeShop.weekQty,
+            }
+          : {}),
+      },
     });
 
     return jsonResponse({
@@ -171,6 +243,7 @@ serve(async (req) => {
       cost,
       shard_balance: nextBalance,
       inventory: inv,
+      ...(isBadgeShop ? { badge_shop: badgeShop } : {}),
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
