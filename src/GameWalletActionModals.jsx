@@ -102,6 +102,8 @@ export default function GameWalletActionModals({
   const [fromToken, setFromToken] = useState('SOL');
   const [toToken, setToToken] = useState('G2U');
   const [outAmt, setOutAmt] = useState('');
+  /** Account password — required to unlock vault for send/swap (never JWT-only). */
+  const [walletPassword, setWalletPassword] = useState('');
   const [status, setStatus] = useState({
     show: false,
     loading: false,
@@ -178,6 +180,7 @@ export default function GameWalletActionModals({
     setAmount('');
     setOutAmt('');
     setShardAmt('');
+    setWalletPassword('');
     setFromToken('SOL');
     setToToken('G2U');
     setStatus({ show: false, loading: false, message: '', success: null, txid: null });
@@ -225,6 +228,16 @@ export default function GameWalletActionModals({
   const runSend = async (e) => {
     if (e) e.preventDefault();
     if (!toAddr || !amount) return;
+    if (!walletPassword || String(walletPassword).length < 6) {
+      setStatus({
+        show: true,
+        loading: false,
+        message: '❌ Enter your account password to unlock wallet.',
+        success: false,
+        txid: null,
+      });
+      return;
+    }
     setStatus({
       show: true,
       loading: true,
@@ -243,6 +256,7 @@ export default function GameWalletActionModals({
       const { signature } = await sendSolFromGameWallet({
         toAddress: toAddr,
         amountSol: amount,
+        password: walletPassword,
       });
       setStatus({
         show: true,
@@ -253,6 +267,7 @@ export default function GameWalletActionModals({
       });
       setToAddr('');
       setAmount('');
+      setWalletPassword('');
       onSuccess?.();
       setTimeout(() => {
         setStatus({ show: false, loading: false, message: '', success: null, txid: null });
@@ -271,6 +286,16 @@ export default function GameWalletActionModals({
 
   const runSwap = async () => {
     if (!amount || parseFloat(amount) <= 0) return;
+    if (!walletPassword || String(walletPassword).length < 6) {
+      setStatus({
+        show: true,
+        loading: false,
+        message: '❌ Enter your account password to unlock wallet.',
+        success: false,
+        txid: null,
+      });
+      return;
+    }
     setStatus({
       show: true,
       loading: true,
@@ -279,7 +304,12 @@ export default function GameWalletActionModals({
       txid: null,
     });
     try {
-      const { signature } = await swapFromGameWallet({ fromToken, toToken, amount });
+      const { signature } = await swapFromGameWallet({
+        fromToken,
+        toToken,
+        amount,
+        password: walletPassword,
+      });
       setStatus({
         show: true,
         loading: false,
@@ -289,6 +319,7 @@ export default function GameWalletActionModals({
       });
       setAmount('');
       setOutAmt('');
+      setWalletPassword('');
       onSuccess?.();
       setTimeout(() => {
         setStatus({ show: false, loading: false, message: '', success: null, txid: null });
@@ -564,12 +595,43 @@ export default function GameWalletActionModals({
               </div>
             </div>
 
+            <div style={{ textAlign: 'left', marginBottom: '20px' }}>
+              <label
+                style={{
+                  color: '#888',
+                  fontSize: '12px',
+                  display: 'block',
+                  marginBottom: '5px',
+                }}
+              >
+                Account password (unlock wallet)
+              </label>
+              <input
+                type="password"
+                placeholder="Your login password"
+                value={walletPassword}
+                onChange={(e) => setWalletPassword(e.target.value)}
+                disabled={status.loading}
+                autoComplete="current-password"
+                style={{
+                  width: '100%',
+                  background: '#1c1e22',
+                  border: '1px solid #333',
+                  borderRadius: '12px',
+                  padding: '12px',
+                  color: '#fff',
+                  boxSizing: 'border-box',
+                }}
+              />
+            </div>
+
             <button
               type="button"
               disabled={
                 !amount ||
                 amount <= 0 ||
                 !toAddr ||
+                !walletPassword ||
                 !isFeeLoaded ||
                 status.loading
               }
@@ -844,6 +906,36 @@ export default function GameWalletActionModals({
               Powered by Jupiter Aggregator
             </p>
 
+            <div style={{ textAlign: 'left', marginTop: '12px' }}>
+              <label
+                style={{
+                  color: '#888',
+                  fontSize: '12px',
+                  display: 'block',
+                  marginBottom: '5px',
+                }}
+              >
+                Account password (unlock wallet)
+              </label>
+              <input
+                type="password"
+                placeholder="Your login password"
+                value={walletPassword}
+                onChange={(e) => setWalletPassword(e.target.value)}
+                disabled={status.loading}
+                autoComplete="current-password"
+                style={{
+                  width: '100%',
+                  background: '#1c1e22',
+                  border: '1px solid #333',
+                  borderRadius: '12px',
+                  padding: '12px',
+                  color: '#fff',
+                  boxSizing: 'border-box',
+                }}
+              />
+            </div>
+
             <button
               type="button"
               style={{
@@ -856,12 +948,16 @@ export default function GameWalletActionModals({
                 fontWeight: 'bold',
                 fontSize: '16px',
                 marginTop: '20px',
-                cursor: amount > 0 && !status.loading ? 'pointer' : 'not-allowed',
-                opacity: amount > 0 && !status.loading ? 1 : 0.5,
+                cursor:
+                  amount > 0 && walletPassword && !status.loading
+                    ? 'pointer'
+                    : 'not-allowed',
+                opacity:
+                  amount > 0 && walletPassword && !status.loading ? 1 : 0.5,
                 outline: 'none',
                 WebkitTapHighlightColor: 'transparent',
               }}
-              disabled={status.loading || !(amount > 0)}
+              disabled={status.loading || !(amount > 0) || !walletPassword}
               onClick={runSwap}
             >
               {status.loading ? 'Swapping…' : 'Execute Swap'}

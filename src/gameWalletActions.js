@@ -1,6 +1,7 @@
 /**
  * Shared game-wallet signing helpers for site + game.
- * Secret is unlocked the same way as Gift Tap (AES + vaultSaltFor).
+ * HARD SECURITY: ciphertext only via wallet-vault unlock + account password.
+ * AES key remains vaultSaltFor(playerId) (existing vaults). JWT alone cannot drain.
  */
 import CryptoJS from 'crypto-js';
 import bs58 from 'bs58';
@@ -16,10 +17,10 @@ import {
   LAMPORTS_PER_SOL,
 } from '@solana/web3.js';
 import { getAssociatedTokenAddressSync } from '@solana/spl-token';
-import { supabase } from './supabaseClient';
-import { DB_PLAYER_ID, vaultSaltFor, getPlayerId } from './playerIdentity';
+import { vaultSaltFor, getPlayerId } from './playerIdentity';
 import { keypairFromMnemonic } from './solanaWallet';
 import { MINT_ADDRESS } from './config';
+import { secureUnlockVault } from './secureApi';
 
 export const RPC_URL =
   import.meta.env.VITE_SOLANA_RPC_URL ||
@@ -41,32 +42,61 @@ export const TREASURY_TOKEN_ACCOUNTS = {
   SOL: 'GwEPP1njWswga8JoCnQ7AyvJJeqxkx8GzW5o5HFsN1F1',
 };
 
-function decryptWallet(encryptedData, password) {
+function decryptWallet(encryptedData, aesKey) {
   try {
-    const bytes = CryptoJS.AES.decrypt(encryptedData, password);
+    const bytes = CryptoJS.AES.decrypt(encryptedData, aesKey);
     return bytes.toString(CryptoJS.enc.Utf8) || null;
   } catch {
     return null;
   }
 }
 
-/** Load and unlock game wallet keypair for the current browser session. */
-export async function unlockGameKeypair(playerId = getPlayerId()) {
+/**
+ * Unlock game wallet keypair.
+ * @param {object|string} [opts] — playerId string (legacy) OR
+ *   { playerId?, phrase?, password? }
+ * Prefer phrase already in RAM. Otherwise password → Edge unlock (never JWT-only get).
+ */
+export async function unlockGameKeypair(opts = {}) {
+  const options =
+    typeof opts === 'string' || opts == null
+      ? { playerId: opts || getPlayerId() }
+      : opts;
+  const playerId = options.playerId || getPlayerId();
   if (!playerId) throw new Error('Not logged in to a Gift Tap account.');
 
-  const { data, error } = await supabase
-    .from('players')
-    .select('encrypted_vault, wallet_address')
-    .eq(DB_PLAYER_ID, String(playerId))
-    .maybeSingle();
+  let secret =
+    (options.phrase && String(options.phrase).trim()) ||
+    (options.mnemonic && String(options.mnemonic).trim()) ||
+    null;
 
-  if (error) throw error;
-  if (!data?.encrypted_vault) {
-    throw new Error('Game wallet vault not found. Open Gift Tap once to finish setup.');
+  if (!secret) {
+    let password = options.password ? String(options.password) : '';
+    if (!password && typeof window !== 'undefined') {
+      password =
+        window.prompt(
+          'Enter your account password to unlock your wallet for this transaction:',
+        ) || '';
+    }
+    if (!password || password.length < 6) {
+      throw new Error('Password required to unlock wallet');
+    }
+    const vaultRes = await secureUnlockVault(password);
+    if (!vaultRes?.encrypted_vault) {
+      throw new Error(
+        vaultRes?.message ||
+          'Game wallet vault not found. Open Gift Tap once to finish setup.',
+      );
+    }
+    secret = decryptWallet(
+      vaultRes.encrypted_vault,
+      vaultSaltFor(String(playerId)),
+    );
   }
 
-  const secret = decryptWallet(data.encrypted_vault, vaultSaltFor(String(playerId)));
-  if (!secret) throw new Error('Could not unlock game wallet. Try logging out and in again.');
+  if (!secret) {
+    throw new Error('Could not unlock game wallet. Wrong password or vault missing.');
+  }
 
   if (secret.includes(' ')) {
     return keypairFromMnemonic(secret.trim());
@@ -79,7 +109,7 @@ export function getConnection() {
 }
 
 /** Send SOL from game wallet (+ small platform fee). */
-export async function sendSolFromGameWallet({ toAddress, amountSol }) {
+export async function sendSolFromGameWallet({ toAddress, amountSol, password, phrase } = {}) {
   const amount = parseFloat(amountSol);
   if (!toAddress || !amount || amount <= 0) throw new Error('Enter destination and amount.');
 
@@ -90,7 +120,7 @@ export async function sendSolFromGameWallet({ toAddress, amountSol }) {
     throw new Error('Invalid Solana address.');
   }
 
-  const keypair = await unlockGameKeypair();
+  const keypair = await unlockGameKeypair({ password, phrase });
   const connection = getConnection();
   const withdrawLamports = Math.floor(amount * LAMPORTS_PER_SOL);
   const feeLamports = Math.floor(0.0005 * LAMPORTS_PER_SOL);
@@ -123,12 +153,12 @@ export async function sendSolFromGameWallet({ toAddress, amountSol }) {
 }
 
 /** Jupiter swap from game wallet (SOL / USDC / G2U). */
-export async function swapFromGameWallet({ fromToken, toToken, amount }) {
+export async function swapFromGameWallet({ fromToken, toToken, amount, password, phrase } = {}) {
   const amt = parseFloat(amount);
   if (!amt || amt <= 0) throw new Error('Enter an amount to swap.');
   if (fromToken === toToken) throw new Error('Choose two different tokens.');
 
-  const keypair = await unlockGameKeypair();
+  const keypair = await unlockGameKeypair({ password, phrase });
   const connection = getConnection();
   const inputMint = TOKEN_MINTS[fromToken];
   const outputMint = TOKEN_MINTS[toToken];

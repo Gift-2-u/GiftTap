@@ -145,16 +145,28 @@ export async function secureRotateInGameWallet() {
 
 /**
  * Owner-only vault access (encrypted_vault is NOT readable via anon PostgREST).
- * get → { encrypted_vault|null, has_vault }
- * set_if_empty → store once
- * status → { has_vault, has_password } without secrets
+ * get/status → { has_vault, has_password } — NEVER returns ciphertext (JWT alone cannot drain)
+ * unlock     → password required; returns encrypted_vault only after password_hash verify
+ * set_if_empty → store once after signup
  */
-export async function secureWalletVault(action = 'get', payload = {}) {
+export async function secureWalletVault(action = 'status', payload = {}) {
   return callSecureFunction('wallet-vault', { action, ...payload });
 }
 
+/** Status only — no ciphertext. Prefer secureVaultStatus / secureUnlockVault. */
 export async function secureGetVault() {
-  return secureWalletVault('get');
+  return secureWalletVault('status');
+}
+
+/**
+ * Password-gated unlock — only way to receive encrypted_vault.
+ * Call after login (or when signing SOL) with the account password.
+ */
+export async function secureUnlockVault(password) {
+  if (!password || String(password).length < 6) {
+    throw new Error('Password required to unlock wallet');
+  }
+  return secureWalletVault('unlock', { password: String(password) });
 }
 
 export async function secureSetVaultIfEmpty(encryptedVault) {

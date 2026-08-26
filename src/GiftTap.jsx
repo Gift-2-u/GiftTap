@@ -221,7 +221,7 @@ import {
   secureWallClimb,
   secureLocksmithActivate,
   secureCreateUserWallet,
-  secureGetVault,
+  secureUnlockVault,
   secureSetVaultIfEmpty,
   secureVaultStatus,
   secureAdReward,
@@ -753,8 +753,10 @@ const GiftTapGame = () => {
    * After dismiss → stay on current unlock + HUD Level up / Climb bar.
    */
   const [wallSnoozedFor, setWallSnoozedFor] = useState(null);
-  /** Auto-opened climb modal once per wall unlock key this session (load or cross 50k). */
+  /** Auto-opened climb modal once per wall unlock key this session (load / already past). */
   const wallAutoPromptRef = useRef(null);
+  /** Last lifetime taps seen — detect crossing 50k / 125k / … paywall caps. */
+  const wallCrossPrevTapsRef = useRef(null);
   /** In-app notices (replaces browser alert() "gift2u.fun says…") */
   const [appNotice, setAppNotice] = useState({
     show: false,
@@ -2300,6 +2302,8 @@ const GiftTapGame = () => {
         const _lt = Number(playerRow.lifetime_taps) || 0;
         setLifetimeTaps(_lt);
         optimisticTaps.current = _lt;
+        // Baseline for wall-threshold crossing (50k, 125k, …)
+        wallCrossPrevTapsRef.current = _lt;
         const _ss = Number(playerRow.season_shards) || 0;
         setSeasonShards(_ss);
         optimisticSeason.current = _ss;
@@ -2582,20 +2586,9 @@ const GiftTapGame = () => {
             // field is the battery regen clock owned by commit-taps only.
         }
 
-        // HARD SECURITY: vault NOT readable via anon select('*').
-        // Owner-only via Edge wallet-vault + JWT.
-        try {
-          await ensureSecureSession();
-          const vaultRes = await secureGetVault();
-          if (vaultRes?.encrypted_vault) {
-            const unlockedSecret = decryptWallet(vaultRes.encrypted_vault, invisibleKey);
-            if (unlockedSecret) {
-              setDecryptedPhrase(unlockedSecret);
-            }
-          }
-        } catch (vaultErr) {
-          console.warn('secure vault load', vaultErr?.message || vaultErr);
-        }
+        // HARD SECURITY: never auto-fetch ciphertext with JWT alone.
+        // Phrase stays empty until login password unlock (handleAuthenticated)
+        // or explicit unlock when signing SOL. Prevents wallet drain if JWT leaks.
 
         setIsDataLoaded(true);
         return;
@@ -2878,6 +2871,7 @@ const GiftTapGame = () => {
     walletAddress,
     sessionToken,
     expiresAt,
+    password,
   }) => {
     // Wipe prior account UI/refs before binding the new session
     resetGameProgressState();
@@ -2898,6 +2892,22 @@ const GiftTapGame = () => {
       setDecryptedPhrase(mnemonic);
       setGeneratedSecret(mnemonic);
       setMustBackup(true);
+    } else if (password && String(password).length >= 6) {
+      // Returning login: password-gated Edge unlock → phrase in RAM this session only
+      try {
+        await ensureSecureSession();
+        const vaultRes = await secureUnlockVault(password);
+        if (vaultRes?.encrypted_vault) {
+          const unlocked = decryptWallet(
+            vaultRes.encrypted_vault,
+            vaultSaltFor(String(pid)),
+          );
+          if (unlocked) setDecryptedPhrase(unlocked);
+        }
+      } catch (ue) {
+        console.warn('vault unlock on login', ue?.message || ue);
+        // Still play — SOL withdraws will ask for password again
+      }
     }
     // Public launch — no invite / beta code required
     setHasAccess(true);
@@ -2953,6 +2963,8 @@ const GiftTapGame = () => {
     setMaxUnlockedLevel(4);
     setCurrentLevel(0);
     setWallSnoozedFor(null);
+    wallAutoPromptRef.current = null;
+    wallCrossPrevTapsRef.current = null;
     setTapPower(1);
     setStats({
       frenzy_expires: null,
@@ -3002,7 +3014,7 @@ const GiftTapGame = () => {
   // 5. EFFECTS
   useEffect(() => { syncPlayer(); }, [syncPlayer]);
 
-  // Auto climb popup: already at/past wall on load (e.g. 50k+) and not dismissed → same modal as Level up bar
+  // Auto climb popup on load: already at/past this wall's tap cap and not dismissed
   useEffect(() => {
     if (!isDataLoaded) return;
     if (wallSnoozedFor === maxUnlockedLevel) return;
@@ -3012,6 +3024,13 @@ const GiftTapGame = () => {
     wallAutoPromptRef.current = maxUnlockedLevel;
     setShowAscensionModal(true);
   }, [isDataLoaded, currentLevel, maxUnlockedLevel, lifetimeTaps, wallSnoozedFor]);
+
+  // After a successful climb, allow the next wall's threshold to auto-popup
+  useEffect(() => {
+    if (wallAutoPromptRef.current != null && wallAutoPromptRef.current !== maxUnlockedLevel) {
+      wallAutoPromptRef.current = null;
+    }
+  }, [maxUnlockedLevel]);
 
   // Locksmith NFT ownership (Core collection) for better shard swap + cache owned elf ids
   useEffect(() => {
@@ -3866,10 +3885,12 @@ const GiftTapGame = () => {
         stats.inventory || {},
       );
       nextInventory = hydrateWeeklyClaimsFromLedger(nextInventory, saveWeekId);
-      nextInventory.wall_snooze_level =
-        wallSnoozedFor === p.mul
-          ? p.mul
-          : inv.wall_snooze_level ?? null;
+      // Only persist snooze while actively snoozed for this wall — never resurrect old snooze
+      if (wallSnoozedFor === p.mul) {
+        nextInventory.wall_snooze_level = p.mul;
+      } else {
+        delete nextInventory.wall_snooze_level;
+      }
       inventoryRef.current = nextInventory;
 
       // If we have daily progress, last_tap_date must be today so reloads keep the bar
@@ -4352,17 +4373,51 @@ const GiftTapGame = () => {
       const shardsEarned = Math.round(rawShardsEarned * 1000) / 1000;
       const perTapAmount = Math.round((baseRate * payoutMultiplier) * 1000) / 1000;
 
-      // At wall (e.g. L4 / 50k taps): auto-open climb modal once unless dismissed (snoozed).
-      // Dismiss → keep mining at current unlock; HUD bar stays for later climb.
-      if (
-        atWall &&
-        wallSnoozedFor !== maxUnlockedLevel &&
-        wallAutoPromptRef.current !== maxUnlockedLevel &&
-        (safeLifetimeTaps + shardsEarned >= getPaywallCap(maxUnlockedLevel) ||
-          isAtAscensionWall(currentLevel, maxUnlockedLevel, safeLifetimeTaps + shardsEarned))
-      ) {
-        wallAutoPromptRef.current = maxUnlockedLevel;
-        setShowAscensionModal(true);
+      // Wall auto-popup: when lifetime taps CROSS this wall's cap (50k / 125k / 625k / …)
+      // always open the climb modal — same for every wall. Crossing clears prior snooze
+      // so a re-test or re-hit still shows the popup (HUD Level up bar stays as backup).
+      {
+        const wallCap = getPaywallCap(maxUnlockedLevel);
+        const nextLt = safeLifetimeTaps + shardsEarned;
+        if (wallCrossPrevTapsRef.current == null) {
+          wallCrossPrevTapsRef.current = safeLifetimeTaps;
+        }
+        const prevLt = Number(wallCrossPrevTapsRef.current) || 0;
+        const crossedWallCap =
+          atWall &&
+          Number.isFinite(wallCap) &&
+          wallCap !== Infinity &&
+          prevLt < wallCap &&
+          nextLt >= wallCap;
+        wallCrossPrevTapsRef.current = nextLt;
+
+        if (crossedWallCap) {
+          setWallSnoozedFor(null);
+          const cleared = {
+            ...(inventoryRef.current || stats.inventory || {}),
+          };
+          if (cleared.wall_snooze_level != null) {
+            delete cleared.wall_snooze_level;
+            inventoryRef.current = cleared;
+            setStats((prev) => ({ ...prev, inventory: cleared }));
+          }
+          wallAutoPromptRef.current = maxUnlockedLevel;
+          setShowAscensionModal(true);
+        } else if (
+          atWall &&
+          wallSnoozedFor !== maxUnlockedLevel &&
+          wallAutoPromptRef.current !== maxUnlockedLevel &&
+          (nextLt >= wallCap ||
+            isAtAscensionWall(
+              currentLevel,
+              maxUnlockedLevel,
+              nextLt,
+            ))
+        ) {
+          // Already past cap this session and not snoozed — open once
+          wallAutoPromptRef.current = maxUnlockedLevel;
+          setShowAscensionModal(true);
+        }
       }
 
       // Instant refs so multi-touch / rapid taps never use stale React state in saves
@@ -4542,10 +4597,14 @@ const GiftTapGame = () => {
         if (Number.isFinite(lvl)) setCurrentLevel(lvl);
         setShowAscensionModal(false);
         setWallSnoozedFor(null);
+        wallAutoPromptRef.current = null;
+        // Next wall uses a higher tap cap — reset so that threshold can auto-popup
+        wallCrossPrevTapsRef.current = Number(optimisticTaps.current) || 0;
         if (data.inventory) {
           inventoryRef.current = {
             ...(inventoryRef.current || {}),
             ...data.inventory,
+            wall_snooze_level: null,
           };
           setStats((prev) => ({
             ...prev,
@@ -4579,6 +4638,8 @@ const GiftTapGame = () => {
     setEnergy(maxDailyLimit);
     setShowAscensionModal(false);
     setWallSnoozedFor(null);
+    wallAutoPromptRef.current = null;
+    wallCrossPrevTapsRef.current = Number(lifetimeTaps) || 0;
     setStats((prev) => ({
       ...prev,
       inventory: { ...(prev.inventory || {}), wall_snooze_level: null },
@@ -4681,25 +4742,38 @@ const GiftTapGame = () => {
           );
           return;
         }
-        // --- 1. ZERO-DELAY INSTANT DECRYPTION ---
+        // --- 1. Phrase in RAM, or password unlock (JWT alone never gets ciphertext) ---
         let storedSecret = decryptedPhrase || generatedSecret;
-        
-        // Failsafe: owner-only Edge vault (anon cannot SELECT encrypted_vault)
+
         if (!storedSecret) {
+          const pw =
+            typeof window !== 'undefined'
+              ? window.prompt(
+                  'Enter your account password to unlock your wallet for this SOL payment:',
+                )
+              : '';
+          if (!pw || String(pw).length < 6) {
+            throw new Error('Password required to unlock wallet for SOL payment.');
+          }
           try {
             await ensureSecureSession();
-            const vaultRes = await secureGetVault();
+            const vaultRes = await secureUnlockVault(pw);
             if (vaultRes?.encrypted_vault) {
-              const invisibleKey = vaultSaltFor(playerId);
-              storedSecret = decryptWallet(vaultRes.encrypted_vault, invisibleKey);
+              storedSecret = decryptWallet(
+                vaultRes.encrypted_vault,
+                vaultSaltFor(playerId),
+              );
+              if (storedSecret) setDecryptedPhrase(storedSecret);
             }
           } catch (ve) {
-            console.warn('wall vault edge', ve?.message || ve);
+            throw new Error(ve?.message || 'Wrong password or vault unlock failed.');
           }
         }
 
         if (!storedSecret) {
-          throw new Error("Wallet connection lost. Please completely refresh the game to resync your session.");
+          throw new Error(
+            'Wallet locked. Log in with your password again, or enter password when asked.',
+          );
         }
 
         // Temporary alert so the player knows the transaction is processing
@@ -5219,6 +5293,34 @@ const GiftTapGame = () => {
     }
   }, [isModalOpen, playerWallet, isDataLoaded, fetchBalances, showSettings]);
 
+  /** Phrase in RAM, or password → Edge unlock (JWT alone never drains). */
+  const ensureWalletSecret = async (promptMsg) => {
+    let secret = decryptedPhrase || generatedSecret || '';
+    if (secret) return secret;
+    const pw =
+      typeof window !== 'undefined'
+        ? window.prompt(
+            promptMsg ||
+              'Enter your account password to unlock your wallet:',
+          )
+        : '';
+    if (!pw || String(pw).length < 6) {
+      throw new Error('Password required to unlock wallet.');
+    }
+    await ensureSecureSession();
+    const vaultRes = await secureUnlockVault(pw);
+    if (!vaultRes?.encrypted_vault) {
+      throw new Error(vaultRes?.message || 'Vault not found.');
+    }
+    secret = decryptWallet(
+      vaultRes.encrypted_vault,
+      vaultSaltFor(playerId),
+    );
+    if (!secret) throw new Error('Wrong password or could not decrypt vault.');
+    setDecryptedPhrase(secret);
+    return secret;
+  };
+
   const handleWithdraw = async (e) => {
       if (e) e.preventDefault(); 
       
@@ -5228,11 +5330,10 @@ const GiftTapGame = () => {
       setTxStatus({ show: true, loading: true, message: 'Initiating withdrawal...', success: false });
 
       try {
-          // 1. Get Secret Key directly from your existing React State
-          const storedSecret = decryptedPhrase;
-          if (!storedSecret) {
-              throw new Error("Secret key not found. Please unlock your wallet in settings.");
-          }
+          // 1. Phrase in RAM or password unlock (never JWT-only ciphertext)
+          const storedSecret = await ensureWalletSecret(
+            'Enter your account password to unlock wallet for withdrawal:',
+          );
 
           // 2. Setup Connection & Keypair (Matching your marketplace logic)
           const connection = new Connection(RPC_URL, 'confirmed');
@@ -5652,9 +5753,10 @@ const GiftTapGame = () => {
     setTxStatus({ show: true, loading: true, message: `Confirming transaction...`, success: false, txid: null });
     
     try {
-      // 1. SETUP WALLET
-      const storedSecret = decryptedPhrase;
-      if (!storedSecret) throw new Error("Secret key not found. Please unlock your wallet.");
+      // 1. SETUP WALLET — password unlock if phrase not in RAM
+      const storedSecret = await ensureWalletSecret(
+        'Enter your account password to unlock wallet for swap:',
+      );
 
       let playerKeypair;
       if (storedSecret.includes(" ")) {
@@ -6198,10 +6300,6 @@ const GiftTapGame = () => {
             <div style={styles.walletWrapper}>
               <button 
                 onClick={() => { 
-                  // --- DIAGNOSTIC LOG ---
-                  console.log("DEBUG - Phrase in RAM:", decryptedPhrase);
-                  console.log("DEBUG - Generated Secret:", generatedSecret);
-
                   // 1. Synchronous check prevents UI flickering
                   const isBackedUp = localStorage.getItem(`wallet_backed_up_${playerId}`);
                   

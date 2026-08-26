@@ -1,5 +1,10 @@
 /**
  * wallet-vault — secrets in player_secrets only (not on players table).
+ *
+ * HARD WALLET SECURITY:
+ *   get / status — NEVER return encrypted_vault (JWT alone must not unlock keys)
+ *   unlock       — password required; verified against player_secrets.password_hash
+ *   set_if_empty — bind vault once after signup
  */
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.7";
@@ -31,6 +36,41 @@ function looksRealVault(v: unknown): boolean {
   return s.length > 20 && s !== "probe";
 }
 
+function b64ToBytes(b64: string): Uint8Array {
+  const bin = atob(b64);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+
+function b64(buf: ArrayBuffer | Uint8Array) {
+  const bytes = buf instanceof Uint8Array ? buf : new Uint8Array(buf);
+  let s = "";
+  for (let i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i]);
+  return btoa(s);
+}
+
+async function verifyPassword(password: string, stored: string): Promise<boolean> {
+  const parts = String(stored || "").split("$");
+  if (parts.length !== 4 || parts[0] !== "pbkdf2_sha256") return false;
+  const iterations = parseInt(parts[1], 10);
+  const salt = b64ToBytes(parts[2]);
+  const expected = parts[3];
+  const keyMaterial = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(password),
+    "PBKDF2",
+    false,
+    ["deriveBits"],
+  );
+  const bits = await crypto.subtle.deriveBits(
+    { name: "PBKDF2", salt, iterations, hash: "SHA-256" },
+    keyMaterial,
+    256,
+  );
+  return b64(bits) === expected;
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -45,7 +85,8 @@ serve(async (req) => {
     const action = String(body.action || body.op || "get").toLowerCase();
     const sb = admin();
 
-    if (action === "get") {
+    // get = status only — never hand out ciphertext for JWT alone
+    if (action === "get" || action === "status") {
       const { data: player } = await sb
         .from("players")
         .select("wallet_address")
@@ -55,17 +96,62 @@ serve(async (req) => {
 
       const { data: sec, error } = await sb
         .from("player_secrets")
-        .select("encrypted_vault")
+        .select("encrypted_vault, password_hash")
         .eq("telegram_id", playerId)
         .maybeSingle();
       if (error) throw error;
 
-      const vault = sec?.encrypted_vault;
-      const ok = looksRealVault(vault);
       return json({
         success: true,
-        has_vault: ok,
-        encrypted_vault: ok ? String(vault) : null,
+        has_vault: looksRealVault(sec?.encrypted_vault),
+        has_password: !!(sec?.password_hash && String(sec.password_hash).trim()),
+        wallet_address: player.wallet_address || null,
+        // intentional: no encrypted_vault
+      });
+    }
+
+    // Password-gated unlock — only way to receive encrypted_vault
+    if (action === "unlock") {
+      const password = String(body.password || "");
+      if (password.length < 6) throw new Error("Password required to unlock wallet");
+
+      const { data: player } = await sb
+        .from("players")
+        .select("wallet_address")
+        .eq("telegram_id", playerId)
+        .maybeSingle();
+      if (!player) throw new Error("Player not found");
+
+      const { data: sec, error } = await sb
+        .from("player_secrets")
+        .select("encrypted_vault, password_hash")
+        .eq("telegram_id", playerId)
+        .maybeSingle();
+      if (error) throw error;
+
+      const hash = sec?.password_hash ? String(sec.password_hash) : "";
+      if (!hash) throw new Error("No password on this account — set one to unlock wallet");
+      const okPw = await verifyPassword(password, hash);
+      if (!okPw) throw new Error("Wrong password");
+
+      const vault = sec?.encrypted_vault;
+      const ok = looksRealVault(vault);
+      if (!ok) {
+        return json({
+          success: true,
+          has_vault: false,
+          unlocked: false,
+          encrypted_vault: null,
+          wallet_address: player.wallet_address || null,
+          message: "No vault bound yet",
+        });
+      }
+
+      return json({
+        success: true,
+        has_vault: true,
+        unlocked: true,
+        encrypted_vault: String(vault),
         wallet_address: player.wallet_address || null,
       });
     }
@@ -104,30 +190,7 @@ serve(async (req) => {
       return json({ success: true, already_set: false, has_vault: true });
     }
 
-    if (action === "status") {
-      const { data: player } = await sb
-        .from("players")
-        .select("wallet_address")
-        .eq("telegram_id", playerId)
-        .maybeSingle();
-      if (!player) throw new Error("Player not found");
-
-      const { data: sec, error } = await sb
-        .from("player_secrets")
-        .select("encrypted_vault, password_hash")
-        .eq("telegram_id", playerId)
-        .maybeSingle();
-      if (error) throw error;
-
-      return json({
-        success: true,
-        has_vault: looksRealVault(sec?.encrypted_vault),
-        has_password: !!(sec?.password_hash && String(sec.password_hash).trim()),
-        wallet_address: player.wallet_address || null,
-      });
-    }
-
-    throw new Error("Unknown action (get|set_if_empty|status)");
+    throw new Error("Unknown action (get|status|unlock|set_if_empty)");
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     const status = /authenticated|expired|signature|Invalid session|Not authenticated/i

@@ -93,6 +93,8 @@ const AuthScreen = ({ onAuthenticated, onRestoreAccount, embedded = false }) => 
         has_beta_access: true,
         sessionToken: data.session_token || null,
         expiresAt: data.expires_at || null,
+        // Password unlocks vault once this session (never stored; JWT alone cannot drain)
+        password,
       });
     } catch (err) {
       console.error('Sign up error:', err);
@@ -122,6 +124,8 @@ const AuthScreen = ({ onAuthenticated, onRestoreAccount, embedded = false }) => 
         walletAddress: data.wallet_address,
         sessionToken: data.session_token || null,
         expiresAt: data.expires_at || null,
+        // Password unlocks vault once this session (never stored; JWT alone cannot drain)
+        password,
       });
     } catch (err) {
       console.error('Login error:', err);
