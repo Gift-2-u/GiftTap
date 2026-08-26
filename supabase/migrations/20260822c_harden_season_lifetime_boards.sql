@@ -169,6 +169,25 @@ COMMENT ON FUNCTION public.protect_player_economy() IS
   'Board/money/inventory Edge-only freeze. last_energy 0..500 client OK. No +2000 raise hole.';
 
 -- ---------------------------------------------------------------------------
+-- 1b) Players cannot INSERT/UPDATE players — Edge service_role only
+--     (anon INSERT was the huhuyi hole: sol/usdc/unlock on create)
+--     SELECT kept so the app can still read boards / own row.
+-- ---------------------------------------------------------------------------
+REVOKE ALL ON TABLE public.players FROM PUBLIC;
+REVOKE INSERT, UPDATE, DELETE, TRUNCATE ON TABLE public.players FROM anon;
+REVOKE INSERT, UPDATE, DELETE, TRUNCATE ON TABLE public.players FROM authenticated;
+GRANT SELECT ON TABLE public.players TO anon, authenticated;
+GRANT ALL ON TABLE public.players TO service_role;
+GRANT ALL ON TABLE public.players TO postgres;
+
+-- Wallet secrets: never readable/writable by players
+REVOKE ALL ON TABLE public.player_secrets FROM PUBLIC;
+REVOKE ALL ON TABLE public.player_secrets FROM anon;
+REVOKE ALL ON TABLE public.player_secrets FROM authenticated;
+GRANT ALL ON TABLE public.player_secrets TO service_role;
+GRANT ALL ON TABLE public.player_secrets TO postgres;
+
+-- ---------------------------------------------------------------------------
 -- 2) season_score_ledger (GREATEST — never lower)
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS public.season_score_ledger (
