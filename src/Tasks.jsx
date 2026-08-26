@@ -617,30 +617,32 @@ const Tasks = ({
               href={s.href}
               target="_blank"
               rel="noopener noreferrer"
+              title={s.label}
+              aria-label={s.label}
               style={{
                 display: 'inline-flex',
                 alignItems: 'center',
-                gap: 6,
-                padding: '6px 10px',
-                borderRadius: 999,
+                justifyContent: 'center',
+                width: 36,
+                height: 36,
+                borderRadius: '50%',
                 border: '1px solid rgba(255,255,255,0.15)',
-                background: 'rgba(0,0,0,0.35)',
+                background: 'rgba(255,255,255,0.06)',
                 color: s.color || '#fff',
-                fontSize: 11,
-                fontWeight: 'bold',
                 textDecoration: 'none',
               }}
             >
-              {s.icon ? (
-                <img
-                  src={s.icon}
-                  alt=""
-                  width={14}
-                  height={14}
-                  style={{ objectFit: 'contain' }}
-                />
-              ) : null}
-              {s.label}
+              <span
+                aria-hidden
+                style={{
+                  display: 'block',
+                  width: 18,
+                  height: 18,
+                  backgroundColor: 'currentColor',
+                  WebkitMask: `url(${s.icon}) center / contain no-repeat`,
+                  mask: `url(${s.icon}) center / contain no-repeat`,
+                }}
+              />
             </a>
           ))}
         </div>

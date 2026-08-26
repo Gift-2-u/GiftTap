@@ -717,6 +717,9 @@ const GiftTapGame = () => {
   const [maxDailyLimit, setMaxDailyLimit] = useState(1000);
   const [seasonTimeLeft, setSeasonTimeLeft] = useState('');
   const [tapPower, setTapPower] = useState(1);
+  /** On-chain elf asset ids for playerWallet — Echo power only if echo_active.asset_id is in here */
+  const ownedElfAssetIdsRef = useRef(new Set());
+  const [ownedElfTick, setOwnedElfTick] = useState(0);
   const [currentPage, setCurrentPage] = useState('home'); // 'home', 'shop', 'tasks', 'friends', 'leaderboard'
   /** Tasks tab: week | lifetime — set by HUD “Weekly quest” chip */
   const [tasksTab, setTasksTab] = useState('week');
@@ -747,9 +750,11 @@ const GiftTapGame = () => {
   const [showAscensionModal, setShowAscensionModal] = useState(false);
   /**
    * When set to current maxUnlockedLevel, never auto-popup the climb modal for this wall.
-   * Player opens climb only via HUD "Level up / Climb" button.
+   * After dismiss → stay on current unlock + HUD Level up / Climb bar.
    */
   const [wallSnoozedFor, setWallSnoozedFor] = useState(null);
+  /** Auto-opened climb modal once per wall unlock key this session (load or cross 50k). */
+  const wallAutoPromptRef = useRef(null);
   /** In-app notices (replaces browser alert() "gift2u.fun says…") */
   const [appNotice, setAppNotice] = useState({
     show: false,
@@ -1132,6 +1137,14 @@ const GiftTapGame = () => {
       if (nftWallet) {
         try {
           const owned = await listGiftNfts(nftWallet);
+          if (nftWallet === playerWallet) {
+            ownedElfAssetIdsRef.current = new Set(
+              (owned || [])
+                .map((n) => String(n.id || n.mint || '').trim())
+                .filter(Boolean),
+            );
+            setOwnedElfTick((t) => t + 1);
+          }
           if (Array.isArray(owned) && owned.length) {
             nfts = owned.map((n) => ({
               kind: n.kind || n.name,
@@ -2989,21 +3002,84 @@ const GiftTapGame = () => {
   // 5. EFFECTS
   useEffect(() => { syncPlayer(); }, [syncPlayer]);
 
-  // Locksmith NFT ownership (Core collection) for better shard swap
+  // Auto climb popup: already at/past wall on load (e.g. 50k+) and not dismissed → same modal as Level up bar
+  useEffect(() => {
+    if (!isDataLoaded) return;
+    if (wallSnoozedFor === maxUnlockedLevel) return;
+    if (!ASCENSION_WALLS[maxUnlockedLevel]) return;
+    if (!isAtAscensionWall(currentLevel, maxUnlockedLevel, lifetimeTaps)) return;
+    if (wallAutoPromptRef.current === maxUnlockedLevel) return;
+    wallAutoPromptRef.current = maxUnlockedLevel;
+    setShowAscensionModal(true);
+  }, [isDataLoaded, currentLevel, maxUnlockedLevel, lifetimeTaps, wallSnoozedFor]);
+
+  // Locksmith NFT ownership (Core collection) for better shard swap + cache owned elf ids
   useEffect(() => {
     let cancelled = false;
     (async () => {
       if (!playerWallet) {
         setHasLocksmithNft(false);
+        ownedElfAssetIdsRef.current = new Set();
+        setOwnedElfTick((t) => t + 1);
         return;
       }
-      const ok = await hasLocksmith(playerWallet);
-      if (!cancelled) setHasLocksmithNft(ok);
+      try {
+        const owned = await listGiftNfts(playerWallet);
+        if (cancelled) return;
+        ownedElfAssetIdsRef.current = new Set(
+          (owned || [])
+            .map((n) => String(n.id || n.mint || '').trim())
+            .filter(Boolean),
+        );
+        setOwnedElfTick((t) => t + 1);
+        setHasLocksmithNft(
+          (owned || []).some((n) => String(n.kind || '').toLowerCase() === 'locksmith') ||
+            (await hasLocksmith(playerWallet)),
+        );
+      } catch {
+        if (!cancelled) {
+          ownedElfAssetIdsRef.current = new Set();
+          setOwnedElfTick((t) => t + 1);
+          setHasLocksmithNft(false);
+        }
+      }
     })();
     return () => {
       cancelled = true;
     };
   }, [playerWallet, isShardSwapOpen]);
+
+  // HUD tap power: Echo only if this wallet still owns echo_active.asset_id on-chain
+  useEffect(() => {
+    if (!isDataLoaded) return;
+    const inv = inventoryRef.current || stats?.inventory || {};
+    const levelMulti = getLevelMultiplier(currentLevel);
+    const buffs = buffRef.current || {};
+    const now = Date.now();
+    const premiumMulti =
+      buffs.premiumExpires && now < new Date(buffs.premiumExpires)
+        ? Number(buffs.premiumMult) || 1
+        : 1;
+    let echoMulti = 1;
+    const ea = inv.echo_active;
+    if (ea && typeof ea === 'object') {
+      const dur =
+        ea.durability === undefined || ea.durability === null
+          ? 100
+          : Number(ea.durability) || 0;
+      const assetId = String(ea.asset_id || ea.assetId || '').trim();
+      const owned =
+        !!assetId && ownedElfAssetIdsRef.current.has(assetId);
+      if (dur > 0 && owned) {
+        const em = echoMultiplier(ea.rarity || ea.rarityKey, ea.level || 1);
+        if (em > 1) echoMulti = em;
+      }
+    }
+    const next = stackPayoutMultis(levelMulti, premiumMulti, echoMulti);
+    setTapPower((prev) =>
+      Math.abs(next - Number(prev || 0)) > 0.0005 ? next : prev,
+    );
+  }, [isDataLoaded, currentLevel, stats?.inventory, ownedElfTick, playerWallet]);
 
 
   // Schedule local streak device notice (if permission already granted)
@@ -4147,7 +4223,11 @@ const GiftTapGame = () => {
             ea.durability === undefined || ea.durability === null
               ? 100
               : Number(ea.durability) || 0;
-          if (dur > 0) {
+          const assetId = String(ea.asset_id || ea.assetId || '').trim();
+          // Must own the Echo in this game wallet — inventory flag alone is not enough
+          const owned =
+            !!assetId && ownedElfAssetIdsRef.current.has(assetId);
+          if (dur > 0 && owned) {
             const em = echoMultiplier(ea.rarity || ea.rarityKey, ea.level || 1);
             if (em > 1) echoMulti = em;
           }
@@ -4272,14 +4352,16 @@ const GiftTapGame = () => {
       const shardsEarned = Math.round(rawShardsEarned * 1000) / 1000;
       const perTapAmount = Math.round((baseRate * payoutMultiplier) * 1000) / 1000;
 
-      // Climb UI is opt-in only (HUD "Level up" / "Climb"). No auto-popup while mining.
-      // First time they hit the wall, show once unless they already chose Stay mining.
+      // At wall (e.g. L4 / 50k taps): auto-open climb modal once unless dismissed (snoozed).
+      // Dismiss → keep mining at current unlock; HUD bar stays for later climb.
       if (
         atWall &&
         wallSnoozedFor !== maxUnlockedLevel &&
-        safeLifetimeTaps < getPaywallCap(maxUnlockedLevel) &&
-        safeLifetimeTaps + shardsEarned >= getPaywallCap(maxUnlockedLevel)
+        wallAutoPromptRef.current !== maxUnlockedLevel &&
+        (safeLifetimeTaps + shardsEarned >= getPaywallCap(maxUnlockedLevel) ||
+          isAtAscensionWall(currentLevel, maxUnlockedLevel, safeLifetimeTaps + shardsEarned))
       ) {
+        wallAutoPromptRef.current = maxUnlockedLevel;
         setShowAscensionModal(true);
       }
 
