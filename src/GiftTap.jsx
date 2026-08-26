@@ -175,6 +175,11 @@ import {
   AIRDROP_META,
 } from './airdropProgress';
 import {
+  TOKEN_LAUNCH_LABEL,
+  TOKEN_LAUNCH_TITLE,
+  formatLaunchCountdown,
+} from './tokenLaunch';
+import {
   getUtcWeekId,
   utcDayStr as weeklyUtcDayStr,
   applyWeeklyDailyProgress,
@@ -227,7 +232,9 @@ import {
   secureAdReward,
   fetchWeeklyBoard,
   fetchAirdropBoard,
+  secureEchoActivate,
 } from './secureApi';
+import { getElfLevel, normElfRarity } from './elfLevelUp';
 import {
   locksmithCoversWall,
   locksmithLevelFromInv,
@@ -861,6 +868,7 @@ const GiftTapGame = () => {
   const [showAirdropBoard, setShowAirdropBoard] = useState(false);
   const [airdropProgress, setAirdropProgress] = useState(null);
   const [airdropLoading, setAirdropLoading] = useState(false);
+  const [tokenLaunchLeft, setTokenLaunchLeft] = useState(() => formatLaunchCountdown());
   const [displayCurrency, setDisplayCurrencyState] = useState(() => {
     try {
       return localStorage.getItem('gift2u_display_currency') || 'USD';
@@ -1202,6 +1210,14 @@ const GiftTapGame = () => {
       setAirdropLoading(false);
     }
   };
+
+  // $G2U token launch countdown (Sept 1 UTC)
+  useEffect(() => {
+    const tick = () => setTokenLaunchLeft(formatLaunchCountdown());
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, []);
 
   // Prefetch airdrop stats for the home banner (no modal)
   useEffect(() => {
@@ -3059,7 +3075,7 @@ const GiftTapGame = () => {
     }
   }, [maxUnlockedLevel]);
 
-  // Locksmith NFT ownership (Core collection) for better shard swap + cache owned elf ids
+  // Locksmith + Echo: scan wallet → activate Echo if owned, clear if sold/moved
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -3082,6 +3098,67 @@ const GiftTapGame = () => {
           (owned || []).some((n) => String(n.kind || '').toLowerCase() === 'locksmith') ||
             (await hasLocksmith(playerWallet)),
         );
+
+        // Buy/sell Echo → set or clear echo_active (tap power follows echo_active)
+        if (hasSecureSession()) {
+          try {
+            await ensureSecureSession();
+            const echoes = (owned || []).filter(
+              (n) => String(n.kind || '').toLowerCase() === 'echo',
+            );
+            const inv = inventoryRef.current || stats?.inventory || {};
+            const ea = inv.echo_active;
+            if (!echoes.length) {
+              if (ea && typeof ea === 'object') {
+                const data = await secureEchoActivate({ clear: true });
+                if (data?.inventory && !cancelled) {
+                  inventoryRef.current = {
+                    ...(inventoryRef.current || {}),
+                    ...data.inventory,
+                  };
+                  setStats((prev) => ({
+                    ...prev,
+                    inventory: inventoryRef.current,
+                  }));
+                }
+              }
+            } else {
+              let best = echoes[0];
+              let bestLv = getElfLevel(inv, best.id);
+              for (const n of echoes) {
+                const lv = getElfLevel(inv, n.id);
+                if (lv > bestLv) {
+                  best = n;
+                  bestLv = lv;
+                }
+              }
+              const curId =
+                ea && typeof ea === 'object'
+                  ? String(ea.asset_id || ea.assetId || '')
+                  : '';
+              if (curId !== String(best.id)) {
+                const data = await secureEchoActivate({
+                  rarity: normElfRarity(best.rarity),
+                  level: bestLv || 1,
+                  assetId: best.id,
+                  clear: false,
+                });
+                if (data?.inventory && !cancelled) {
+                  inventoryRef.current = {
+                    ...(inventoryRef.current || {}),
+                    ...data.inventory,
+                  };
+                  setStats((prev) => ({
+                    ...prev,
+                    inventory: inventoryRef.current,
+                  }));
+                }
+              }
+            }
+          } catch (e) {
+            console.warn('echo wallet sync', e?.message || e);
+          }
+        }
       } catch {
         if (!cancelled) {
           ownedElfAssetIdsRef.current = new Set();
@@ -3093,9 +3170,9 @@ const GiftTapGame = () => {
     return () => {
       cancelled = true;
     };
-  }, [playerWallet, isShardSwapOpen]);
+  }, [playerWallet, isShardSwapOpen, isDataLoaded]);
 
-  // HUD tap power: Echo only if this wallet still owns echo_active.asset_id on-chain
+  // HUD tap power: level (+ premium) + Echo multi only while echo_active is set
   useEffect(() => {
     if (!isDataLoaded) return;
     const inv = inventoryRef.current || stats?.inventory || {};
@@ -3113,10 +3190,7 @@ const GiftTapGame = () => {
         ea.durability === undefined || ea.durability === null
           ? 100
           : Number(ea.durability) || 0;
-      const assetId = String(ea.asset_id || ea.assetId || '').trim();
-      const owned =
-        !!assetId && ownedElfAssetIdsRef.current.has(assetId);
-      if (dur > 0 && owned) {
+      if (dur > 0) {
         const em = echoMultiplier(ea.rarity || ea.rarityKey, ea.level || 1);
         if (em > 1) echoMulti = em;
       }
@@ -4252,39 +4326,14 @@ const GiftTapGame = () => {
       // 🚨 FIX: Use the synchronous Ref to prevent rapid-click bypasses
       const safeLifetimeTaps = Number(optimisticTaps.current) || 0;
 
-      // Tap power = additive (L5 1.15 + Echo 1.1 = 1.25). Frenzy doubles that (→ 2.5).
-      const levelMulti = getLevelMultiplier(currentLevel);
+      // Use the HUD tap power (already includes level + premium + Echo).
+      // Do not re-resolve Echo ownership on every tap — that flickered 1.25 ↔ 1.15.
       let costMultiplier = 1; // always 1 — Frenzy never raises battery drain
 
       const buffs = buffRef.current || {};
       const frenzyOn =
         !!(buffs.frenzyExpires && now < new Date(buffs.frenzyExpires));
-      const premiumMulti =
-        buffs.premiumExpires && now < new Date(buffs.premiumExpires)
-          ? Number(buffs.premiumMult) || 1
-          : 1;
-      let echoMulti = 1;
-      {
-        const ea = (inventoryRef.current || stats?.inventory || {}).echo_active;
-        if (ea && typeof ea === 'object') {
-          const dur =
-            ea.durability === undefined || ea.durability === null
-              ? 100
-              : Number(ea.durability) || 0;
-          const assetId = String(ea.asset_id || ea.assetId || '').trim();
-          // Must own the Echo in this game wallet — inventory flag alone is not enough
-          const owned =
-            !!assetId && ownedElfAssetIdsRef.current.has(assetId);
-          if (dur > 0 && owned) {
-            const em = echoMultiplier(ea.rarity || ea.rarityKey, ea.level || 1);
-            if (em > 1) echoMulti = em;
-          }
-        }
-      }
-      const baseTapPower = stackPayoutMultis(levelMulti, premiumMulti, echoMulti);
-      if (Math.abs(baseTapPower - Number(tapPower || 0)) > 0.0005) {
-        setTapPower(baseTapPower);
-      }
+      const baseTapPower = Math.max(1, Number(tapPower) || 1);
       const payoutMultiplier = frenzyOn ? baseTapPower * 2 : baseTapPower;
       const baseRate = 1; // payoutMultiplier is full shards-per-tap
 
@@ -6273,6 +6322,44 @@ const GiftTapGame = () => {
             );
           })()}
 
+          {/* $G2U Token Launch countdown banner */}
+          {tokenLaunchLeft ? (
+            <div
+              style={{
+                width: '100%',
+                boxSizing: 'border-box',
+                padding: '8px 12px',
+                background:
+                  'linear-gradient(90deg, rgba(120,53,15,0.95) 0%, rgba(30,27,75,0.95) 55%, rgba(15,23,42,0.98) 100%)',
+                borderBottom: '1px solid rgba(251,239,67,0.45)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 10,
+                flexWrap: 'wrap',
+                zIndex: 25,
+              }}
+            >
+              <span
+                style={{
+                  color: '#fde68a',
+                  fontSize: 11,
+                  fontWeight: 800,
+                  letterSpacing: '0.04em',
+                  textTransform: 'uppercase',
+                }}
+              >
+                {TOKEN_LAUNCH_TITLE}
+              </span>
+              <span style={{ color: '#fff', fontSize: 13, fontWeight: 900, fontVariantNumeric: 'tabular-nums' }}>
+                {tokenLaunchLeft}
+              </span>
+              <span style={{ color: '#c4b5fd', fontSize: 10, fontWeight: 600 }}>
+                {TOKEN_LAUNCH_LABEL} · UTC
+              </span>
+            </div>
+          ) : null}
+
           {/* TOP HEADER */}
           <div style={styles.headerContainer}>
             
@@ -7094,7 +7181,6 @@ const GiftTapGame = () => {
                           letterSpacing: 0.3,
                         }}
                       >
-                        <span style={{ minWidth: 28 }}>#</span>
                         <span style={{ flex: 1 }}>Name</span>
                         <span style={{ width: 36, textAlign: 'right' }}>Lvl</span>
                         <span style={{ width: 48, textAlign: 'right' }}>%</span>
@@ -7188,38 +7274,15 @@ const GiftTapGame = () => {
                                 color: isYou ? '#c084fc' : '#fff',
                                 fontSize: 13,
                                 fontWeight: isYou ? 'bold' : 'normal',
-                                display: 'flex',
-                                alignItems: 'center',
                                 minWidth: 0,
                                 flex: 1,
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                whiteSpace: 'nowrap',
                               }}
                             >
-                              <span
-                                style={{
-                                  color: '#666',
-                                  marginRight: 8,
-                                  minWidth: 28,
-                                  display: 'inline-block',
-                                }}
-                              >
-                                {index === 0
-                                  ? '🥇'
-                                  : index === 1
-                                    ? '🥈'
-                                    : index === 2
-                                      ? '🥉'
-                                      : `#${index + 1}`}
-                              </span>
-                              <span
-                                style={{
-                                  overflow: 'hidden',
-                                  textOverflow: 'ellipsis',
-                                  whiteSpace: 'nowrap',
-                                }}
-                              >
-                                {name}
-                                {isYou ? ' (you)' : ''}
-                              </span>
+                              {name}
+                              {isYou ? ' (you)' : ''}
                             </span>
                             <span
                               style={{
@@ -7323,9 +7386,6 @@ const GiftTapGame = () => {
                         }}
                       >
                         <span style={{ color: '#c084fc', fontSize: 13, fontWeight: 'bold', flex: 1, minWidth: 0 }}>
-                          <span style={{ color: '#888', marginRight: 8, minWidth: 28, display: 'inline-block' }}>
-                            {airdropYouRank.rank ? `#${airdropYouRank.rank}` : '—'}
-                          </span>
                           {(player?.username || airdropYouRank.username || 'You')} (you)
                           <span
                             style={{
@@ -7334,10 +7394,9 @@ const GiftTapGame = () => {
                               fontSize: 10,
                               fontWeight: 'normal',
                               marginTop: 4,
-                              marginLeft: 36,
                             }}
                           >
-                            Qualified · outside top shown
+                            Qualified · eligible for airdrop
                           </span>
                         </span>
                         <span style={{ width: 36, textAlign: 'right', color: '#ffd700', fontWeight: 'bold', fontSize: 13 }}>

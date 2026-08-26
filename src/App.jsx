@@ -28,6 +28,13 @@ import RoadmapPage from './RoadmapPage';
 import AirdropPage from './AirdropPage';
 import { getPlayerId, isLoggedIn } from './playerIdentity';
 import { SOCIAL_LINKS } from './socialLinks';
+import {
+  TOKEN_LAUNCH_AT,
+  TOKEN_LAUNCH_LABEL,
+  TOKEN_LAUNCH_TITLE,
+  TOKEN_LAUNCH_BLURB,
+  formatLaunchCountdown,
+} from './tokenLaunch';
 import { PROGRAM_ID, MINT_ADDRESS } from './config';
 import idl from "../target/idl/gift_staking.json";
 import '@solana/wallet-adapter-react-ui/styles.css';
@@ -789,9 +796,13 @@ const HomePage = () => {
   const { connection } = useConnection();
   const wallet = useWallet();
   const [airdropLeft, setAirdropLeft] = useState(() => formatCountdown(AIRDROP_ENDS_AT - Date.now()));
+  const [launchLeft, setLaunchLeft] = useState(() => formatLaunchCountdown());
 
   useEffect(() => {
-    const tick = () => setAirdropLeft(formatCountdown(AIRDROP_ENDS_AT - Date.now()));
+    const tick = () => {
+      setAirdropLeft(formatCountdown(AIRDROP_ENDS_AT - Date.now()));
+      setLaunchLeft(formatLaunchCountdown());
+    };
     tick();
     const id = setInterval(tick, 1000);
     return () => clearInterval(id);
@@ -802,6 +813,46 @@ const HomePage = () => {
       <h2 className="text-3xl sm:text-5xl md:text-6xl font-black mb-6 bg-gradient-to-r from-purple-400 to-pink-500 bg-clip-text text-transparent italic leading-tight max-w-full">
         THE GIFT THAT KEEPS GIVING
       </h2>
+
+      {/* $G2U Token Launch — Sept 1 countdown */}
+      <div className="relative w-full max-w-3xl mb-6 rounded-3xl overflow-hidden border-2 border-yellow-400/60 shadow-[0_0_40px_rgba(251,239,67,0.35)]">
+        <div
+          className="absolute inset-0"
+          style={{
+            background:
+              'linear-gradient(125deg, #422006 0%, #78350f 35%, #1e1b4b 70%, #0f172a 100%)',
+          }}
+        />
+        <div className="relative z-10 px-6 py-7 sm:px-10 sm:py-9 text-center sm:text-left flex flex-col sm:flex-row items-center gap-5 sm:gap-8">
+          <div className="flex-1 min-w-0">
+            <div className="inline-flex flex-col sm:flex-row sm:items-baseline gap-1 sm:gap-3 rounded-xl px-3 py-1.5 mb-2 bg-black/40 border border-yellow-300/50">
+              <span className="text-yellow-200 text-[10px] sm:text-xs font-black tracking-[0.15em] uppercase">
+                {launchLeft ? 'Launch in' : 'Live'}
+              </span>
+              <span className="text-yellow-100 text-lg sm:text-2xl font-black tabular-nums tracking-wide">
+                {launchLeft || 'NOW'}
+              </span>
+            </div>
+            <h3 className="text-2xl sm:text-4xl font-black leading-tight mb-1 bg-gradient-to-r from-yellow-200 via-amber-100 to-fuchsia-300 bg-clip-text text-transparent">
+              {TOKEN_LAUNCH_TITLE}
+            </h3>
+            <p className="text-slate-200 text-sm sm:text-base max-w-xl mx-auto sm:mx-0 leading-relaxed">
+              {TOKEN_LAUNCH_BLURB} · <span className="text-yellow-200 font-bold">{TOKEN_LAUNCH_LABEL}</span>
+            </p>
+          </div>
+          <div className="flex-shrink-0 flex flex-col items-center gap-2">
+            <Link
+              to="/play"
+              className="inline-flex items-center justify-center rounded-full px-6 py-3.5 text-base font-black text-slate-950 bg-gradient-to-r from-yellow-300 to-amber-400 hover:from-yellow-200 hover:to-yellow-300 shadow-lg transition"
+            >
+              Play Gift Tap →
+            </Link>
+            <span className="text-[11px] text-slate-400 font-semibold">
+              {TOKEN_LAUNCH_AT > Date.now() ? 'Countdown to Sept 1 UTC' : 'Token is live'}
+            </span>
+          </div>
+        </div>
+      </div>
 
       {/* Big G2U Airdrop banner — site homepage CTA */}
       <Link

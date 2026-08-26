@@ -482,6 +482,27 @@ export default function WalletNftSection({
         const owned = nfts.filter(
           (n) => String(n.kind || '').toLowerCase() === kind,
         );
+        const cur = inv?.[activeKey[kind]];
+        const hasActive = !!(cur && typeof cur === 'object');
+
+        // Sold / moved: clear Echo focus so tap power drops to level-only
+        if (kind === 'echo' && !owned.length && hasActive) {
+          try {
+            await ensureSecureSession();
+            const data = await secureEchoActivate({ clear: true });
+            if (data?.inventory) {
+              inv = data.inventory;
+              if (!cancelled) {
+                setLocalInv(inv);
+                if (typeof onInventoryChange === 'function') onInventoryChange(inv);
+              }
+            }
+          } catch (e) {
+            console.warn('auto-clear echo', e?.message || e);
+          }
+          continue;
+        }
+
         if (!owned.length) continue;
         let best = owned[0];
         let bestLv = getElfLevel(inv, best.id);
@@ -500,7 +521,6 @@ export default function WalletNftSection({
             getElfLevel(inv, best.id) || 1,
           );
         }
-        const cur = inv?.[activeKey[kind]];
         const curId =
           cur && typeof cur === 'object'
             ? String(cur.asset_id || cur.assetId || '')
