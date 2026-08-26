@@ -1633,6 +1633,13 @@ const GiftTapGame = () => {
             }
             continue;
           }
+          const ltt =
+            Number(r.lifetime_taps) ||
+            Number(prev?.lifetime_taps) ||
+            0;
+          const mul = migrateMaxUnlockedLevel(
+            r.max_unlocked_level ?? prev?.max_unlocked_level ?? 4,
+          );
           byId.set(id, {
             ...prev,
             ...r,
@@ -1643,6 +1650,9 @@ const GiftTapGame = () => {
             weekly_score: score,
             score,
             weekly_week_id: weekId,
+            lifetime_taps: ltt,
+            max_unlocked_level: mul,
+            level: effectiveLevel(ltt, mul),
           });
         }
       };
@@ -1663,6 +1673,11 @@ const GiftTapGame = () => {
               weekly_score: best,
               score: best,
               weekly_shards: best,
+              lifetime_taps:
+                Number(rows[ix].lifetime_taps) || Number(lifetimeTaps) || 0,
+              max_unlocked_level:
+                rows[ix].max_unlocked_level ?? maxUnlockedLevel,
+              level: currentLevel,
             };
             rows.sort(
               (a, b) => (Number(b.weekly_score) || 0) - (Number(a.weekly_score) || 0),
@@ -1677,6 +1692,9 @@ const GiftTapGame = () => {
                 weekly_shards: liveW,
                 score: liveW,
                 weekly_week_id: weekId,
+                lifetime_taps: Number(lifetimeTaps) || 0,
+                max_unlocked_level: maxUnlockedLevel,
+                level: currentLevel,
               },
               ...rows,
             ].sort(
@@ -1867,6 +1885,11 @@ const GiftTapGame = () => {
               ...rows[ix],
               score: liveScore,
               season_shards: liveScore,
+              lifetime_taps:
+                Number(rows[ix].lifetime_taps) || Number(lifetimeTaps) || 0,
+              max_unlocked_level:
+                rows[ix].max_unlocked_level ?? maxUnlockedLevel,
+              level: currentLevel,
             };
             rows.sort((a, b) => getSeasonScore(b) - getSeasonScore(a));
           }
@@ -1878,6 +1901,9 @@ const GiftTapGame = () => {
               username: player?.username || getPlayerProfile()?.username || 'You',
               score: liveScore,
               season_shards: liveScore,
+              lifetime_taps: Number(lifetimeTaps) || 0,
+              max_unlocked_level: maxUnlockedLevel,
+              level: currentLevel,
             },
           ].sort((a, b) => getSeasonScore(b) - getSeasonScore(a));
         }
@@ -7072,7 +7098,46 @@ const GiftTapGame = () => {
                         <span style={{ width: 36, textAlign: 'right' }}>Lvl</span>
                         <span style={{ width: 48, textAlign: 'right' }}>%</span>
                       </div>
-                    ) : null}
+                    ) : (
+                      <div
+                        style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          padding: '8px 14px',
+                          borderBottom: '1px solid #2a2d34',
+                          color: '#666',
+                          fontSize: 10,
+                          fontWeight: 'bold',
+                          letterSpacing: 0.3,
+                        }}
+                      >
+                        <span style={{ minWidth: 28 }}>#</span>
+                        <span style={{ flex: 1 }}>Name</span>
+                        <span style={{ width: 36, textAlign: 'right' }}>Lvl</span>
+                        <span style={{ width: 72, textAlign: 'right' }}>
+                          {leaderboardType === 'Weekly'
+                            ? 'Score'
+                            : leaderboardType === 'all_time'
+                              ? 'Taps'
+                              : 'Score'}
+                        </span>
+                      </div>
+                    )}
+                    {(leaderboardType === 'Season' ||
+                      leaderboardType === 'Weekly' ||
+                      leaderboardType === 'all_time') && (
+                      <p
+                        style={{
+                          color: '#888',
+                          fontSize: 10,
+                          margin: '6px 14px 2px',
+                          lineHeight: 1.35,
+                        }}
+                      >
+                        Lvl 5+ earns more shards per tap (Lv5 ×1.15 · Lv10 ×1.2 · higher =
+                        stronger)
+                      </p>
+                    )}
                     {leaderboard.map((row, index) => {
                       const name = row.username || (row[DB_PLAYER_ID] ? `ID:..${String(row[DB_PLAYER_ID]).slice(-4)}` : 'Anon');
                       const score = leaderboardType === 'all_time'
@@ -7083,6 +7148,15 @@ const GiftTapGame = () => {
                             ? (row.bonus_pct ?? row.score ?? 0)
                           : (row.score ?? row.season_shards ?? row.lifetime_taps ?? 0);
                       const isYou = playerId && String(row[DB_PLAYER_ID] || row.telegram_id || row.id || '') === String(playerId);
+                      const rowLevel = (() => {
+                        if (isYou && Number(currentLevel) > 0) return Number(currentLevel);
+                        const direct = Number(row.level);
+                        if (Number.isFinite(direct) && direct > 0) return direct;
+                        return effectiveLevel(
+                          Number(row.lifetime_taps) || 0,
+                          migrateMaxUnlockedLevel(row.max_unlocked_level ?? 4),
+                        );
+                      })();
                       const weeklyTier =
                         leaderboardType === 'Weekly'
                           ? badgeTierForWeeklyRank(
@@ -7186,7 +7260,7 @@ const GiftTapGame = () => {
                             gap: 8,
                           }}
                         >
-                          <span style={{ color: isYou ? '#ffd700' : '#fff', fontSize: '13px', fontWeight: isYou ? 'bold' : 'normal', display: 'flex', alignItems: 'center', minWidth: 0 }}>
+                          <span style={{ color: isYou ? '#ffd700' : '#fff', fontSize: '13px', fontWeight: isYou ? 'bold' : 'normal', display: 'flex', alignItems: 'center', minWidth: 0, flex: 1 }}>
                             <span style={{ color: '#666', marginRight: '8px', minWidth: '28px', display: 'inline-block' }}>
                               {index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `#${index + 1}`}
                             </span>
@@ -7194,7 +7268,24 @@ const GiftTapGame = () => {
                               {name}{isYou ? ' (you)' : ''}
                             </span>
                           </span>
-                          <span style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+                          <span
+                            style={{
+                              width: 36,
+                              textAlign: 'right',
+                              color: rowLevel >= 5 ? '#4ade80' : '#ffd700',
+                              fontSize: 13,
+                              fontWeight: 'bold',
+                              flexShrink: 0,
+                            }}
+                            title={
+                              rowLevel >= 5
+                                ? 'Higher level = more shards per tap'
+                                : 'Climb walls to unlock higher levels'
+                            }
+                          >
+                            {rowLevel}
+                          </span>
+                          <span style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0, minWidth: 72, justifyContent: 'flex-end' }}>
                             {weeklyBadge?.image ? (
                               <img
                                 src={weeklyBadge.image}
@@ -7269,7 +7360,7 @@ const GiftTapGame = () => {
                           gap: 8,
                         }}
                       >
-                        <span style={{ color: '#67e8f9', fontSize: '13px', fontWeight: 'bold' }}>
+                        <span style={{ color: '#67e8f9', fontSize: '13px', fontWeight: 'bold', flex: 1, minWidth: 0 }}>
                           <span style={{ color: '#888', marginRight: 8, minWidth: 28, display: 'inline-block' }}>
                             {weeklyYouRank.rank ? `#${weeklyYouRank.rank}` : '—'}
                           </span>
@@ -7304,7 +7395,19 @@ const GiftTapGame = () => {
                             </span>
                           )}
                         </span>
-                        <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <span
+                          style={{
+                            width: 36,
+                            textAlign: 'right',
+                            color: currentLevel >= 5 ? '#4ade80' : '#ffd700',
+                            fontSize: 13,
+                            fontWeight: 'bold',
+                            flexShrink: 0,
+                          }}
+                        >
+                          {currentLevel}
+                        </span>
+                        <span style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 72, justifyContent: 'flex-end' }}>
                           {weeklyYouRank.onMain &&
                           weeklyYouRank.tier &&
                           BADGE_TIERS[weeklyYouRank.tier]?.image ? (
@@ -7337,9 +7440,10 @@ const GiftTapGame = () => {
                           padding: '12px 14px',
                           borderTop: '2px solid #ffd700',
                           background: 'rgba(255, 215, 0, 0.12)',
+                          gap: 8,
                         }}
                       >
-                        <span style={{ color: '#ffd700', fontSize: '13px', fontWeight: 'bold' }}>
+                        <span style={{ color: '#ffd700', fontSize: '13px', fontWeight: 'bold', flex: 1, minWidth: 0 }}>
                           <span style={{ color: '#888', marginRight: '8px', minWidth: '28px', display: 'inline-block' }}>
                             {seasonYouRank.rank ? `#${seasonYouRank.rank}` : '—'}
                           </span>
@@ -7355,7 +7459,19 @@ const GiftTapGame = () => {
                             </span>
                           )}
                         </span>
-                        <span style={{ color: '#ffd700', fontSize: '13px', fontWeight: 'bold' }}>
+                        <span
+                          style={{
+                            width: 36,
+                            textAlign: 'right',
+                            color: currentLevel >= 5 ? '#4ade80' : '#ffd700',
+                            fontSize: 13,
+                            fontWeight: 'bold',
+                            flexShrink: 0,
+                          }}
+                        >
+                          {currentLevel}
+                        </span>
+                        <span style={{ color: '#ffd700', fontSize: '13px', fontWeight: 'bold', minWidth: 72, textAlign: 'right' }}>
                           {Number(seasonYouRank.score || 0).toLocaleString()}
                         </span>
                       </div>

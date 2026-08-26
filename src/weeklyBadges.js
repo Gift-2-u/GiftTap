@@ -439,7 +439,7 @@ const MYSTERY_PRIZE_META = {
   },
   premium_boost: {
     id: 'premium_boost',
-    label: 'Premium Boost (Bot / +2K / +5K / x2 / x3)',
+    label: 'Premium Boost (Bot / +2K / Expanded Energy / x2 / +5K / x3)',
     type: 'item',
     dest: 'backpack',
   },
@@ -464,13 +464,14 @@ export const MYSTERY_FREE_ITEMS = [
   { itemId: 'refill', label: 'Instant Refill', weight: 1 },
 ];
 
-/** Premium Boost sub-roll (20% each) */
+/** Premium Boost sub-roll (weights = %). Includes Expanded Energy. */
 export const MYSTERY_PREMIUM_ITEMS = [
-  { itemId: 'bot', label: 'Weekend Bot', weight: 1 },
-  { itemId: 'grinder', label: '+2K Daily Energy', weight: 1 },
-  { itemId: 'whale', label: '+5K Daily Energy', weight: 1 },
-  { itemId: 'x2_boost', label: 'Double Power', weight: 1 },
-  { itemId: 'x3_boost', label: 'Triple Power', weight: 1 },
+  { itemId: 'bot', label: 'Weekend Bot', weight: 20 },
+  { itemId: 'grinder', label: '+2K Daily Energy', weight: 20 },
+  { itemId: 'expanded_energy', label: 'Expanded Energy', weight: 20 },
+  { itemId: 'x2_boost', label: 'Double Power', weight: 15 },
+  { itemId: 'whale', label: '+5K Daily Energy', weight: 13 },
+  { itemId: 'x3_boost', label: 'Triple Power', weight: 12 },
 ];
 
 /** NFT sub-roll */

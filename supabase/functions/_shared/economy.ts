@@ -170,13 +170,14 @@ export const MYSTERY_FREE_ITEMS: Array<{ itemId: string; label: string; weight: 
   { itemId: "refill", label: "Instant Refill", weight: 1 },
 ];
 
-/** Premium Boost sub-roll (20% each) */
+/** Premium Boost sub-roll (weights = %). Includes Expanded Energy. */
 export const MYSTERY_PREMIUM_ITEMS: Array<{ itemId: string; label: string; weight: number }> = [
-  { itemId: "bot", label: "Weekend Bot", weight: 1 },
-  { itemId: "grinder", label: "+2K Daily Energy", weight: 1 },
-  { itemId: "whale", label: "+5K Daily Energy", weight: 1 },
-  { itemId: "x2_boost", label: "Double Power", weight: 1 },
-  { itemId: "x3_boost", label: "Triple Power", weight: 1 },
+  { itemId: "bot", label: "Weekend Bot", weight: 20 },
+  { itemId: "grinder", label: "+2K Daily Energy", weight: 20 },
+  { itemId: "expanded_energy", label: "Expanded Energy", weight: 20 },
+  { itemId: "x2_boost", label: "Double Power", weight: 15 },
+  { itemId: "whale", label: "+5K Daily Energy", weight: 13 },
+  { itemId: "x3_boost", label: "Triple Power", weight: 12 },
 ];
 
 /** Exclusive NFT sub-roll (Common elves 20% each; Locksmith + Star 10% each) */

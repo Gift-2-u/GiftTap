@@ -163,10 +163,10 @@ serve(async (req) => {
       updates.premium_multiplier = 3;
       updates.premium_multiplier_expires = endOfUtcDay(6);
     } else if (itemId === "expanded_energy") {
-      // Battery bar 500 → 1000 until end of UTC day (inventory flag — no new DB column)
+      // Battery bar 500 → 1000 for 7 UTC days (same window as grinder/x2)
       inv.energy_cap_boost = {
         cap: 1000,
-        expires: endOfUtcDay(0),
+        expires: endOfUtcDay(6),
       };
       updates.inventory = inv;
       // Raise bar toward new cap if already near old full (500)

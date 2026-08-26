@@ -519,11 +519,10 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, bumpEner
       name: 'Expanded Energy',
       type: 'Power',
       rarity: 'Epic',
-      boost: 'Battery 500 → 1000 for 1 UTC day (like Expanded Battery, for energy)',
-      duration: '1 Day (UTC)',
-      price: 500 / G2U_PER_SOL,
+      boost: 'Battery 500 → 1000 for 7 days',
+      duration: '7 Days',
+      price: 0.01,
       currency: 'SOL',
-      priceG2uFixed: 500,
       iconFrom: '#4ade80',
       iconTo: '#166534',
       iconRing: 'rgba(74,222,128,0.5)',
@@ -1986,7 +1985,7 @@ Daily claim active · Pack → NFT to see it.`,
     if (item.id === 'expanded_energy') {
       newInventory.energy_cap_boost = {
         cap: 1000,
-        expires: midnightUtcTonight.toISOString(),
+        expires: sevenDayExpireUtc.toISOString(),
       };
       dbUpdates.inventory = newInventory;
     }
