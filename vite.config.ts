@@ -22,7 +22,7 @@ export default defineConfig({
 
   server: {
     // ESSENTIAL for WSL: This lets your Windows browser see the Linux port
-    host: '0.0.0.0', 
+    host: '0.0.0.0',
     port: 5173,
     watch: {
       usePolling: true, // Needed if you edit files on Windows and run on Linux

@@ -3,6 +3,21 @@
  * Use real brand logos from /icons/social (not emoji + text labels in chrome).
  * Discord: set VITE_DISCORD_URL in .env if the invite differs.
  */
+
+/**
+ * Optional timed surprise window for the Tasks social banner.
+ * Leave null for default: “check them every day.”
+ *
+ * Example (uncomment / set when you run a drop):
+ *   {
+ *     startUtc: '2026-08-26T14:00:00Z',
+ *     endUtc: '2026-08-26T18:00:00Z',
+ *     liveMessage: 'Reward live — go check socials!',
+ *     soonMessage: 'Surprise drop soon — get ready on socials.',
+ *   }
+ */
+export const SOCIAL_SURPRISE_EVENT = null;
+
 export const SOCIAL_LINKS = [
   {
     id: 'x',

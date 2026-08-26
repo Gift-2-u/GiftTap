@@ -6,11 +6,52 @@ import AppNotice from './AppNotice';
 import { IDEAS_EMAIL, openIdeasEmail, copyIdeasEmail } from './contactIdeas';
 import WeeklyQuests from './WeeklyQuests';
 import { hasSecureSession, secureTaskClaim } from './secureApi';
-import { SOCIAL_LINKS } from './socialLinks';
+import { SOCIAL_LINKS, SOCIAL_SURPRISE_EVENT } from './socialLinks';
 
 const DISCORD_URL =
   SOCIAL_LINKS.find((s) => s.id === 'discord')?.href ||
   'https://discord.gg/d8aEvFbHW';
+
+const DEFAULT_SOCIAL_SURPRISE =
+  'Surprise gifts on socials (X, Telegram, Discord) — check them every day.';
+
+function formatSurpriseCountdown(msLeft) {
+  if (msLeft <= 0) return '0:00:00';
+  const totalSec = Math.floor(msLeft / 1000);
+  const h = Math.floor(totalSec / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  const s = totalSec % 60;
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${h}:${pad(m)}:${pad(s)}`;
+}
+
+function getSocialSurpriseBanner(nowMs, event) {
+  if (!event?.startUtc || !event?.endUtc) {
+    return { mode: 'idle', line: DEFAULT_SOCIAL_SURPRISE, countdown: null };
+  }
+  const start = new Date(event.startUtc).getTime();
+  const end = new Date(event.endUtc).getTime();
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) {
+    return { mode: 'idle', line: DEFAULT_SOCIAL_SURPRISE, countdown: null };
+  }
+  if (nowMs < start) {
+    return {
+      mode: 'soon',
+      line: event.soonMessage || 'Surprise drop soon — get ready on socials.',
+      countdown: formatSurpriseCountdown(start - nowMs),
+      countdownLabel: 'Starts in',
+    };
+  }
+  if (nowMs < end) {
+    return {
+      mode: 'live',
+      line: event.liveMessage || 'Reward live — go check socials!',
+      countdown: formatSurpriseCountdown(end - nowMs),
+      countdownLabel: 'Live for',
+    };
+  }
+  return { mode: 'idle', line: DEFAULT_SOCIAL_SURPRISE, countdown: null };
+}
 
 /**
  * Existing tasks kept as-is (shards / social / purchase).
@@ -172,6 +213,20 @@ const Tasks = ({
   const [playerStats, setPlayerStats] = useState({ streak: 0, purchased: false });
   const [claimingId, setClaimingId] = useState(null);
   const [appNotice, setAppNotice] = useState({ show: false, message: '', success: true });
+  const [surpriseNow, setSurpriseNow] = useState(() => Date.now());
+
+  // Tick while a timed surprise window is configured (idle = no interval)
+  useEffect(() => {
+    if (!SOCIAL_SURPRISE_EVENT?.startUtc || !SOCIAL_SURPRISE_EVENT?.endUtc) return undefined;
+    setSurpriseNow(Date.now());
+    const id = setInterval(() => setSurpriseNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  const socialSurprise = useMemo(
+    () => getSocialSurpriseBanner(surpriseNow, SOCIAL_SURPRISE_EVENT),
+    [surpriseNow],
+  );
 
   // Live streak/taps from parent when provided; else DB stats for original streak tasks
   const liveStreak = Math.max(
@@ -505,6 +560,90 @@ const Tasks = ({
         >
           Lifetime
         </button>
+      </div>
+
+      {/* Permanent tip — surprise gifts on socials (countdown when SOCIAL_SURPRISE_EVENT is set) */}
+      <div
+        style={{
+          marginBottom: 12,
+          padding: '12px 14px',
+          borderRadius: 12,
+          border:
+            socialSurprise.mode === 'live'
+              ? '1px solid rgba(74,222,128,0.55)'
+              : '1px solid rgba(255,215,0,0.35)',
+          background:
+            socialSurprise.mode === 'live'
+              ? 'linear-gradient(135deg, rgba(74,222,128,0.15), rgba(88,101,242,0.15))'
+              : 'linear-gradient(135deg, rgba(255,215,0,0.12), rgba(88,101,242,0.12))',
+        }}
+      >
+        <div
+          style={{
+            color: socialSurprise.mode === 'live' ? '#4ade80' : '#ffd700',
+            fontWeight: 'bold',
+            fontSize: 13,
+            marginBottom: 6,
+          }}
+        >
+          {socialSurprise.mode === 'live'
+            ? 'Surprise gift LIVE'
+            : socialSurprise.mode === 'soon'
+              ? 'Surprise gift soon'
+              : 'Surprise gifts on socials'}
+        </div>
+        <div style={{ color: '#ccc', fontSize: 12, lineHeight: 1.4, marginBottom: 8 }}>
+          {socialSurprise.line}
+        </div>
+        {socialSurprise.countdown ? (
+          <div
+            style={{
+              color: socialSurprise.mode === 'live' ? '#86efac' : '#fde68a',
+              fontSize: 12,
+              fontWeight: 'bold',
+              fontVariantNumeric: 'tabular-nums',
+              marginBottom: 10,
+            }}
+          >
+            {socialSurprise.countdownLabel} {socialSurprise.countdown}
+          </div>
+        ) : (
+          <div style={{ marginBottom: 10 }} />
+        )}
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+          {SOCIAL_LINKS.map((s) => (
+            <a
+              key={s.id}
+              href={s.href}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6,
+                padding: '6px 10px',
+                borderRadius: 999,
+                border: '1px solid rgba(255,255,255,0.15)',
+                background: 'rgba(0,0,0,0.35)',
+                color: s.color || '#fff',
+                fontSize: 11,
+                fontWeight: 'bold',
+                textDecoration: 'none',
+              }}
+            >
+              {s.icon ? (
+                <img
+                  src={s.icon}
+                  alt=""
+                  width={14}
+                  height={14}
+                  style={{ objectFit: 'contain' }}
+                />
+              ) : null}
+              {s.label}
+            </a>
+          ))}
+        </div>
       </div>
 
       <div style={{ flex: 1, overflowY: 'auto', paddingBottom: '120px' }}>
