@@ -10,7 +10,7 @@ export const TOKEN_LAUNCH_LABEL = '1 Sept 2026';
 export const TOKEN_LAUNCH_TITLE = '$G2U Token Launch';
 
 export const TOKEN_LAUNCH_BLURB =
-  'Token goes live September 1. Play Gift Tap, clear Level 5, and stack your airdrop %.';
+  'Token goes live September 1. Play Gift Tap and earn badges, mystery gift available after launch.';
 
 /** Live countdown string, or null when launched / past. */
 export function formatLaunchCountdown(msLeft = TOKEN_LAUNCH_AT - Date.now()) {
