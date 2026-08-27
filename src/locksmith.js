@@ -207,8 +207,8 @@ export async function listGiftNftsWithStatus(walletAddress, opts = {}) {
       console.warn('listGiftNfts searchAssets failed', e?.message || e);
     }
 
-    // Only pay for getAssetsByOwner when collection search failed
-    if (!searchOk) {
+    // Fallback when search fails OR returns empty (search can miss; empty ≠ "no NFTs")
+    if (!searchOk || byId.size === 0) {
       try {
         const res2 = await fetch(RPC_URL, {
           method: 'POST',

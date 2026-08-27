@@ -261,15 +261,11 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, bumpEner
   }, []);
 
 
-  // Count on-chain NFTs (cached list — do not re-hit DAS on every backpack sub-tab)
+  // Count on-chain Gift2u NFTs for backpack badge + NFT tab (original behavior)
   useEffect(() => {
     const addr = playerWallet && String(playerWallet).trim();
     if (!addr || addr.length < 32) {
       setWalletNftCount(0);
-      return undefined;
-    }
-    // Only when entering backpack or explicit refresh — not every cat switch
-    if (activeTab !== 'backpack' && activeTab !== 'nft' && walletNftRefresh === 0) {
       return undefined;
     }
     let cancelled = false;
@@ -285,7 +281,7 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, bumpEner
     return () => {
       cancelled = true;
     };
-  }, [playerWallet, activeTab, walletNftRefresh]);
+  }, [playerWallet, activeTab, backpackCat, walletNftRefresh]);
 
   useEffect(() => {
     if (stats?.inventory) {

@@ -293,6 +293,35 @@ const encryptWallet = (secretPhrase, password) => {
   return CryptoJS.AES.encrypt(secretPhrase, password).toString();
 };
 
+/** Tab-session only: keep unlock after refresh so Buy/mint is not a 2nd password nag. */
+function sessionPhraseKey(pid) {
+  return `gift2u_session_phrase_${String(pid || '').trim()}`;
+}
+function saveSessionPhrase(pid, phrase) {
+  try {
+    const id = String(pid || '').trim();
+    const p = String(phrase || '').trim();
+    if (id && p) sessionStorage.setItem(sessionPhraseKey(id), p);
+  } catch {
+    /* ignore */
+  }
+}
+function loadSessionPhrase(pid) {
+  try {
+    return sessionStorage.getItem(sessionPhraseKey(pid)) || '';
+  } catch {
+    return '';
+  }
+}
+function clearSessionPhrase(pid) {
+  try {
+    const id = String(pid || '').trim();
+    if (id) sessionStorage.removeItem(sessionPhraseKey(id));
+  } catch {
+    /* ignore */
+  }
+}
+
 const decryptWallet = (encryptedData, password) => {
   try {
     const bytes = CryptoJS.AES.decrypt(encryptedData, password);
@@ -2205,6 +2234,11 @@ const GiftTapGame = () => {
             .catch(() => {});
         }
         setPlayerWallet(playerRow.wallet_address);
+        // Restore unlock for this browser tab (after refresh) — no extra password on Buy
+        if (!decryptedPhrase) {
+          const cached = loadSessionPhrase(userId);
+          if (cached) setDecryptedPhrase(cached);
+        }
         // password_hash is NOT readable via anon — status via Edge
         try {
           await ensureSecureSession();
@@ -3007,9 +3041,10 @@ const GiftTapGame = () => {
     if (isNew && mnemonic && String(mnemonic).trim().includes(' ')) {
       setDecryptedPhrase(mnemonic);
       setGeneratedSecret(mnemonic);
+      saveSessionPhrase(pid, mnemonic);
       setMustBackup(true);
     } else if (password && String(password).length >= 6) {
-      // Returning login: password-gated Edge unlock → phrase in RAM this session only
+      // Returning login: unlock once with login password — Buy/mint reuse RAM (no 2nd prompt)
       try {
         await ensureSecureSession();
         const vaultRes = await secureUnlockVault(password);
@@ -3018,12 +3053,17 @@ const GiftTapGame = () => {
             vaultRes.encrypted_vault,
             vaultSaltFor(String(pid)),
           );
-          if (unlocked) setDecryptedPhrase(unlocked);
+          if (unlocked) {
+            setDecryptedPhrase(unlocked);
+            saveSessionPhrase(pid, unlocked);
+          }
         }
       } catch (ue) {
         console.warn('vault unlock on login', ue?.message || ue);
-        // Still play — SOL withdraws will ask for password again
       }
+    } else {
+      const cached = loadSessionPhrase(pid);
+      if (cached) setDecryptedPhrase(cached);
     }
     // Public launch — no invite / beta code required
     setHasAccess(true);
@@ -3120,6 +3160,7 @@ const GiftTapGame = () => {
     setNeedsPassword(false);
     setShowClaimAccount(false);
     setPlayerWallet(null);
+    clearSessionPhrase(playerId);
     setDecryptedPhrase('');
     setGeneratedSecret(null);
     setIsDataLoaded(false);
@@ -4917,7 +4958,10 @@ const GiftTapGame = () => {
                 vaultRes.encrypted_vault,
                 vaultSaltFor(playerId),
               );
-              if (storedSecret) setDecryptedPhrase(storedSecret);
+              if (storedSecret) {
+                setDecryptedPhrase(storedSecret);
+                saveSessionPhrase(playerId, storedSecret);
+              }
             }
           } catch (ve) {
             throw new Error(ve?.message || 'Wrong password or vault unlock failed.');
@@ -4926,7 +4970,7 @@ const GiftTapGame = () => {
 
         if (!storedSecret) {
           throw new Error(
-            'Wallet locked. Log in with your password again, or enter password when asked.',
+            'Wallet locked. Log in with your password again, or unlock once in Menu.',
           );
         }
 
@@ -5524,6 +5568,7 @@ const GiftTapGame = () => {
     );
     if (!secret) throw new Error('Wrong password or could not decrypt vault.');
     setDecryptedPhrase(secret);
+    saveSessionPhrase(playerId, secret);
     return secret;
   };
 
