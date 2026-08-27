@@ -345,3 +345,92 @@ export async function mintMysteryNftToPlayer(opts: {
     };
   }
 }
+
+/**
+ * Send Bonus $G2U SPL from Mystery vault → player game wallet.
+ * amountUi = human units (e.g. 5000), decimals read from mint on-chain.
+ */
+export async function transferG2uToPlayer(opts: {
+  amountUi: number;
+  toWallet: string;
+}): Promise<{ ok: boolean; signature?: string; amountRaw?: string; error?: string }> {
+  const cfg = getMysteryVaultConfig();
+  if (!cfg.g2uTransferReady) {
+    return { ok: false, error: "Mystery $G2U payouts are not live yet (token launch)" };
+  }
+  const toWallet = String(opts.toWallet || "").trim();
+  if (toWallet.length < 32) {
+    return { ok: false, error: "Player has no game wallet address" };
+  }
+  const amountUi = Number(opts.amountUi);
+  if (!Number.isFinite(amountUi) || amountUi <= 0) {
+    return { ok: false, error: "Nothing to claim" };
+  }
+
+  try {
+    const {
+      Connection,
+      PublicKey,
+      Transaction,
+      sendAndConfirmTransaction,
+      ComputeBudgetProgram,
+    } = await import("npm:@solana/web3.js@1.98.4");
+    const {
+      getMint,
+      getAssociatedTokenAddressSync,
+      createAssociatedTokenAccountIdempotentInstruction,
+      createTransferCheckedInstruction,
+      TOKEN_PROGRAM_ID,
+      ASSOCIATED_TOKEN_PROGRAM_ID,
+    } = await import("npm:@solana/spl-token@0.4.9");
+
+    const vaultKp = loadVaultKeypair();
+    const connection = new Connection(rpcUrl(), "confirmed");
+    const mintPk = new PublicKey(cfg.g2uMint);
+    const toPk = new PublicKey(toWallet);
+    const mintInfo = await getMint(connection, mintPk);
+    const decimals = mintInfo.decimals;
+    const factor = 10 ** decimals;
+    const amountRaw = BigInt(Math.round(amountUi * factor));
+    if (amountRaw <= 0n) {
+      return { ok: false, error: "Amount too small" };
+    }
+
+    const fromAta = getAssociatedTokenAddressSync(mintPk, vaultKp.publicKey);
+    const toAta = getAssociatedTokenAddressSync(mintPk, toPk);
+
+    const tx = new Transaction().add(
+      ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 100_000 }),
+      createAssociatedTokenAccountIdempotentInstruction(
+        vaultKp.publicKey,
+        toAta,
+        toPk,
+        mintPk,
+        TOKEN_PROGRAM_ID,
+        ASSOCIATED_TOKEN_PROGRAM_ID,
+      ),
+      createTransferCheckedInstruction(
+        fromAta,
+        mintPk,
+        toAta,
+        vaultKp.publicKey,
+        amountRaw,
+        decimals,
+      ),
+    );
+
+    const sig = await sendAndConfirmTransaction(connection, tx, [vaultKp], {
+      commitment: "confirmed",
+    });
+    return {
+      ok: true,
+      signature: sig,
+      amountRaw: amountRaw.toString(),
+    };
+  } catch (e) {
+    return {
+      ok: false,
+      error: e instanceof Error ? e.message : String(e),
+    };
+  }
+}

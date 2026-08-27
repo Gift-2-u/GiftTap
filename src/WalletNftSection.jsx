@@ -485,22 +485,33 @@ export default function WalletNftSection({
         const cur = inv?.[activeKey[kind]];
         const hasActive = !!(cur && typeof cur === 'object');
 
-        // Sold / moved: clear Echo focus so tap power drops to level-only
-        if (kind === 'echo' && !owned.length && hasActive) {
-          try {
-            await ensureSecureSession();
-            const data = await secureEchoActivate({ clear: true });
-            if (data?.inventory) {
-              inv = data.inventory;
-              if (!cancelled) {
-                setLocalInv(inv);
-                if (typeof onInventoryChange === 'function') onInventoryChange(inv);
+        // Sold / moved: clear Echo only if this asset id is missing from a
+        // successful non-empty wallet list (never clear on empty/flaky scans).
+        if (kind === 'echo' && hasActive) {
+          const activeId = String(cur.asset_id || cur.assetId || '').trim();
+          if (activeId) {
+            const stillHave = nfts.some(
+              (n) => String(n.id || n.mint || '').trim() === activeId,
+            );
+            if (!stillHave && !owned.length) {
+              try {
+                await ensureSecureSession();
+                const data = await secureEchoActivate({ clear: true });
+                if (data?.inventory) {
+                  inv = data.inventory;
+                  if (!cancelled) {
+                    setLocalInv(inv);
+                    if (typeof onInventoryChange === 'function') {
+                      onInventoryChange(inv);
+                    }
+                  }
+                }
+              } catch (e) {
+                console.warn('auto-clear echo', e?.message || e);
               }
+              continue;
             }
-          } catch (e) {
-            console.warn('auto-clear echo', e?.message || e);
           }
-          continue;
         }
 
         if (!owned.length) continue;

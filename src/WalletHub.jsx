@@ -21,6 +21,7 @@ import TokenBalanceList from './TokenBalanceList';
 import { fetchFiatRates } from './fiatPrices';
 import GameWalletActionModals from './GameWalletActionModals';
 import AppNotice from './AppNotice';
+import ClaimG2uPanel from './ClaimG2uPanel';
 import { isSeekerShell } from './adService';
 
 /** Tokens shown on Solana tab — same set as the game wallet (shards are off-chain only). */
@@ -908,6 +909,27 @@ export function GameWalletPanel({ onClose }) {
             currency={displayCurrency}
             rates={fiatRates}
             style={{ marginBottom: '12px' }}
+          />
+
+          <ClaimG2uPanel
+            inventory={row?.inventory || {}}
+            onInventoryChange={(inv) => {
+              setRow((prev) => (prev ? { ...prev, inventory: inv } : prev));
+            }}
+            notify={(msg) => {
+              const m = String(msg || '');
+              if (m.startsWith('✅')) setError('');
+              else setError(m);
+              try {
+                // Brief toast-style feedback in the panel error/status line
+                if (m.startsWith('✅')) {
+                  setError(m);
+                  setTimeout(() => setError(''), 4000);
+                }
+              } catch {
+                /* ignore */
+              }
+            }}
           />
 
           <WalletNftSection

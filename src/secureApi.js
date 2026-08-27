@@ -187,6 +187,16 @@ export async function secureMysteryOpen(tier) {
   return callSecureFunction('mystery-open', { tier });
 }
 
+/**
+ * Claim queued Mystery Bonus $G2U → game wallet SPL (captcha required).
+ * Opens at token launch when MYSTERY_PAYOUTS_LIVE + vault are ready.
+ */
+export async function secureMysteryClaimG2u(captchaToken) {
+  return callSecureFunction('mystery-claim-g2u', {
+    captcha_token: captchaToken || '',
+  });
+}
+
 /** Secure weekly badge claim (requires JWT). */
 export async function secureBadgeClaim(weekId) {
   const body = weekId ? { week_id: weekId } : {};

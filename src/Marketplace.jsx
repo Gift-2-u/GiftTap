@@ -86,6 +86,7 @@ import {
   shardBadgeCatalogEntry,
 } from './shardBadge';
 import WeeklyBadgePanel from './WeeklyBadgePanel';
+import ClaimG2uPanel from './ClaimG2uPanel';
 import BadgeMarket from './BadgeMarket';
 import NftMarket from './NftMarket';
 import { filterAndSortNfts } from './nftMarketFilters';
@@ -2979,6 +2980,31 @@ Daily claim active · Pack → NFT to see it.`,
             {/* BADGES + MYSTERY GIFT */}
             {backpackCat === 'badges' && (
               <>
+                <ClaimG2uPanel
+                  inventory={localInventory}
+                  onInventoryChange={(inv) => {
+                    setLocalInventory(inv);
+                    if (typeof setStats === 'function') {
+                      setStats((prev) => ({
+                        ...(prev || {}),
+                        inventory: inv,
+                      }));
+                    }
+                  }}
+                  notify={(msg) => {
+                    const m = String(msg || '');
+                    setTxStatus({
+                      show: true,
+                      loading: false,
+                      message: m.startsWith('✅') ? m : `❌ ${m}`,
+                      success: m.startsWith('✅'),
+                    });
+                    setTimeout(
+                      () => setTxStatus((prev) => ({ ...prev, show: false })),
+                      3500,
+                    );
+                  }}
+                />
                 <WeeklyBadgePanel
                   playerId={
                     user?.id ||

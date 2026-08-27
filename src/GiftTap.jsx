@@ -3075,7 +3075,9 @@ const GiftTapGame = () => {
     }
   }, [maxUnlockedLevel]);
 
-  // Locksmith + Echo: scan wallet → activate Echo if owned, clear if sold/moved
+  // Locksmith + Echo: scan wallet → activate Echo if owned.
+  // Clear ONLY when a successful non-empty scan proves the active asset is gone.
+  // Never clear on empty/failed DAS (that wrongly wiped TwrLtr echo_active).
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -3088,41 +3090,45 @@ const GiftTapGame = () => {
       try {
         const owned = await listGiftNfts(playerWallet);
         if (cancelled) return;
+        const list = Array.isArray(owned) ? owned : [];
         ownedElfAssetIdsRef.current = new Set(
-          (owned || [])
+          list
             .map((n) => String(n.id || n.mint || '').trim())
             .filter(Boolean),
         );
         setOwnedElfTick((t) => t + 1);
         setHasLocksmithNft(
-          (owned || []).some((n) => String(n.kind || '').toLowerCase() === 'locksmith') ||
+          list.some((n) => String(n.kind || '').toLowerCase() === 'locksmith') ||
             (await hasLocksmith(playerWallet)),
         );
 
-        // Buy/sell Echo → set or clear echo_active (tap power follows echo_active)
         if (hasSecureSession()) {
           try {
             await ensureSecureSession();
-            const echoes = (owned || []).filter(
+            const echoes = list.filter(
               (n) => String(n.kind || '').toLowerCase() === 'echo',
             );
             const inv = inventoryRef.current || stats?.inventory || {};
             const ea = inv.echo_active;
-            if (!echoes.length) {
-              if (ea && typeof ea === 'object') {
-                const data = await secureEchoActivate({ clear: true });
-                if (data?.inventory && !cancelled) {
-                  inventoryRef.current = {
-                    ...(inventoryRef.current || {}),
-                    ...data.inventory,
-                  };
-                  setStats((prev) => ({
-                    ...prev,
-                    inventory: inventoryRef.current,
-                  }));
-                }
-              }
-            } else {
+            const curId =
+              ea && typeof ea === 'object'
+                ? String(ea.asset_id || ea.assetId || '').trim()
+                : '';
+
+            const applyInv = (data) => {
+              if (!data?.inventory || cancelled) return;
+              inventoryRef.current = {
+                ...(inventoryRef.current || {}),
+                ...data.inventory,
+              };
+              setStats((prev) => ({
+                ...prev,
+                inventory: inventoryRef.current,
+              }));
+            };
+
+            if (echoes.length) {
+              // Own Echo → ensure echo_active (restores after bad clear)
               let best = echoes[0];
               let bestLv = getElfLevel(inv, best.id);
               for (const n of echoes) {
@@ -3132,10 +3138,6 @@ const GiftTapGame = () => {
                   bestLv = lv;
                 }
               }
-              const curId =
-                ea && typeof ea === 'object'
-                  ? String(ea.asset_id || ea.assetId || '')
-                  : '';
               if (curId !== String(best.id)) {
                 const data = await secureEchoActivate({
                   rarity: normElfRarity(best.rarity),
@@ -3143,27 +3145,27 @@ const GiftTapGame = () => {
                   assetId: best.id,
                   clear: false,
                 });
-                if (data?.inventory && !cancelled) {
-                  inventoryRef.current = {
-                    ...(inventoryRef.current || {}),
-                    ...data.inventory,
-                  };
-                  setStats((prev) => ({
-                    ...prev,
-                    inventory: inventoryRef.current,
-                  }));
-                }
+                applyInv(data);
+              }
+            } else if (curId && list.length > 0) {
+              // Non-empty scan and active asset id not in wallet → truly sold/moved
+              const stillHave = list.some(
+                (n) => String(n.id || n.mint || '').trim() === curId,
+              );
+              if (!stillHave) {
+                const data = await secureEchoActivate({ clear: true });
+                applyInv(data);
               }
             }
+            // list.length === 0 → ambiguous (RPC flake) — do NOT clear
           } catch (e) {
             console.warn('echo wallet sync', e?.message || e);
           }
         }
       } catch {
+        // Keep previous owned set on scan failure — do not wipe / clear Echo
         if (!cancelled) {
-          ownedElfAssetIdsRef.current = new Set();
-          setOwnedElfTick((t) => t + 1);
-          setHasLocksmithNft(false);
+          console.warn('listGiftNfts failed — keeping prior NFT cache');
         }
       }
     })();
