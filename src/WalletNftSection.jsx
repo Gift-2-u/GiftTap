@@ -70,10 +70,16 @@ export default function WalletNftSection({
   /** Liquid $G2U (gft_token_balance) for durability reload */
   gftTokenBalance = 0,
   onGftBalanceChange = null,
+  /**
+   * Wallet UI: one “NFT (N)” button like Backpack; tap expands the list.
+   * Backpack gameplayMode keeps the full list open.
+   */
+  compactButton = false,
 }) {
   const [nfts, setNfts] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [listOpen, setListOpen] = useState(!compactButton);
   const [selected, setSelected] = useState(null);
   const [copied, setCopied] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -537,6 +543,69 @@ export default function WalletNftSection({
     }
   };
 
+  // Compact wallet entry: one button with count (like Backpack hub cards)
+  if (compactButton && !listOpen) {
+    const countLabel = loading ? '…' : String(nfts.length);
+    return (
+      <>
+        <button
+          type="button"
+          onClick={() => setListOpen(true)}
+          style={{
+            width: '100%',
+            marginTop: 12,
+            marginBottom: 4,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 10,
+            background: '#111',
+            border: '1px solid #333',
+            borderRadius: 12,
+            padding: '12px 14px',
+            cursor: 'pointer',
+            outline: 'none',
+            WebkitTapHighlightColor: 'transparent',
+            textAlign: 'left',
+          }}
+        >
+          <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <span style={{ fontSize: 18 }} aria-hidden>
+              🖼
+            </span>
+            <span style={{ color: '#ffd700', fontWeight: 'bold', fontSize: 14 }}>
+              NFT
+            </span>
+          </span>
+          <span
+            style={{
+              minWidth: 28,
+              height: 28,
+              padding: '0 8px',
+              borderRadius: 14,
+              background:
+                nfts.length > 0
+                  ? 'rgba(251,239,67,0.2)'
+                  : 'rgba(255,255,255,0.06)',
+              border: '1px solid #444',
+              color: nfts.length > 0 ? '#fbef43' : '#888',
+              fontWeight: 800,
+              fontSize: 13,
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            {countLabel}
+          </span>
+        </button>
+        {error ? (
+          <p style={{ color: '#f87171', fontSize: 11, margin: '4px 0 0' }}>{error}</p>
+        ) : null}
+      </>
+    );
+  }
+
   return (
     <>
       <div
@@ -561,8 +630,31 @@ export default function WalletNftSection({
           <span style={{ color: '#ffd700', fontWeight: 'bold', fontSize: '13px' }}>
             🖼 NFTs
           </span>
-          <span style={{ color: '#888', fontSize: '11px' }}>
-            {loading ? 'Scanning…' : `${nfts.length} on this wallet`}
+          <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ color: '#888', fontSize: '11px' }}>
+              {loading ? 'Scanning…' : `${nfts.length} on this wallet`}
+            </span>
+            {compactButton ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setSelected(null);
+                  setListOpen(false);
+                }}
+                style={{
+                  background: 'none',
+                  border: '1px solid #444',
+                  borderRadius: 8,
+                  color: '#aaa',
+                  fontSize: 11,
+                  fontWeight: 'bold',
+                  padding: '4px 8px',
+                  cursor: 'pointer',
+                }}
+              >
+                Close
+              </button>
+            ) : null}
           </span>
         </div>
 

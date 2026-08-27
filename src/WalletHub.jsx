@@ -914,6 +914,7 @@ export function GameWalletPanel({ onClose }) {
           <WalletNftSection
             walletAddress={address}
             refreshKey={sessionTick}
+            compactButton
             inventory={row?.inventory || {}}
             maxUnlockedLevel={
               Number(row?.max_unlocked_level) || 4

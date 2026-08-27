@@ -7622,6 +7622,7 @@ const GiftTapGame = () => {
                         walletAddress={playerWallet}
                         walletSecret={decryptedPhrase || generatedSecret || ''}
                         refreshKey={isModalOpen ? 1 : 0}
+                        compactButton
                         inventory={stats?.inventory || inventoryRef.current || {}}
                         maxUnlockedLevel={Number(maxUnlockedLevel) || 4}
                         gftTokenBalance={
