@@ -10,7 +10,11 @@
  */
 
 import { RPC_URL } from './rpc';
-import { listGiftNftsWithStatus } from './locksmith';
+import { listGiftNftsWithStatus, invalidateGiftNftListCache } from './locksmith';
+
+/** Max full DAS ownership sync per wallet (list + optional getAsset proves). */
+const OWNERSHIP_SYNC_TTL_MS = 180_000;
+const ownershipSyncAt = new Map();
 import {
   secureEchoActivate,
   secureFateActivate,
@@ -151,6 +155,10 @@ function activeAssetId(row) {
 export async function syncAllGiftNftOwnership({
   walletAddress,
   inventory = {},
+  force = false,
+  /** Reuse an already-fetched list to avoid a second DAS round-trip */
+  prefetchedNfts = null,
+  prefetchedOk = null,
 }) {
   const actions = [];
   let inv = inventory && typeof inventory === 'object' ? { ...inventory } : {};
@@ -158,7 +166,40 @@ export async function syncAllGiftNftOwnership({
   let tapPower = null;
   let maxDailyLimit = null;
 
-  const scan = await fetchOwnedGiftNftsReliable(walletAddress);
+  const walletKey = String(walletAddress || '').trim();
+  const now = Date.now();
+  if (
+    !force &&
+    walletKey &&
+    ownershipSyncAt.has(walletKey) &&
+    now - ownershipSyncAt.get(walletKey) < OWNERSHIP_SYNC_TTL_MS
+  ) {
+    return {
+      inventory: inv,
+      nfts: Array.isArray(prefetchedNfts) ? prefetchedNfts : [],
+      changed: false,
+      scanOk: true,
+      skipped: true,
+      actions: ['throttled_skip'],
+      tap_power: null,
+      max_daily_limit: null,
+    };
+  }
+
+  let scan;
+  if (
+    prefetchedOk === true &&
+    Array.isArray(prefetchedNfts)
+  ) {
+    scan = {
+      ok: true,
+      nfts: prefetchedNfts,
+      searchOk: true,
+      ownerOk: true,
+    };
+  } else {
+    scan = await fetchOwnedGiftNftsReliable(walletAddress);
+  }
   if (!scan.ok) {
     return {
       inventory: inv,
@@ -183,8 +224,16 @@ export async function syncAllGiftNftOwnership({
 
     if (best) {
       const wantId = String(best.nft.id || '').trim();
-      // Always re-activate owned elves so Edge rewrites tap_power / max_daily_limit
-      // instantly (skip-when-same-level left Supabase tap_power stuck after level-up).
+      const curLv =
+        cur && typeof cur === 'object'
+          ? Math.max(1, Math.floor(Number(cur.level) || 1))
+          : 0;
+      // Skip Edge activate when already correct (DAS already paid for the list).
+      // Level-up / mint paths write tap_power themselves.
+      if (curId === wantId && curLv >= best.level && !force) {
+        actions.push(`skip_active:${kind}`);
+        continue;
+      }
       try {
         const payload =
           kind === 'locksmith'
@@ -283,6 +332,8 @@ export async function syncAllGiftNftOwnership({
     }
   }
 
+  if (walletKey) ownershipSyncAt.set(walletKey, Date.now());
+
   return {
     inventory: inv,
     nfts,
@@ -292,4 +343,11 @@ export async function syncAllGiftNftOwnership({
     tap_power: tapPower,
     max_daily_limit: maxDailyLimit,
   };
+}
+
+export function invalidateOwnershipSyncThrottle(walletAddress) {
+  const k = String(walletAddress || '').trim();
+  if (k) ownershipSyncAt.delete(k);
+  else ownershipSyncAt.clear();
+  invalidateGiftNftListCache(k || undefined);
 }

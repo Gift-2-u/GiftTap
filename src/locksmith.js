@@ -128,12 +128,26 @@ const assetToCard = (asset) => {
   };
 };
 
+/** In-memory DAS list cache — Helius credits are limited (avoid 2× DAS per UI open). */
+const NFT_LIST_CACHE_TTL_MS = 120_000;
+const nftListCache = new Map(); // owner -> { at, result }
+const nftListInflight = new Map();
+
+export function invalidateGiftNftListCache(walletAddress) {
+  const owner = String(walletAddress || '').trim();
+  if (owner) nftListCache.delete(owner);
+  else nftListCache.clear();
+}
+
 /**
  * List Gift2u Elves (+ Star) owned by the game wallet.
  * Returns { ok, nfts, searchOk, ownerOk }.
  * ok=false means DAS failed — callers must NOT treat empty nfts as "sold".
+ *
+ * Credits: prefer collection searchAssets only; getAssetsByOwner is fallback
+ * when search fails (was always doing BOTH = 2× DAS every call).
  */
-export async function listGiftNftsWithStatus(walletAddress) {
+export async function listGiftNftsWithStatus(walletAddress, opts = {}) {
   if (!walletAddress || typeof walletAddress !== 'string') {
     return { ok: false, nfts: [], searchOk: false, ownerOk: false };
   }
@@ -142,82 +156,109 @@ export async function listGiftNftsWithStatus(walletAddress) {
     return { ok: false, nfts: [], searchOk: false, ownerOk: false };
   }
 
-  const byId = new Map();
-  let searchOk = false;
-  let ownerOk = false;
+  const force = opts.force === true;
+  const now = Date.now();
+  if (!force) {
+    const hit = nftListCache.get(owner);
+    if (hit && now - hit.at < NFT_LIST_CACHE_TTL_MS) {
+      return hit.result;
+    }
+    const pending = nftListInflight.get(owner);
+    if (pending) return pending;
+  }
 
-  try {
-    const res = await fetch(RPC_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        jsonrpc: '2.0',
-        id: 'gift-nfts-search',
-        method: 'searchAssets',
-        params: {
-          ownerAddress: owner,
-          grouping: ['collection', LOCKSMITH_COLLECTION],
-          page: 1,
-          limit: 50,
-          displayOptions: { showCollectionMetadata: true },
-        },
-      }),
-    });
-    if (res.ok) {
-      const json = await res.json();
-      if (!json?.error) {
-        searchOk = true;
-        const items = json?.result?.items || [];
-        if (Array.isArray(items)) {
-          for (const asset of items) {
-            if (!inElvesCollection(asset) && !(asset?.id || asset?.mint)) continue;
-            const card = assetToCard(asset);
-            if (card.id) byId.set(card.id, card);
+  const run = (async () => {
+    const byId = new Map();
+    let searchOk = false;
+    let ownerOk = false;
+
+    try {
+      const res = await fetch(RPC_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 'gift-nfts-search',
+          method: 'searchAssets',
+          params: {
+            ownerAddress: owner,
+            grouping: ['collection', LOCKSMITH_COLLECTION],
+            page: 1,
+            limit: 50,
+            displayOptions: { showCollectionMetadata: true },
+          },
+        }),
+      });
+      if (res.ok) {
+        const json = await res.json();
+        if (!json?.error) {
+          searchOk = true;
+          const items = json?.result?.items || [];
+          if (Array.isArray(items)) {
+            for (const asset of items) {
+              if (!inElvesCollection(asset) && !(asset?.id || asset?.mint)) continue;
+              const card = assetToCard(asset);
+              if (card.id) byId.set(card.id, card);
+            }
           }
         }
       }
+    } catch (e) {
+      console.warn('listGiftNfts searchAssets failed', e?.message || e);
     }
-  } catch (e) {
-    console.warn('listGiftNfts searchAssets failed', e?.message || e);
-  }
 
-  try {
-    const res2 = await fetch(RPC_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        jsonrpc: '2.0',
-        id: 'gift-nfts-owner',
-        method: 'getAssetsByOwner',
-        params: {
-          ownerAddress: owner,
-          page: 1,
-          limit: 100,
-          displayOptions: { showCollectionMetadata: true },
-        },
-      }),
-    });
-    if (res2.ok) {
-      const json2 = await res2.json();
-      if (!json2?.error) {
-        ownerOk = true;
-        for (const asset of json2?.result?.items || []) {
-          if (!inElvesCollection(asset)) continue;
-          const card = assetToCard(asset);
-          if (card.id) byId.set(card.id, { ...byId.get(card.id), ...card });
+    // Only pay for getAssetsByOwner when collection search failed
+    if (!searchOk) {
+      try {
+        const res2 = await fetch(RPC_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            jsonrpc: '2.0',
+            id: 'gift-nfts-owner',
+            method: 'getAssetsByOwner',
+            params: {
+              ownerAddress: owner,
+              page: 1,
+              limit: 100,
+              displayOptions: { showCollectionMetadata: true },
+            },
+          }),
+        });
+        if (res2.ok) {
+          const json2 = await res2.json();
+          if (!json2?.error) {
+            ownerOk = true;
+            for (const asset of json2?.result?.items || []) {
+              if (!inElvesCollection(asset)) continue;
+              const card = assetToCard(asset);
+              if (card.id) byId.set(card.id, { ...byId.get(card.id), ...card });
+            }
+          }
         }
+      } catch (e) {
+        console.warn('listGiftNfts getAssetsByOwner failed', e?.message || e);
       }
     }
-  } catch (e) {
-    console.warn('listGiftNfts getAssetsByOwner failed', e?.message || e);
-  }
 
-  return {
-    ok: searchOk || ownerOk,
-    nfts: Array.from(byId.values()),
-    searchOk,
-    ownerOk,
-  };
+    const result = {
+      ok: searchOk || ownerOk,
+      nfts: Array.from(byId.values()),
+      searchOk,
+      ownerOk,
+    };
+    if (result.ok) {
+      nftListCache.set(owner, { at: Date.now(), result });
+    }
+    return result;
+  })();
+
+  nftListInflight.set(owner, run);
+  try {
+    return await run;
+  } finally {
+    nftListInflight.delete(owner);
+  }
 }
 
 /**

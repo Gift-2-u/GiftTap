@@ -3174,8 +3174,7 @@ const GiftTapGame = () => {
           );
           setOwnedElfTick((t) => t + 1);
           setHasLocksmithNft(
-            list.some((n) => String(n.kind || '').toLowerCase() === 'locksmith') ||
-              (await hasLocksmith(playerWallet)),
+            list.some((n) => String(n.kind || '').toLowerCase() === 'locksmith'),
           );
         }
         // scan failed → keep prior owned cache; never wipe

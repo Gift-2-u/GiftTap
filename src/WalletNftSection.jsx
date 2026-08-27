@@ -481,21 +481,32 @@ export default function WalletNftSection({
     };
   }, [walletAddress, refreshKey, listKey]);
 
-  // All Gift2u NFTs (5 elves + Star equip): shared ownership sync — prove before clear.
+  // Ownership sync — reuse the list we just fetched (no second DAS). Throttled inside sync.
   useEffect(() => {
     if (!walletAddress || !hasSecureSession()) return undefined;
-    if (!nfts.length) return undefined; // wait until list loaded; empty list alone does not clear
+    if (!nfts.length) return undefined;
     let cancelled = false;
     (async () => {
       try {
         const result = await syncAllGiftNftOwnership({
           walletAddress,
           inventory: localInv || inventory || {},
+          prefetchedNfts: nfts,
+          prefetchedOk: true,
         });
-        if (cancelled || !result.changed || !result.inventory) return;
+        if (cancelled || result.skipped) return;
+        if (!result.changed || !result.inventory) return;
         setLocalInv(result.inventory);
         if (typeof onInventoryChange === 'function') {
-          onInventoryChange(result.inventory);
+          const patch = {};
+          if (result.tap_power != null) patch.tap_power = result.tap_power;
+          if (result.max_daily_limit != null) {
+            patch.max_daily_limit = result.max_daily_limit;
+          }
+          onInventoryChange(
+            result.inventory,
+            Object.keys(patch).length ? patch : undefined,
+          );
         }
       } catch (e) {
         console.warn('nft ownership sync', e?.message || e);

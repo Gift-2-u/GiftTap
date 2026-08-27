@@ -103,7 +103,8 @@ import {
   secureShadowActivate,
 } from './secureApi';
 import WalletNftSection from './WalletNftSection';
-import { listGiftNfts } from './locksmith';
+import { listGiftNfts, invalidateGiftNftListCache } from './locksmith';
+import { invalidateOwnershipSyncThrottle } from './nftOwnershipSync';
 
 /** Professional icon tile — custom SVG / image or built-in glyph */
 function ShopItemIcon({ item, size = 52, variant = 'row' }) {
@@ -260,11 +261,15 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, bumpEner
   }, []);
 
 
-  // Count on-chain GiftLocksmith NFTs for backpack badge + NFT tab
+  // Count on-chain NFTs (cached list — do not re-hit DAS on every backpack sub-tab)
   useEffect(() => {
     const addr = playerWallet && String(playerWallet).trim();
     if (!addr || addr.length < 32) {
       setWalletNftCount(0);
+      return undefined;
+    }
+    // Only when entering backpack or explicit refresh — not every cat switch
+    if (activeTab !== 'backpack' && activeTab !== 'nft' && walletNftRefresh === 0) {
       return undefined;
     }
     let cancelled = false;
@@ -280,7 +285,7 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, bumpEner
     return () => {
       cancelled = true;
     };
-  }, [playerWallet, activeTab, backpackCat, walletNftRefresh]);
+  }, [playerWallet, activeTab, walletNftRefresh]);
 
   useEffect(() => {
     if (stats?.inventory) {
@@ -1085,6 +1090,8 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, bumpEner
         message: `✅ Star Badge minted!\nAsset: ${result.asset.slice(0, 8)}…\nOpen Backpack → NFT to socket it.`,
         success: true,
       });
+      invalidateGiftNftListCache(playerWallet);
+      invalidateOwnershipSyncThrottle(playerWallet);
       setWalletNftRefresh((n) => n + 1);
     } catch (err) {
       console.error('Star mint error', err);
@@ -1182,6 +1189,8 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, bumpEner
         message: `✅ GiftLocksmith minted!\nAsset: ${result.asset.slice(0, 8)}…\nOpen Pack → NFT to see it.`,
         success: true,
       });
+      invalidateGiftNftListCache(playerWallet);
+      invalidateOwnershipSyncThrottle(playerWallet);
       setWalletNftRefresh((n) => n + 1);
     } catch (err) {
       console.error('Locksmith mint error', err);
@@ -1303,6 +1312,8 @@ Asset: ${String(result.asset).slice(0, 8)}…
 Luck jackpot active · Pack → NFT to see it.`,
         success: true,
       });
+      invalidateGiftNftListCache(playerWallet);
+      invalidateOwnershipSyncThrottle(playerWallet);
       setWalletNftRefresh((n) => n + 1);
     } catch (err) {
       console.error('Fate mint error', err);
@@ -1419,6 +1430,8 @@ Asset: ${String(result.asset).slice(0, 8)}…
 Tap multi active · Pack → NFT to see it.`,
         success: true,
       });
+      invalidateGiftNftListCache(playerWallet);
+      invalidateOwnershipSyncThrottle(playerWallet);
       setWalletNftRefresh((n) => n + 1);
     } catch (err) {
       console.error('Echo mint error', err);
@@ -1517,6 +1530,8 @@ Asset: ${String(result.asset).slice(0, 8)}…
 Daily cap active · Pack → NFT to see it.`,
         success: true,
       });
+      invalidateGiftNftListCache(playerWallet);
+      invalidateOwnershipSyncThrottle(playerWallet);
       setWalletNftRefresh((n) => n + 1);
     } catch (err) {
       console.error('Rush mint error', err);
@@ -1615,6 +1630,8 @@ Asset: ${String(result.asset).slice(0, 8)}…
 Daily claim active · Pack → NFT to see it.`,
         success: true,
       });
+      invalidateGiftNftListCache(playerWallet);
+      invalidateOwnershipSyncThrottle(playerWallet);
       setWalletNftRefresh((n) => n + 1);
     } catch (err) {
       console.error('Shadow mint error', err);
