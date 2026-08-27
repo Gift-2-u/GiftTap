@@ -179,6 +179,7 @@ import {
   TOKEN_LAUNCH_TITLE,
   formatLaunchCountdown,
 } from './tokenLaunch';
+import ClaimG2uPanel from './ClaimG2uPanel';
 import {
   getUtcWeekId,
   utcDayStr as weeklyUtcDayStr,
@@ -7681,6 +7682,40 @@ const GiftTapGame = () => {
                         <button style={styles.actionBtn} onClick={() => setIsWithdrawOpen(true)}>Send</button>
                         <button style={styles.actionBtn} onClick={() => setIsSwapOpen(true)}>Swap</button>
                         {/* Shard→G2U button hidden — modal/code kept. Use Jupiter Swap for $G2U. */}
+                      </div>
+                      <div style={{ ...styles.actionRow, marginTop: 8 }}>
+                        <ClaimG2uPanel
+                          variant="button"
+                          inventory={stats?.inventory || inventoryRef.current || {}}
+                          walletAddress={playerWallet || ''}
+                          onInventoryChange={(inv) => {
+                            inventoryRef.current = {
+                              ...(inventoryRef.current || {}),
+                              ...inv,
+                            };
+                            setStats((prev) => ({
+                              ...prev,
+                              inventory: inventoryRef.current,
+                            }));
+                          }}
+                          notify={(msg) => {
+                            const m = String(msg || '');
+                            setTxStatus({
+                              show: true,
+                              loading: false,
+                              message: m.startsWith('✅') ? m : m,
+                              success: m.startsWith('✅'),
+                            });
+                            setTimeout(
+                              () =>
+                                setTxStatus((prev) => ({
+                                  ...prev,
+                                  show: false,
+                                })),
+                              3500,
+                            );
+                          }}
+                        />
                       </div>
                     </>
                   )}

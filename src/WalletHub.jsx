@@ -911,27 +911,6 @@ export function GameWalletPanel({ onClose }) {
             style={{ marginBottom: '12px' }}
           />
 
-          <ClaimG2uPanel
-            inventory={row?.inventory || {}}
-            onInventoryChange={(inv) => {
-              setRow((prev) => (prev ? { ...prev, inventory: inv } : prev));
-            }}
-            notify={(msg) => {
-              const m = String(msg || '');
-              if (m.startsWith('✅')) setError('');
-              else setError(m);
-              try {
-                // Brief toast-style feedback in the panel error/status line
-                if (m.startsWith('✅')) {
-                  setError(m);
-                  setTimeout(() => setError(''), 4000);
-                }
-              } catch {
-                /* ignore */
-              }
-            }}
-          />
-
           <WalletNftSection
             walletAddress={address}
             refreshKey={sessionTick}
@@ -982,6 +961,23 @@ export function GameWalletPanel({ onClose }) {
                 {a.label}
               </button>
             ))}
+          </div>
+          <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
+            <ClaimG2uPanel
+              variant="button"
+              inventory={row?.inventory || {}}
+              walletAddress={address || ''}
+              onInventoryChange={(inv) => {
+                setRow((prev) => (prev ? { ...prev, inventory: inv } : prev));
+              }}
+              notify={(msg) => {
+                const m = String(msg || '');
+                setError(m);
+                if (m.startsWith('✅')) {
+                  setTimeout(() => setError(''), 4000);
+                }
+              }}
+            />
           </div>
         </>
       )}
