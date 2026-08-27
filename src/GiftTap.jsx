@@ -367,8 +367,8 @@ export const ASCENSION_WALLS = {
   9: {
     targetLevel: 10,
     shardCost: 30000,
-    solCost: 0.05,
-    requiresBoth: false,
+    solCost: 0.03,
+    requiresBoth: true,
     newCap: 19,
   },
   // Mid–late: MUST pay BOTH shards AND SOL
@@ -1719,39 +1719,61 @@ const GiftTapGame = () => {
             );
           }
         }
+        // Eligible = ALL floor-qualified (badges). Top list = first 50 only (display).
+        const eligibleAll = (rows || []).filter((r) =>
+          isWeeklyFloorEligible(r.weekly_score ?? r.score ?? 0, floor),
+        );
+        const eligibleCount = eligibleAll.length;
         const mainRows = filterWeeklyMainBoard(rows, floor, 50);
         let you = null;
-        const me = rankOnWeeklyBoard(rows, playerId, DB_PLAYER_ID, floor);
+        // Pass weekId so %-era rules apply (rest of eligible → Bronze), not legacy top-10-only
+        const me = rankOnWeeklyBoard(
+          rows,
+          playerId,
+          DB_PLAYER_ID,
+          floor,
+          weekId,
+        );
         if (me && playerId) {
           const inList = mainRows.some(
             (r) =>
               String(r[DB_PLAYER_ID] || r.telegram_id || '') === String(playerId),
           );
+          // Guaranteed Bronze when on main but tier missing
+          let tier = me.tier;
+          if (me.onMain && !tier && me.rank) {
+            tier =
+              badgeTierForWeeklyRank(me.rank, eligibleCount, weekId) ||
+              'bronze';
+          }
           you = {
             ...me,
+            tier,
+            total: eligibleCount,
             score: Math.max(liveW, Number(me.score) || 0),
             inList,
           };
         } else if (playerId) {
+          const onMain = isWeeklyFloorEligible(liveW, floor);
           you = {
             rank: null,
             score: liveW,
-            total: mainRows.length,
-            tier: null,
-            onMain: isWeeklyFloorEligible(liveW, floor),
+            total: eligibleCount,
+            tier: onMain ? 'bronze' : null,
+            onMain,
             floor,
             need: Math.max(0, floor - liveW),
             inList: false,
           };
         }
         if (!stillThisTab()) return;
-        setWeeklyEligibleCount(mainRows.length);
+        setWeeklyEligibleCount(eligibleCount);
         setLeaderboard(mainRows);
         setWeeklyYouRank(you);
         leaderboardCacheRef.current.Weekly = {
           rows: mainRows,
           you,
-          eligible: mainRows.length,
+          eligible: eligibleCount,
           floor,
           day,
           weekId,
@@ -7201,7 +7223,8 @@ const GiftTapGame = () => {
                         leaderboardType === 'Weekly'
                           ? badgeTierForWeeklyRank(
                               index + 1,
-                              leaderboard.length,
+                              // Full eligible N — not the 50 on screen (rest = Bronze)
+                              weeklyEligibleCount || leaderboard.length,
                               getUtcWeekId(),
                             )
                           : null;

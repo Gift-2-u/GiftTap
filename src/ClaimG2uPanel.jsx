@@ -4,6 +4,8 @@ import {
   hasSecureSession,
   ensureSecureSession,
   secureMysteryClaimG2u,
+  secureAirdropClaimStatus,
+  secureAirdropClaimG2u,
 } from './secureApi';
 import {
   TOKEN_LAUNCH_AT,
@@ -14,49 +16,6 @@ import {
 /** Mystery queue from inventory */
 export function mysteryG2uPending(inventory) {
   return Math.max(0, Number(inventory?.mystery_g2u_pending) || 0);
-}
-
-/**
- * Airdrop pending — Phase 2 snapshot can set inventory.airdrop_g2u_pending
- * or pass airdropPending prop from allocations.
- */
-export function airdropG2uPending(inventory, airdropPendingProp) {
-  if (airdropPendingProp != null && Number.isFinite(Number(airdropPendingProp))) {
-    return Math.max(0, Number(airdropPendingProp) || 0);
-  }
-  return Math.max(0, Number(inventory?.airdrop_g2u_pending) || 0);
-}
-
-export function getClaimableG2uSources(inventory = {}, airdropPendingProp = null) {
-  const mystery = mysteryG2uPending(inventory);
-  const airdrop = airdropG2uPending(inventory, airdropPendingProp);
-  return {
-    mystery,
-    airdrop,
-    total: mystery + airdrop,
-    rows: [
-      ...(mystery > 0
-        ? [
-            {
-              id: 'mystery',
-              source: 'Mystery Gift',
-              detail: 'Bonus $G2U from badge burns',
-              amount: mystery,
-            },
-          ]
-        : []),
-      ...(airdrop > 0
-        ? [
-            {
-              id: 'airdrop',
-              source: 'G2U Airdrop',
-              detail: 'L5+ community allocation',
-              amount: airdrop,
-            },
-          ]
-        : []),
-    ],
-  };
 }
 
 const overlay = {
@@ -78,26 +37,53 @@ const panel = {
   width: '100%',
   maxWidth: 380,
   boxSizing: 'border-box',
+  maxHeight: '90vh',
+  overflowY: 'auto',
 };
 
 /**
- * Wallet Claim $G2U — faded until pending; popup lists Mystery + Airdrop rows.
+ * Wallet Claim $G2U — faded until pending; popup: Mystery + L5/weekly/monthly rows.
  */
 export default function ClaimG2uPanel({
   inventory = {},
-  airdropPending = null,
   walletAddress = '',
   onInventoryChange,
   notify,
-  /** 'button' = wallet action strip style; 'block' = full width under balances */
   variant = 'block',
 }) {
-  const claimable = getClaimableG2uSources(inventory, airdropPending);
+  const mysteryAmt = mysteryG2uPending(inventory);
+  const [airdropRows, setAirdropRows] = useState([]);
+  const [statusLoading, setStatusLoading] = useState(false);
   const [open, setOpen] = useState(false);
   const [captchaToken, setCaptchaToken] = useState('');
   const [captchaReset, setCaptchaReset] = useState(0);
   const [busyId, setBusyId] = useState(null);
   const [tick, setTick] = useState(() => formatLaunchCountdown());
+
+  const airdropTotal = airdropRows.reduce((s, r) => s + (Number(r.amount) || 0), 0);
+  const total = mysteryAmt + airdropTotal;
+  const hasPending = total > 0;
+
+  const refreshAirdrop = useCallback(async () => {
+    if (!hasSecureSession()) {
+      setAirdropRows([]);
+      return;
+    }
+    setStatusLoading(true);
+    try {
+      await ensureSecureSession();
+      const data = await secureAirdropClaimStatus();
+      setAirdropRows(Array.isArray(data?.rows) ? data.rows : []);
+    } catch {
+      setAirdropRows([]);
+    } finally {
+      setStatusLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    refreshAirdrop();
+  }, [refreshAirdrop, inventory?.mystery_g2u_pending]);
 
   useEffect(() => {
     const id = setInterval(() => setTick(formatLaunchCountdown()), 1000);
@@ -105,12 +91,11 @@ export default function ClaimG2uPanel({
   }, []);
 
   useEffect(() => {
-    if (open && claimable.total <= 0 && !busyId) setOpen(false);
-  }, [claimable.total, open, busyId]);
+    if (open && total <= 0 && !busyId) setOpen(false);
+  }, [total, open, busyId]);
 
   const needCaptcha = turnstileRequired();
   const beforeLaunch = Date.now() < TOKEN_LAUNCH_AT;
-  const hasPending = claimable.total > 0;
   const buttonLive = hasPending && hasSecureSession();
 
   const onCaptchaToken = useCallback((token) => {
@@ -121,8 +106,13 @@ export default function ClaimG2uPanel({
     ? `${walletAddress.slice(0, 4)}…${walletAddress.slice(-4)}`
     : 'game wallet';
 
+  const resetCaptcha = () => {
+    setCaptchaToken('');
+    setCaptchaReset((n) => n + 1);
+  };
+
   const claimMystery = async () => {
-    if (busyId || claimable.mystery <= 0) return;
+    if (busyId || mysteryAmt <= 0) return;
     if (beforeLaunch) {
       notify?.(`Claim opens ${TOKEN_LAUNCH_LABEL} UTC`);
       return;
@@ -139,35 +129,47 @@ export default function ClaimG2uPanel({
         onInventoryChange(data.inventory);
       }
       const amt = Number(data?.amount) || 0;
-      if (data?.already || amt <= 0) {
-        notify?.('Nothing to claim from Mystery');
-      } else {
-        notify?.(
-          `✅ Mystery: claimed ${amt.toLocaleString()} $G2U → ${shortWallet}`,
-        );
-      }
-      setCaptchaToken('');
-      setCaptchaReset((n) => n + 1);
-      // Close if nothing left after refresh — parent inventory update drives claimable
+      if (data?.already || amt <= 0) notify?.('Nothing to claim from Mystery');
+      else notify?.(`✅ Mystery: ${amt.toLocaleString()} $G2U → ${shortWallet}`);
+      resetCaptcha();
+      await refreshAirdrop();
     } catch (e) {
       notify?.(e?.message || 'Claim failed');
-      setCaptchaToken('');
-      setCaptchaReset((n) => n + 1);
+      resetCaptcha();
     } finally {
       setBusyId(null);
     }
   };
 
-  const claimAirdrop = async () => {
-    if (busyId || claimable.airdrop <= 0) return;
+  const claimAirdropRow = async (row) => {
+    if (busyId || !row?.id) return;
     if (beforeLaunch) {
       notify?.(`Claim opens ${TOKEN_LAUNCH_LABEL} UTC`);
       return;
     }
-    // Phase 2 Edge not live yet
-    notify?.(
-      'Airdrop claim opens after the official snapshot (same wallet Claim). Mystery claim works at launch.',
-    );
+    if (needCaptcha && !captchaToken) {
+      notify?.('Complete the captcha to claim $G2U');
+      return;
+    }
+    setBusyId(row.id);
+    try {
+      await ensureSecureSession();
+      const data = await secureAirdropClaimG2u(captchaToken, row.id);
+      const amt = Number(data?.amount) || 0;
+      if (data?.already || amt <= 0) notify?.('Already claimed');
+      else {
+        notify?.(
+          `✅ ${row.label || data.source}: ${amt.toLocaleString()} $G2U → ${shortWallet}`,
+        );
+      }
+      resetCaptcha();
+      await refreshAirdrop();
+    } catch (e) {
+      notify?.(e?.message || 'Claim failed');
+      resetCaptcha();
+    } finally {
+      setBusyId(null);
+    }
   };
 
   const btnStyle = (enabled) =>
@@ -203,6 +205,28 @@ export default function ClaimG2uPanel({
           marginTop: 8,
         };
 
+  const rows = [
+    ...(mysteryAmt > 0
+      ? [
+          {
+            id: 'mystery',
+            label: 'Mystery Gift',
+            detail: 'Bonus $G2U from badge burns',
+            amount: mysteryAmt,
+            kind: 'mystery',
+          },
+        ]
+      : []),
+    ...airdropRows.map((r) => ({
+      id: r.id,
+      label: r.label || r.source,
+      detail: r.detail || r.period_id,
+      amount: Number(r.amount) || 0,
+      kind: 'airdrop',
+      vault_ready: r.vault_ready,
+    })),
+  ];
+
   return (
     <>
       <button
@@ -210,18 +234,21 @@ export default function ClaimG2uPanel({
         disabled={!buttonLive}
         onClick={() => {
           if (!buttonLive) return;
+          refreshAirdrop();
           setOpen(true);
         }}
         style={btnStyle(buttonLive)}
         title={
           hasPending
-            ? `${claimable.total.toLocaleString()} $G2U ready to claim`
+            ? `${total.toLocaleString()} $G2U ready to claim`
             : 'No $G2U to claim yet'
         }
       >
         {hasPending
-          ? `Claim $G2U · ${claimable.total.toLocaleString()}`
-          : 'Claim $G2U'}
+          ? `Claim $G2U · ${total.toLocaleString()}`
+          : statusLoading
+            ? 'Claim $G2U…'
+            : 'Claim $G2U'}
       </button>
 
       {open ? (
@@ -258,17 +285,24 @@ export default function ClaimG2uPanel({
               </button>
             </div>
 
-            <p style={{ color: '#aaa', fontSize: 12, margin: '0 0 12px', lineHeight: 1.4 }}>
+            <p
+              style={{
+                color: '#aaa',
+                fontSize: 12,
+                margin: '0 0 12px',
+                lineHeight: 1.4,
+              }}
+            >
               Pays on-chain $G2U to your game wallet ({shortWallet}).
               {beforeLaunch
                 ? ` Opens ${TOKEN_LAUNCH_LABEL} UTC${tick ? ` · ${tick}` : ''}.`
                 : ''}
             </p>
 
-            {claimable.rows.length === 0 ? (
+            {rows.length === 0 ? (
               <p style={{ color: '#888', fontSize: 13 }}>Nothing pending.</p>
             ) : (
-              claimable.rows.map((row) => (
+              rows.map((row) => (
                 <div
                   key={row.id}
                   style={{
@@ -288,9 +322,11 @@ export default function ClaimG2uPanel({
                     }}
                   >
                     <span style={{ color: '#fff', fontWeight: 700, fontSize: 14 }}>
-                      {row.source}
+                      {row.label}
                     </span>
-                    <span style={{ color: '#fbef43', fontWeight: 800, fontSize: 14 }}>
+                    <span
+                      style={{ color: '#fbef43', fontWeight: 800, fontSize: 14 }}
+                    >
                       {row.amount.toLocaleString()} $G2U
                     </span>
                   </div>
@@ -302,10 +338,12 @@ export default function ClaimG2uPanel({
                     disabled={
                       !!busyId ||
                       beforeLaunch ||
-                      (needCaptcha && !captchaToken && row.id === 'mystery')
+                      (needCaptcha && !captchaToken)
                     }
                     onClick={() =>
-                      row.id === 'mystery' ? claimMystery() : claimAirdrop()
+                      row.kind === 'mystery'
+                        ? claimMystery()
+                        : claimAirdropRow(row)
                     }
                     style={{
                       width: '100%',
@@ -322,13 +360,12 @@ export default function ClaimG2uPanel({
                       color: beforeLaunch || busyId ? '#777' : '#000',
                     }}
                   >
-                    {busyId === row.id
+                    {(busyId === row.id ||
+                    (busyId === 'mystery' && row.kind === 'mystery'))
                       ? 'Claiming…'
                       : beforeLaunch
                         ? `Opens ${TOKEN_LAUNCH_LABEL}`
-                        : row.id === 'airdrop'
-                          ? 'Claim airdrop (soon)'
-                          : `Claim ${row.amount.toLocaleString()} $G2U`}
+                        : `Claim ${row.amount.toLocaleString()} $G2U`}
                   </button>
                 </div>
               ))

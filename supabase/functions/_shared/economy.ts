@@ -104,9 +104,21 @@ export function tierFromRank(
 
   const n = Math.max(0, Math.floor(Number(totalEligible) || 0));
   if (n < 1 || r > n) return null;
-  const diamond = Math.floor(n * 0.1);
-  const gold = Math.floor(n * 0.15);
-  const silver = Math.floor(n * 0.25);
+  // Match SQL weekly_badge_tier_for_rank + client weeklyBadgeTierCounts
+  let diamond = Math.max(n >= 1 ? 1 : 0, Math.round(n * 0.1));
+  let gold = Math.max(n >= 2 ? 1 : 0, Math.round(n * 0.15));
+  let silver = Math.max(n >= 3 ? 1 : 0, Math.round(n * 0.25));
+  let over = diamond + gold + silver - n;
+  if (over > 0) {
+    const cut = (v: number) => {
+      const take = Math.min(v, over);
+      over -= take;
+      return v - take;
+    };
+    silver = cut(silver);
+    gold = cut(gold);
+    diamond = cut(diamond);
+  }
   if (r <= diamond) return "diamond";
   if (r <= diamond + gold) return "gold";
   if (r <= diamond + gold + silver) return "silver";

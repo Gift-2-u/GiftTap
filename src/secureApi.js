@@ -197,6 +197,19 @@ export async function secureMysteryClaimG2u(captchaToken) {
   });
 }
 
+/** Unclaimed L5 / weekly / monthly allocations for this player. */
+export async function secureAirdropClaimStatus() {
+  return callSecureFunction('airdrop-claim-status', {});
+}
+
+/** Claim one airdrop allocation → SPL from that source vault. */
+export async function secureAirdropClaimG2u(captchaToken, allocationId) {
+  return callSecureFunction('airdrop-claim-g2u', {
+    captcha_token: captchaToken || '',
+    allocation_id: allocationId,
+  });
+}
+
 /** Secure weekly badge claim (requires JWT). */
 export async function secureBadgeClaim(weekId) {
   const body = weekId ? { week_id: weekId } : {};
