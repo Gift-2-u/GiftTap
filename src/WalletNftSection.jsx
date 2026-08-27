@@ -65,6 +65,8 @@ export default function WalletNftSection({
   notify,
   inventory = null,
   onInventoryChange = null,
+  /** After on-chain SOL spend (NFT level-up): parent refreshes Gift Tap SOL chip */
+  onChainBalanceChange = null,
   gameplayMode = false,
   maxUnlockedLevel = 4,
   /** Liquid $G2U (gft_token_balance) for durability reload */
@@ -94,8 +96,9 @@ export default function WalletNftSection({
   const [localInv, setLocalInv] = useState(inventory || {});
   const [localGft, setLocalGft] = useState(Number(gftTokenBalance) || 0);
 
+  /** Prefer in-game AppNotice / Marketplace txStatus — never window.alert ("gift2u.fun says…"). */
   const toast = (msg, ok = true) => {
-    if (typeof notify === 'function') notify(msg, ok);
+    if (typeof notify === 'function') notify(msg, { success: !!ok });
     else if (!ok) console.warn(msg);
     else console.log(msg);
   };
@@ -357,6 +360,16 @@ export default function WalletNftSection({
       setLocalInv(nextInv);
       if (typeof onInventoryChange === 'function') onInventoryChange(nextInv);
       toast(`Level up → L${data.to_level} (−${cost} SOL)`, true);
+      // Push live SOL to Gift Tap HUD (don't wait for Wallet modal open)
+      try {
+        const lamportsAfter = await connection.getBalance(playerKeypair.publicKey);
+        const solAfter = lamportsAfter / LAMPORTS_PER_SOL;
+        if (typeof onChainBalanceChange === 'function') {
+          onChainBalanceChange({ sol: solAfter });
+        }
+      } catch (balErr) {
+        console.warn('post level-up SOL refresh', balErr?.message || balErr);
+      }
       // Best-effort: refresh ME / wallet Level trait
       try {
         await secureNftSetLevel({
@@ -381,6 +394,7 @@ export default function WalletNftSection({
     walletSecret,
     localInv,
     onInventoryChange,
+    onChainBalanceChange,
   ]);
 
 

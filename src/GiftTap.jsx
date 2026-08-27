@@ -260,6 +260,7 @@ import {
   hasSwapLicense,
 } from './shardSwap';
 import { echoMultiplier } from './echo';
+import { getElfLevel } from './elfLevelUp';
 import { rushDailyLimit } from './rush';
 
 // TOKEN_MINTS / TREASURY_TOKEN_ACCOUNTS — canonical G2U mint from config via gameWalletActions
@@ -774,22 +775,25 @@ const GiftTapGame = () => {
     confirm: null,
   });
   const notify = useCallback((message, opts = {}) => {
+    // Accept notify(msg, true|false) from older callers, or notify(msg, { success, … })
+    const o =
+      typeof opts === 'boolean' ? { success: opts } : opts && typeof opts === 'object' ? opts : {};
     const msg = String(message ?? '');
     const looksError =
-      opts.success === false ||
+      o.success === false ||
       /fail|error|invalid|denied|not enough|too low|no |need |wait for|locked|unavailable/i.test(
         msg,
       );
     const looksOk =
-      opts.success === true ||
-      (/^✅|success|copied|unlocked|ascended|added|restored|complete/i.test(msg) &&
-        opts.success !== false);
+      o.success === true ||
+      (/^✅|success|copied|unlocked|ascended|added|restored|complete|level up/i.test(msg) &&
+        o.success !== false);
     setAppNotice({
       show: true,
       message: msg,
-      loading: !!opts.loading,
-      success: opts.success !== undefined ? opts.success : looksOk ? true : looksError ? false : null,
-      title: opts.title,
+      loading: !!o.loading,
+      success: o.success !== undefined ? o.success : looksOk ? true : looksError ? false : null,
+      title: o.title,
       confirm: null,
     });
   }, []);
@@ -2189,11 +2193,16 @@ const GiftTapGame = () => {
         }
         
         setBalances({ 
+          // sol_balance in Supabase is stale by design — HUD uses live chain next
           sol: playerRow.sol_balance || 0, 
           G2U: playerRow.gft_token_balance || 0, 
           G2Ushards: Number(playerRow.shard_balance) || 0, 
           usdc: playerRow.usdc_balance || 0 
         });
+        // Immediate live SOL/USDC for Gift Tap chip (don't wait for Wallet open)
+        if (playerRow.wallet_address) {
+          syncBlockchainBalances(playerRow.wallet_address);
+        }
         const _bal = Number(playerRow.shard_balance) || 0;
         setBalance(_bal);
         optimisticBalance.current = _bal;
@@ -3147,10 +3156,38 @@ const GiftTapGame = () => {
     };
   }, [playerWallet, isShardSwapOpen, isDataLoaded]);
 
-  // HUD tap power: level (+ premium) + Echo multi only while echo_active is set
+  // HUD tap power: additive stack base 1 + (level−1) + (echo−1) + (premium−1)
+  // e.g. L5 1.15 + Echo common L2 1.20 → 1.35. Echo level from elf_levels (authoritative).
   useEffect(() => {
     if (!isDataLoaded) return;
-    const inv = inventoryRef.current || stats?.inventory || {};
+    const refInv = inventoryRef.current || {};
+    const statsInv = stats?.inventory || {};
+    // Never let a stale inventoryRef shadow a fresher stats.inventory after NFT level-up
+    const inv = {
+      ...refInv,
+      ...statsInv,
+      elf_levels: {
+        ...(refInv.elf_levels && typeof refInv.elf_levels === 'object'
+          ? refInv.elf_levels
+          : {}),
+        ...(statsInv.elf_levels && typeof statsInv.elf_levels === 'object'
+          ? statsInv.elf_levels
+          : {}),
+      },
+      echo_active:
+        statsInv.echo_active !== undefined
+          ? statsInv.echo_active
+          : refInv.echo_active,
+    };
+    // Keep ref warm so taps / later effects see leveled Echo immediately
+    if (statsInv.echo_active || statsInv.elf_levels) {
+      inventoryRef.current = {
+        ...refInv,
+        ...statsInv,
+        elf_levels: inv.elf_levels,
+        echo_active: inv.echo_active,
+      };
+    }
     const levelMulti = getLevelMultiplier(currentLevel);
     const buffs = buffRef.current || {};
     const now = Date.now();
@@ -3166,7 +3203,14 @@ const GiftTapGame = () => {
           ? 100
           : Number(ea.durability) || 0;
       if (dur > 0) {
-        const em = echoMultiplier(ea.rarity || ea.rarityKey, ea.level || 1);
+        const assetId = String(ea.asset_id || ea.assetId || '').trim();
+        const levelFromMap = assetId ? getElfLevel(inv, assetId) : 1;
+        const levelFromActive = Math.max(1, Math.floor(Number(ea.level) || 1));
+        const echoLevel = Math.max(levelFromMap, levelFromActive);
+        const em = echoMultiplier(
+          ea.rarity || ea.rarityKey || 'common',
+          echoLevel,
+        );
         if (em > 1) echoMulti = em;
       }
     }
@@ -4890,10 +4934,21 @@ const GiftTapGame = () => {
           method: method === 'both' ? 'both' : 'sol',
           txSignature: signature,
         });
+        // Live SOL on Gift Tap chip after wall climb payment
+        try {
+          await fetchBalances();
+        } catch {
+          /* ignore */
+        }
 
       } catch (err) {
         console.error("SOL Payment Error:", err);
         notify(`Transaction Failed: ${err.message || "An error occurred during the SOL payment."}`);
+        try {
+          await fetchBalances();
+        } catch {
+          /* ignore */
+        }
       }
       return;
     }
@@ -5303,9 +5358,6 @@ const GiftTapGame = () => {
       const baseFee = 800000 / 1e9;
       const baseFeeWithBuffer = baseFee * 1.25; // Your 25% safety buffer
 
-      // 2. Update UI (This part is also working)
-      setBalances(prev => ({ ...prev, sol: realSol }));
-
       const getTokenBal = async (mint) => {
         try {
           const ata = getAssociatedTokenAddressSync(mint, pubKey);
@@ -5316,12 +5368,13 @@ const GiftTapGame = () => {
 
       const realUsdc = await getTokenBal(usdcMint);
 
-      setBalances({
+      // Preserve G2U credit — never zero it on SOL refresh
+      setBalances((prev) => ({
+        ...prev,
         sol: realSol,
-        G2U: 0,
-        G2Ushards: balance, // Pulls from your 'balance' state
+        G2Ushards: balance,
         usdc: realUsdc,
-      });
+      }));
 
       // Set Fees separately
       setTransactionCosts({
@@ -5343,6 +5396,31 @@ const GiftTapGame = () => {
       fetchBalances();
     }
   }, [isModalOpen, playerWallet, isDataLoaded, fetchBalances, showSettings]);
+
+  // Deposit (Receive): poll live SOL while open; refresh once on close
+  useEffect(() => {
+    if (!isReceiveOpen || !playerWallet) return;
+    fetchBalances();
+    const id = setInterval(() => {
+      fetchBalances();
+    }, 6000);
+    return () => {
+      clearInterval(id);
+      fetchBalances();
+    };
+  }, [isReceiveOpen, playerWallet, fetchBalances]);
+
+  // When app tab becomes visible again (after external deposit), re-read chain SOL
+  useEffect(() => {
+    if (!playerWallet || !isDataLoaded) return;
+    const onVis = () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+        fetchBalances();
+      }
+    };
+    document.addEventListener('visibilitychange', onVis);
+    return () => document.removeEventListener('visibilitychange', onVis);
+  }, [playerWallet, isDataLoaded, fetchBalances]);
 
   /** Phrase in RAM, or password → Edge unlock (JWT alone never drains). */
   const ensureWalletSecret = async (promptMsg) => {
@@ -5434,8 +5512,18 @@ const GiftTapGame = () => {
           // 6. Send and Confirm
           const signature = await sendAndConfirmTransaction(connection, transaction, [playerKeypair]);
 
-          // 7. Update UI Local State
-          setBalances(prev => ({ ...prev, sol: prev.sol - parseFloat(withdrawAmount) - 0.0005 }));
+          // 7. Update UI from chain (accurate fees / priority) — not optimistic only
+          try {
+            await fetchBalances();
+          } catch {
+            setBalances((prev) => ({
+              ...prev,
+              sol: Math.max(
+                0,
+                (Number(prev.sol) || 0) - parseFloat(withdrawAmount) - 0.0005,
+              ),
+            }));
+          }
           // 🚨 FIX 3: Match marketplace success state payload
           setTxStatus({ show: true, loading: false, message: '✅ Withdrawal successful!', success: true });
           
@@ -5447,6 +5535,11 @@ const GiftTapGame = () => {
 
       } catch (err) {
           console.error("Withdrawal Error:", err);
+          try {
+            await fetchBalances();
+          } catch {
+            /* ignore */
+          }
           // 🚨 FIX 5: Ensure error state matches marketplace payload structure
           setTxStatus({ show: true, loading: false, message: `❌ Error: ${err.message}`, success: false });
       }
@@ -6879,13 +6972,41 @@ const GiftTapGame = () => {
                 bumpEnergyEpoch={bumpEnergyEpoch}
                 flushPendingTaps={flushPendingTaps}
                 stats={stats}
-                setStats={setStats}
+                setStats={(updater) => {
+                  // Keep inventoryRef in sync when Backpack NFT level-up / activate writes inventory
+                  setStats((prev) => {
+                    const next =
+                      typeof updater === 'function' ? updater(prev) : updater;
+                    if (next?.inventory && typeof next.inventory === 'object') {
+                      inventoryRef.current = {
+                        ...(inventoryRef.current || {}),
+                        ...next.inventory,
+                        elf_levels: {
+                          ...(inventoryRef.current?.elf_levels || {}),
+                          ...(next.inventory.elf_levels || {}),
+                        },
+                        ...(next.inventory.echo_active !== undefined
+                          ? { echo_active: next.inventory.echo_active }
+                          : {}),
+                      };
+                    }
+                    return next;
+                  });
+                }}
                 player={player}
                 playerWallet={playerWallet}
                 decryptedPhrase={decryptedPhrase}
                 maxUnlockedLevel={maxUnlockedLevel}
                 initialTab={shopFocusTab || undefined}
                 onInitialTabConsumed={() => setShopFocusTab(null)}
+                onChainBalanceChange={(info) => {
+                  const sol = Number(info?.sol);
+                  if (Number.isFinite(sol)) {
+                    setBalances((prev) => ({ ...prev, sol }));
+                  } else {
+                    fetchBalances();
+                  }
+                }}
               />
             )}
 
@@ -7688,6 +7809,14 @@ const GiftTapGame = () => {
                           }));
                         }}
                         notify={notify}
+                        onChainBalanceChange={(info) => {
+                          const sol = Number(info?.sol);
+                          if (Number.isFinite(sol)) {
+                            setBalances((prev) => ({ ...prev, sol }));
+                          } else {
+                            fetchBalances();
+                          }
+                        }}
                         onOpenShopNfts={() => {
                           setIsModalOpen(false);
                           setShowSettings(false);
@@ -7750,11 +7879,26 @@ const GiftTapGame = () => {
 
           {/* Receive Pop-up */}
           {isReceiveOpen && (
-            <div style={styles.modalOverlay} onClick={() => setIsReceiveOpen(false)}>
+            <div
+              style={styles.modalOverlay}
+              onClick={() => {
+                setIsReceiveOpen(false);
+                fetchBalances();
+              }}
+            >
               <div style={styles.modalContent} onClick={e => e.stopPropagation()}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
                   <h3 style={{ color: '#fff', margin: 0 }}>Receive Assets</h3>
-                  <button onClick={() => {setIsReceiveOpen(false); setIsModalOpen(true); }} style={{ background: 'none', border: 'none', color: '#888', fontSize: '20px' }}>✕</button>
+                  <button
+                    onClick={() => {
+                      setIsReceiveOpen(false);
+                      fetchBalances();
+                      setIsModalOpen(true);
+                    }}
+                    style={{ background: 'none', border: 'none', color: '#888', fontSize: '20px' }}
+                  >
+                    ✕
+                  </button>
                 </div>
                 
                 {/* QR Code Section */}

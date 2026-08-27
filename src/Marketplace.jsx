@@ -165,7 +165,7 @@ function ShopItemIcon({ item, size = 52, variant = 'row' }) {
   );
 }
 
-const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, bumpEnergyEpoch, flushPendingTaps, player, tgUser, playerWallet, decryptedPhrase, initialTab, onInitialTabConsumed, maxUnlockedLevel = 4 }) => {
+const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, bumpEnergyEpoch, flushPendingTaps, player, tgUser, playerWallet, decryptedPhrase, initialTab, onInitialTabConsumed, maxUnlockedLevel = 4, onChainBalanceChange = null }) => {
   const user = player || tgUser;
   // Shop hub first — show ALL options (Free / Premium / NFT / Backpack) before any list
   const [activeTab, setActiveTab] = useState(initialTab || 'home');
@@ -309,6 +309,34 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, bumpEner
     }
   }, [stats?.inventory, stats?.daily_usage]);
 
+  /** Keep Gift Tap HUD SOL in sync whenever Marketplace learns a new chain balance */
+  const applyWalletSol = React.useCallback(
+    (sol) => {
+      const n = Number(sol);
+      if (!Number.isFinite(n)) return;
+      setWalletSol(n);
+      if (typeof onChainBalanceChange === 'function') {
+        onChainBalanceChange({ sol: n });
+      }
+    },
+    [onChainBalanceChange],
+  );
+
+  const refreshWalletSol = React.useCallback(
+    async (addrOverride) => {
+      const addr = String(addrOverride || playerWallet || '').trim();
+      if (!addr || addr.length < 32) return null;
+      try {
+        const sol = await getWalletSolBalance(addr);
+        applyWalletSol(sol);
+        return sol;
+      } catch {
+        return null;
+      }
+    },
+    [playerWallet, applyWalletSol],
+  );
+
   // Refresh SOL when player opens NFTs tab (or wallet address changes)
   useEffect(() => {
     if (activeTab !== 'nft') return;
@@ -321,7 +349,7 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, bumpEner
     setWalletSolLoading(true);
     getWalletSolBalance(addr)
       .then((sol) => {
-        if (!cancelled) setWalletSol(sol);
+        if (!cancelled) applyWalletSol(sol);
       })
       .catch(() => {
         if (!cancelled) setWalletSol(null);
@@ -332,7 +360,13 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, bumpEner
     return () => {
       cancelled = true;
     };
-  }, [activeTab, playerWallet]);
+  }, [activeTab, playerWallet, applyWalletSol]);
+
+  // Also refresh when opening Premium (SOL boosts) so HUD isn't stale before buy
+  useEffect(() => {
+    if (activeTab !== 'premium') return;
+    refreshWalletSol();
+  }, [activeTab, refreshWalletSol]);
 
   // NEW: Helper to get the current date in UTC format (YYYY-MM-DD)
   // This ensures everyone resets at the exact same global moment.
@@ -1021,7 +1055,7 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, bumpEner
       if (!signerAddress) throw new Error('No game wallet found on this account.');
 
       const { sol } = await assertWalletCanMintStar(signerAddress);
-      setWalletSol(sol);
+      applyWalletSol(sol);
 
       setTxStatus({
         show: true,
@@ -1034,7 +1068,7 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, bumpEner
 
       try {
         const after = await getWalletSolBalance(signerAddress);
-        setWalletSol(after);
+        applyWalletSol(after);
       } catch {
         /* ignore */
       }
@@ -1055,7 +1089,7 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, bumpEner
           playerWallet;
         if (addr) {
           const sol = await getWalletSolBalance(String(addr));
-          setWalletSol(sol);
+          applyWalletSol(sol);
         }
       } catch {
         /* ignore */
@@ -1116,7 +1150,7 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, bumpEner
       }
 
       const { sol } = await assertWalletCanMintLocksmith(signerAddress);
-      setWalletSol(sol);
+      applyWalletSol(sol);
 
       setTxStatus({
         show: true,
@@ -1131,7 +1165,7 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, bumpEner
       // Refresh balance after successful mint
       try {
         const after = await getWalletSolBalance(signerAddress);
-        setWalletSol(after);
+        applyWalletSol(after);
       } catch {
         /* ignore */
       }
@@ -1153,7 +1187,7 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, bumpEner
           playerWallet;
         if (addr) {
           const sol = await getWalletSolBalance(String(addr));
-          setWalletSol(sol);
+          applyWalletSol(sol);
         }
       } catch {
         /* ignore */
@@ -1229,7 +1263,7 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, bumpEner
       });
             const result = await mintFateWave1(decryptedPhrase, rarityKey);
       try {
-        setWalletSol(await getWalletSolBalance(signerAddress));
+        applyWalletSol(await getWalletSolBalance(signerAddress));
       } catch {
         /* ignore */
       }
@@ -1262,7 +1296,7 @@ Luck jackpot active · Pack → NFT to see it.`,
       try {
         const addr =
           (decryptedPhrase && publicKeyFromSecret(decryptedPhrase)) || playerWallet;
-        if (addr) setWalletSol(await getWalletSolBalance(String(addr)));
+        if (addr) applyWalletSol(await getWalletSolBalance(String(addr)));
       } catch {
         /* ignore */
       }
@@ -1337,7 +1371,7 @@ Luck jackpot active · Pack → NFT to see it.`,
             const result = await mintEchoWave1(decryptedPhrase, rarityKey);
       try {
         const after = await getWalletSolBalance(signerAddress);
-        setWalletSol(after);
+        applyWalletSol(after);
       } catch {
         /* ignore */
       }
@@ -1431,7 +1465,7 @@ Tap multi active · Pack → NFT to see it.`,
       const result = await mintRushWave1(decryptedPhrase, rarityKey);
       try {
         const after = await getWalletSolBalance(signerAddress);
-        setWalletSol(after);
+        applyWalletSol(after);
       } catch { /* ignore */ }
       try {
         const act = await secureRushActivate({
@@ -1520,7 +1554,7 @@ Daily cap active · Pack → NFT to see it.`,
       const result = await mintShadowWave1(decryptedPhrase, rarityKey);
       try {
         const after = await getWalletSolBalance(signerAddress);
-        setWalletSol(after);
+        applyWalletSol(after);
       } catch { /* ignore */ }
       try {
         const act = await secureShadowActivate({
@@ -1681,6 +1715,12 @@ Daily claim active · Pack → NFT to see it.`,
             has_made_purchase: true,
           });
         }
+        try {
+          const after = await connection.getBalance(playerKeypair.publicKey);
+          applyWalletSol(after / 1e9);
+        } catch {
+          await refreshWalletSol(playerKeypair.publicKey.toString());
+        }
         setTxStatus({
           show: true,
           loading: false,
@@ -1718,11 +1758,23 @@ Daily claim active · Pack → NFT to see it.`,
         });
       }
 
+      try {
+        const after = await connection.getBalance(playerKeypair.publicKey);
+        applyWalletSol(after / 1e9);
+      } catch {
+        await refreshWalletSol(playerKeypair.publicKey.toString());
+      }
+
       setTxStatus({ show: true, loading: false, message: `✅ Success! ${item.name} purchased. Check your Tasks to claim your reward!`, success: true });
       setTimeout(() => setTxStatus(prev => ({ ...prev, show: false })), 3000);
 
     } catch (err) {
       console.error("Purchase Error:", err);
+      try {
+        await refreshWalletSol();
+      } catch {
+        /* ignore */
+      }
       setTxStatus({ show: true, loading: false, message: `❌ Error: ${err.message}`, success: false });
     }
   };
@@ -3394,7 +3446,22 @@ Daily claim active · Pack → NFT to see it.`,
                       }));
                     }
                   }}
-                  notify={(msg) => window.alert?.(msg)}
+                  notify={(msg, okOrOpts) => {
+                    const ok =
+                      typeof okOrOpts === 'boolean'
+                        ? okOrOpts
+                        : okOrOpts?.success !== false;
+                    const m = String(msg || '');
+                    setTxStatus({
+                      show: true,
+                      loading: false,
+                      message: m,
+                      success: !!ok,
+                    });
+                  }}
+                  onChainBalanceChange={(info) => {
+                    applyWalletSol(info?.sol);
+                  }}
                   onOpenShopNfts={() => setActiveTab('nft')}
                   onSellNft={() => setActiveTab('nft')}
                 />

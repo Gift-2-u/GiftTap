@@ -1,6 +1,9 @@
 /**
- * Mirror of airdrop board weights (L5+). Used only by snapshot scripts.
- * Keep in sync with supabase/functions/_shared/airdropScore.ts
+ * Snapshot math for scripts ONLY (L5 + weekly + monthly helpers).
+ * No imports from src/ — never pull weeklyQuestLogic / GiftTap.
+ *
+ * L5: keep in sync with airdropScore / airdrop board %.
+ * Weekly: top 100 D/G/S/B pots; rank 101+ bronze badge only (0 G2U).
  */
 
 export const L5_MAX_UNLOCKED = 9;
@@ -105,4 +108,160 @@ export function l5AmountFromBonus(baseG2u, bonusPct) {
   const base = Math.max(0, Number(baseG2u) || 0);
   const pct = Math.max(0, Number(bonusPct) || 0);
   return Math.round(base * (1 + pct / 100) * 1e6) / 1e6;
+}
+
+// ---------------------------------------------------------------------------
+// Weekly $G2U (same rules as game board + SQL weekly_badge_tier_for_rank)
+// ---------------------------------------------------------------------------
+
+export const WEEKLY_G2U_TOP_N = 100;
+export const WEEKLY_PERCENT_FROM_WEEK = '2026-W35';
+/** End-of-week badge floor = 15% × 1000 × 7 */
+export const WEEKLY_BADGE_FLOOR_END = 1050;
+export const WEEKLY_DAILY_REFERENCE = 1000;
+export const WEEKLY_FLOOR_PCT = 0.15;
+
+/** ISO weekday UTC: Monday=1 … Sunday=7 */
+export function utcIsoWeekDayNumber(d = new Date()) {
+  return d.getUTCDay() || 7;
+}
+
+/** Live main-board floor (same as Gift Tap Ranks → Weekly). */
+export function weeklyBoardFloorLive(dayOfWeek = utcIsoWeekDayNumber()) {
+  const day = Math.max(1, Math.min(7, Math.floor(Number(dayOfWeek) || 1)));
+  return Math.floor(WEEKLY_DAILY_REFERENCE * WEEKLY_FLOOR_PCT * day);
+}
+
+export function weekUsesPercentBadges(weekId) {
+  const w = String(weekId || '');
+  if (!/^\d{4}-W\d{2}$/.test(w)) return false;
+  return w >= WEEKLY_PERCENT_FROM_WEEK;
+}
+
+export function weeklyPaidTierCounts(paidN) {
+  const n = Math.max(0, Math.floor(Number(paidN) || 0));
+  if (n < 1) return { diamond: 0, gold: 0, silver: 0, bronze: 0 };
+
+  let diamond = Math.max(n >= 1 ? 1 : 0, Math.round(n * 0.1));
+  let gold = Math.max(n >= 2 ? 1 : 0, Math.round(n * 0.15));
+  let silver = Math.max(n >= 3 ? 1 : 0, Math.round(n * 0.25));
+
+  let over = diamond + gold + silver - n;
+  if (over > 0) {
+    const cut = (v) => {
+      const take = Math.min(v, over);
+      over -= take;
+      return v - take;
+    };
+    silver = cut(silver);
+    gold = cut(gold);
+    diamond = cut(diamond);
+  }
+
+  return {
+    diamond,
+    gold,
+    silver,
+    bronze: Math.max(0, n - diamond - gold - silver),
+  };
+}
+
+export function weeklyBadgeTierForRank(rank, totalEligible, weekId) {
+  const r = Math.floor(Number(rank) || 0);
+  const n = Math.max(0, Math.floor(Number(totalEligible) || 0));
+  if (r < 1) return null;
+
+  if (!weekUsesPercentBadges(weekId)) {
+    if (n >= 1 && r > n) return null;
+    if (r === 1) return 'diamond';
+    if (r === 2) return 'gold';
+    if (r === 3) return 'silver';
+    if (r >= 4 && r <= 10) return 'bronze';
+    return null;
+  }
+
+  if (n < 1 || r > n) return null;
+  if (r > WEEKLY_G2U_TOP_N) return 'bronze';
+
+  const paidN = Math.min(WEEKLY_G2U_TOP_N, n);
+  const { diamond, gold, silver } = weeklyPaidTierCounts(paidN);
+  if (r <= diamond) return 'diamond';
+  if (r <= diamond + gold) return 'gold';
+  if (r <= diamond + gold + silver) return 'silver';
+  return 'bronze';
+}
+
+function round6(n) {
+  return Math.round(Number(n) * 1e6) / 1e6;
+}
+
+/**
+ * Top 100 only get G2U: pool/4 per tier, equal split within tier.
+ * Rank 101+ eligible → no row (Bronze badge via week SQL snapshot only).
+ */
+export function weeklyG2uAllocationsFromEligible(sortedEligible, poolAmt, weekId) {
+  const list = Array.isArray(sortedEligible) ? sortedEligible : [];
+  const n = list.length;
+  const pool = Math.max(0, Number(poolAmt) || 0);
+  if (n < 1 || pool <= 0) return [];
+
+  const pot = round6(pool / 4);
+  const byTier = { diamond: [], gold: [], silver: [], bronze: [] };
+
+  for (let i = 0; i < n; i++) {
+    const rank = i + 1;
+    if (rank > WEEKLY_G2U_TOP_N) break;
+    const tier = weeklyBadgeTierForRank(rank, n, weekId);
+    if (!tier || !byTier[tier]) {
+      throw new Error(
+        `weeklyG2uAllocations: bad tier=${tier} rank=${rank} n=${n} week=${weekId}`,
+      );
+    }
+    byTier[tier].push({ ...list[i], rank, tier });
+  }
+
+  const out = [];
+  for (const tier of ['diamond', 'gold', 'silver', 'bronze']) {
+    const group = byTier[tier];
+    if (!group.length) continue;
+    const each = round6(pot / group.length);
+    const dust = round6(pot - round6(each * group.length));
+    group.forEach((r, idx) => {
+      const amount = idx === 0 ? round6(each + dust) : each;
+      if (!(amount > 0)) {
+        throw new Error(`weeklyG2uAllocations: bad amount ${tier} rank ${r.rank}`);
+      }
+      const id = String(r.telegram_id || '').trim();
+      if (!id) throw new Error('weeklyG2uAllocations: missing telegram_id');
+      out.push({
+        telegram_id: id,
+        username: r.username ?? null,
+        source: 'weekly',
+        period_id: String(weekId),
+        amount,
+        weight: Number(r.weight) || 0,
+        meta: {
+          formula: 'pool/4 equal split per tier among top 100',
+          pool,
+          pot,
+          tier,
+          rank: r.rank,
+          tier_count: group.length,
+          each_before_dust: each,
+          top_n: WEEKLY_G2U_TOP_N,
+          eligible: n,
+          snapshot_at: new Date().toISOString(),
+        },
+      });
+    });
+  }
+
+  const seen = new Set();
+  for (const a of out) {
+    if (seen.has(a.telegram_id)) {
+      throw new Error(`weeklyG2uAllocations: duplicate ${a.telegram_id}`);
+    }
+    seen.add(a.telegram_id);
+  }
+  return out;
 }

@@ -56,6 +56,16 @@ serve(async (req) => {
       if (level < 1) level = 1;
       if (level > 5) level = 5;
       const assetId = String(body.asset_id || body.assetId || "").trim() || null;
+      // Prefer inventory.elf_levels (set by elf-level-up) over a stale body level
+      if (assetId) {
+        const map = inv.elf_levels;
+        if (map && typeof map === "object") {
+          const fromMap = Math.floor(
+            Number((map as Record<string, unknown>)[assetId]) || 0,
+          );
+          if (fromMap >= 1) level = Math.max(level, Math.min(5, fromMap));
+        }
+      }
       const prev =
         inv.echo_active && typeof inv.echo_active === "object"
           ? (inv.echo_active as Record<string, unknown>)

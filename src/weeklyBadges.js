@@ -143,6 +143,14 @@ export const WEEKLY_BADGE_CUTS = {
   silverPct: 0.25,
 };
 
+/**
+ * Paid $G2U weekly pool seats (D/G/S/B pots). Rank 101+ eligible → Bronze badge only, no pool share.
+ */
+export const WEEKLY_G2U_TOP_N = 100;
+
+/** First weekly pool (adjust later): 500k → 125k per badge tier. */
+export const WEEKLY_G2U_POOL_DEFAULT = 500_000;
+
 /** ISO week strings compare lexicographically for YYYY-Www */
 export function weekUsesPercentBadges(weekId) {
   const w = String(weekId || '');
@@ -209,9 +217,11 @@ export function badgeTierForWeeklyRank(rank, totalEligible, weekId) {
     return null;
   }
 
-  // %-era: rank seats + round(N×%) via weeklyBadgeTierCounts
+  // %-era: D/G/S/B cuts among top min(100, N); rank 101+ eligible → Bronze only
   if (n < 1 || r > n) return null;
-  const { diamond, gold, silver } = weeklyBadgeTierCounts(n);
+  if (r > WEEKLY_G2U_TOP_N) return 'bronze';
+  const paidN = Math.min(WEEKLY_G2U_TOP_N, n);
+  const { diamond, gold, silver } = weeklyBadgeTierCounts(paidN);
   if (r <= diamond) return 'diamond';
   if (r <= diamond + gold) return 'gold';
   if (r <= diamond + gold + silver) return 'silver';

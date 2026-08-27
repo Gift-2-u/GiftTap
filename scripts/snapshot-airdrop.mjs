@@ -7,9 +7,15 @@
  *   # amount = base × (1 + bonus%/100)  e.g. 500000 + 30% → 650000
  *   node scripts/snapshot-airdrop.mjs --type l5 --pool 500000 --period launch
  *
- *   # Weekly / monthly: --pool is shared pot split by score weight
- *   node scripts/snapshot-airdrop.mjs --type weekly --pool 50000 --period 2026-W35
- *   node scripts/snapshot-airdrop.mjs --type monthly --pool 200000 --period 2026-08
+ *   # Weekly: --pool split into 4 equal tier pots (default 500k → 125k each).
+ *   # Top 100 eligible share D/G/S/B pots; rank 101+ get Bronze badge only (0 G2U).
+ *   node scripts/snapshot-airdrop.mjs --type weekly --pool 500000 --period 2026-W35
+ *
+ *   # Monthly: 1.5M pool = 100% of season board total.
+ *   # prize = pool × (player season_shards / sum of all season_shards in snapshot)
+ *   # e.g. 70k / 650k = 10.7692% → 1_500_000 × 0.107692 ≈ 161_538 G2U
+ *   node scripts/snapshot-airdrop.mjs --type monthly --pool 1500000 --period 2026-08
+ *   # --pool defaults to 1500000 if omitted for monthly
  *
  * Dry run (no writes):
  *   node scripts/snapshot-airdrop.mjs --type l5 --pool 500000 --dry
@@ -24,6 +30,13 @@ import {
   l5Weight,
   l5AmountFromBonus,
   L5_MAX_UNLOCKED,
+  WEEKLY_G2U_TOP_N,
+  WEEKLY_BADGE_FLOOR_END,
+  weeklyBoardFloorLive,
+  utcIsoWeekDayNumber,
+  weeklyG2uAllocationsFromEligible,
+  weeklyBadgeTierForRank,
+  weeklyPaidTierCounts,
 } from './lib/airdropWeights.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -80,7 +93,15 @@ if (!url || !key) {
 }
 
 const type = String(arg('type', '')).toLowerCase();
-const pool = Number(arg('pool', 0));
+const MONTHLY_DEFAULT_POOL = 1_500_000;
+const poolArg = arg('pool', null);
+const pool = Number(
+  poolArg != null
+    ? poolArg
+    : type === 'monthly'
+      ? MONTHLY_DEFAULT_POOL
+      : 0,
+);
 const dry = hasFlag('dry');
 let period = arg('period', null);
 
@@ -89,7 +110,11 @@ if (!['l5', 'weekly', 'monthly'].includes(type)) {
   process.exit(1);
 }
 if (!Number.isFinite(pool) || pool <= 0) {
-  console.error('--pool must be a positive G2U amount');
+  console.error(
+    type === 'monthly'
+      ? '--pool must be a positive G2U amount (default 1500000 for monthly)'
+      : '--pool must be a positive G2U amount',
+  );
   process.exit(1);
 }
 if (!period) {
@@ -165,44 +190,104 @@ async function buildL5() {
   return rows;
 }
 
+/**
+ * Same sources as Gift Tap weekly board: MERGE ledger + players for the week
+ * (max score per id), then apply floor. Default floor = LIVE board floor
+ * (matches Ranks UI). End-of-week official lock: --floor 1050.
+ */
 async function buildWeekly() {
+  const liveFloor = weeklyBoardFloorLive(utcIsoWeekDayNumber());
+  const floorArg = arg('floor', null);
+  const floor =
+    floorArg != null ? Number(floorArg) : liveFloor;
+  if (!Number.isFinite(floor) || floor < 0) {
+    throw new Error(`Invalid --floor ${floor}`);
+  }
+  console.log(
+    `Weekly floor (eligible if score ≥): ${floor}` +
+      (floorArg == null
+        ? ` (live board floor; end-of-week use --floor ${WEEKLY_BADGE_FLOOR_END})`
+        : ''),
+  );
+
+  const byId = new Map();
+  const absorb = (id, username, score) => {
+    const tid = String(id || '').trim();
+    if (!tid) return;
+    const s = Math.max(0, Number(score) || 0);
+    if (s <= 0) return;
+    const prev = byId.get(tid);
+    if (!prev || s > prev.weight) {
+      byId.set(tid, {
+        telegram_id: tid,
+        username: username || prev?.username || null,
+        weight: s,
+      });
+    } else if (prev && username && !prev.username) {
+      byId.set(tid, { ...prev, username });
+    }
+  };
+
   const { data: led, error } = await sb
     .from('weekly_score_ledger')
     .select('telegram_id, username, score')
     .eq('week_id', period)
     .gt('score', 0);
   if (error) throw error;
-  const byId = new Map();
   for (const r of led || []) {
-    const id = String(r.telegram_id || '').trim();
-    if (!id) continue;
-    const score = Math.max(0, Number(r.score) || 0);
-    if (score <= 0) continue;
-    const prev = byId.get(id);
-    if (!prev || score > prev.weight) {
-      byId.set(id, {
-        telegram_id: id,
-        username: r.username || null,
-        weight: score,
-      });
-    }
+    absorb(r.telegram_id, r.username, r.score);
   }
-  // Fallback: players.weekly_shards for this week
-  if (byId.size === 0) {
-    const { data: pl } = await sb
-      .from('players')
-      .select('telegram_id, username, weekly_shards, weekly_week_id')
-      .eq('weekly_week_id', period)
-      .gt('weekly_shards', 0);
-    for (const p of pl || []) {
-      byId.set(String(p.telegram_id), {
-        telegram_id: String(p.telegram_id),
-        username: p.username || null,
-        weight: Number(p.weekly_shards) || 0,
-      });
-    }
+
+  // Always merge players column for same week (game board does this too)
+  const { data: pl, error: pErr } = await sb
+    .from('players')
+    .select('telegram_id, username, weekly_shards, weekly_week_id')
+    .eq('weekly_week_id', period)
+    .gt('weekly_shards', 0);
+  if (pErr) throw pErr;
+  for (const p of pl || []) {
+    absorb(p.telegram_id, p.username, p.weekly_shards);
   }
-  return [...byId.values()].filter((r) => r.weight > 0);
+
+  const eligible = [...byId.values()]
+    .filter((r) => r.weight >= floor)
+    .sort(
+      (a, b) =>
+        b.weight - a.weight ||
+        String(a.telegram_id).localeCompare(String(b.telegram_id)),
+    );
+
+  console.log(
+    `Merged scores: ${byId.size} players with score>0 · eligible ≥${floor}: ${eligible.length}`,
+  );
+  return eligible;
+}
+
+function allocationsFromWeekly(sortedEligible, poolAmt, weekId) {
+  const n = sortedEligible.length;
+  const paidN = Math.min(WEEKLY_G2U_TOP_N, n);
+  const seats = weeklyPaidTierCounts(paidN);
+  console.log(
+    `Eligible ${n} · G2U seats among top ${paidN}: D${seats.diamond} G${seats.gold} S${seats.silver} B${seats.bronze}`,
+  );
+  if (n >= 1) {
+    console.log(`  rank1 → ${weeklyBadgeTierForRank(1, n, weekId)}`);
+  }
+  if (n >= 101) {
+    console.log(`  rank101 → ${weeklyBadgeTierForRank(101, n, weekId)}`);
+  }
+
+  const out = weeklyG2uAllocationsFromEligible(sortedEligible, poolAmt, weekId);
+  const pot = round6(poolAmt / 4);
+  for (const tier of ['diamond', 'gold', 'silver', 'bronze']) {
+    const group = out.filter((a) => a.meta?.tier === tier);
+    if (!group.length) {
+      console.log(`  ${tier}: 0 players (pot ${pot} unused)`);
+      continue;
+    }
+    console.log(`  ${tier}: ${group.length} players · each ≈ ${group[0].amount}`);
+  }
+  return out;
 }
 
 async function buildMonthly() {
@@ -222,7 +307,10 @@ async function main() {
   console.log(
     type === 'l5'
       ? `Snapshot L5 · period=${period} · BASE=${pool} G2U each (+ bonus%) · dry=${dry}`
-      : `Snapshot ${type} · period=${period} · shared pool=${pool} G2U · dry=${dry}`,
+      : type === 'weekly'
+        ? `Snapshot weekly · period=${period} · pool=${pool} (÷4 pots) · top ${WEEKLY_G2U_TOP_N} · dry=${dry}`
+        : `Snapshot monthly · period=${period} · pool=${pool} G2U (=100% of season total) · dry=${dry}` +
+          (poolArg == null ? ' [default --pool 1500000]' : ''),
   );
 
   let weighted =
@@ -259,14 +347,23 @@ async function main() {
         },
       };
     });
+  } else if (type === 'weekly') {
+    allocations = allocationsFromWeekly(weighted, pool, period);
   } else {
+    // Monthly: pool (default 1.5M) = 100% of season board total.
+    // amount = pool × (player season_shards / sum season_shards)
     const sumW = weighted.reduce((s, r) => s + r.weight, 0);
     if (sumW <= 0) {
-      console.error('Zero total weight — abort');
+      console.error('Zero total season_shards — abort');
       process.exit(2);
     }
+    console.log(
+      `Monthly formula: prize = ${pool} × (season_shards / ${sumW}) · players with score>0: ${weighted.length}`,
+    );
     allocations = weighted.map((r) => {
-      const amount = round6((pool * r.weight) / sumW);
+      const share = r.weight / sumW;
+      const sharePct = round6(share * 100);
+      const amount = round6(pool * share);
       return {
         telegram_id: r.telegram_id,
         username: r.username,
@@ -275,8 +372,11 @@ async function main() {
         amount: Math.max(amount, 0.000001),
         weight: r.weight,
         meta: {
+          formula: 'pool * (season_shards / sum_season_shards)',
           pool,
-          sum_weight: sumW,
+          season_shards: r.weight,
+          sum_season_shards: sumW,
+          share_pct: sharePct,
           snapshot_at: new Date().toISOString(),
         },
       };
@@ -286,23 +386,32 @@ async function main() {
     if (Math.abs(dust) > 0 && allocations.length) {
       allocations.sort((a, b) => b.weight - a.weight);
       allocations[0].amount = round6(allocations[0].amount + dust);
+      if (allocations[0].meta) {
+        allocations[0].meta.dust_adjusted = dust;
+      }
     }
   }
 
   const totalPay = allocations.reduce((s, a) => s + a.amount, 0);
   console.log(`Players: ${allocations.length}`);
   console.log(`Total $G2U to pay (if all claim): ${round6(totalPay)}`);
+  // Monthly season board currently ~9 eligible; show top 9. L5/weekly keep top 5.
+  const topN = type === 'monthly' ? 9 : 5;
   console.log(
-    `Top 5:`,
+    `Top ${topN}:`,
     allocations
       .slice()
       .sort((a, b) => b.amount - a.amount)
-      .slice(0, 5)
-      .map(
-        (a) =>
-          `${a.username || a.telegram_id.slice(0, 8)} → ${a.amount}` +
-          (type === 'l5' ? ` (${a.weight}%)` : ''),
-      ),
+      .slice(0, topN)
+      .map((a) => {
+        const who = a.username || a.telegram_id.slice(0, 8);
+        if (type === 'l5') return `${who} → ${a.amount} (${a.weight}%)`;
+        if (type === 'monthly') {
+          const pct = a.meta?.share_pct ?? round6((a.weight / (a.meta?.sum_season_shards || 1)) * 100);
+          return `${who} → ${a.amount} (${pct}% of pool · ${a.weight} shards)`;
+        }
+        return `${who} → ${a.amount}`;
+      }),
   );
 
   if (dry) {

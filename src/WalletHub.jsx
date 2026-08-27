@@ -928,6 +928,17 @@ export function GameWalletPanel({ onClose }) {
             onInventoryChange={(inv) => {
               setRow((prev) => (prev ? { ...prev, inventory: inv } : prev));
             }}
+            notify={(msg, okOrOpts) => {
+              const ok =
+                typeof okOrOpts === 'boolean'
+                  ? okOrOpts
+                  : okOrOpts?.success !== false;
+              setAppNotice({
+                show: true,
+                message: String(msg || ''),
+                success: !!ok,
+              });
+            }}
             onOpenShopNfts={() => {
               if (typeof window !== 'undefined') window.location.href = '/play';
             }}

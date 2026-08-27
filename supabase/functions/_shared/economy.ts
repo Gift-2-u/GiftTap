@@ -104,11 +104,14 @@ export function tierFromRank(
 
   const n = Math.max(0, Math.floor(Number(totalEligible) || 0));
   if (n < 1 || r > n) return null;
-  // Match SQL weekly_badge_tier_for_rank + client weeklyBadgeTierCounts
-  let diamond = Math.max(n >= 1 ? 1 : 0, Math.round(n * 0.1));
-  let gold = Math.max(n >= 2 ? 1 : 0, Math.round(n * 0.15));
-  let silver = Math.max(n >= 3 ? 1 : 0, Math.round(n * 0.25));
-  let over = diamond + gold + silver - n;
+  /** Top 100 get D/G/S/B %-cuts; rank 101+ eligible → bronze only (no weekly G2U pot). */
+  const TOP_N = 100;
+  if (r > TOP_N) return "bronze";
+  const paidN = Math.min(TOP_N, n);
+  let diamond = Math.max(paidN >= 1 ? 1 : 0, Math.round(paidN * 0.1));
+  let gold = Math.max(paidN >= 2 ? 1 : 0, Math.round(paidN * 0.15));
+  let silver = Math.max(paidN >= 3 ? 1 : 0, Math.round(paidN * 0.25));
+  let over = diamond + gold + silver - paidN;
   if (over > 0) {
     const cut = (v: number) => {
       const take = Math.min(v, over);
@@ -394,7 +397,10 @@ export function echoMultiplier(rarityKey: string, level = 1): number {
   return ladder[idx] || 1;
 }
 
-/** Read inventory.echo_active → multiplier (1 if none or durability 0). */
+/** Read inventory.echo_active → multiplier (1 if none or durability 0).
+ * Level: max(echo_active.level, elf_levels[asset_id]) so L2+ applies after level-up
+ * for common / rare / epic / legendary (ECHO_MULTI ladders L1–5).
+ */
 export function echoMultiplierFromInv(inv: Record<string, unknown>): number {
   const raw = inv?.echo_active;
   if (!raw || typeof raw !== "object") return 1;
@@ -407,7 +413,16 @@ export function echoMultiplierFromInv(inv: Record<string, unknown>): number {
   if (dur <= 0) return 1;
   const rarity = String(row.rarity || row.rarityKey || "").toLowerCase();
   if (!ECHO_MULTI[rarity]) return 1;
-  return echoMultiplier(rarity, Number(row.level) || 1);
+  let level = Math.max(1, Math.floor(Number(row.level) || 1));
+  const assetId = String(row.asset_id || row.assetId || "").trim();
+  const map = inv?.elf_levels;
+  if (assetId && map && typeof map === "object") {
+    const fromMap = Math.floor(
+      Number((map as Record<string, unknown>)[assetId]) || 0,
+    );
+    if (fromMap >= 1) level = Math.max(level, Math.min(5, fromMap));
+  }
+  return echoMultiplier(rarity, level);
 }
 
 /** Fate (Luck) jackpot ladders — level N unlocks rungs 1..N. Chance is percent. */

@@ -57,15 +57,20 @@ function syncActiveLevel(
       inv.echo_active && typeof inv.echo_active === "object"
         ? (inv.echo_active as Record<string, unknown>)
         : null;
-    inv.echo_active = ensureNftDurabilityOnActivate(
-      {
-        rarity,
-        level,
-        asset_id: assetId,
-        multi: echoMultiplier(rarity, level),
-        activated_at: now},
-      prev,
-    );
+    const prevId = String(prev?.asset_id || prev?.assetId || "").trim();
+    // Update active Echo when this is the focused asset (or none focused yet).
+    // Always rewrite level + multi from the full rarity ladder (common→legendary, L1–5).
+    if (!prevId || prevId === assetId) {
+      inv.echo_active = ensureNftDurabilityOnActivate(
+        {
+          rarity,
+          level,
+          asset_id: assetId,
+          multi: echoMultiplier(rarity, level),
+          activated_at: now},
+        prev,
+      );
+    }
   } else if (kind === "fate") {
     const prev =
       inv.fate_power && typeof inv.fate_power === "object"
