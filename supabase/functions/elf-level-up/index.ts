@@ -10,7 +10,12 @@ import {
   jsonResponse,
   invObj,
   logEconomy,
-  echoMultiplier} from "../_shared/economy.ts";
+  echoMultiplier,
+  rushDailyLimit,
+  shadowHours,
+  PLAYER_ECONOMY_SELECT,
+  instantEconomyPatch,
+} from "../_shared/economy.ts";
 import { ensureNftDurabilityOnActivate } from "../_shared/nftDurability.ts";
 
 const ELF_LEVEL_UP_SOL: Record<string, number[]> = {
@@ -76,41 +81,54 @@ function syncActiveLevel(
       inv.fate_power && typeof inv.fate_power === "object"
         ? (inv.fate_power as Record<string, unknown>)
         : null;
-    inv.fate_power = ensureNftDurabilityOnActivate(
-      {
-        rarity,
-        level,
-        asset_id: assetId,
-        activated_at: now},
-      prev,
-    );
-    inv.fate_active = assetId;
+    const prevId = String(prev?.asset_id || prev?.assetId || "").trim();
+    if (!prevId || prevId === assetId) {
+      inv.fate_power = ensureNftDurabilityOnActivate(
+        {
+          rarity,
+          level,
+          asset_id: assetId,
+          activated_at: now,
+        },
+        prev,
+      );
+      inv.fate_active = assetId;
+    }
   } else if (kind === "rush") {
     const prev =
       inv.rush_active && typeof inv.rush_active === "object"
         ? (inv.rush_active as Record<string, unknown>)
         : null;
-    inv.rush_active = ensureNftDurabilityOnActivate(
-      {
-        rarity,
-        level,
-        asset_id: assetId,
-        activated_at: now},
-      prev,
-    );
+    const prevId = String(prev?.asset_id || prev?.assetId || "").trim();
+    if (!prevId || prevId === assetId) {
+      inv.rush_active = ensureNftDurabilityOnActivate(
+        {
+          rarity,
+          level,
+          asset_id: assetId,
+          daily_cap: rushDailyLimit(rarity, level),
+          activated_at: now},
+        prev,
+      );
+    }
   } else if (kind === "shadow") {
     const prev =
       inv.shadow_active && typeof inv.shadow_active === "object"
         ? (inv.shadow_active as Record<string, unknown>)
         : null;
-    inv.shadow_active = ensureNftDurabilityOnActivate(
-      {
-        rarity,
-        level,
-        asset_id: assetId,
-        activated_at: now},
-      prev,
-    );
+    const prevId = String(prev?.asset_id || prev?.assetId || "").trim();
+    if (!prevId || prevId === assetId) {
+      inv.shadow_active = ensureNftDurabilityOnActivate(
+        {
+          rarity,
+          level,
+          asset_id: assetId,
+          hours: shadowHours(rarity, level),
+          activated_at: now,
+        },
+        prev,
+      );
+    }
   } else if (kind === "locksmith") {
     inv.locksmith_active = {
       level,
@@ -139,7 +157,7 @@ serve(async (req) => {
     const sb = adminClient();
     const { data: row, error } = await sb
       .from("players")
-      .select("inventory")
+      .select(PLAYER_ECONOMY_SELECT)
       .eq("telegram_id", playerId)
       .maybeSingle();
     if (error) throw error;
@@ -163,14 +181,12 @@ serve(async (req) => {
     inv.elf_levels = levels;
     syncActiveLevel(inv, kind, assetId, rarity, toLevel);
 
+    const patch = instantEconomyPatch(row as Record<string, unknown>, inv);
     const { data: updated, error: upErr } = await sb
       .from("players")
-      .update({
-        inventory: inv,
-        last_updated: new Date().toISOString(),
-      })
+      .update(patch)
       .eq("telegram_id", playerId)
-      .select("inventory")
+      .select("inventory, tap_power, max_daily_limit")
       .maybeSingle();
     if (upErr) throw upErr;
 
@@ -186,6 +202,8 @@ serve(async (req) => {
         from_level: fromLevel,
         to_level: toLevel,
         cost_sol: costSol,
+        tap_power: patch.tap_power,
+        max_daily_limit: patch.max_daily_limit,
         tx_signature: txSignature}});
 
     return jsonResponse({
@@ -197,6 +215,11 @@ serve(async (req) => {
       to_level: toLevel,
       cost_sol: costSol,
       inventory: updated?.inventory ?? inv,
+      tap_power:
+        (updated as { tap_power?: number } | null)?.tap_power ?? patch.tap_power,
+      max_daily_limit:
+        (updated as { max_daily_limit?: number } | null)?.max_daily_limit ??
+        patch.max_daily_limit,
       tx_signature: txSignature});
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

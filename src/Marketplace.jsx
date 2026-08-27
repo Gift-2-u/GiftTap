@@ -309,13 +309,19 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, bumpEner
     }
   }, [stats?.inventory, stats?.daily_usage]);
 
-  /** Keep Gift Tap HUD SOL in sync whenever Marketplace learns a new chain balance */
+  /**
+   * Local mint-gate SOL. pushParent=true only after real spend/mint —
+   * tab open must NOT call parent (unstable onChainBalanceChange → render loop / Buy freezes).
+   */
   const applyWalletSol = React.useCallback(
-    (sol) => {
+    (sol, pushParent = true) => {
       const n = Number(sol);
       if (!Number.isFinite(n)) return;
-      setWalletSol(n);
-      if (typeof onChainBalanceChange === 'function') {
+      setWalletSol((prev) => (prev === n ? prev : n));
+      if (
+        pushParent &&
+        typeof onChainBalanceChange === 'function'
+      ) {
         onChainBalanceChange({ sol: n });
       }
     },
@@ -323,12 +329,12 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, bumpEner
   );
 
   const refreshWalletSol = React.useCallback(
-    async (addrOverride) => {
+    async (addrOverride, pushParent = false) => {
       const addr = String(addrOverride || playerWallet || '').trim();
       if (!addr || addr.length < 32) return null;
       try {
         const sol = await getWalletSolBalance(addr);
-        applyWalletSol(sol);
+        applyWalletSol(sol, pushParent);
         return sol;
       } catch {
         return null;
@@ -337,7 +343,7 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, bumpEner
     [playerWallet, applyWalletSol],
   );
 
-  // Refresh SOL when player opens NFTs tab (or wallet address changes)
+  // Refresh SOL when player opens NFTs tab (local only — no parent ping)
   useEffect(() => {
     if (activeTab !== 'nft') return;
     const addr = playerWallet && String(playerWallet).trim();
@@ -349,7 +355,7 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, bumpEner
     setWalletSolLoading(true);
     getWalletSolBalance(addr)
       .then((sol) => {
-        if (!cancelled) applyWalletSol(sol);
+        if (!cancelled) applyWalletSol(sol, false);
       })
       .catch(() => {
         if (!cancelled) setWalletSol(null);
@@ -362,10 +368,10 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, bumpEner
     };
   }, [activeTab, playerWallet, applyWalletSol]);
 
-  // Also refresh when opening Premium (SOL boosts) so HUD isn't stale before buy
+  // Premium tab: local SOL gate only
   useEffect(() => {
     if (activeTab !== 'premium') return;
-    refreshWalletSol();
+    refreshWalletSol(undefined, false);
   }, [activeTab, refreshWalletSol]);
 
   // NEW: Helper to get the current date in UTC format (YYYY-MM-DD)
@@ -1276,7 +1282,14 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, bumpEner
         if (act?.inventory) {
           setLocalInventory(act.inventory);
           if (setStats) {
-            setStats((prev) => ({ ...prev, inventory: act.inventory }));
+            setStats((prev) => ({
+              ...prev,
+              inventory: act.inventory,
+              ...(act.tap_power != null ? { tap_power: act.tap_power } : {}),
+              ...(act.max_daily_limit != null
+                ? { max_daily_limit: act.max_daily_limit }
+                : {}),
+            }));
           }
         }
       } catch (e) {
@@ -1385,7 +1398,14 @@ Luck jackpot active · Pack → NFT to see it.`,
         if (act?.inventory) {
           setLocalInventory(act.inventory);
           if (setStats) {
-            setStats((prev) => ({ ...prev, inventory: act.inventory }));
+            setStats((prev) => ({
+              ...prev,
+              inventory: act.inventory,
+              ...(act.tap_power != null ? { tap_power: act.tap_power } : {}),
+              ...(act.max_daily_limit != null
+                ? { max_daily_limit: act.max_daily_limit }
+                : {}),
+            }));
           }
         }
       } catch (e) {
@@ -1475,7 +1495,16 @@ Tap multi active · Pack → NFT to see it.`,
         });
         if (act?.inventory) {
           setLocalInventory(act.inventory);
-          if (setStats) setStats((prev) => ({ ...prev, inventory: act.inventory }));
+          if (setStats) {
+            setStats((prev) => ({
+              ...prev,
+              inventory: act.inventory,
+              ...(act.tap_power != null ? { tap_power: act.tap_power } : {}),
+              ...(act.max_daily_limit != null
+                ? { max_daily_limit: act.max_daily_limit }
+                : {}),
+            }));
+          }
         }
       } catch (e) {
         console.warn('rush activate after mint', e?.message || e);
@@ -1564,7 +1593,16 @@ Daily cap active · Pack → NFT to see it.`,
         });
         if (act?.inventory) {
           setLocalInventory(act.inventory);
-          if (setStats) setStats((prev) => ({ ...prev, inventory: act.inventory }));
+          if (setStats) {
+            setStats((prev) => ({
+              ...prev,
+              inventory: act.inventory,
+              ...(act.tap_power != null ? { tap_power: act.tap_power } : {}),
+              ...(act.max_daily_limit != null
+                ? { max_daily_limit: act.max_daily_limit }
+                : {}),
+            }));
+          }
         }
       } catch (e) {
         console.warn('shadow activate after mint', e?.message || e);
@@ -3440,6 +3478,12 @@ Daily claim active · Pack → NFT to see it.`,
                                 : {}),
                               ...(playerPatch.lifetime_taps != null
                                 ? { lifetime_taps: playerPatch.lifetime_taps }
+                                : {}),
+                              ...(playerPatch.tap_power != null
+                                ? { tap_power: playerPatch.tap_power }
+                                : {}),
+                              ...(playerPatch.max_daily_limit != null
+                                ? { max_daily_limit: playerPatch.max_daily_limit }
                                 : {}),
                             }
                           : {}),

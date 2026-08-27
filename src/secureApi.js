@@ -73,6 +73,20 @@ export async function fetchPlayerState() {
   }
 }
 
+/**
+ * Mirror chain SOL (+ on-chain $G2U after 1 Sept 2026 / G2U_CHAIN_SYNC) into
+ * players.sol_balance / gft_token_balance via service_role. Safe to poll.
+ */
+export async function secureSyncChainBalances() {
+  if (!getSessionToken()) {
+    return { success: false, synced: false, reason: 'no_session' };
+  }
+  return callSecureFunction('player-state', {
+    action: 'sync_chain_balances',
+    sync_chain_balances: true,
+  });
+}
+
 export function hasSecureSession() {
   return !!getSessionToken() && !!getPlayerId();
 }

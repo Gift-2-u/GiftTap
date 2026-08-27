@@ -10,7 +10,10 @@ import {
   corsHeaders,
   jsonResponse,
   invObj,
-  logEconomy} from "../_shared/economy.ts";
+  logEconomy,
+  PLAYER_ECONOMY_SELECT,
+  instantEconomyPatch,
+} from "../_shared/economy.ts";
 
 const STAR_LEVEL_UP_SOL = [0.1, 0.15, 0.25, 0.4];
 const MAX_LEVEL = 5;
@@ -41,7 +44,7 @@ serve(async (req) => {
     const sb = adminClient();
     const { data: row, error } = await sb
       .from("players")
-      .select("inventory")
+      .select(PLAYER_ECONOMY_SELECT)
       .eq("telegram_id", playerId)
       .maybeSingle();
     if (error) throw error;
@@ -62,14 +65,12 @@ serve(async (req) => {
     levels[assetId] = toLevel;
     inv.star_levels = levels;
 
+    const patch = instantEconomyPatch(row as Record<string, unknown>, inv);
     const { data: updated, error: upErr } = await sb
       .from("players")
-      .update({
-        inventory: inv,
-        last_updated: new Date().toISOString(),
-      })
+      .update(patch)
       .eq("telegram_id", playerId)
-      .select("inventory")
+      .select("inventory, tap_power, max_daily_limit")
       .maybeSingle();
     if (upErr) throw upErr;
 
@@ -83,7 +84,10 @@ serve(async (req) => {
         from_level: fromLevel,
         to_level: toLevel,
         cost_sol: costSol,
-        tx_signature: txSignature}});
+        tap_power: patch.tap_power,
+        tx_signature: txSignature,
+      },
+    });
 
     return jsonResponse({
       success: true,
@@ -92,13 +96,19 @@ serve(async (req) => {
       to_level: toLevel,
       cost_sol: costSol,
       inventory: updated?.inventory ?? inv,
-      tx_signature: txSignature});
+      tap_power:
+        (updated as { tap_power?: number } | null)?.tap_power ?? patch.tap_power,
+      max_daily_limit:
+        (updated as { max_daily_limit?: number } | null)?.max_daily_limit ??
+        patch.max_daily_limit,
+      tx_signature: txSignature,
+    });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     const status =
       /authenticated|expired|signature|Invalid session|Not authenticated/i.test(
-          message,
-        )
+        message,
+      )
         ? 401
         : 400;
     return jsonResponse({ error: message }, status);

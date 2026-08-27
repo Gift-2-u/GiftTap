@@ -12,7 +12,9 @@ import {
   corsHeaders,
   jsonResponse,
   invObj,
-  logEconomy} from "../_shared/economy.ts";
+  logEconomy,
+  instantEconomyPatch,
+} from "../_shared/economy.ts";
 
 const SHARD_ITEM = "shard_badge";
 const ELVES_COLLECTION = "FQPYWSohCPnS57W2AWAqwmQM21KRxGi4YXcCaiXUghPD";
@@ -134,7 +136,9 @@ serve(async (req) => {
     const sb = adminClient();
     const { data: row, error } = await sb
       .from("players")
-      .select("inventory, wallet_address")
+      .select(
+        "inventory, wallet_address, lifetime_taps, max_unlocked_level, premium_multiplier, premium_multiplier_expires, energy_boost_expires, limit_boost_amount, limit_boost_expires, ad_energy_boost, ad_energy_expires",
+      )
       .eq("telegram_id", playerId)
       .maybeSingle();
     if (error) throw error;
@@ -187,14 +191,12 @@ serve(async (req) => {
       inv.fate_active = assetId;
     }
 
+    const patch = instantEconomyPatch(row as Record<string, unknown>, inv);
     const { data: updated, error: upErr } = await sb
       .from("players")
-      .update({
-        inventory: inv,
-        last_updated: new Date().toISOString(),
-      })
+      .update(patch)
       .eq("telegram_id", playerId)
-      .select("inventory")
+      .select("inventory, tap_power, max_daily_limit")
       .maybeSingle();
     if (upErr) throw upErr;
 
@@ -208,7 +210,9 @@ serve(async (req) => {
         equip: wantEquip,
         item_id: wantEquip ? SHARD_ITEM : null,
         asset_id: assetId,
-        star_asset_id: wantEquip && starAssetId ? starAssetId : null}});
+        star_asset_id: wantEquip && starAssetId ? starAssetId : null,
+        tap_power: patch.tap_power,
+      }});
 
     const outInv = (updated?.inventory as Record<string, unknown>) ?? inv;
     return jsonResponse({
@@ -218,7 +222,13 @@ serve(async (req) => {
       item_id: wantEquip ? SHARD_ITEM : null,
       inventory: outInv,
       fate_equip: outInv?.fate_equip ?? inv.fate_equip,
-      fate_active: outInv?.fate_active ?? inv.fate_active});
+      fate_active: outInv?.fate_active ?? inv.fate_active,
+      tap_power:
+        (updated as { tap_power?: number } | null)?.tap_power ?? patch.tap_power,
+      max_daily_limit:
+        (updated as { max_daily_limit?: number } | null)?.max_daily_limit ??
+        patch.max_daily_limit,
+    });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     const status =

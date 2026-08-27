@@ -17,7 +17,10 @@ import {
   jsonResponse,
   invObj,
   logEconomy,
-  FATE_JACKPOT} from "../_shared/economy.ts";
+  FATE_JACKPOT,
+  PLAYER_ECONOMY_SELECT,
+  instantEconomyPatch,
+} from "../_shared/economy.ts";
 import { ensureNftDurabilityOnActivate } from "../_shared/nftDurability.ts";
 
 const RARITIES = new Set(Object.keys(FATE_JACKPOT));
@@ -34,7 +37,7 @@ serve(async (req) => {
     const sb = adminClient();
     const { data: row, error } = await sb
       .from("players")
-      .select("inventory")
+      .select(PLAYER_ECONOMY_SELECT)
       .eq("telegram_id", playerId)
       .maybeSingle();
     if (error) throw error;
@@ -55,6 +58,15 @@ serve(async (req) => {
       if (level < 1) level = 1;
       if (level > 5) level = 5;
       const assetId = String(body.asset_id || body.assetId || "").trim() || null;
+      if (assetId) {
+        const map = inv.elf_levels;
+        if (map && typeof map === "object") {
+          const fromMap = Math.floor(
+            Number((map as Record<string, unknown>)[assetId]) || 0,
+          );
+          if (fromMap >= 1) level = Math.max(level, Math.min(5, fromMap));
+        }
+      }
       const prev =
         inv.fate_power && typeof inv.fate_power === "object"
           ? (inv.fate_power as Record<string, unknown>)
@@ -64,21 +76,19 @@ serve(async (req) => {
           rarity,
           level,
           asset_id: assetId,
-          activated_at: new Date().toISOString()},
+          activated_at: new Date().toISOString(),
+        },
         prev,
       );
-      // Keep string focus id in sync when provided (badge/jackpot focus)
       if (assetId) inv.fate_active = assetId;
     }
 
+    const patch = instantEconomyPatch(row as Record<string, unknown>, inv);
     const { data: updated, error: upErr } = await sb
       .from("players")
-      .update({
-        inventory: inv,
-        last_updated: new Date().toISOString(),
-      })
+      .update(patch)
       .eq("telegram_id", playerId)
-      .select("inventory")
+      .select("inventory, tap_power, max_daily_limit")
       .maybeSingle();
     if (upErr) throw upErr;
 
@@ -90,7 +100,11 @@ serve(async (req) => {
       ref: (inv.fate_power as Record<string, unknown> | undefined)?.asset_id
         ? String((inv.fate_power as Record<string, unknown>).asset_id)
         : null,
-      meta: { fate_power: inv.fate_power ?? null }});
+      meta: {
+        fate_power: inv.fate_power ?? null,
+        tap_power: patch.tap_power,
+      },
+    });
 
     return jsonResponse({
       success: true,
@@ -98,7 +112,13 @@ serve(async (req) => {
       fate_power:
         (updated?.inventory as Record<string, unknown>)?.fate_power ??
         inv.fate_power ??
-        null});
+        null,
+      tap_power:
+        (updated as { tap_power?: number } | null)?.tap_power ?? patch.tap_power,
+      max_daily_limit:
+        (updated as { max_daily_limit?: number } | null)?.max_daily_limit ??
+        patch.max_daily_limit,
+    });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     const status = /authenticated|expired|signature|Invalid session|Not authenticated/i.test(

@@ -9,6 +9,65 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
+/** Match src/tokenLaunch.js — on-chain $G2U column sync starts at launch. */
+const TOKEN_LAUNCH_AT_MS = Date.parse("2026-09-01T00:00:00Z");
+const G2U_MINT_DEFAULT = "EvFu9qKTNi3wWDbgnm5qmZjLFUHDN3o4A8HjUrqaGMBR";
+
+function rpcUrl(): string {
+  return (
+    Deno.env.get("VITE_SOLANA_RPC_URL") ||
+    Deno.env.get("SOLANA_RPC_URL") ||
+    "https://api.mainnet-beta.solana.com"
+  );
+}
+
+function g2uMint(): string {
+  return (
+    Deno.env.get("G2U_MINT") ||
+    Deno.env.get("G2U_TOKEN_MINT") ||
+    Deno.env.get("GFT_MINT") ||
+    G2U_MINT_DEFAULT
+  );
+}
+
+function g2uChainSyncEnabled(nowMs = Date.now()): boolean {
+  const flag = String(Deno.env.get("G2U_CHAIN_SYNC") || "").toLowerCase();
+  if (["1", "true", "yes", "on"].includes(flag)) return true;
+  if (["0", "false", "no", "off"].includes(flag)) return false;
+  return nowMs >= TOKEN_LAUNCH_AT_MS;
+}
+
+/** Read live SOL (+ $G2U ATA after launch) for wallet; service_role writes columns. */
+async function readChainBalances(walletAddress: string): Promise<{
+  sol: number;
+  g2u: number | null;
+}> {
+  const {
+    Connection,
+    PublicKey,
+  } = await import("npm:@solana/web3.js@1.98.4");
+  const { getAssociatedTokenAddressSync } = await import(
+    "npm:@solana/spl-token@0.4.9"
+  );
+  const connection = new Connection(rpcUrl(), "confirmed");
+  const owner = new PublicKey(String(walletAddress).trim());
+  const lamports = await connection.getBalance(owner);
+  const sol = Math.round((lamports / 1e9) * 1e9) / 1e9;
+
+  let g2u: number | null = null;
+  if (g2uChainSyncEnabled()) {
+    try {
+      const mint = new PublicKey(g2uMint());
+      const ata = getAssociatedTokenAddressSync(mint, owner);
+      const bal = await connection.getTokenAccountBalance(ata);
+      g2u = Number(bal?.value?.uiAmount) || 0;
+    } catch {
+      g2u = 0;
+    }
+  }
+  return { sol, g2u };
+}
+
 const ENERGY_CAP = 500;
 const ENERGY_SECONDS_PER_POINT = 1.5;
 
@@ -56,6 +115,7 @@ const PLAYER_SELECT = [
   "current_streak",
   "sol_balance",
   "usdc_balance",
+  "gft_token_balance",
   "has_beta_access",
   "limit_boost_amount",
   "limit_boost_expires",
@@ -75,6 +135,10 @@ serve(async (req) => {
   try {
     const claims = await requirePlayerFromRequest(req);
     const playerId = String(claims.sub);
+    const body = await req.json().catch(() => ({}));
+    const syncChain =
+      body?.sync_chain_balances === true ||
+      body?.action === "sync_chain_balances";
 
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL") ?? "",
@@ -89,6 +153,61 @@ serve(async (req) => {
 
     if (error) throw error;
     if (!player) throw new Error("Player not found");
+
+    // Lightweight: mirror chain → sol_balance (+ gft_token_balance after launch).
+    // Does NOT stamp energy / last_updated (safe to call from deposit poll).
+    if (syncChain) {
+      const wallet = String(player.wallet_address || "").trim();
+      if (!wallet || wallet.length < 32) {
+        return new Response(
+          JSON.stringify({
+            success: true,
+            synced: false,
+            reason: "no_wallet",
+            sol_balance: Number(player.sol_balance) || 0,
+            gft_token_balance: Number(
+              (player as Record<string, unknown>).gft_token_balance,
+            ) || 0,
+          }),
+          {
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+            status: 200,
+          },
+        );
+      }
+      const chain = await readChainBalances(wallet);
+      const patch: Record<string, unknown> = {
+        sol_balance: chain.sol,
+      };
+      if (chain.g2u != null) {
+        patch.gft_token_balance = chain.g2u;
+      }
+      const { data: updated, error: upErr } = await supabase
+        .from("players")
+        .update(patch)
+        .eq("telegram_id", playerId)
+        .select("sol_balance, gft_token_balance, wallet_address")
+        .maybeSingle();
+      if (upErr) throw upErr;
+      return new Response(
+        JSON.stringify({
+          success: true,
+          synced: true,
+          g2u_chain_sync: chain.g2u != null,
+          sol_balance: Number(updated?.sol_balance ?? chain.sol) || 0,
+          gft_token_balance:
+            chain.g2u != null
+              ? Number(updated?.gft_token_balance ?? chain.g2u) || 0
+              : Number(
+                (player as Record<string, unknown>).gft_token_balance,
+              ) || 0,
+        }),
+        {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          status: 200,
+        },
+      );
+    }
 
     // This player only on login:
     //  - catch up energy from energy_at (regen clock) — NOT from last_updated

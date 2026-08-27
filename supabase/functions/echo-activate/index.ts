@@ -1,13 +1,6 @@
 /**
  * echo-activate — set / clear the active Echo NFT (inventory.echo_active).
- * 1 Echo focus per player. Does not verify on-chain ownership here (mint/equip UI does).
- *
- * Body: {
- *   rarity: 'common'|'rare'|'epic'|'legendary',
- *   level?: number (default 1),
- *   asset_id?: string,
- *   clear?: boolean
- * }
+ * Body: { rarity, level?, asset_id?, clear? }
  */
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { requirePlayerFromRequest } from "../_shared/sessionJwt.ts";
@@ -18,7 +11,10 @@ import {
   invObj,
   logEconomy,
   ECHO_MULTI,
-  echoMultiplier} from "../_shared/economy.ts";
+  echoMultiplier,
+  PLAYER_ECONOMY_SELECT,
+  instantEconomyPatch,
+} from "../_shared/economy.ts";
 import { ensureNftDurabilityOnActivate } from "../_shared/nftDurability.ts";
 
 const RARITIES = new Set(Object.keys(ECHO_MULTI));
@@ -35,7 +31,7 @@ serve(async (req) => {
     const sb = adminClient();
     const { data: row, error } = await sb
       .from("players")
-      .select("inventory")
+      .select(PLAYER_ECONOMY_SELECT)
       .eq("telegram_id", playerId)
       .maybeSingle();
     if (error) throw error;
@@ -56,7 +52,6 @@ serve(async (req) => {
       if (level < 1) level = 1;
       if (level > 5) level = 5;
       const assetId = String(body.asset_id || body.assetId || "").trim() || null;
-      // Prefer inventory.elf_levels (set by elf-level-up) over a stale body level
       if (assetId) {
         const map = inv.elf_levels;
         if (map && typeof map === "object") {
@@ -76,19 +71,18 @@ serve(async (req) => {
           level,
           asset_id: assetId,
           multi: echoMultiplier(rarity, level),
-          activated_at: new Date().toISOString()},
+          activated_at: new Date().toISOString(),
+        },
         prev,
       );
     }
 
+    const patch = instantEconomyPatch(row as Record<string, unknown>, inv);
     const { data: updated, error: upErr } = await sb
       .from("players")
-      .update({
-        inventory: inv,
-        last_updated: new Date().toISOString(),
-      })
+      .update(patch)
       .eq("telegram_id", playerId)
-      .select("inventory")
+      .select("inventory, tap_power, max_daily_limit")
       .maybeSingle();
     if (upErr) throw upErr;
 
@@ -100,12 +94,17 @@ serve(async (req) => {
       ref: (inv.echo_active as Record<string, unknown> | undefined)?.asset_id
         ? String((inv.echo_active as Record<string, unknown>).asset_id)
         : null,
-      meta: { echo_active: inv.echo_active ?? null }});
+      meta: {
+        echo_active: inv.echo_active ?? null,
+        tap_power: patch.tap_power,
+      },
+    });
 
     return jsonResponse({
       success: true,
       inventory: updated?.inventory ?? inv,
-      echo_active: (updated?.inventory as Record<string, unknown>)?.echo_active ??
+      echo_active:
+        (updated?.inventory as Record<string, unknown>)?.echo_active ??
         inv.echo_active ??
         null,
       multi: inv.echo_active
@@ -113,7 +112,13 @@ serve(async (req) => {
           String((inv.echo_active as Record<string, unknown>).rarity),
           Number((inv.echo_active as Record<string, unknown>).level) || 1,
         )
-        : 1});
+        : 1,
+      tap_power:
+        (updated as { tap_power?: number } | null)?.tap_power ?? patch.tap_power,
+      max_daily_limit:
+        (updated as { max_daily_limit?: number } | null)?.max_daily_limit ??
+        patch.max_daily_limit,
+    });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     const status = /authenticated|expired|signature|Invalid session|Not authenticated/i.test(

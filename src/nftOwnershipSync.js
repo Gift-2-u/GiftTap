@@ -155,6 +155,8 @@ export async function syncAllGiftNftOwnership({
   const actions = [];
   let inv = inventory && typeof inventory === 'object' ? { ...inventory } : {};
   let changed = false;
+  let tapPower = null;
+  let maxDailyLimit = null;
 
   const scan = await fetchOwnedGiftNftsReliable(walletAddress);
   if (!scan.ok) {
@@ -164,6 +166,8 @@ export async function syncAllGiftNftOwnership({
       changed: false,
       scanOk: false,
       actions: ['scan_failed_no_mutation'],
+      tap_power: null,
+      max_daily_limit: null,
     };
   }
 
@@ -179,13 +183,8 @@ export async function syncAllGiftNftOwnership({
 
     if (best) {
       const wantId = String(best.nft.id || '').trim();
-      const curLv =
-        cur && typeof cur === 'object'
-          ? Math.max(1, Math.floor(Number(cur.level) || 1))
-          : 0;
-      if (curId === wantId && curLv >= best.level) {
-        continue;
-      }
+      // Always re-activate owned elves so Edge rewrites tap_power / max_daily_limit
+      // instantly (skip-when-same-level left Supabase tap_power stuck after level-up).
       try {
         const payload =
           kind === 'locksmith'
@@ -201,6 +200,14 @@ export async function syncAllGiftNftOwnership({
           inv = { ...inv, ...data.inventory };
           changed = true;
           actions.push(`activate:${kind}:${wantId.slice(0, 8)}`);
+        }
+        if (data?.tap_power != null) {
+          tapPower = Number(data.tap_power);
+          changed = true;
+        }
+        if (data?.max_daily_limit != null) {
+          maxDailyLimit = Number(data.max_daily_limit);
+          changed = true;
         }
       } catch (e) {
         console.warn(`nft sync activate ${kind}`, e?.message || e);
@@ -282,5 +289,7 @@ export async function syncAllGiftNftOwnership({
     changed,
     scanOk: true,
     actions,
+    tap_power: tapPower,
+    max_daily_limit: maxDailyLimit,
   };
 }

@@ -223,6 +223,7 @@ import {
   hasSecureSession,
   ensureSecureSession,
   fetchPlayerState,
+  secureSyncChainBalances,
   secureCommitTaps,
   secureWallClimb,
   secureLocksmithActivate,
@@ -234,6 +235,7 @@ import {
   fetchWeeklyBoard,
   fetchAirdropBoard,
 } from './secureApi';
+import { isTokenLaunched } from './tokenLaunch';
 import { syncAllGiftNftOwnership } from './nftOwnershipSync';
 import {
   locksmithCoversWall,
@@ -2068,7 +2070,46 @@ const GiftTapGame = () => {
     switchLeaderboardTab('Season');
   };
 
-  // Read live chain balances for UI only — never write sol_balance/usdc_balance from the client.
+  // Live chain → HUD; secure Edge mirrors into players.sol_balance (+ gft after launch).
+  const chainDbSyncAtRef = useRef(0);
+  const pushChainBalancesToDb = useCallback(async () => {
+    if (!hasSecureSession()) return;
+    const now = Date.now();
+    // Deposit poll is 6s — don't hammer Edge harder than ~8s
+    if (now - chainDbSyncAtRef.current < 8000) return;
+    chainDbSyncAtRef.current = now;
+    try {
+      const data = await secureSyncChainBalances();
+      if (!data?.synced) return;
+      if (Number.isFinite(Number(data.sol_balance))) {
+        setBalances((prev) => ({
+          ...prev,
+          sol: Number(data.sol_balance),
+        }));
+      }
+      // After launch, gft_token_balance = on-chain $G2U
+      if (
+        data.g2u_chain_sync &&
+        Number.isFinite(Number(data.gft_token_balance))
+      ) {
+        const g2u = Number(data.gft_token_balance);
+        setBalances((prev) => ({ ...prev, G2U: g2u }));
+        setStats((prev) => ({
+          ...prev,
+          gft_token_balance: g2u,
+          sol_balance: Number(data.sol_balance),
+        }));
+      } else if (Number.isFinite(Number(data.sol_balance))) {
+        setStats((prev) => ({
+          ...prev,
+          sol_balance: Number(data.sol_balance),
+        }));
+      }
+    } catch (e) {
+      console.warn('chain balance db sync', e?.message || e);
+    }
+  }, []);
+
   const syncBlockchainBalances = async (walletAddress) => {
       try {
           console.log("Fetching live balances directly from Solana...");
@@ -2089,6 +2130,7 @@ const GiftTapGame = () => {
               sol: liveSol,
               usdc: liveUsdc
           }));
+          pushChainBalancesToDb();
       } catch (err) {
           console.error("Live balance sync failed:", err);
       }
@@ -3142,9 +3184,27 @@ const GiftTapGame = () => {
             ...(inventoryRef.current || {}),
             ...result.inventory,
           };
+          if (
+            result.tap_power != null &&
+            Number.isFinite(Number(result.tap_power))
+          ) {
+            setTapPower(Number(result.tap_power));
+          }
+          if (
+            result.max_daily_limit != null &&
+            Number.isFinite(Number(result.max_daily_limit))
+          ) {
+            setMaxDailyLimit(Number(result.max_daily_limit));
+          }
           setStats((prev) => ({
             ...prev,
             inventory: inventoryRef.current,
+            ...(result.tap_power != null
+              ? { tap_power: Number(result.tap_power) }
+              : {}),
+            ...(result.max_daily_limit != null
+              ? { max_daily_limit: Number(result.max_daily_limit) }
+              : {}),
           }));
         }
       } catch (e) {
@@ -5368,13 +5428,30 @@ const GiftTapGame = () => {
 
       const realUsdc = await getTokenBal(usdcMint);
 
-      // Preserve G2U credit — never zero it on SOL refresh
+      // After launch also refresh on-chain $G2U for the HUD chip
+      let realG2u = null;
+      if (isTokenLaunched()) {
+        try {
+          const g2uMint = new PublicKey(
+            import.meta.env.VITE_G2U_MINT ||
+              'EvFu9qKTNi3wWDbgnm5qmZjLFUHDN3o4A8HjUrqaGMBR',
+          );
+          realG2u = await getTokenBal(g2uMint);
+        } catch {
+          realG2u = 0;
+        }
+      }
+
       setBalances((prev) => ({
         ...prev,
         sol: realSol,
         G2Ushards: balance,
         usdc: realUsdc,
+        ...(realG2u != null ? { G2U: realG2u } : {}),
       }));
+      if (realG2u != null) {
+        setStats((prev) => ({ ...prev, gft_token_balance: realG2u }));
+      }
 
       // Set Fees separately
       setTransactionCosts({
@@ -5382,12 +5459,13 @@ const GiftTapGame = () => {
         projectFee: 0.0005 // Your fixed Gift launch fee
       });
 
-      // Chain balances stay UI-only — never write sol_balance/usdc_balance from the client.
+      // Mirror into Supabase (service_role Edge — never client UPDATE)
+      pushChainBalancesToDb();
       
     } catch (err) { 
       console.error("Balance/Fee fetch failed", err); 
     }
-  }, [playerWallet, connection, balance, playerId]);
+  }, [playerWallet, connection, balance, playerId, pushChainBalancesToDb]);
 
   // --- BLOCKCHAIN-TO-DATABASE SYNC ---
   useEffect(() => {
@@ -6036,9 +6114,28 @@ const GiftTapGame = () => {
   const now = new Date();
   let dynamicMaxLimit = 1000;
   {
-    const ra = (inventoryRef.current || stats?.inventory || {}).rush_active;
+    const refInv = inventoryRef.current || {};
+    const statsInv = stats?.inventory || {};
+    const inv = {
+      ...refInv,
+      ...statsInv,
+      elf_levels: {
+        ...(refInv.elf_levels || {}),
+        ...(statsInv.elf_levels || {}),
+      },
+      rush_active:
+        statsInv.rush_active !== undefined
+          ? statsInv.rush_active
+          : refInv.rush_active,
+    };
+    const ra = inv.rush_active;
     if (ra && typeof ra === 'object') {
-      const cap = rushDailyLimit(ra.rarity || ra.rarityKey, ra.level || 1);
+      const assetId = String(ra.asset_id || ra.assetId || '').trim();
+      const lvl = Math.max(
+        assetId ? getElfLevel(inv, assetId) : 1,
+        Math.floor(Number(ra.level) || 1),
+      );
+      const cap = rushDailyLimit(ra.rarity || ra.rarityKey, lvl);
       if (cap > 0) dynamicMaxLimit = cap;
     }
   }
@@ -6988,7 +7085,20 @@ const GiftTapGame = () => {
                         ...(next.inventory.echo_active !== undefined
                           ? { echo_active: next.inventory.echo_active }
                           : {}),
+                        ...(next.inventory.rush_active !== undefined
+                          ? { rush_active: next.inventory.rush_active }
+                          : {}),
                       };
+                    }
+                    // Instant HUD — level-up / activate must apply without waiting for taps
+                    if (next?.tap_power != null && Number.isFinite(Number(next.tap_power))) {
+                      setTapPower(Number(next.tap_power));
+                    }
+                    if (
+                      next?.max_daily_limit != null &&
+                      Number.isFinite(Number(next.max_daily_limit))
+                    ) {
+                      setMaxDailyLimit(Number(next.max_daily_limit));
                     }
                     return next;
                   });
@@ -7003,6 +7113,7 @@ const GiftTapGame = () => {
                   const sol = Number(info?.sol);
                   if (Number.isFinite(sol)) {
                     setBalances((prev) => ({ ...prev, sol }));
+                    pushChainBalancesToDb();
                   } else {
                     fetchBalances();
                   }
@@ -7787,6 +7898,18 @@ const GiftTapGame = () => {
                         onInventoryChange={(inv, playerPatch) => {
                           if (!inv || typeof inv !== 'object') return;
                           inventoryRef.current = inv;
+                          if (
+                            playerPatch?.tap_power != null &&
+                            Number.isFinite(Number(playerPatch.tap_power))
+                          ) {
+                            setTapPower(Number(playerPatch.tap_power));
+                          }
+                          if (
+                            playerPatch?.max_daily_limit != null &&
+                            Number.isFinite(Number(playerPatch.max_daily_limit))
+                          ) {
+                            setMaxDailyLimit(Number(playerPatch.max_daily_limit));
+                          }
                           setStats((prev) => ({
                             ...prev,
                             inventory: inv,
@@ -7804,6 +7927,15 @@ const GiftTapGame = () => {
                                   ...(playerPatch.lifetime_taps != null
                                     ? { lifetime_taps: playerPatch.lifetime_taps }
                                     : {}),
+                                  ...(playerPatch.tap_power != null
+                                    ? { tap_power: playerPatch.tap_power }
+                                    : {}),
+                                  ...(playerPatch.max_daily_limit != null
+                                    ? {
+                                        max_daily_limit:
+                                          playerPatch.max_daily_limit,
+                                      }
+                                    : {}),
                                 }
                               : {}),
                           }));
@@ -7813,6 +7945,7 @@ const GiftTapGame = () => {
                           const sol = Number(info?.sol);
                           if (Number.isFinite(sol)) {
                             setBalances((prev) => ({ ...prev, sol }));
+                            pushChainBalancesToDb();
                           } else {
                             fetchBalances();
                           }

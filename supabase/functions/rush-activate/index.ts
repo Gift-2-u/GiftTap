@@ -1,7 +1,5 @@
 /**
  * rush-activate — set / clear active Rush (inventory.rush_active).
- * Rush replaces base daily cap; battery / task boosts add on top.
- *
  * Body: { rarity, level?, asset_id?, clear? }
  */
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
@@ -13,7 +11,10 @@ import {
   invObj,
   logEconomy,
   RUSH_DAILY_LIMIT,
-  rushDailyLimit} from "../_shared/economy.ts";
+  rushDailyLimit,
+  PLAYER_ECONOMY_SELECT,
+  instantEconomyPatch,
+} from "../_shared/economy.ts";
 import { ensureNftDurabilityOnActivate } from "../_shared/nftDurability.ts";
 
 const RARITIES = new Set(Object.keys(RUSH_DAILY_LIMIT));
@@ -30,7 +31,7 @@ serve(async (req) => {
     const sb = adminClient();
     const { data: row, error } = await sb
       .from("players")
-      .select("inventory")
+      .select(PLAYER_ECONOMY_SELECT)
       .eq("telegram_id", playerId)
       .maybeSingle();
     if (error) throw error;
@@ -51,6 +52,15 @@ serve(async (req) => {
       if (level < 1) level = 1;
       if (level > 5) level = 5;
       const assetId = String(body.asset_id || body.assetId || "").trim() || null;
+      if (assetId) {
+        const map = inv.elf_levels;
+        if (map && typeof map === "object") {
+          const fromMap = Math.floor(
+            Number((map as Record<string, unknown>)[assetId]) || 0,
+          );
+          if (fromMap >= 1) level = Math.max(level, Math.min(5, fromMap));
+        }
+      }
       const dailyCap = rushDailyLimit(rarity, level);
       const prev =
         inv.rush_active && typeof inv.rush_active === "object"
@@ -62,23 +72,23 @@ serve(async (req) => {
           level,
           asset_id: assetId,
           daily_cap: dailyCap,
-          activated_at: new Date().toISOString()},
+          activated_at: new Date().toISOString(),
+        },
         prev,
       );
     }
 
+    const patch = instantEconomyPatch(row as Record<string, unknown>, inv);
     const { data: updated, error: upErr } = await sb
       .from("players")
-      .update({
-        inventory: inv,
-        last_updated: new Date().toISOString(),
-      })
+      .update(patch)
       .eq("telegram_id", playerId)
-      .select("inventory")
+      .select("inventory, tap_power, max_daily_limit")
       .maybeSingle();
     if (upErr) throw upErr;
 
-    const active = (updated?.inventory as Record<string, unknown>)?.rush_active ??
+    const active =
+      (updated?.inventory as Record<string, unknown>)?.rush_active ??
       inv.rush_active ??
       null;
 
@@ -90,7 +100,12 @@ serve(async (req) => {
       ref: active && typeof active === "object"
         ? String((active as Record<string, unknown>).asset_id || "")
         : null,
-      meta: { rush_active: active }});
+      meta: {
+        rush_active: active,
+        max_daily_limit: patch.max_daily_limit,
+        tap_power: patch.tap_power,
+      },
+    });
 
     return jsonResponse({
       success: true,
@@ -98,7 +113,13 @@ serve(async (req) => {
       rush_active: active,
       daily_cap: active && typeof active === "object"
         ? Number((active as Record<string, unknown>).daily_cap) || 0
-        : 0});
+        : 0,
+      tap_power:
+        (updated as { tap_power?: number } | null)?.tap_power ?? patch.tap_power,
+      max_daily_limit:
+        (updated as { max_daily_limit?: number } | null)?.max_daily_limit ??
+        patch.max_daily_limit,
+    });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     const status = /authenticated|expired|signature|Invalid session|Not authenticated/i.test(

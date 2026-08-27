@@ -397,6 +397,117 @@ export function echoMultiplier(rarityKey: string, level = 1): number {
   return ladder[idx] || 1;
 }
 
+/** Additive tap power stack (same as commit-taps / GiftTap). */
+export function stackPayoutMultis(...multis: number[]): number {
+  let total = 1;
+  for (const raw of multis) {
+    const m = Number(raw);
+    if (!Number.isFinite(m) || m <= 0) continue;
+    total += m - 1;
+  }
+  return Math.round(Math.max(0, total) * 1000) / 1000;
+}
+
+/** Level multi from lifetime taps + max_unlocked (wall floor), same as commit-taps. */
+export function levelMultiplierFromProgress(
+  lifetimeTaps: number,
+  maxUnlockedLevel: number,
+): number {
+  const maxUnlocked = Math.max(0, Math.floor(Number(maxUnlockedLevel) || 4));
+  const t = Number(lifetimeTaps) || 0;
+  let level = 0;
+  if (t < 50000) level = Math.floor(t / 10000);
+  else if (t < 125000) level = 5 + Math.floor((t - 50000) / 15000);
+  else if (t < 625000) level = 10 + Math.floor((t - 125000) / 50000);
+  else if (t < 2125000) level = 20 + Math.floor((t - 625000) / 150000);
+  else if (t < 9125000) level = 30 + Math.floor((t - 2125000) / 350000);
+  else if (t < 34125000) level = 50 + Math.floor((t - 9125000) / 1000000);
+  else if (t < 109125000) level = 75 + Math.floor((t - 34125000) / 3000000);
+  else level = 100;
+  const walls: Record<number, number> = {
+    4: 5,
+    9: 10,
+    19: 20,
+    29: 30,
+    49: 50,
+    74: 75,
+    99: 100,
+  };
+  let floor = 0;
+  for (const [k, target] of Object.entries(walls)) {
+    if (maxUnlocked > Number(k)) floor = Math.max(floor, target);
+  }
+  level = Math.min(maxUnlocked, Math.max(level, floor));
+  if (level >= 100) return 2.0;
+  if (level >= 75) return 1.75;
+  if (level >= 50) return 1.5;
+  if (level >= 30) return 1.4;
+  if (level >= 20) return 1.3;
+  if (level >= 10) return 1.2;
+  if (level >= 5) return 1.15;
+  return 1.0;
+}
+
+/** Instant tap_power for Echo activate / elf level-up (no wait for commit-taps). */
+export function computeTapPowerForPlayer(row: {
+  lifetime_taps?: unknown;
+  max_unlocked_level?: unknown;
+  premium_multiplier?: unknown;
+  premium_multiplier_expires?: unknown;
+  inventory?: unknown;
+}, now: Date = new Date()): number {
+  const inv = invObj(row.inventory);
+  const premiumMulti =
+    row.premium_multiplier_expires &&
+    now < new Date(String(row.premium_multiplier_expires))
+      ? Number(row.premium_multiplier) || 1
+      : 1;
+  const echoMulti = echoMultiplierFromInv(inv);
+  return stackPayoutMultis(
+    levelMultiplierFromProgress(
+      Number(row.lifetime_taps) || 0,
+      Number(row.max_unlocked_level) || 4,
+    ),
+    premiumMulti,
+    echoMulti > 1 ? echoMulti : 1,
+  );
+}
+
+/** Columns needed to recompute tap_power + daily cap on any NFT activate/level-up. */
+export const PLAYER_ECONOMY_SELECT =
+  "inventory, lifetime_taps, max_unlocked_level, premium_multiplier, premium_multiplier_expires, energy_boost_expires, limit_boost_amount, limit_boost_expires, ad_energy_boost, ad_energy_expires";
+
+/** Persist inventory + live tap_power + max_daily_limit in one Edge update. */
+export function instantEconomyPatch(
+  row: Record<string, unknown>,
+  inv: Record<string, unknown>,
+  now: Date = new Date(),
+): {
+  inventory: Record<string, unknown>;
+  tap_power: number;
+  max_daily_limit: number;
+  last_updated: string;
+} {
+  const tap_power = computeTapPowerForPlayer({ ...row, inventory: inv }, now);
+  const max_daily_limit = effectiveDailyLimit(
+    {
+      inventory: inv,
+      energy_boost_expires: row.energy_boost_expires,
+      limit_boost_amount: row.limit_boost_amount,
+      limit_boost_expires: row.limit_boost_expires,
+      ad_energy_boost: row.ad_energy_boost,
+      ad_energy_expires: row.ad_energy_expires,
+    },
+    now,
+  );
+  return {
+    inventory: inv,
+    tap_power,
+    max_daily_limit,
+    last_updated: now.toISOString(),
+  };
+}
+
 /** Read inventory.echo_active → multiplier (1 if none or durability 0).
  * Level: max(echo_active.level, elf_levels[asset_id]) so L2+ applies after level-up
  * for common / rare / epic / legendary (ECHO_MULTI ladders L1–5).
@@ -502,7 +613,9 @@ export function rushDailyLimit(rarityKey: string, level = 1): number {
   return ladder[idx] || 1000;
 }
 
-/** Rush active → daily base cap; 0 if none or durability 0. */
+/** Rush active → daily base cap; 0 if none or durability 0.
+ * Level: max(rush_active.level, elf_levels[asset_id]) — same as Echo.
+ */
 export function rushDailyLimitFromInv(inv: Record<string, unknown>): number {
   const raw = inv?.rush_active;
   if (!raw || typeof raw !== "object") return 0;
@@ -514,7 +627,16 @@ export function rushDailyLimitFromInv(inv: Record<string, unknown>): number {
   if (dur <= 0) return 0;
   const rarity = String(row.rarity || row.rarityKey || "").toLowerCase();
   if (!RUSH_DAILY_LIMIT[rarity]) return 0;
-  return rushDailyLimit(rarity, Number(row.level) || 1);
+  let level = Math.max(1, Math.floor(Number(row.level) || 1));
+  const assetId = String(row.asset_id || row.assetId || "").trim();
+  const map = inv?.elf_levels;
+  if (assetId && map && typeof map === "object") {
+    const fromMap = Math.floor(
+      Number((map as Record<string, unknown>)[assetId]) || 0,
+    );
+    if (fromMap >= 1) level = Math.max(level, Math.min(5, fromMap));
+  }
+  return rushDailyLimit(rarity, level);
 }
 
 /** Shadow (Night) AFK hours — level 1..5. 24h = full base daily cap. */

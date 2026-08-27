@@ -358,7 +358,17 @@ export default function WalletNftSection({
       }
       const nextInv = data.inventory || localInv;
       setLocalInv(nextInv);
-      if (typeof onInventoryChange === 'function') onInventoryChange(nextInv);
+      if (typeof onInventoryChange === 'function') {
+        const patch = {};
+        if (data.tap_power != null) patch.tap_power = Number(data.tap_power);
+        if (data.max_daily_limit != null) {
+          patch.max_daily_limit = Number(data.max_daily_limit);
+        }
+        onInventoryChange(
+          nextInv,
+          Object.keys(patch).length ? patch : undefined,
+        );
+      }
       toast(`Level up → L${data.to_level} (−${cost} SOL)`, true);
       // Push live SOL to Gift Tap HUD (don't wait for Wallet modal open)
       try {
