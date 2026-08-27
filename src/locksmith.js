@@ -129,14 +129,22 @@ const assetToCard = (asset) => {
 };
 
 /**
- * List Gift2u Elves NFTs owned by the game wallet (Locksmith + Fate + …).
+ * List Gift2u Elves (+ Star) owned by the game wallet.
+ * Returns { ok, nfts, searchOk, ownerOk }.
+ * ok=false means DAS failed — callers must NOT treat empty nfts as "sold".
  */
-export async function listGiftNfts(walletAddress) {
-  if (!walletAddress || typeof walletAddress !== 'string') return [];
+export async function listGiftNftsWithStatus(walletAddress) {
+  if (!walletAddress || typeof walletAddress !== 'string') {
+    return { ok: false, nfts: [], searchOk: false, ownerOk: false };
+  }
   const owner = walletAddress.trim();
-  if (owner.length < 32) return [];
+  if (owner.length < 32) {
+    return { ok: false, nfts: [], searchOk: false, ownerOk: false };
+  }
 
   const byId = new Map();
+  let searchOk = false;
+  let ownerOk = false;
 
   try {
     const res = await fetch(RPC_URL, {
@@ -155,13 +163,18 @@ export async function listGiftNfts(walletAddress) {
         },
       }),
     });
-    const json = await res.json();
-    const items = json?.result?.items || [];
-    if (Array.isArray(items)) {
-      for (const asset of items) {
-        if (!inElvesCollection(asset) && !(asset?.id || asset?.mint)) continue;
-        const card = assetToCard(asset);
-        if (card.id) byId.set(card.id, card);
+    if (res.ok) {
+      const json = await res.json();
+      if (!json?.error) {
+        searchOk = true;
+        const items = json?.result?.items || [];
+        if (Array.isArray(items)) {
+          for (const asset of items) {
+            if (!inElvesCollection(asset) && !(asset?.id || asset?.mint)) continue;
+            const card = assetToCard(asset);
+            if (card.id) byId.set(card.id, card);
+          }
+        }
       }
     }
   } catch (e) {
@@ -184,17 +197,36 @@ export async function listGiftNfts(walletAddress) {
         },
       }),
     });
-    const json2 = await res2.json();
-    for (const asset of json2?.result?.items || []) {
-      if (!inElvesCollection(asset)) continue;
-      const card = assetToCard(asset);
-      if (card.id) byId.set(card.id, { ...byId.get(card.id), ...card });
+    if (res2.ok) {
+      const json2 = await res2.json();
+      if (!json2?.error) {
+        ownerOk = true;
+        for (const asset of json2?.result?.items || []) {
+          if (!inElvesCollection(asset)) continue;
+          const card = assetToCard(asset);
+          if (card.id) byId.set(card.id, { ...byId.get(card.id), ...card });
+        }
+      }
     }
   } catch (e) {
     console.warn('listGiftNfts getAssetsByOwner failed', e?.message || e);
   }
 
-  return Array.from(byId.values());
+  return {
+    ok: searchOk || ownerOk,
+    nfts: Array.from(byId.values()),
+    searchOk,
+    ownerOk,
+  };
+}
+
+/**
+ * List Gift2u Elves NFTs owned by the game wallet (Locksmith + Fate + Echo + Rush + Shadow + Star).
+ * Note: [] can mean zero NFTs OR a failed scan — prefer listGiftNftsWithStatus for ownership sync.
+ */
+export async function listGiftNfts(walletAddress) {
+  const { nfts } = await listGiftNftsWithStatus(walletAddress);
+  return nfts;
 }
 
 /**

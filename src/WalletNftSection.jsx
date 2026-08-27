@@ -18,15 +18,11 @@ import {
   secureStarLevelUp,
   secureNftSetLevel,
   secureFateEquip,
-  secureLocksmithActivate,
   secureNftDurabilityTopUp,
-  secureEchoActivate,
-  secureFateActivate,
-  secureRushActivate,
-  secureShadowActivate,
   hasSecureSession,
   ensureSecureSession,
 } from './secureApi';
+import { syncAllGiftNftOwnership } from './nftOwnershipSync';
 import {
   durabilityForWalletNft,
   kindFromNft,
@@ -54,7 +50,6 @@ import {
 import {
   wallsClimbedLabels,
   nextWallTargetLabel,
-  locksmithLevelFromInv,
 } from './locksmithWalls';
 
 /**
@@ -456,115 +451,24 @@ export default function WalletNftSection({
     };
   }, [walletAddress, refreshKey, listKey]);
 
-  // Own in wallet/backpack = attributes on. Sync highest of each kind into *_active (no equip UI).
+  // All Gift2u NFTs (5 elves + Star equip): shared ownership sync — prove before clear.
   useEffect(() => {
-    if (!nfts.length || !hasSecureSession()) return undefined;
+    if (!walletAddress || !hasSecureSession()) return undefined;
+    if (!nfts.length) return undefined; // wait until list loaded; empty list alone does not clear
     let cancelled = false;
     (async () => {
-      const kinds = ['echo', 'fate', 'rush', 'shadow', 'locksmith'];
-      const activators = {
-        echo: secureEchoActivate,
-        fate: secureFateActivate,
-        rush: secureRushActivate,
-        shadow: secureShadowActivate,
-        locksmith: secureLocksmithActivate,
-      };
-      const activeKey = {
-        echo: 'echo_active',
-        fate: 'fate_power',
-        rush: 'rush_active',
-        shadow: 'shadow_active',
-        locksmith: 'locksmith_active',
-      };
-      let inv = localInv;
-      for (const kind of kinds) {
-        if (cancelled) break;
-        const owned = nfts.filter(
-          (n) => String(n.kind || '').toLowerCase() === kind,
-        );
-        const cur = inv?.[activeKey[kind]];
-        const hasActive = !!(cur && typeof cur === 'object');
-
-        // Sold / moved: clear Echo only if this asset id is missing from a
-        // successful non-empty wallet list (never clear on empty/flaky scans).
-        if (kind === 'echo' && hasActive) {
-          const activeId = String(cur.asset_id || cur.assetId || '').trim();
-          if (activeId) {
-            const stillHave = nfts.some(
-              (n) => String(n.id || n.mint || '').trim() === activeId,
-            );
-            if (!stillHave && !owned.length) {
-              try {
-                await ensureSecureSession();
-                const data = await secureEchoActivate({ clear: true });
-                if (data?.inventory) {
-                  inv = data.inventory;
-                  if (!cancelled) {
-                    setLocalInv(inv);
-                    if (typeof onInventoryChange === 'function') {
-                      onInventoryChange(inv);
-                    }
-                  }
-                }
-              } catch (e) {
-                console.warn('auto-clear echo', e?.message || e);
-              }
-              continue;
-            }
-          }
+      try {
+        const result = await syncAllGiftNftOwnership({
+          walletAddress,
+          inventory: localInv || inventory || {},
+        });
+        if (cancelled || !result.changed || !result.inventory) return;
+        setLocalInv(result.inventory);
+        if (typeof onInventoryChange === 'function') {
+          onInventoryChange(result.inventory);
         }
-
-        if (!owned.length) continue;
-        let best = owned[0];
-        let bestLv = getElfLevel(inv, best.id);
-        for (const n of owned) {
-          const lv = getElfLevel(inv, n.id);
-          if (lv > bestLv) {
-            best = n;
-            bestLv = lv;
-          }
-        }
-        // Locksmith level can also live on locksmith_active.level
-        if (kind === 'locksmith') {
-          bestLv = Math.max(
-            bestLv || 1,
-            locksmithLevelFromInv(inv) || 1,
-            getElfLevel(inv, best.id) || 1,
-          );
-        }
-        const curId =
-          cur && typeof cur === 'object'
-            ? String(cur.asset_id || cur.assetId || '')
-            : '';
-        const curLv =
-          cur && typeof cur === 'object'
-            ? Math.max(1, Math.floor(Number(cur.level) || 1))
-            : 0;
-        if (curId && curId === String(best.id) && curLv >= (bestLv || 1)) {
-          continue;
-        }
-        try {
-          await ensureSecureSession();
-          const payload =
-            kind === 'locksmith'
-              ? { level: bestLv || 1, assetId: best.id, clear: false }
-              : {
-                  rarity: normElfRarity(best.rarity),
-                  level: bestLv || 1,
-                  assetId: best.id,
-                  clear: false,
-                };
-          const data = await activators[kind](payload);
-          if (data?.inventory) {
-            inv = data.inventory;
-            if (!cancelled) {
-              setLocalInv(inv);
-              if (typeof onInventoryChange === 'function') onInventoryChange(inv);
-            }
-          }
-        } catch (e) {
-          console.warn(`auto-sync ${kind}`, e?.message || e);
-        }
+      } catch (e) {
+        console.warn('nft ownership sync', e?.message || e);
       }
     })();
     return () => {

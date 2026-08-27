@@ -232,9 +232,8 @@ import {
   secureAdReward,
   fetchWeeklyBoard,
   fetchAirdropBoard,
-  secureEchoActivate,
 } from './secureApi';
-import { getElfLevel, normElfRarity } from './elfLevelUp';
+import { syncAllGiftNftOwnership } from './nftOwnershipSync';
 import {
   locksmithCoversWall,
   locksmithLevelFromInv,
@@ -3075,9 +3074,7 @@ const GiftTapGame = () => {
     }
   }, [maxUnlockedLevel]);
 
-  // Locksmith + Echo: scan wallet → activate Echo if owned.
-  // Clear ONLY when a successful non-empty scan proves the active asset is gone.
-  // Never clear on empty/failed DAS (that wrongly wiped TwrLtr echo_active).
+  // All Gift2u NFTs (5 elves + Star equip): prove ownership before clear; activate when owned.
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -3087,86 +3084,39 @@ const GiftTapGame = () => {
         setOwnedElfTick((t) => t + 1);
         return;
       }
+      if (!isDataLoaded || !hasSecureSession()) return;
       try {
-        const owned = await listGiftNfts(playerWallet);
+        const result = await syncAllGiftNftOwnership({
+          walletAddress: playerWallet,
+          inventory: inventoryRef.current || stats?.inventory || {},
+        });
         if (cancelled) return;
-        const list = Array.isArray(owned) ? owned : [];
-        ownedElfAssetIdsRef.current = new Set(
-          list
-            .map((n) => String(n.id || n.mint || '').trim())
-            .filter(Boolean),
-        );
-        setOwnedElfTick((t) => t + 1);
-        setHasLocksmithNft(
-          list.some((n) => String(n.kind || '').toLowerCase() === 'locksmith') ||
-            (await hasLocksmith(playerWallet)),
-        );
-
-        if (hasSecureSession()) {
-          try {
-            await ensureSecureSession();
-            const echoes = list.filter(
-              (n) => String(n.kind || '').toLowerCase() === 'echo',
-            );
-            const inv = inventoryRef.current || stats?.inventory || {};
-            const ea = inv.echo_active;
-            const curId =
-              ea && typeof ea === 'object'
-                ? String(ea.asset_id || ea.assetId || '').trim()
-                : '';
-
-            const applyInv = (data) => {
-              if (!data?.inventory || cancelled) return;
-              inventoryRef.current = {
-                ...(inventoryRef.current || {}),
-                ...data.inventory,
-              };
-              setStats((prev) => ({
-                ...prev,
-                inventory: inventoryRef.current,
-              }));
-            };
-
-            if (echoes.length) {
-              // Own Echo → ensure echo_active (restores after bad clear)
-              let best = echoes[0];
-              let bestLv = getElfLevel(inv, best.id);
-              for (const n of echoes) {
-                const lv = getElfLevel(inv, n.id);
-                if (lv > bestLv) {
-                  best = n;
-                  bestLv = lv;
-                }
-              }
-              if (curId !== String(best.id)) {
-                const data = await secureEchoActivate({
-                  rarity: normElfRarity(best.rarity),
-                  level: bestLv || 1,
-                  assetId: best.id,
-                  clear: false,
-                });
-                applyInv(data);
-              }
-            } else if (curId && list.length > 0) {
-              // Non-empty scan and active asset id not in wallet → truly sold/moved
-              const stillHave = list.some(
-                (n) => String(n.id || n.mint || '').trim() === curId,
-              );
-              if (!stillHave) {
-                const data = await secureEchoActivate({ clear: true });
-                applyInv(data);
-              }
-            }
-            // list.length === 0 → ambiguous (RPC flake) — do NOT clear
-          } catch (e) {
-            console.warn('echo wallet sync', e?.message || e);
-          }
+        const list = Array.isArray(result.nfts) ? result.nfts : [];
+        if (result.scanOk) {
+          ownedElfAssetIdsRef.current = new Set(
+            list
+              .map((n) => String(n.id || n.mint || '').trim())
+              .filter(Boolean),
+          );
+          setOwnedElfTick((t) => t + 1);
+          setHasLocksmithNft(
+            list.some((n) => String(n.kind || '').toLowerCase() === 'locksmith') ||
+              (await hasLocksmith(playerWallet)),
+          );
         }
-      } catch {
-        // Keep previous owned set on scan failure — do not wipe / clear Echo
-        if (!cancelled) {
-          console.warn('listGiftNfts failed — keeping prior NFT cache');
+        // scan failed → keep prior owned cache; never wipe
+        if (result.changed && result.inventory) {
+          inventoryRef.current = {
+            ...(inventoryRef.current || {}),
+            ...result.inventory,
+          };
+          setStats((prev) => ({
+            ...prev,
+            inventory: inventoryRef.current,
+          }));
         }
+      } catch (e) {
+        console.warn('nft ownership sync', e?.message || e);
       }
     })();
     return () => {
