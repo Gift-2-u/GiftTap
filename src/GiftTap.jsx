@@ -1724,7 +1724,7 @@ const GiftTapGame = () => {
           isWeeklyFloorEligible(r.weekly_score ?? r.score ?? 0, floor),
         );
         const eligibleCount = eligibleAll.length;
-        const mainRows = filterWeeklyMainBoard(rows, floor, 50);
+        const mainRows = filterWeeklyMainBoard(rows, floor, 100);
         let you = null;
         // Pass weekId so %-era rules apply (rest of eligible → Bronze), not legacy top-10-only
         const me = rankOnWeeklyBoard(
