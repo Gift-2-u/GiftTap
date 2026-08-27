@@ -895,7 +895,14 @@ const GiftTapGame = () => {
   /** Ignore our own save echo for a moment */
   const lastLocalSaveAtRef = useRef(0);
   const saveFailNotifiedRef = useRef(0);
-  const [decryptedPhrase, setDecryptedPhrase] = useState("");
+  const [decryptedPhrase, setDecryptedPhrase] = useState(() => {
+    try {
+      const pid = getPlayerId();
+      return pid ? loadSessionPhrase(pid) : '';
+    } catch {
+      return '';
+    }
+  });
   // Settings Menu State
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   /** View 12 words from Menu only — close returns to Menu, not Wallet hub */
@@ -7114,27 +7121,18 @@ const GiftTapGame = () => {
                 flushPendingTaps={flushPendingTaps}
                 stats={stats}
                 setStats={(updater) => {
-                  // Keep inventoryRef in sync when Backpack NFT level-up / activate writes inventory
                   setStats((prev) => {
+                    // Plain objects must merge into prev (never replace with a partial stats blob)
                     const next =
-                      typeof updater === 'function' ? updater(prev) : updater;
+                      typeof updater === 'function'
+                        ? updater(prev)
+                        : { ...(prev || {}), ...(updater || {}) };
                     if (next?.inventory && typeof next.inventory === 'object') {
                       inventoryRef.current = {
                         ...(inventoryRef.current || {}),
                         ...next.inventory,
-                        elf_levels: {
-                          ...(inventoryRef.current?.elf_levels || {}),
-                          ...(next.inventory.elf_levels || {}),
-                        },
-                        ...(next.inventory.echo_active !== undefined
-                          ? { echo_active: next.inventory.echo_active }
-                          : {}),
-                        ...(next.inventory.rush_active !== undefined
-                          ? { rush_active: next.inventory.rush_active }
-                          : {}),
                       };
                     }
-                    // Instant HUD — level-up / activate must apply without waiting for taps
                     if (next?.tap_power != null && Number.isFinite(Number(next.tap_power))) {
                       setTapPower(Number(next.tap_power));
                     }
@@ -7149,7 +7147,7 @@ const GiftTapGame = () => {
                 }}
                 player={player}
                 playerWallet={playerWallet}
-                decryptedPhrase={decryptedPhrase}
+                decryptedPhrase={decryptedPhrase || generatedSecret || ''}
                 maxUnlockedLevel={maxUnlockedLevel}
                 initialTab={shopFocusTab || undefined}
                 onInitialTabConsumed={() => setShopFocusTab(null)}

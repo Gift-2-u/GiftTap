@@ -284,9 +284,9 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, bumpEner
   }, [playerWallet, activeTab, backpackCat, walletNftRefresh]);
 
   useEffect(() => {
-    if (stats?.inventory) {
-      // stats.inventory is shop authority (buy/use write there first).
-      // preferConsumed(MIN) wiped buys: local 0 vs purchased 1 → 0.
+    if (stats?.inventory && typeof stats.inventory === 'object') {
+      // Never apply an empty {} snapshot — that deletes badge_diamond / badge_gold via authority
+      if (Object.keys(stats.inventory).length === 0) return;
       setLocalInventory((prev) =>
         applyServerInventoryAuthority(
           prev || {},
@@ -310,58 +310,36 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, bumpEner
     }
   }, [stats?.inventory, stats?.daily_usage]);
 
-  /**
-   * Local mint-gate SOL. pushParent=true only after real spend/mint —
-   * tab open must NOT call parent (unstable onChainBalanceChange → render loop / Buy freezes).
-   */
-  const applyWalletSol = React.useCallback(
-    (sol, pushParent = true) => {
-      const n = Number(sol);
-      if (!Number.isFinite(n)) return;
-      setWalletSol((prev) => (prev === n ? prev : n));
-      if (
-        pushParent &&
-        typeof onChainBalanceChange === 'function'
-      ) {
-        onChainBalanceChange({ sol: n });
-      }
-    },
-    [onChainBalanceChange],
-  );
+  // Parent callback via ref so NFT SOL refresh effect does not re-fire every render
+  const onChainBalanceChangeRef = React.useRef(onChainBalanceChange);
+  React.useEffect(() => {
+    onChainBalanceChangeRef.current = onChainBalanceChange;
+  }, [onChainBalanceChange]);
 
-  const refreshWalletSol = React.useCallback(
-    async (addrOverride, pushParent = false) => {
-      const addr = String(addrOverride || playerWallet || '').trim();
-      if (!addr || addr.length < 32) return null;
-      try {
-        const sol = await getWalletSolBalance(addr);
-        applyWalletSol(sol, pushParent);
-        return sol;
-      } catch {
-        return null;
-      }
-    },
-    [playerWallet, applyWalletSol],
-  );
+  const applyWalletSol = React.useCallback((sol, pushParent = true) => {
+    const n = Number(sol);
+    if (!Number.isFinite(n)) return;
+    setWalletSol((prev) => (prev === n ? prev : n));
+    if (pushParent && typeof onChainBalanceChangeRef.current === 'function') {
+      onChainBalanceChangeRef.current({ sol: n });
+    }
+  }, []);
 
-  // Refresh SOL when player opens NFTs tab (local only — no parent ping)
+  // Refresh SOL when player opens NFTs tab (stable deps — no flash / no null wipe)
   useEffect(() => {
     if (activeTab !== 'nft') return;
     const addr = playerWallet && String(playerWallet).trim();
-    if (!addr || addr.length < 32) {
-      setWalletSol(null);
-      return;
-    }
+    if (!addr || addr.length < 32) return;
     let cancelled = false;
-    setWalletSolLoading(true);
     getWalletSolBalance(addr)
       .then((sol) => {
-        if (!cancelled) applyWalletSol(sol, false);
+        if (!cancelled) {
+          applyWalletSol(sol, false);
+          setWalletSolLoading(false);
+        }
       })
       .catch(() => {
-        if (!cancelled) setWalletSol(null);
-      })
-      .finally(() => {
+        /* keep last known SOL — do not flash 0.0000 */
         if (!cancelled) setWalletSolLoading(false);
       });
     return () => {
@@ -372,8 +350,18 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, bumpEner
   // Premium tab: local SOL gate only
   useEffect(() => {
     if (activeTab !== 'premium') return;
-    refreshWalletSol(undefined, false);
-  }, [activeTab, refreshWalletSol]);
+    const addr = playerWallet && String(playerWallet).trim();
+    if (!addr || addr.length < 32) return;
+    let cancelled = false;
+    getWalletSolBalance(addr)
+      .then((sol) => {
+        if (!cancelled) applyWalletSol(sol, false);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTab, playerWallet, applyWalletSol]);
 
   // NEW: Helper to get the current date in UTC format (YYYY-MM-DD)
   // This ensures everyone resets at the exact same global moment.
