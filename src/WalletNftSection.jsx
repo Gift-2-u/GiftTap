@@ -569,31 +569,14 @@ export default function WalletNftSection({
             textAlign: 'left',
           }}
         >
-          <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <span style={{ fontSize: 18 }} aria-hidden>
-              🖼
-            </span>
-            <span style={{ color: '#ffd700', fontWeight: 'bold', fontSize: 14 }}>
-              NFT
-            </span>
+          <span style={{ color: '#fff', fontWeight: 'bold', fontSize: 14 }}>
+            NFT
           </span>
           <span
             style={{
-              minWidth: 28,
-              height: 28,
-              padding: '0 8px',
-              borderRadius: 14,
-              background:
-                nfts.length > 0
-                  ? 'rgba(251,239,67,0.2)'
-                  : 'rgba(255,255,255,0.06)',
-              border: '1px solid #444',
-              color: nfts.length > 0 ? '#fbef43' : '#888',
-              fontWeight: 800,
-              fontSize: 13,
-              display: 'inline-flex',
-              alignItems: 'center',
-              justifyContent: 'center',
+              color: '#fff',
+              fontWeight: 'bold',
+              fontSize: 14,
             }}
           >
             {countLabel}
