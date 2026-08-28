@@ -2530,9 +2530,6 @@ const GiftTapGame = () => {
         const ltd = playerRow.last_tap_date
           ? String(playerRow.last_tap_date).slice(0, 10)
           : null;
-        const lastUpdatedDay = playerRow.last_updated
-          ? String(playerRow.last_updated).slice(0, 10)
-          : null;
         const dbDaily = Number(playerRow.daily_taps) || 0;
 
         let loadedStreak = Number(playerRow.current_streak) || 0;
@@ -2552,42 +2549,25 @@ const GiftTapGame = () => {
         setStreak(loadedStreak);
         streakRef.current = loadedStreak;
 
-        // Same UTC day for *daily limit* only uses last_tap_date (and local progress).
-        // Do NOT use last_updated — heartbeats stamp it every load and blocked UTC day-roll.
-        const isSameUtcDay =
-          ltd === today ||
-          (!ltd && dbDaily > 0 && lastUpdatedDay === today);
+        // Daily limit day = last_tap_date only.
+        // Never use last_updated — login/player-state stamps it every open and blocked UTC reset
+        // (that bug showed yesterday's taps as 2100/1000 on a new UTC day).
+        const isSameUtcDay = ltd === today;
 
-        if (
-          !isSameUtcDay &&
-          ((ltd && ltd < today) || (!ltd && lastUpdatedDay && lastUpdatedDay < today))
-        ) {
-          // NEW UTC day only — reset daily bar once
+        if (!isSameUtcDay) {
+          // New UTC day (or no tap day stamped) — daily bar starts at 0
           setDailyTaps(0);
           optimisticDaily.current = 0;
           setLastTapDate(ltd || '');
           lastTapDateRef.current = ltd || '';
           serverProgressRef.current = { ...(serverProgressRef.current || {}), dt: 0 };
-          if (dbDaily !== 0) {
-            supabase
-              .from('players')
-              .update({ daily_taps: 0 })
-              .eq(DB_PLAYER_ID, userId)
-              .then(({ error }) => {
-                if (error) console.error('UTC daily reset failed:', error.message);
-              });
-          }
+          // Client cannot write daily_taps under hard-lock — player-state / commit-taps own DB reset
         } else {
           // Same UTC day: KEEP daily_taps — never wipe on refresh / full bar
           setDailyTaps(dbDaily);
           optimisticDaily.current = dbDaily;
-          if (isSameUtcDay && dbDaily > 0) {
-            setLastTapDate(today);
-            lastTapDateRef.current = today;
-          } else {
-            setLastTapDate(ltd || '');
-            lastTapDateRef.current = ltd || '';
-          }
+          setLastTapDate(today);
+          lastTapDateRef.current = today;
           serverProgressRef.current = { ...(serverProgressRef.current || {}), dt: dbDaily };
         }
 
@@ -3447,7 +3427,7 @@ const GiftTapGame = () => {
       const today = utcTodayStr();
       if (utcDayWatchRef.current === today) return false;
       utcDayWatchRef.current = today;
-      // New UTC day — reset daily taps + fill energy bar to 500
+      // New UTC day — reset daily taps locally + fill energy bar to 500
       optimisticDaily.current = 0;
       setDailyTaps(0);
       setDailyAdsWatched(0);
@@ -3461,20 +3441,8 @@ const GiftTapGame = () => {
       optimisticEnergy.current = ENERGY_CAP;
       setEnergy(ENERGY_CAP);
       energyEpochRef.current = (energyEpochRef.current || 0) + 1;
-      try {
-        supabase
-          .from('players')
-          .update({
-            daily_ads_watched: 0,
-            last_ad_date: today,
-          })
-          .eq(DB_PLAYER_ID, playerId)
-          .then(({ error }) => {
-            if (error) console.warn('UTC day-roll ads', error.message);
-          });
-      } catch {
-        /* ignore */
-      }
+      // Persist day-roll via service_role (client cannot write daily_taps)
+      fetchPlayerState().catch(() => {});
       return true;
     };
 

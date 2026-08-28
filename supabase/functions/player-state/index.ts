@@ -213,9 +213,11 @@ serve(async (req) => {
     //  - catch up energy from energy_at (regen clock) — NOT from last_updated
     //  - stamp last_updated = now (last seen / login)
     //  - stamp energy_at = now with caught-up last_energy
+    //  - UTC day-roll: if last_tap_date is a previous day, zero daily_taps (service_role)
     try {
       const nowMs = Date.now();
       const nowIso = new Date(nowMs).toISOString();
+      const today = utcDayStr(nowMs);
       const energyAnchor =
         (player as Record<string, unknown>).energy_at != null
           ? String((player as Record<string, unknown>).energy_at)
@@ -225,20 +227,50 @@ serve(async (req) => {
         energyAnchor,
         nowMs,
       );
+      const patch: Record<string, unknown> = {
+        last_energy: energy,
+        energy_at: nowIso,
+        last_updated: nowIso,
+      };
+      const ltd = player.last_tap_date
+        ? String(player.last_tap_date).slice(0, 10)
+        : "";
+      const dbDaily = Number(player.daily_taps) || 0;
+      // Only last_tap_date defines the daily-limit day (not last_updated)
+      if (ltd && ltd !== today && dbDaily !== 0) {
+        patch.daily_taps = 0;
+        try {
+          patch.daily_shards = 0;
+        } catch {
+          /* column may be missing on older DBs — update still applies other fields */
+        }
+      } else if (!ltd && dbDaily !== 0) {
+        // Orphan taps with no tap-day stamp — clear on login so HUD cannot show 2100/1000
+        patch.daily_taps = 0;
+      }
       const { data: touched, error: touchErr } = await supabase
         .from("players")
-        .update({
-          last_energy: energy,
-          energy_at: nowIso,
-          last_updated: nowIso,
-        })
+        .update(patch)
         .eq("telegram_id", playerId)
         .select(PLAYER_SELECT)
         .maybeSingle();
       if (!touchErr && touched) {
         player = touched;
       } else if (touchErr) {
-        console.warn("login stamp", touchErr.message);
+        // Retry without daily_shards if that column is the problem
+        if (/daily_shards/i.test(String(touchErr.message || ""))) {
+          delete patch.daily_shards;
+          const { data: touched2, error: err2 } = await supabase
+            .from("players")
+            .update(patch)
+            .eq("telegram_id", playerId)
+            .select(PLAYER_SELECT)
+            .maybeSingle();
+          if (!err2 && touched2) player = touched2;
+          else console.warn("login stamp", err2?.message || touchErr.message);
+        } else {
+          console.warn("login stamp", touchErr.message);
+        }
       }
     } catch (e) {
       console.warn("login stamp", e);
