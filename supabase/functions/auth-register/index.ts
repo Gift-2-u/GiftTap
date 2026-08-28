@@ -107,17 +107,35 @@ serve(async (req) => {
     const playerId = crypto.randomUUID();
     const password_hash = await hashPassword(pass);
 
+    // Invite link: /play?ref=<referrer telegram_id>. Set once at signup only.
+    const JOINER_BONUS = 500;
+    const referredRaw = String(body.referred_by || body.ref || "").trim();
+    let referred_by: string | null = null;
+    let shard_balance = 0;
+    if (referredRaw && referredRaw !== playerId) {
+      const { data: referrer } = await supabase
+        .from("players")
+        .select("telegram_id")
+        .eq("telegram_id", referredRaw)
+        .maybeSingle();
+      if (referrer?.telegram_id) {
+        referred_by = String(referrer.telegram_id);
+        shard_balance = JOINER_BONUS;
+      }
+    }
+
     // Public row — NO password / vault columns
     const insertRow: Record<string, unknown> = {
       telegram_id: playerId,
       username: cleanName,
       has_beta_access: true,
-      shard_balance: 0,
+      shard_balance,
       season_shards: 0,
       lifetime_taps: 0,
       sol_balance: 0,
       usdc_balance: 0,
       wallet_address,
+      referred_by,
     };
 
     const { error: insertError } = await supabase.from("players").insert(insertRow);

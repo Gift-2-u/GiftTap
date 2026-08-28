@@ -1,0 +1,31 @@
+{
+  "name": "gift2u-seeker",
+  "version": "1.0.4",
+  "private": true,
+  "main": "expo/AppEntry.js",
+  "scripts": {
+    "start": "expo start",
+    "android": "expo run:android",
+    "prebuild": "expo prebuild --platform android",
+    "build:apk": "echo 'Use: eas build -p android  OR  cd android && ./gradlew assembleRelease'",
+    "ios": "expo run:ios"
+  },
+  "dependencies": {
+    "@expo/metro-runtime": "~4.0.1",
+    "@solana-mobile/mobile-wallet-adapter-protocol": "^2.2.9",
+    "@solana-mobile/mobile-wallet-adapter-protocol-web3js": "^2.2.9",
+    "@solana/web3.js": "^1.98.4",
+    "expo": "~52.0.0",
+    "expo-asset": "~11.0.5",
+    "expo-constants": "~17.0.0",
+    "expo-font": "~13.0.4",
+    "expo-status-bar": "~2.0.0",
+    "react": "18.3.1",
+    "react-native": "0.76.3",
+    "react-native-google-mobile-ads": "^14.11.0",
+    "react-native-webview": "13.12.5"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.25.0"
+  }
+}

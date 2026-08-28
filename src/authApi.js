@@ -8,7 +8,13 @@ import { Keypair } from '@solana/web3.js';
 import * as bip39 from 'bip39';
 import { derivePath } from 'ed25519-hd-key';
 import { supabase } from './supabaseClient';
-import { vaultSaltFor, applyAuthSession, setSessionToken } from './playerIdentity';
+import {
+  vaultSaltFor,
+  applyAuthSession,
+  setSessionToken,
+  peekReferralId,
+  consumeReferralId,
+} from './playerIdentity';
 
 const USERNAME_RE = /^[a-zA-Z0-9_]{3,20}$/;
 const SOLANA_PATH = "m/44'/501'/0'/0'";
@@ -156,6 +162,9 @@ export async function registerAccount(username, password, captchaToken = '') {
   // player_id is assigned by Edge — re-encrypt after we know final id if needed.
   // auth-register will store vault under final playerId; client may re-set via wallet-vault.
 
+  // From /play?ref=… (invite link). Keep in session if register fails so retry still works.
+  const referred_by = peekReferralId() || undefined;
+
   const res = await fetch(`${base}/functions/v1/auth-register`, {
     method: 'POST',
     headers: {
@@ -168,6 +177,7 @@ export async function registerAccount(username, password, captchaToken = '') {
       password: pass,
       wallet_address: wallet.publicKey,
       captcha_token: captchaToken || undefined,
+      referred_by,
       // vault re-keyed after we know player_id — send null for now if salt uses id
     }),
   });
@@ -175,6 +185,8 @@ export async function registerAccount(username, password, captchaToken = '') {
   if (!res.ok) {
     throw new Error(data.error || data.message || `Sign up failed (${res.status})`);
   }
+  // Only clear pending ref after a successful signup
+  if (referred_by) consumeReferralId();
 
   const playerId = data.player_id;
   const encrypted_vault = encryptVault(wallet.secret, playerId);

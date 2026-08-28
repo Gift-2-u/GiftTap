@@ -165,6 +165,14 @@ export function captureReferralFromUrl() {
   }
 }
 
+export function peekReferralId() {
+  try {
+    return sessionStorage.getItem(REF_SESSION_KEY);
+  } catch {
+    return null;
+  }
+}
+
 export function consumeReferralId() {
   const ref = sessionStorage.getItem(REF_SESSION_KEY);
   if (ref) sessionStorage.removeItem(REF_SESSION_KEY);

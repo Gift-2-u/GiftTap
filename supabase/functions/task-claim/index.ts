@@ -20,6 +20,8 @@ const TASKS: Record<string, TaskDef> = {
   follow_x: { id: "follow_x", type: "shards", reward: 250 },
   join_discord: { id: "join_discord", type: "shards", reward: 250 },
   streak_7: { id: "streak_7", type: "shards", reward: 500 },
+  streak_14: { id: "streak_14", type: "shards", reward: 1250 },
+  streak_30: { id: "streak_30", type: "shards", reward: 3000 },
   taps_1000: { id: "taps_1000", type: "daily_limit", reward: 100, dayLimited: true },
   taps_5000: { id: "taps_5000", type: "daily_limit", reward: 250, dayLimited: true },
   streak_3: { id: "streak_3", type: "daily_limit", reward: 200, dayLimited: true },
@@ -72,6 +74,8 @@ serve(async (req) => {
     if (taskId === "streak_3" && streak < 3) throw new Error("Need 3-day streak");
     if (taskId === "streak_7" && streak < 7) throw new Error("Need 7-day streak");
     if (taskId === "streak_10" && streak < 10) throw new Error("Need 10-day streak");
+    if (taskId === "streak_14" && streak < 14) throw new Error("Need 14-day streak");
+    if (taskId === "streak_30" && streak < 30) throw new Error("Need 30-day streak");
     // social tasks: trust client opened link once (or require future proof)
 
     const inv = invObj(row.inventory);
