@@ -2278,6 +2278,8 @@ const GiftTapGame = () => {
           await ensureSecureSession();
           const state = await fetchPlayerState();
           if (state?.player) {
+            // player-state: if prior last_updated was a previous UTC day →
+            // daily_taps=0 and last_energy=500, then stamps last_updated=now
             if (state.player.last_updated != null) {
               playerRow.last_updated = state.player.last_updated;
             }
@@ -2286,6 +2288,15 @@ const GiftTapGame = () => {
             }
             if (state.player.energy_at != null) {
               playerRow.energy_at = state.player.energy_at;
+            }
+            if (state.player.daily_taps != null) {
+              playerRow.daily_taps = state.player.daily_taps;
+            }
+            if (state.player.daily_ads_watched != null) {
+              playerRow.daily_ads_watched = state.player.daily_ads_watched;
+            }
+            if (state.player.last_ad_date != null) {
+              playerRow.last_ad_date = state.player.last_ad_date;
             }
           } else {
             console.warn('login last_updated stamp skipped', state?.error);
@@ -2512,28 +2523,24 @@ const GiftTapGame = () => {
         } else {
           setWallSnoozedFor(null);
         }
-        // Provisional energy from DB — regen clock is energy_at (not last_updated login stamp)
-        const _en = Number.isFinite(Number(playerRow.last_energy))
-          ? Math.max(0, Math.min(ENERGY_CAP, Number(playerRow.last_energy)))
-          : 0;
-        const _enAtRaw = playerRow.energy_at || playerRow.last_updated;
-        const _enAt = _enAtRaw ? new Date(_enAtRaw).getTime() : Date.now();
-        energyAnchorRef.current = { value: _en, at: _enAt };
-        setEnergy(energyFromAnchor(_en, _enAt));
-        optimisticEnergy.current = energyFromAnchor(_en, _enAt);
-
-        // Daily limit + streak (UTC calendar day)
-        // RULE: daily_taps only resets when last activity was a PREVIOUS UTC day.
-        // Never zero daily_taps on every refresh. Never zero just because bar is full.
+        // New UTC day = prior last_updated date ≠ today (done in player-state):
+        // energy 500/500 + daily 0/1000. HUD trusts those DB fields — no last_tap day-roll.
         const today = utcTodayStr();
         const yesterdayUtc = utcYesterdayStr();
         const ltd = playerRow.last_tap_date
           ? String(playerRow.last_tap_date).slice(0, 10)
           : null;
         const dbDaily = Number(playerRow.daily_taps) || 0;
+        const _en = Number.isFinite(Number(playerRow.last_energy))
+          ? Math.max(0, Math.min(ENERGY_CAP, Number(playerRow.last_energy)))
+          : 0;
+        const _enAtRaw = playerRow.energy_at || playerRow.last_updated;
+        const _enAt = _enAtRaw ? new Date(_enAtRaw).getTime() : Date.now();
+        energyAnchorRef.current = { value: _en, at: _enAt };
+        setEnergy(_en);
+        optimisticEnergy.current = _en;
 
         let loadedStreak = Number(playerRow.current_streak) || 0;
-        // Gap > 1 UTC day → streak back to 0 (display + optional DB)
         if (ltd && ltd < yesterdayUtc) {
           loadedStreak = 0;
           if (Number(playerRow.current_streak) || 0) {
@@ -2549,27 +2556,11 @@ const GiftTapGame = () => {
         setStreak(loadedStreak);
         streakRef.current = loadedStreak;
 
-        // Daily limit day = last_tap_date only.
-        // Never use last_updated — login/player-state stamps it every open and blocked UTC reset
-        // (that bug showed yesterday's taps as 2100/1000 on a new UTC day).
-        const isSameUtcDay = ltd === today;
-
-        if (!isSameUtcDay) {
-          // New UTC day (or no tap day stamped) — daily bar starts at 0
-          setDailyTaps(0);
-          optimisticDaily.current = 0;
-          setLastTapDate(ltd || '');
-          lastTapDateRef.current = ltd || '';
-          serverProgressRef.current = { ...(serverProgressRef.current || {}), dt: 0 };
-          // Client cannot write daily_taps under hard-lock — player-state / commit-taps own DB reset
-        } else {
-          // Same UTC day: KEEP daily_taps — never wipe on refresh / full bar
-          setDailyTaps(dbDaily);
-          optimisticDaily.current = dbDaily;
-          setLastTapDate(today);
-          lastTapDateRef.current = today;
-          serverProgressRef.current = { ...(serverProgressRef.current || {}), dt: dbDaily };
-        }
+        setDailyTaps(dbDaily);
+        optimisticDaily.current = dbDaily;
+        setLastTapDate(ltd || '');
+        lastTapDateRef.current = ltd || '';
+        serverProgressRef.current = { ...(serverProgressRef.current || {}), dt: dbDaily };
 
         // 🚨 NEW: Ad Capacity & Midnight Reset Logic
         // --- 1. SEARCH FOR THE AD RESET LOGIC (Around line 50 of your snippet) ---

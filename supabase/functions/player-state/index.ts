@@ -209,44 +209,45 @@ serve(async (req) => {
       );
     }
 
-    // This player only on login:
-    //  - catch up energy from energy_at (regen clock) — NOT from last_updated
-    //  - stamp last_updated = now (last seen / login)
-    //  - stamp energy_at = now with caught-up last_energy
-    //  - UTC day-roll: if last_tap_date is a previous day, zero daily_taps (service_role)
+    // This player only on login / player-state:
+    //  - If previous last_updated is a prior UTC day → new day:
+    //      daily_taps = 0 (0/1000 bar) + energy = 500 (full battery)
+    //    (Must NOT wait for a tap — player can already be maxed and unable to tap.)
+    //  - Then stamp last_updated / energy_at = now
     try {
       const nowMs = Date.now();
       const nowIso = new Date(nowMs).toISOString();
       const today = utcDayStr(nowMs);
-      const energyAnchor =
-        (player as Record<string, unknown>).energy_at != null
-          ? String((player as Record<string, unknown>).energy_at)
-          : (player.last_updated as string | null);
-      const energy = energyFromAnchor(
-        Number(player.last_energy),
-        energyAnchor,
-        nowMs,
-      );
+      const prevUpdatedDay = player.last_updated
+        ? String(player.last_updated).slice(0, 10)
+        : "";
+      const isNewUtcDay = !!(prevUpdatedDay && prevUpdatedDay !== today);
+
+      let energy: number;
+      if (isNewUtcDay) {
+        energy = ENERGY_CAP;
+      } else {
+        const energyAnchor =
+          (player as Record<string, unknown>).energy_at != null
+            ? String((player as Record<string, unknown>).energy_at)
+            : (player.last_updated as string | null);
+        energy = energyFromAnchor(
+          Number(player.last_energy),
+          energyAnchor,
+          nowMs,
+        );
+      }
+
       const patch: Record<string, unknown> = {
         last_energy: energy,
         energy_at: nowIso,
         last_updated: nowIso,
       };
-      const ltd = player.last_tap_date
-        ? String(player.last_tap_date).slice(0, 10)
-        : "";
-      const dbDaily = Number(player.daily_taps) || 0;
-      // Only last_tap_date defines the daily-limit day (not last_updated)
-      if (ltd && ltd !== today && dbDaily !== 0) {
+      if (isNewUtcDay) {
         patch.daily_taps = 0;
-        try {
-          patch.daily_shards = 0;
-        } catch {
-          /* column may be missing on older DBs — update still applies other fields */
-        }
-      } else if (!ltd && dbDaily !== 0) {
-        // Orphan taps with no tap-day stamp — clear on login so HUD cannot show 2100/1000
-        patch.daily_taps = 0;
+        patch.daily_shards = 0;
+        patch.daily_ads_watched = 0;
+        patch.last_ad_date = today;
       }
       const { data: touched, error: touchErr } = await supabase
         .from("players")
@@ -257,7 +258,6 @@ serve(async (req) => {
       if (!touchErr && touched) {
         player = touched;
       } else if (touchErr) {
-        // Retry without daily_shards if that column is the problem
         if (/daily_shards/i.test(String(touchErr.message || ""))) {
           delete patch.daily_shards;
           const { data: touched2, error: err2 } = await supabase
