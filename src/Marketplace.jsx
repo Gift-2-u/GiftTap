@@ -212,7 +212,10 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, bumpEner
   const [rushCmReady, setRushCmReady] = useState(false);
   const [shadowCmReady, setShadowCmReady] = useState(false);
   const minMintSol = minSolForLocksmithMint();
-  const walletUnlocked = Boolean(decryptedPhrase);
+  // Unlocked after normal username+password login (phrase passed from GiftTap)
+  const walletUnlocked = Boolean(
+    decryptedPhrase && String(decryptedPhrase).trim().length > 0,
+  );
   const canAffordStarMint =
     Number.isFinite(walletSol) && walletSol >= minSolForStarMint();
   const canAffordLocksmithMint =
@@ -1005,7 +1008,7 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, bumpEner
       setTxStatus({
         show: true,
         loading: false,
-        message: '❌ Unlock your game wallet first (Menu / wallet settings).',
+        message: '❌ Game wallet key missing after login. Log out, log in once with your password, then mint.',
         success: false,
       });
       return;
@@ -1106,7 +1109,7 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, bumpEner
       setTxStatus({
         show: true,
         loading: false,
-        message: '❌ Unlock your game wallet first (Menu / wallet settings).',
+        message: '❌ Game wallet key missing after login. Log out, log in once with your password, then mint.',
         success: false,
       });
       return;
@@ -1208,7 +1211,7 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, bumpEner
       setTxStatus({
         show: true,
         loading: false,
-        message: '❌ Unlock your game wallet first (Menu / wallet settings).',
+        message: '❌ Game wallet key missing after login. Log out, log in once with your password, then mint.',
         success: false,
       });
       return;
@@ -1325,7 +1328,7 @@ Luck jackpot active · Pack → NFT to see it.`,
       setTxStatus({
         show: true,
         loading: false,
-        message: 'Unlock your game wallet first (Menu / wallet settings).',
+        message: 'Game wallet key missing after login. Log out, log in once with your password, then mint.',
         success: false,
       });
       return;
@@ -1435,7 +1438,8 @@ Tap multi active · Pack → NFT to see it.`,
       setTxStatus({
         show: true,
         loading: false,
-        message: 'Unlock your game wallet first (Menu / wallet settings).',
+        message:
+          'Game wallet key missing after login. Log out, log in once with your password, then mint.',
         success: false,
       });
       return;
@@ -1535,7 +1539,7 @@ Daily cap active · Pack → NFT to see it.`,
       setTxStatus({
         show: true,
         loading: false,
-        message: 'Unlock your game wallet first (Menu / wallet settings).',
+        message: 'Game wallet key missing after login. Log out, log in once with your password, then mint.',
         success: false,
       });
       return;
@@ -3913,7 +3917,8 @@ Daily claim active · Pack → NFT to see it.`,
                         setTxStatus({
                           show: true,
                           loading: false,
-                          message: 'Unlock your game wallet first (Menu / wallet settings).',
+                          message:
+                            'Game wallet key missing after login. Log out, log in once with your password, then mint.',
                           success: false,
                         });
                         return;
@@ -4009,7 +4014,7 @@ Daily claim active · Pack → NFT to see it.`,
                     ? walletSolLoading
                       ? '…'
                       : !walletUnlocked
-                        ? 'Unlock wallet'
+                        ? 'Buy'
                         : (nftDetail.isFateMint || nftDetail.isEchoMint || nftDetail.isRushMint || nftDetail.isShadowMint || nftDetail.isStarMint) &&
                             !nftDetail.mintLive
                           ? 'Soon'

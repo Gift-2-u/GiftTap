@@ -293,22 +293,41 @@ const encryptWallet = (secretPhrase, password) => {
   return CryptoJS.AES.encrypt(secretPhrase, password).toString();
 };
 
-/** Tab-session only: keep unlock after refresh so Buy/mint is not a 2nd password nag. */
+/**
+ * After username+password login, keep the game wallet key on this device until Log out.
+ * Same easy flow as before: sign in once → play / mint (no mid-game unlock / re-signin).
+ */
 function sessionPhraseKey(pid) {
-  return `gift2u_session_phrase_${String(pid || '').trim()}`;
+  return `gift2u_wallet_key_${String(pid || '').trim()}`;
 }
 function saveSessionPhrase(pid, phrase) {
   try {
     const id = String(pid || '').trim();
     const p = String(phrase || '').trim();
-    if (id && p) sessionStorage.setItem(sessionPhraseKey(id), p);
+    if (id && p) localStorage.setItem(sessionPhraseKey(id), p);
   } catch {
     /* ignore */
   }
 }
 function loadSessionPhrase(pid) {
   try {
-    return sessionStorage.getItem(sessionPhraseKey(pid)) || '';
+    const id = String(pid || '').trim();
+    if (!id) return '';
+    const key = sessionPhraseKey(id);
+    let v = localStorage.getItem(key) || '';
+    if (!v) {
+      // migrate short-lived tab cache from earlier builds
+      v = sessionStorage.getItem(`gift2u_session_phrase_${id}`) || '';
+      if (v) {
+        localStorage.setItem(key, v);
+        try {
+          sessionStorage.removeItem(`gift2u_session_phrase_${id}`);
+        } catch {
+          /* ignore */
+        }
+      }
+    }
+    return v;
   } catch {
     return '';
   }
@@ -316,7 +335,7 @@ function loadSessionPhrase(pid) {
 function clearSessionPhrase(pid) {
   try {
     const id = String(pid || '').trim();
-    if (id) sessionStorage.removeItem(sessionPhraseKey(id));
+    if (id) localStorage.removeItem(sessionPhraseKey(id));
   } catch {
     /* ignore */
   }
@@ -3051,22 +3070,41 @@ const GiftTapGame = () => {
       saveSessionPhrase(pid, mnemonic);
       setMustBackup(true);
     } else if (password && String(password).length >= 6) {
-      // Returning login: unlock once with login password — Buy/mint reuse RAM (no 2nd prompt)
+      // One login password → open vault → stay unlocked on this device until Log out
       try {
         await ensureSecureSession();
         const vaultRes = await secureUnlockVault(password);
-        if (vaultRes?.encrypted_vault) {
-          const unlocked = decryptWallet(
-            vaultRes.encrypted_vault,
-            vaultSaltFor(String(pid)),
-          );
-          if (unlocked) {
-            setDecryptedPhrase(unlocked);
-            saveSessionPhrase(pid, unlocked);
+        const blob = vaultRes?.encrypted_vault
+          ? String(vaultRes.encrypted_vault)
+          : '';
+        let unlocked = blob
+          ? decryptWallet(blob, vaultSaltFor(String(pid)))
+          : null;
+        // Legacy vaults encrypted with the account password itself
+        if (!unlocked && blob) {
+          unlocked = decryptWallet(blob, String(password));
+        }
+        if (unlocked) {
+          setDecryptedPhrase(unlocked);
+          saveSessionPhrase(pid, unlocked);
+        } else {
+          // Still allow play; restore from device cache if we unlocked here before
+          const cached = loadSessionPhrase(pid);
+          if (cached) setDecryptedPhrase(cached);
+          else {
+            notify(
+              vaultRes?.message ||
+                'Could not open game wallet from vault. If mint fails, restore with your 12 words once.',
+              false,
+            );
           }
         }
       } catch (ue) {
-        console.warn('vault unlock on login', ue?.message || ue);
+        const cached = loadSessionPhrase(pid);
+        if (cached) setDecryptedPhrase(cached);
+        else {
+          notify(ue?.message || 'Wallet open on login failed.', false);
+        }
       }
     } else {
       const cached = loadSessionPhrase(pid);
