@@ -106,6 +106,36 @@ import WalletNftSection from './WalletNftSection';
 import { listGiftNfts, invalidateGiftNftListCache } from './locksmith';
 import { invalidateOwnershipSyncThrottle } from './nftOwnershipSync';
 
+/**
+ * Backpack writes: keep everything the player already has; only write keys
+ * present on `addition` (the purchase / NFT activate fields). Never wipe badges/boosts.
+ */
+function addToBackpackInventory(prev, addition) {
+  const out =
+    prev && typeof prev === 'object' && !Array.isArray(prev) ? { ...prev } : {};
+  if (!addition || typeof addition !== 'object' || Array.isArray(addition)) {
+    return out;
+  }
+  for (const key of Object.keys(addition)) {
+    const val = addition[key];
+    if (val === undefined) continue;
+    if (
+      (key === 'elf_levels' || key === 'star_levels' || key === 'fate_equip') &&
+      val &&
+      typeof val === 'object' &&
+      !Array.isArray(val)
+    ) {
+      out[key] = {
+        ...(out[key] && typeof out[key] === 'object' ? out[key] : {}),
+        ...val,
+      };
+      continue;
+    }
+    out[key] = val;
+  }
+  return out;
+}
+
 /** Professional icon tile — custom SVG / image or built-in glyph */
 function ShopItemIcon({ item, size = 52, variant = 'row' }) {
   const from = item.iconFrom || '#333';
@@ -923,15 +953,12 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, bumpEner
         const nextBalance = Number(data.shard_balance);
         const newInventory = data.inventory || {};
         setBalance(nextBalance);
-        setLocalInventory(newInventory);
+        // Add purchased item into existing backpack — never replace whole inventory
+        setLocalInventory((prev) => addToBackpackInventory(prev, newInventory));
         if (setStats) {
           setStats((prev) => ({
             ...prev,
-            inventory: applyServerInventoryAuthority(
-              prev?.inventory || {},
-              newInventory,
-              getUtcWeekId(),
-            ),
+            inventory: addToBackpackInventory(prev?.inventory || {}, newInventory),
           }));
         }
         setTxStatus({
@@ -1276,11 +1303,11 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, bumpEner
           assetId: result.asset,
         });
         if (act?.inventory) {
-          setLocalInventory(act.inventory);
+          setLocalInventory((prev) => addToBackpackInventory(prev, act.inventory));
           if (setStats) {
             setStats((prev) => ({
               ...prev,
-              inventory: act.inventory,
+              inventory: addToBackpackInventory(prev?.inventory || {}, act.inventory),
               ...(act.tap_power != null ? { tap_power: act.tap_power } : {}),
               ...(act.max_daily_limit != null
                 ? { max_daily_limit: act.max_daily_limit }
@@ -1394,11 +1421,11 @@ Luck jackpot active · Pack → NFT to see it.`,
           assetId: result.asset,
         });
         if (act?.inventory) {
-          setLocalInventory(act.inventory);
+          setLocalInventory((prev) => addToBackpackInventory(prev, act.inventory));
           if (setStats) {
             setStats((prev) => ({
               ...prev,
-              inventory: act.inventory,
+              inventory: addToBackpackInventory(prev?.inventory || {}, act.inventory),
               ...(act.tap_power != null ? { tap_power: act.tap_power } : {}),
               ...(act.max_daily_limit != null
                 ? { max_daily_limit: act.max_daily_limit }
@@ -1495,11 +1522,11 @@ Tap multi active · Pack → NFT to see it.`,
           assetId: result.asset,
         });
         if (act?.inventory) {
-          setLocalInventory(act.inventory);
+          setLocalInventory((prev) => addToBackpackInventory(prev, act.inventory));
           if (setStats) {
             setStats((prev) => ({
               ...prev,
-              inventory: act.inventory,
+              inventory: addToBackpackInventory(prev?.inventory || {}, act.inventory),
               ...(act.tap_power != null ? { tap_power: act.tap_power } : {}),
               ...(act.max_daily_limit != null
                 ? { max_daily_limit: act.max_daily_limit }
@@ -1595,11 +1622,11 @@ Daily cap active · Pack → NFT to see it.`,
           assetId: result.asset,
         });
         if (act?.inventory) {
-          setLocalInventory(act.inventory);
+          setLocalInventory((prev) => addToBackpackInventory(prev, act.inventory));
           if (setStats) {
             setStats((prev) => ({
               ...prev,
-              inventory: act.inventory,
+              inventory: addToBackpackInventory(prev?.inventory || {}, act.inventory),
               ...(act.tap_power != null ? { tap_power: act.tap_power } : {}),
               ...(act.max_daily_limit != null
                 ? { max_daily_limit: act.max_daily_limit }
@@ -1670,16 +1697,16 @@ Daily claim active · Pack → NFT to see it.`,
         });
         const data = await securePremiumGrant(item.id, null, { currency: 'g2u' });
         const newInventory = data.inventory || {};
-        setLocalInventory(newInventory);
+        setLocalInventory((prev) => addToBackpackInventory(prev, newInventory));
         if (setStats) {
-          setStats({
-            ...stats,
-            inventory: newInventory,
+          setStats((prev) => ({
+            ...prev,
+            inventory: addToBackpackInventory(prev?.inventory || {}, newInventory),
             has_made_purchase: true,
             ...(data.gft_token_balance != null
               ? { gft_token_balance: Number(data.gft_token_balance) }
               : {}),
-          });
+          }));
         }
         setTxStatus({
           show: true,
@@ -1750,13 +1777,13 @@ Daily claim active · Pack → NFT to see it.`,
       if (hasSecureSession()) {
         const data = await securePremiumGrant(item.id, signature);
         const newInventory = data.inventory || {};
-        setLocalInventory(newInventory);
+        setLocalInventory((prev) => addToBackpackInventory(prev, newInventory));
         if (setStats) {
-          setStats({
-            ...stats,
-            inventory: newInventory,
+          setStats((prev) => ({
+            ...prev,
+            inventory: addToBackpackInventory(prev?.inventory || {}, newInventory),
             has_made_purchase: true,
-          });
+          }));
         }
         try {
           const after = await connection.getBalance(playerKeypair.publicKey);
@@ -3084,11 +3111,11 @@ Daily claim active · Pack → NFT to see it.`,
                   }
                   inventory={localInventory}
                   onInventoryChange={(inv, playerPatch) => {
-                    setLocalInventory(inv);
+                    setLocalInventory((prev) => addToBackpackInventory(prev, inv));
                     if (typeof setStats === 'function') {
                       setStats((prev) => ({
                         ...(prev || {}),
-                        inventory: inv,
+                        inventory: addToBackpackInventory(prev?.inventory || {}, inv),
                         ...(playerPatch && typeof playerPatch === 'object'
                           ? {
                               ...(playerPatch.shard_balance != null
@@ -3465,11 +3492,12 @@ Daily claim active · Pack → NFT to see it.`,
                     }
                   }}
                   onInventoryChange={(inv, playerPatch) => {
-                    setLocalInventory(inv);
+                    // NFT sync: add NFT fields only — keep badges/boosts already in backpack
+                    setLocalInventory((prev) => addToBackpackInventory(prev, inv));
                     if (setStats) {
                       setStats((prev) => ({
                         ...prev,
-                        inventory: inv,
+                        inventory: addToBackpackInventory(prev?.inventory || {}, inv),
                         ...(playerPatch && typeof playerPatch === 'object'
                           ? {
                               ...(playerPatch.shard_balance != null

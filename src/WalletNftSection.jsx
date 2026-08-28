@@ -496,7 +496,11 @@ export default function WalletNftSection({
         });
         if (cancelled || result.skipped) return;
         if (!result.changed || !result.inventory) return;
-        setLocalInv(result.inventory);
+        // Keep existing backpack items; only write keys returned by sync (NFT slots)
+        setLocalInv((prev) => ({
+          ...(prev && typeof prev === 'object' ? prev : {}),
+          ...result.inventory,
+        }));
         if (typeof onInventoryChange === 'function') {
           const patch = {};
           if (result.tap_power != null) patch.tap_power = result.tap_power;
