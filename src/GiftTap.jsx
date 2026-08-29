@@ -2598,33 +2598,24 @@ const GiftTapGame = () => {
         lastTapDateRef.current = ltd || '';
         serverProgressRef.current = { ...(serverProgressRef.current || {}), dt: dbDaily };
 
-        // 🚨 NEW: Ad Capacity & Midnight Reset Logic
-        // --- 1. SEARCH FOR THE AD RESET LOGIC (Around line 50 of your snippet) ---
+        // Ad watch counter: new UTC day → 0 ads watched. Do NOT touch max_daily_limit
+        // (that comes from players.max_daily_limit — forcing 1000 caused 2512/1000 UI).
         if (playerRow.last_ad_date !== today) {
             setDailyAdsWatched(0);
-            
-            // 🚨 SENIOR FIX: Don't just set to 1000. Set to 1000 + their active SOL boost.
-            const baseLimit = 1000;
-            const activeBoost = Number(playerRow.limit_boost_amount) || 0;
-            const resetLimit = baseLimit; // max_daily_limit is the "Base", boosts are calculated in dynamicMaxLimit
-
-            setMaxDailyLimit(resetLimit);
-
             supabase
                 .from('players')
-                .update({ 
-                    daily_ads_watched: 0, 
-                    max_daily_limit: resetLimit,
-                    last_ad_date: today
+                .update({
+                    daily_ads_watched: 0,
+                    last_ad_date: today,
                 })
                 .eq(DB_PLAYER_ID, userId)
                 .then(({ error }) => {
-                    if (error) console.error("Midnight ad reset failed:", error.message);
+                    if (error) console.error('Midnight ad reset failed:', error.message);
                 });
         } else {
             setDailyAdsWatched(playerRow.daily_ads_watched || 0);
-            setMaxDailyLimit(playerRow.max_daily_limit || 1000);
         }
+        setMaxDailyLimit(Math.max(1000, Number(playerRow.max_daily_limit) || 1000));
 
         // Energy recovery: regen clock is energy_at (NOT last_updated — that is login only).
         const energyAtRaw = playerRow.energy_at || playerRow.last_updated;
