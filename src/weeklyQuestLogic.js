@@ -459,6 +459,11 @@ export function applyBadgeQtyAuthority(target, authority) {
 export function applyServerInventoryAuthority(prevInv, serverInv, weekId = getUtcWeekId()) {
   const prev = prevInv && typeof prevInv === 'object' ? prevInv : {};
   const server = serverInv && typeof serverInv === 'object' ? serverInv : {};
+  // Empty object is not a players.inventory snapshot (login wipe / partial realtime).
+  // Applying badge/shop authority from {} deletes every owned key.
+  if (Object.keys(server).length === 0) {
+    return mergeInventoryWeekly(prev, {}, weekId);
+  }
   const merged = mergeInventoryWeekly(prev, server, weekId);
   applyShopQtyAuthority(merged, server);
   applyBadgeQtyAuthority(merged, server);

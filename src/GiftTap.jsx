@@ -1036,10 +1036,10 @@ const GiftTapGame = () => {
   ]);
 
   // Keep inventoryRef aligned when shop/backpack/badges update stats.inventory.
-  // stats is shop authority (buy/use). preferConsumed(MIN) wiped purchases
-  // (ref 0 vs buy 1 → 0) and left saves writing stale owned counts.
+  // Empty {} is not players-row data — never treat it as authority (wipes badges).
   useEffect(() => {
-    if (!stats?.inventory) return;
+    if (!stats?.inventory || typeof stats.inventory !== 'object') return;
+    if (Object.keys(stats.inventory).length === 0) return;
     const weekId = getUtcWeekId();
     inventoryRef.current = applyServerInventoryAuthority(
       inventoryRef.current || {},
@@ -2221,18 +2221,26 @@ const GiftTapGame = () => {
     setLifetimeTaps(0);
     setDailyTaps(0);
     setEnergy(500);
-    setStats({
+    // Keep prior inventory until players row loads — clearing to {} wiped badges/boosts.
+    setStats((prev) => ({
       frenzy_expires: null,
       efficiency_expires: null,
       energy_boost_expires: null,
-      inventory: {},
-    });
+      limit_boost_amount: prev?.limit_boost_amount,
+      limit_boost_expires: prev?.limit_boost_expires,
+      ad_energy_boost: prev?.ad_energy_boost,
+      ad_energy_expires: prev?.ad_energy_expires,
+      inventory:
+        prev?.inventory && Object.keys(prev.inventory).length > 0
+          ? prev.inventory
+          : {},
+    }));
     setBalances({ sol: 0, G2U: 0, G2Ushards: 0, usdc: 0 });
     try {
       const userId = playerId;
       const invisibleKey = vaultSaltFor(userId);
       
-      // 1. Fetch player data
+      // 1. Fetch player data (source of truth: players row)
       const { data: playerRow } = await supabase
         .from('players')
         .select('*')
@@ -2278,8 +2286,8 @@ const GiftTapGame = () => {
           await ensureSecureSession();
           const state = await fetchPlayerState();
           if (state?.player) {
-            // player-state: if prior last_updated was a previous UTC day →
-            // daily_taps=0 and last_energy=500, then stamps last_updated=now
+            // player-state returns the same players row — always prefer it for
+            // inventory, max daily, and active boosts (login / last_updated).
             if (state.player.last_updated != null) {
               playerRow.last_updated = state.player.last_updated;
             }
@@ -2297,6 +2305,34 @@ const GiftTapGame = () => {
             }
             if (state.player.last_ad_date != null) {
               playerRow.last_ad_date = state.player.last_ad_date;
+            }
+            if (state.player.max_daily_limit != null) {
+              playerRow.max_daily_limit = state.player.max_daily_limit;
+            }
+            if (
+              state.player.inventory &&
+              typeof state.player.inventory === 'object' &&
+              Object.keys(state.player.inventory).length > 0
+            ) {
+              playerRow.inventory = state.player.inventory;
+            }
+            if (state.player.energy_boost_expires !== undefined) {
+              playerRow.energy_boost_expires = state.player.energy_boost_expires;
+            }
+            if (state.player.limit_boost_amount !== undefined) {
+              playerRow.limit_boost_amount = state.player.limit_boost_amount;
+            }
+            if (state.player.limit_boost_expires !== undefined) {
+              playerRow.limit_boost_expires = state.player.limit_boost_expires;
+            }
+            if (state.player.frenzy_expires !== undefined) {
+              playerRow.frenzy_expires = state.player.frenzy_expires;
+            }
+            if (state.player.efficiency_expires !== undefined) {
+              playerRow.efficiency_expires = state.player.efficiency_expires;
+            }
+            if (state.player.tap_power != null) {
+              playerRow.tap_power = state.player.tap_power;
             }
           } else {
             console.warn('login last_updated stamp skipped', state?.error);
@@ -4364,28 +4400,8 @@ const GiftTapGame = () => {
       }
       let currentStreak = Math.max(0, Number(streakRef.current) || Number(streak) || 0);
 
-      // Same formula as HUD dynamicMaxLimit / server effectiveDailyLimit.
-      // Do NOT start from maxDailyLimit then add boosts again (that double-counted
-      // and let taps climb past the real cap until flush snapped back).
-      const clickTime = new Date();
-      let currentMaxLimit = 1000;
-      {
-        const ra = (inventoryRef.current || stats?.inventory || {}).rush_active;
-        if (ra && typeof ra === 'object') {
-          const cap = rushDailyLimit(ra.rarity || ra.rarityKey, ra.level || 1);
-          if (cap > 0) currentMaxLimit = cap;
-        }
-      }
-      if (stats.energy_boost_expires && clickTime < new Date(stats.energy_boost_expires)) {
-        currentMaxLimit += 1000;
-      }
-      if (stats.limit_boost_expires && clickTime < new Date(stats.limit_boost_expires)) {
-        currentMaxLimit += Number(stats.limit_boost_amount) || 0;
-      }
-      currentMaxLimit += getTaskLimitBoost(stats, clickTime);
-      if (stats.ad_energy_expires && clickTime < new Date(stats.ad_energy_expires)) {
-        currentMaxLimit += Math.max(0, Number(stats.ad_energy_boost) || 0);
-      }
+      // Tap cap = players.max_daily_limit (login / refresh / Edge already baked boosts in).
+      const currentMaxLimit = Math.max(1000, Number(maxDailyLimit) || 1000);
 
       // 2. Use currentDailyTaps (already 0 after midnight), not stale dailyTaps state
       if (currentDailyTaps >= currentMaxLimit) {
@@ -5074,7 +5090,15 @@ const GiftTapGame = () => {
             
             // Sync when another device is ahead (shards OR lifetime / mining taps)
             const incomingTaps = Number(payload.new.lifetime_taps) || 0;
-            const inv = payload.new.inventory || {};
+            // players.inventory only — never invent {}. Missing/partial realtime must not wipe.
+            const invRaw = payload.new.inventory;
+            const inv =
+              invRaw &&
+              typeof invRaw === 'object' &&
+              !Array.isArray(invRaw) &&
+              Object.keys(invRaw).length > 0
+                ? invRaw
+                : null;
             const incomingShards = Number(payload.new.shard_balance) || 0;
 
             // Skip echo of our own save for 1.5s (avoid fighting mid-tap)
@@ -5187,54 +5211,80 @@ const GiftTapGame = () => {
               }
               if (payload.new.tap_power != null) setTapPower(payload.new.tap_power);
               if (payload.new.max_daily_limit != null) {
-                setMaxDailyLimit(payload.new.max_daily_limit);
+                setMaxDailyLimit(Number(payload.new.max_daily_limit) || 1000);
               }
               setStats((prev) => {
                 const wk = getUtcWeekId();
-                // Realtime row is shop-qty authority (buy + use). Do not MIN with
-                // inventoryRef afterward — that wiped purchases (ref 0 vs server 1).
-                let nextInv = applyServerInventoryAuthority(
-                  mergeInventoryWeekly(
-                    prev.inventory || {},
-                    inventoryRef.current || {},
+                let nextInv = prev.inventory || inventoryRef.current || {};
+                // Only replace inventory when players.inventory is actually present
+                if (inv) {
+                  nextInv = applyServerInventoryAuthority(
+                    mergeInventoryWeekly(
+                      prev.inventory || {},
+                      inventoryRef.current || {},
+                      wk,
+                    ),
+                    inv,
                     wk,
-                  ),
-                  inv || {},
-                  wk,
-                );
-                nextInv = hydrateWeeklyClaimsFromLedger(nextInv, wk);
-                inventoryRef.current = nextInv;
+                  );
+                  nextInv = hydrateWeeklyClaimsFromLedger(nextInv, wk);
+                  inventoryRef.current = nextInv;
+                }
                 return {
                   ...prev,
                   inventory: nextInv,
-                  frenzy_expires: payload.new.frenzy_expires,
-                  efficiency_expires: payload.new.efficiency_expires,
-                  energy_boost_expires: payload.new.energy_boost_expires,
-                };
-              });
-            } else if (!isOwnEcho) {
-              // Still refresh inventory / buffs — never wipe weekly claims
-              setStats((prev) => {
-                const wk = getUtcWeekId();
-                let nextInv = applyServerInventoryAuthority(
-                  mergeInventoryWeekly(
-                    prev.inventory || {},
-                    inventoryRef.current || {},
-                    wk,
-                  ),
-                  inv || {},
-                  wk,
-                );
-                nextInv = hydrateWeeklyClaimsFromLedger(nextInv, wk);
-                inventoryRef.current = nextInv;
-                return {
-                  ...prev,
-                  inventory: nextInv,
-                  frenzy_expires: payload.new.frenzy_expires ?? prev.frenzy_expires,
+                  frenzy_expires:
+                    payload.new.frenzy_expires ?? prev.frenzy_expires,
                   efficiency_expires:
                     payload.new.efficiency_expires ?? prev.efficiency_expires,
                   energy_boost_expires:
                     payload.new.energy_boost_expires ?? prev.energy_boost_expires,
+                  limit_boost_amount:
+                    payload.new.limit_boost_amount ?? prev.limit_boost_amount,
+                  limit_boost_expires:
+                    payload.new.limit_boost_expires ?? prev.limit_boost_expires,
+                  ad_energy_boost:
+                    payload.new.ad_energy_boost ?? prev.ad_energy_boost,
+                  ad_energy_expires:
+                    payload.new.ad_energy_expires ?? prev.ad_energy_expires,
+                };
+              });
+            } else if (!isOwnEcho) {
+              // Still refresh buffs from players row — inventory only if present
+              setStats((prev) => {
+                const wk = getUtcWeekId();
+                let nextInv = prev.inventory || inventoryRef.current || {};
+                if (inv) {
+                  nextInv = applyServerInventoryAuthority(
+                    mergeInventoryWeekly(
+                      prev.inventory || {},
+                      inventoryRef.current || {},
+                      wk,
+                    ),
+                    inv,
+                    wk,
+                  );
+                  nextInv = hydrateWeeklyClaimsFromLedger(nextInv, wk);
+                  inventoryRef.current = nextInv;
+                }
+                return {
+                  ...prev,
+                  inventory: nextInv,
+                  frenzy_expires:
+                    payload.new.frenzy_expires ?? prev.frenzy_expires,
+                  efficiency_expires:
+                    payload.new.efficiency_expires ?? prev.efficiency_expires,
+                  energy_boost_expires:
+                    payload.new.energy_boost_expires ??
+                    prev.energy_boost_expires,
+                  limit_boost_amount:
+                    payload.new.limit_boost_amount ?? prev.limit_boost_amount,
+                  limit_boost_expires:
+                    payload.new.limit_boost_expires ?? prev.limit_boost_expires,
+                  ad_energy_boost:
+                    payload.new.ad_energy_boost ?? prev.ad_energy_boost,
+                  ad_energy_expires:
+                    payload.new.ad_energy_expires ?? prev.ad_energy_expires,
                 };
               });
             }
@@ -5383,17 +5433,35 @@ const GiftTapGame = () => {
           lastTapDateRef.current = isSameUtcDay && nextDaily > 0 ? today : ltd;
           setLastTapDate(lastTapDateRef.current);
         }
-        setStats((prev) => ({
-          ...prev,
-          inventory: row.inventory || prev.inventory,
-          frenzy_expires: row.frenzy_expires ?? prev.frenzy_expires,
-          efficiency_expires: row.efficiency_expires ?? prev.efficiency_expires,
-          energy_boost_expires: row.energy_boost_expires ?? prev.energy_boost_expires,
-          limit_boost_amount: row.limit_boost_amount ?? prev.limit_boost_amount,
-          limit_boost_expires: row.limit_boost_expires ?? prev.limit_boost_expires,
-          ad_energy_boost: row.ad_energy_boost ?? prev.ad_energy_boost,
-          ad_energy_expires: row.ad_energy_expires ?? prev.ad_energy_expires,
-        }));
+        setStats((prev) => {
+          const rowInv =
+            row.inventory &&
+            typeof row.inventory === 'object' &&
+            Object.keys(row.inventory).length > 0
+              ? row.inventory
+              : null;
+          const nextInv = rowInv
+            ? applyServerInventoryAuthority(
+                prev.inventory || inventoryRef.current || {},
+                rowInv,
+                getUtcWeekId(),
+              )
+            : prev.inventory || inventoryRef.current || {};
+          if (rowInv) inventoryRef.current = nextInv;
+          return {
+            ...prev,
+            inventory: nextInv,
+            frenzy_expires: row.frenzy_expires ?? prev.frenzy_expires,
+            efficiency_expires: row.efficiency_expires ?? prev.efficiency_expires,
+            energy_boost_expires:
+              row.energy_boost_expires ?? prev.energy_boost_expires,
+            limit_boost_amount: row.limit_boost_amount ?? prev.limit_boost_amount,
+            limit_boost_expires:
+              row.limit_boost_expires ?? prev.limit_boost_expires,
+            ad_energy_boost: row.ad_energy_boost ?? prev.ad_energy_boost,
+            ad_energy_expires: row.ad_energy_expires ?? prev.ad_energy_expires,
+          };
+        });
         if (row.last_ad_date != null) {
           const adToday = String(row.last_ad_date).slice(0, 10) === today;
           setDailyAdsWatched(adToday ? Number(row.daily_ads_watched) || 0 : 0);
@@ -6156,47 +6224,9 @@ const GiftTapGame = () => {
     }
   };
 
-  // --- CALCULATE DYNAMIC DAILY LIMIT BAR ---
-  // Same formula as server effectiveDailyLimit: base Rush/1000 + battery + boosts + ads.
-  // Do NOT start from maxDailyLimit column (that already stores the effective total).
+  // Bar max = players.max_daily_limit only (same value login / refresh / last_updated sync set).
   const now = new Date();
-  let dynamicMaxLimit = 1000;
-  {
-    const refInv = inventoryRef.current || {};
-    const statsInv = stats?.inventory || {};
-    const inv = {
-      ...refInv,
-      ...statsInv,
-      elf_levels: {
-        ...(refInv.elf_levels || {}),
-        ...(statsInv.elf_levels || {}),
-      },
-      rush_active:
-        statsInv.rush_active !== undefined
-          ? statsInv.rush_active
-          : refInv.rush_active,
-    };
-    const ra = inv.rush_active;
-    if (ra && typeof ra === 'object') {
-      const assetId = String(ra.asset_id || ra.assetId || '').trim();
-      const lvl = Math.max(
-        assetId ? getElfLevel(inv, assetId) : 1,
-        Math.floor(Number(ra.level) || 1),
-      );
-      const cap = rushDailyLimit(ra.rarity || ra.rarityKey, lvl);
-      if (cap > 0) dynamicMaxLimit = cap;
-    }
-  }
-  if (stats.energy_boost_expires && now < new Date(stats.energy_boost_expires)) {
-    dynamicMaxLimit += 1000;
-  }
-  if (stats.limit_boost_expires && now < new Date(stats.limit_boost_expires)) {
-    dynamicMaxLimit += (stats.limit_boost_amount || 0);
-  }
-  dynamicMaxLimit += getTaskLimitBoost(stats, now);
-  if (stats.ad_energy_expires && now < new Date(stats.ad_energy_expires)) {
-    dynamicMaxLimit += Math.max(0, Number(stats.ad_energy_boost) || 0);
-  }
+  const dynamicMaxLimit = Math.max(1000, Number(maxDailyLimit) || 1000);
 
   const dynamicEnergyCap = energyCapFromInv(
     inventoryRef.current || stats?.inventory || {},
