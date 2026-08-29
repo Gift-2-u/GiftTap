@@ -2121,10 +2121,6 @@ Daily claim active · Pack → NFT to see it.`,
       dbUpdates.limit_boost_amount = 5000;
       dbUpdates.limit_boost_expires = sevenDayExpireUtc.toISOString();
     }
-    if (item.id === 'crate') {
-      dbUpdates.shard_balance = balance + 50000;
-      setBalance(prev => prev + 50000); // Instant, no timer needed
-    }
     if (item.id === 'x2_boost') {
       dbUpdates.premium_multiplier = 2;
       dbUpdates.premium_multiplier_expires = sevenDayExpireUtc.toISOString();

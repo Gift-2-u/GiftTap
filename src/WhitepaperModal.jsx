@@ -115,7 +115,7 @@ const WhitepaperModal = ({ isWhitepaperOpen, setIsWhitepaperOpen, onClose }) => 
     {
       id: 5,
       title: "5. Shop: Shards, Boosts & NFTs",
-      content: "Gift Shop has four areas:\n\n• Free (Shards) — temporary boosts paid with G2Ushards (Frenzy, Battery, Refill, Heavy Hands). Frenzy = 2× shards per tap, normal energy cost. Battery and Frenzy can only be used once per day.\n• Premium (Boosts) — temporary SOL boosts (bots, contracts, power multipliers). These are NOT NFTs.\n• NFTs — on-chain Wave 1 mints LIVE: Locksmith · Fate · Echo · Rush · Shadow. Permanent utility.\n• Backpack — activate temporary items; Elves live in your game wallet. Level up Elves in Backpack → NFT.\n\nThe core game stays free-to-play. Purchases are optional."
+      content: "Gift Shop has four areas:\n\n• Free (Shards) — temporary boosts paid with G2Ushards (Frenzy, Battery, Refill). Frenzy = 2× shards per tap, normal energy cost. Battery and Frenzy can only be used once per day.\n• Premium (Boosts) — temporary SOL boosts (bots, contracts, power multipliers). These are NOT NFTs.\n• NFTs — on-chain Wave 1 mints LIVE: Locksmith · Fate · Echo · Rush · Shadow. Permanent utility.\n• Backpack — activate temporary items; Elves live in your game wallet. Level up Elves in Backpack → NFT.\n\nThe core game stays free-to-play. Purchases are optional."
     },
     {
       id: 6,
