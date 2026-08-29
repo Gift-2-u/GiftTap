@@ -115,7 +115,7 @@ const WhitepaperModal = ({ isWhitepaperOpen, setIsWhitepaperOpen, onClose }) => 
     {
       id: 5,
       title: "5. Shop: Shards, Boosts & NFTs",
-      content: "Gift Shop has four areas:\n\n• Free (Shards) — temporary boosts paid with G2Ushards (Frenzy, Battery, Refill, Heavy Hands). Frenzy = 2× shards per tap, normal energy cost.\n• Premium (Boosts) — temporary SOL boosts (bots, contracts, power multipliers). These are NOT NFTs.\n• NFTs — on-chain Wave 1 mints LIVE: Locksmith · Fate · Echo · Rush · Shadow. Permanent utility.\n• Backpack — activate temporary items; Elves live in your game wallet. Level up Elves in Backpack → NFT.\n\nThe core game stays free-to-play. Purchases are optional."
+      content: "Gift Shop has four areas:\n\n• Free (Shards) — temporary boosts paid with G2Ushards (Frenzy, Battery, Refill, Heavy Hands). Frenzy = 2× shards per tap, normal energy cost. Battery and Frenzy can only be used once per day.\n• Premium (Boosts) — temporary SOL boosts (bots, contracts, power multipliers). These are NOT NFTs.\n• NFTs — on-chain Wave 1 mints LIVE: Locksmith · Fate · Echo · Rush · Shadow. Permanent utility.\n• Backpack — activate temporary items; Elves live in your game wallet. Level up Elves in Backpack → NFT.\n\nThe core game stays free-to-play. Purchases are optional."
     },
     {
       id: 6,
@@ -157,8 +157,8 @@ const WhitepaperModal = ({ isWhitepaperOpen, setIsWhitepaperOpen, onClose }) => 
         "Fair play: multi-accounts and bots can be disqualified. See Code of Conduct.",
     },
     {
-      id: 91,
-      title: "9b. Mystery Gift (badge burn)",
+      id: 10,
+      title: "10. Mystery Gift (badge burn)",
       content:
         "Open Shop → Pack → Badges. Burn weekly rank badges to open Mystery Gift (one tier per open).\n\n" +
         "Burn cost (single tier):\n" +
@@ -184,8 +184,8 @@ const WhitepaperModal = ({ isWhitepaperOpen, setIsWhitepaperOpen, onClose }) => 
         "Independent roll per open. Not financial advice; prizes can change for balance/fair play.",
     },
     {
-      id: 92,
-      title: "9c. NFT durability & premium $G2U",
+      id: 11,
+      title: "11. NFT durability & premium $G2U",
       content:
         "Echo, Fate, Rush, and Shadow start at 100% durability when equipped.\n\n" +
         "Drain: 1% per 1,000 raw taps. At 0% the perk is fully off (no weak floor).\n\n" +
@@ -194,8 +194,8 @@ const WhitepaperModal = ({ isWhitepaperOpen, setIsWhitepaperOpen, onClose }) => 
         "Shard shop items (frenzy, battery, refill) stay on G2Ushards.",
     },
     {
-      id: 10,
-      title: "10. Code of Conduct",
+      id: 12,
+      title: "12. Code of Conduct",
       content: "No auto-clickers, scripts, multi-account mining, or abuse of swap/referral systems.\n\nFlagged accounts may be locked and lose G2Ushard-to-G2U swap eligibility and other rewards. Play fair."
     }
   ];
