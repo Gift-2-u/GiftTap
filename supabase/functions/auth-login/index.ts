@@ -45,6 +45,20 @@ async function verifyPassword(password: string, stored: string): Promise<boolean
   return b64(bits) === expected;
 }
 
+/** Best-effort client IP for abuse checks (player_sessions.ip_hint). */
+function clientIpHint(req: Request): string | null {
+  const cf = req.headers.get("cf-connecting-ip")?.trim();
+  if (cf) return cf.slice(0, 64);
+  const xff = req.headers.get("x-forwarded-for");
+  if (xff) {
+    const first = xff.split(",")[0]?.trim();
+    if (first) return first.slice(0, 64);
+  }
+  const real = req.headers.get("x-real-ip")?.trim();
+  if (real) return real.slice(0, 64);
+  return null;
+}
+
 async function sha256Hex(s: string): Promise<string> {
   const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s));
   return Array.from(new Uint8Array(buf))
@@ -145,6 +159,7 @@ serve(async (req) => {
         token_hash,
         expires_at: minted.expires_at,
         user_agent: req.headers.get("user-agent")?.slice(0, 200) || null,
+        ip_hint: clientIpHint(req),
       });
     } catch (jwtErr) {
       console.warn("session jwt:", jwtErr);

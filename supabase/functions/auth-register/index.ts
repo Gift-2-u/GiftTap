@@ -58,6 +58,20 @@ async function sha256Hex(s: string): Promise<string> {
     .join("");
 }
 
+/** Best-effort client IP for abuse checks (player_sessions.ip_hint). */
+function clientIpHint(req: Request): string | null {
+  const cf = req.headers.get("cf-connecting-ip")?.trim();
+  if (cf) return cf.slice(0, 64);
+  const xff = req.headers.get("x-forwarded-for");
+  if (xff) {
+    const first = xff.split(",")[0]?.trim();
+    if (first) return first.slice(0, 64);
+  }
+  const real = req.headers.get("x-real-ip")?.trim();
+  if (real) return real.slice(0, 64);
+  return null;
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -180,6 +194,8 @@ serve(async (req) => {
         player_id: playerId,
         token_hash,
         expires_at: minted.expires_at,
+        user_agent: req.headers.get("user-agent")?.slice(0, 200) || null,
+        ip_hint: clientIpHint(req),
       });
     } catch (jwtErr) {
       console.warn("session jwt:", jwtErr);
