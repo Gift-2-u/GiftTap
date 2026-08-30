@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.7";
 import { requirePlayerFromRequest } from "../_shared/sessionJwt.ts";
+import { effectiveDailyLimit } from "../_shared/economy.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -122,6 +123,8 @@ const PLAYER_SELECT = [
   "frenzy_expires",
   "efficiency_expires",
   "energy_boost_expires",
+  "ad_energy_boost",
+  "ad_energy_expires",
   "daily_ads_watched",
   "last_ad_date",
   "last_updated",
@@ -211,12 +214,13 @@ serve(async (req) => {
 
     // This player only on login / player-state:
     //  - If previous last_updated is a prior UTC day → new day:
-    //      daily_taps = 0 (0/1000 bar) + energy = 500 (full battery)
+    //      daily_taps = 0 + energy = 500 + max_daily_limit recomputed for today
     //    (Must NOT wait for a tap — player can already be maxed and unable to tap.)
     //  - Then stamp last_updated / energy_at = now
     try {
       const nowMs = Date.now();
       const nowIso = new Date(nowMs).toISOString();
+      const nowDate = new Date(nowMs);
       const today = utcDayStr(nowMs);
       const prevUpdatedDay = player.last_updated
         ? String(player.last_updated).slice(0, 10)
@@ -248,6 +252,11 @@ serve(async (req) => {
         patch.daily_shards = 0;
         patch.daily_ads_watched = 0;
         patch.last_ad_date = today;
+        // Fresh cap for today (expired battery/ads/tasks drop out of effectiveDailyLimit)
+        patch.max_daily_limit = effectiveDailyLimit(
+          player as Record<string, unknown>,
+          nowDate,
+        );
       }
       const { data: touched, error: touchErr } = await supabase
         .from("players")

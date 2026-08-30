@@ -3459,8 +3459,67 @@ const GiftTapGame = () => {
       optimisticEnergy.current = ENERGY_CAP;
       setEnergy(ENERGY_CAP);
       energyEpochRef.current = (energyEpochRef.current || 0) + 1;
-      // Persist day-roll via service_role (client cannot write daily_taps)
-      fetchPlayerState().catch(() => {});
+      // Persist day-roll + apply fresh max_daily_limit (no manual refresh)
+      void (async () => {
+        try {
+          await ensureSecureSession();
+          const state = await fetchPlayerState();
+          const p = state?.player;
+          if (!p) return;
+          if (p.max_daily_limit != null) {
+            setMaxDailyLimit(Math.max(1000, Number(p.max_daily_limit) || 1000));
+          }
+          if (p.daily_taps != null) {
+            const dt = Number(p.daily_taps) || 0;
+            optimisticDaily.current = dt;
+            setDailyTaps(dt);
+            serverProgressRef.current = {
+              ...(serverProgressRef.current || {}),
+              dt,
+            };
+          }
+          if (p.last_energy != null) {
+            const en = Math.max(
+              0,
+              Math.min(ENERGY_CAP, Number(p.last_energy) || 0),
+            );
+            energyAnchorRef.current = { value: en, at: Date.now() };
+            optimisticEnergy.current = en;
+            setEnergy(en);
+          }
+          setStats((prev) => ({
+            ...prev,
+            energy_boost_expires:
+              p.energy_boost_expires !== undefined
+                ? p.energy_boost_expires
+                : prev.energy_boost_expires,
+            limit_boost_amount:
+              p.limit_boost_amount !== undefined
+                ? p.limit_boost_amount
+                : prev.limit_boost_amount,
+            limit_boost_expires:
+              p.limit_boost_expires !== undefined
+                ? p.limit_boost_expires
+                : prev.limit_boost_expires,
+            ad_energy_boost:
+              p.ad_energy_boost !== undefined
+                ? p.ad_energy_boost
+                : prev.ad_energy_boost,
+            ad_energy_expires:
+              p.ad_energy_expires !== undefined
+                ? p.ad_energy_expires
+                : prev.ad_energy_expires,
+            inventory:
+              p.inventory &&
+              typeof p.inventory === 'object' &&
+              Object.keys(p.inventory).length > 0
+                ? p.inventory
+                : prev.inventory,
+          }));
+        } catch (e) {
+          console.warn('UTC day-roll player-state', e?.message || e);
+        }
+      })();
       return true;
     };
 
