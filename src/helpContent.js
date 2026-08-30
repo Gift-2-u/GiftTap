@@ -139,4 +139,15 @@ export const HELP_TIPS = {
       'Owned GiftLocksmith NFTs: Shop → NFTs or Pack → NFT → NFT market. List for SOL, buyer pays 95% to you + 5% treasury, then you tap Send NFT to transfer on-chain.\n\n' +
       'Full rules: Menu → Game Guide → Leaderboards.',
   },
+  airdrop_claim: {
+    title: 'Airdrop & Claim $G2U',
+    body:
+      'You need a little SOL in your game wallet to claim (you pay the Solana network fee).\n\n' +
+      'Claim $G2U in your game wallet (Wallet → Claim $G2U). Unlock the wallet first.\n\n' +
+      'WEEKLY airdrop: the weekly $G2U pool is split into 4 equal pots. Top 100 share by tier (equal split inside each pot). Outside top 100: weekly badges / eligibility — not that G2U pot.\n\n' +
+      'SEASON (monthly) airdrop: pool (e.g. 1.5M $G2U) is shared by season board weight — your $G2U ≈ pool × (your season shards ÷ sum of all season shards). More season shards → larger share.\n\n' +
+      'L5 airdrop (Ranks → Airdrop): separate allocation when you clear Level 5; bonus % from progress / Elves can raise weight.\n\n' +
+      'Claims open at token launch. Not financial advice; pools and rules can change for fair play.\n\n' +
+      'Full guide: Menu → Game Guide → Airdrop & Claim $G2U.',
+  },
 };

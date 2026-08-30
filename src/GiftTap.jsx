@@ -2592,11 +2592,49 @@ const GiftTapGame = () => {
         setStreak(loadedStreak);
         streakRef.current = loadedStreak;
 
-        setDailyTaps(dbDaily);
-        optimisticDaily.current = dbDaily;
-        setLastTapDate(ltd || '');
-        lastTapDateRef.current = ltd || '';
-        serverProgressRef.current = { ...(serverProgressRef.current || {}), dt: dbDaily };
+        // If last_tap_date is yesterday but daily_taps still full, force player-state
+        // day-roll (DB can stay at 2000 when last_updated was stamped today without reset).
+        const playDayPrior = !!(ltd && ltd < today);
+        const updatedPrior = !!(
+          playerRow.last_updated &&
+          String(playerRow.last_updated).slice(0, 10) < today
+        );
+        let loadDaily = dbDaily;
+        if ((playDayPrior || updatedPrior) && dbDaily > 0) {
+          loadDaily = 0;
+          try {
+            await ensureSecureSession();
+            const state = await fetchPlayerState();
+            if (state?.player?.daily_taps != null) {
+              loadDaily = Number(state.player.daily_taps) || 0;
+            }
+            if (state?.player?.max_daily_limit != null) {
+              playerRow.max_daily_limit = state.player.max_daily_limit;
+            }
+            if (state?.player?.last_tap_date != null) {
+              playerRow.last_tap_date = state.player.last_tap_date;
+            }
+            if (state?.player?.last_energy != null) {
+              playerRow.last_energy = state.player.last_energy;
+            }
+            if (state?.player?.last_updated != null) {
+              playerRow.last_updated = state.player.last_updated;
+            }
+          } catch (e) {
+            console.warn('load UTC roll', e?.message || e);
+          }
+        }
+        const ltdAfter = playerRow.last_tap_date
+          ? String(playerRow.last_tap_date).slice(0, 10)
+          : ltd;
+        setDailyTaps(loadDaily);
+        optimisticDaily.current = loadDaily;
+        setLastTapDate(ltdAfter || '');
+        lastTapDateRef.current = ltdAfter || '';
+        serverProgressRef.current = {
+          ...(serverProgressRef.current || {}),
+          dt: loadDaily,
+        };
 
         // Ad watch counter: new UTC day → 0 ads watched. Do NOT touch max_daily_limit
         // (that comes from players.max_daily_limit — forcing 1000 caused 2512/1000 UI).
@@ -5411,23 +5449,44 @@ const GiftTapGame = () => {
           Number(optimisticDaily.current) || 0,
           Number(dailyTaps) || 0,
         );
-        // Daily limit day-roll: last_tap_date / local only — not last_updated heartbeats
-        const isSameUtcDay =
-          ltd === today ||
-          localLtd === today ||
-          (!ltd && dbDaily > 0 && lastUpdatedDay === today);
+        // Prior play day still on the row → force 0 and ask player-state to clear DB
+        // (fixes stuck 2000/2000 when last_updated was already stamped today).
+        const playDayIsPrior = !!(ltd && ltd < today);
+        const updatedDayIsPrior = !!(lastUpdatedDay && lastUpdatedDay < today);
+        const needsUtcRoll = playDayIsPrior || updatedDayIsPrior;
 
         let nextDaily = dbDaily;
-        if (
-          !isSameUtcDay &&
-          ((ltd && ltd < today) || (!ltd && lastUpdatedDay && lastUpdatedDay < today)) &&
-          localLtd !== today
-        ) {
-          // Confirmed new UTC day and this device is not already counting today
+        if (needsUtcRoll) {
           nextDaily = 0;
-        } else {
-          // Same day / ambiguous: never drop local progress below what player already mined
+          void (async () => {
+            try {
+              await ensureSecureSession();
+              const state = await fetchPlayerState();
+              const p = state?.player;
+              if (!p) return;
+              if (p.daily_taps != null) {
+                const dt = Number(p.daily_taps) || 0;
+                optimisticDaily.current = dt;
+                setDailyTaps(dt);
+                serverProgressRef.current = {
+                  ...(serverProgressRef.current || {}),
+                  dt,
+                };
+              }
+              if (p.max_daily_limit != null) {
+                setMaxDailyLimit(
+                  Math.max(1000, Number(p.max_daily_limit) || 1000),
+                );
+              }
+            } catch (e) {
+              console.warn('resume UTC roll', e?.message || e);
+            }
+          })();
+        } else if (ltd === today || localLtd === today) {
+          // Same UTC play day: never drop local progress below what player already mined
           nextDaily = Math.max(dbDaily, localDaily);
+        } else {
+          nextDaily = dbDaily;
         }
 
         // Energy: last_energy + energy_at (regen clock). last_updated is login only.

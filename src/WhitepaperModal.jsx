@@ -142,7 +142,7 @@ const WhitepaperModal = ({ isWhitepaperOpen, setIsWhitepaperOpen, onClose }) => 
         "• Eligible players (≥1,050 weekly score) each win a badge when the week freezes (claim in Shop → BackPack → Badges):\n" +
         "  top 10% Diamond · next 15% Gold · next 25% Silver · rest Bronze.\n" +
         "• Winners freeze automatically at week end; the new week starts on its own.\n" +
-        "• Burn badges in Pack for Mystery Gift (costs & full odds: § 9b Mystery Gift).\n\n" +
+        "• Burn badges in Pack for Mystery Gift (costs & full odds: § 11 Mystery Gift).\n\n" +
         "SEASON (monthly)\n" +
         "• Ordered by season mining score for the current season period shown in-app.\n" +
         "• At month end a snapshot can select winners / giveaways as announced.\n" +
@@ -153,12 +153,32 @@ const WhitepaperModal = ({ isWhitepaperOpen, setIsWhitepaperOpen, onClose }) => 
         "AIRDROP (Ranks → Airdrop)\n" +
         "• Shows players who cleared Level 5 (name · level · bonus %).\n" +
         "• Bonus % from levels, lifetime taps, streak, IAP, Elves NFTs, and referrals.\n" +
-        "• Community allocation weight — not financial advice and not a promise of $.\n\n" +
+        "• Community allocation weight — not financial advice and not a promise of $.\n" +
+        "• How to claim weekly / season / L5 $G2U: see § 10 Airdrop & Claim $G2U.\n\n" +
         "Fair play: multi-accounts and bots can be disqualified. See Code of Conduct.",
     },
     {
       id: 10,
-      title: "10. Mystery Gift (badge burn)",
+      title: "10. Airdrop & Claim $G2U",
+      content:
+        "You need a little SOL in your game wallet to claim (you pay the Solana network fee).\n\n" +
+        "Claim $G2U in your game wallet — Wallet → Claim $G2U (unlock wallet first).\n\n" +
+        "WEEKLY airdrop\n" +
+        "• The weekly $G2U pool is split into 4 equal pots.\n" +
+        "• Top 100 share by tier (equal split inside each pot).\n" +
+        "• Outside top 100: weekly badges / eligibility — not that G2U pot.\n\n" +
+        "SEASON (monthly) airdrop\n" +
+        "• Pool (e.g. 1.5M $G2U) is shared by season board weight.\n" +
+        "• Your $G2U ≈ pool × (your season shards ÷ sum of all season shards).\n" +
+        "• More season shards → larger share.\n\n" +
+        "L5 airdrop (Ranks → Airdrop)\n" +
+        "• Separate allocation when you clear Level 5.\n" +
+        "• Bonus % from progress / Elves can raise your weight on that board.\n\n" +
+        "Claims open at token launch. Pools and rules can change for fair play. Not financial advice.",
+    },
+    {
+      id: 11,
+      title: "11. Mystery Gift (badge burn)",
       content:
         "Open Shop → Pack → Badges. Burn weekly rank badges to open Mystery Gift (one tier per open).\n\n" +
         "Burn cost (single tier):\n" +
@@ -184,8 +204,8 @@ const WhitepaperModal = ({ isWhitepaperOpen, setIsWhitepaperOpen, onClose }) => 
         "Independent roll per open. Not financial advice; prizes can change for balance/fair play.",
     },
     {
-      id: 11,
-      title: "11. NFT durability & premium $G2U",
+      id: 12,
+      title: "12. NFT durability & premium $G2U",
       content:
         "Echo, Fate, Rush, and Shadow start at 100% durability when equipped.\n\n" +
         "Drain: 1% per 1,000 raw taps. At 0% the perk is fully off (no weak floor).\n\n" +
@@ -194,8 +214,8 @@ const WhitepaperModal = ({ isWhitepaperOpen, setIsWhitepaperOpen, onClose }) => 
         "Shard shop items (frenzy, battery, refill) stay on G2Ushards.",
     },
     {
-      id: 12,
-      title: "12. Code of Conduct",
+      id: 13,
+      title: "13. Code of Conduct",
       content: "No auto-clickers, scripts, multi-account mining, or abuse of swap/referral systems.\n\nFlagged accounts may be locked and lose G2Ushard-to-G2U swap eligibility and other rewards. Play fair."
     }
   ];

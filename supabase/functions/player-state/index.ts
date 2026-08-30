@@ -225,7 +225,14 @@ serve(async (req) => {
       const prevUpdatedDay = player.last_updated
         ? String(player.last_updated).slice(0, 10)
         : "";
-      const isNewUtcDay = !!(prevUpdatedDay && prevUpdatedDay !== today);
+      const prevTapDay = player.last_tap_date
+        ? String(player.last_tap_date).slice(0, 10)
+        : "";
+      // New UTC day if last_updated is prior OR last play day (last_tap_date) is prior.
+      // Catches stuck 2000/2000 when last_updated was stamped today without zeroing taps.
+      const isNewUtcDay =
+        !!(prevUpdatedDay && prevUpdatedDay !== today) ||
+        !!(prevTapDay && prevTapDay !== today);
 
       let energy: number;
       if (isNewUtcDay) {
