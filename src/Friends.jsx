@@ -139,11 +139,10 @@ const Friends = ({ player, tgUser }) => {
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
             {friendsList.map((friend, index) => {
-              const taps1k =
-                friend.referral_taps1000_paid ||
-                Number(friend.lifetime_taps) >= (REFERRAL.TAPS_1000_THRESHOLD || 1000);
-              const lvl1 = friend.referral_lvl1_paid || Number(friend.lifetime_taps) >= 10000;
-              const wall5 = friend.referral_wall5_paid || Number(friend.max_unlocked_level) >= 9;
+              // Only the paid flags — do not show ✅ just because they reached the milestone
+              const taps1k = !!friend.referral_taps1000_paid;
+              const lvl1 = !!friend.referral_lvl1_paid;
+              const wall5 = !!friend.referral_wall5_paid;
               return (
                 <div
                   key={index}

@@ -49,6 +49,110 @@ export async function logEconomy(
   }
 }
 
+/** Referral milestone amounts (same as referral-credit Edge). */
+const REFERRAL_AMOUNTS: Record<
+  string,
+  { amount: number; flag: string; needTaps?: number; needMaxUnlocked?: number }
+> = {
+  taps1000: { amount: 500, flag: "referral_taps1000_paid", needTaps: 1000 },
+  lvl1: { amount: 1000, flag: "referral_lvl1_paid", needTaps: 10000 },
+  wall5: { amount: 3000, flag: "referral_wall5_paid", needMaxUnlocked: 9 },
+};
+
+/**
+ * Pay referrer once per invitee milestone (service_role).
+ * Used by referral-credit, commit-taps, wall-climb.
+ */
+export async function runReferralCredit(
+  sb: SupabaseClient,
+  inviteeId: string,
+  kind: string,
+): Promise<Record<string, unknown>> {
+  const meta = REFERRAL_AMOUNTS[String(kind || "").toLowerCase()];
+  if (!meta) throw new Error("kind must be taps1000|lvl1|wall5");
+
+  const id = String(inviteeId || "").trim();
+  if (!id) throw new Error("Player not found");
+
+  const { data: invitee, error: invErr } = await sb
+    .from("players")
+    .select(
+      `telegram_id, referred_by, lifetime_taps, max_unlocked_level, ${meta.flag}`,
+    )
+    .eq("telegram_id", id)
+    .maybeSingle();
+  if (invErr) throw invErr;
+  if (!invitee) throw new Error("Player not found");
+  if (!invitee.referred_by) {
+    return { success: true, skipped: "no_referrer" };
+  }
+  if (String(invitee.referred_by) === id) {
+    return { success: true, skipped: "self_ref" };
+  }
+  if ((invitee as Record<string, unknown>)[meta.flag] === true) {
+    return { success: true, already: true };
+  }
+  if (meta.needTaps && (Number(invitee.lifetime_taps) || 0) < meta.needTaps) {
+    return { success: true, skipped: "not_reached" };
+  }
+  if (
+    meta.needMaxUnlocked != null &&
+    (Number(invitee.max_unlocked_level) || 0) < meta.needMaxUnlocked
+  ) {
+    return { success: true, skipped: "not_reached" };
+  }
+
+  const { data: claimed, error: claimErr } = await sb
+    .from("players")
+    .update({
+      [meta.flag]: true,
+      last_updated: new Date().toISOString(),
+    })
+    .eq("telegram_id", id)
+    .or(`${meta.flag}.is.null,${meta.flag}.eq.false`)
+    .select("referred_by")
+    .maybeSingle();
+  if (claimErr) throw claimErr;
+  if (!claimed?.referred_by) {
+    return { success: true, already: true };
+  }
+
+  const referrerId = String(claimed.referred_by);
+  const { data: ref, error: refErr } = await sb
+    .from("players")
+    .select("shard_balance")
+    .eq("telegram_id", referrerId)
+    .maybeSingle();
+  if (refErr || !ref) throw new Error("Referrer not found");
+
+  const next =
+    Math.round(((Number(ref.shard_balance) || 0) + meta.amount) * 1000) / 1000;
+  const { error: upErr } = await sb
+    .from("players")
+    .update({
+      shard_balance: next,
+      last_updated: new Date().toISOString(),
+    })
+    .eq("telegram_id", referrerId);
+  if (upErr) throw upErr;
+
+  await logEconomy(sb, {
+    player_id: referrerId,
+    kind: `referral_${String(kind).toLowerCase()}`,
+    delta: meta.amount,
+    balance_after: next,
+    ref: id,
+  });
+
+  return {
+    success: true,
+    kind: String(kind).toLowerCase(),
+    amount: meta.amount,
+    referrer_id: referrerId,
+    balance_after: next,
+  };
+}
+
 /** ISO week id UTC e.g. 2026-W33 */
 export function utcIsoWeekId(d = new Date()): string {
   const date = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));

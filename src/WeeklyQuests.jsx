@@ -43,6 +43,7 @@ export default function WeeklyQuests({
   playerId: playerIdProp,
   weeklyState,
   onWeeklyStateChange,
+  onMaxDailyLimitChange = null,
   grantTaskEnergy,
   friends1kCount = 0,
   dailyTaps = 0,
@@ -298,16 +299,28 @@ export default function WeeklyQuests({
         markClaimedLocal(quest.id);
         let inv = data.inventory ? { ...data.inventory } : null;
 
-        // Re-read inventory (ground truth) so stacked boost is not lost to a stale payload
+        // Re-read inventory + max_daily_limit (HUD syncs to this column)
+        let maxFromDb =
+          data.max_daily_limit != null ? Number(data.max_daily_limit) : null;
         try {
           const { data: row } = await supabase
             .from('players')
-            .select('inventory')
+            .select('inventory, max_daily_limit')
             .eq(DB_PLAYER_ID, String(userId))
             .maybeSingle();
           if (row?.inventory) inv = { ...row.inventory };
+          if (row?.max_daily_limit != null) {
+            maxFromDb = Number(row.max_daily_limit);
+          }
         } catch {
           /* keep edge inventory */
+        }
+        if (
+          maxFromDb != null &&
+          Number.isFinite(maxFromDb) &&
+          typeof onMaxDailyLimitChange === 'function'
+        ) {
+          onMaxDailyLimitChange(Math.max(1000, maxFromDb));
         }
 
         // If claim was new and boost did not increase vs pre-claim local, force +100 stack

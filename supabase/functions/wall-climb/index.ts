@@ -13,6 +13,7 @@ import {
   jsonResponse,
   logEconomy,
   invObj,
+  runReferralCredit,
 } from "../_shared/economy.ts";
 
 const WALLS: Record<
@@ -140,6 +141,15 @@ serve(async (req) => {
       .update(updates)
       .eq("telegram_id", playerId);
     if (upErr) throw upErr;
+
+    // First wall (4→5, newCap 9): pay referrer +3000 once via existing referral-credit
+    if (wallKey === 4) {
+      try {
+        await runReferralCredit(sb, playerId, "wall5");
+      } catch (e) {
+        console.warn("referral wall5 after climb", e);
+      }
+    }
 
     await logEconomy(sb, {
       player_id: playerId,

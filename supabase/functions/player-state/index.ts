@@ -1,7 +1,11 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.7";
 import { requirePlayerFromRequest } from "../_shared/sessionJwt.ts";
-import { effectiveDailyLimit } from "../_shared/economy.ts";
+import { effectiveDailyLimit, utcIsoWeekId } from "../_shared/economy.ts";
+import {
+  applyWeeklyQuestDayProgress,
+  invObj,
+} from "../_shared/weeklyScore.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -228,11 +232,14 @@ serve(async (req) => {
       const prevTapDay = player.last_tap_date
         ? String(player.last_tap_date).slice(0, 10)
         : "";
-      // New UTC day if last_updated is prior OR last play day (last_tap_date) is prior.
-      // Catches stuck 2000/2000 when last_updated was stamped today without zeroing taps.
+      const dailyStuck =
+        (Number(player.daily_taps) || 0) > 0 ||
+        (Number((player as Record<string, unknown>).daily_shards) || 0) > 0;
+      // New UTC day if last_updated is prior, OR last play day is prior while
+      // daily counters still > 0 (stuck 2000/2000 after a same-day stamp).
       const isNewUtcDay =
         !!(prevUpdatedDay && prevUpdatedDay !== today) ||
-        !!(prevTapDay && prevTapDay !== today);
+        !!(prevTapDay && prevTapDay !== today && dailyStuck);
 
       let energy: number;
       if (isNewUtcDay) {
@@ -255,15 +262,30 @@ serve(async (req) => {
         last_updated: nowIso,
       };
       if (isNewUtcDay) {
+        // Credit yesterday's taps into weekly quests BEFORE zeroing the bar
+        const creditDay = prevTapDay || prevUpdatedDay;
+        const creditTaps = Number(player.daily_taps) || 0;
+        if (creditDay && creditTaps > 0) {
+          const creditWeekId = utcIsoWeekId(
+            new Date(`${creditDay}T12:00:00.000Z`),
+          );
+          patch.inventory = applyWeeklyQuestDayProgress(
+            invObj(player.inventory),
+            creditDay,
+            creditTaps,
+            creditWeekId,
+          );
+        }
         patch.daily_taps = 0;
         patch.daily_shards = 0;
         patch.daily_ads_watched = 0;
         patch.last_ad_date = today;
         // Fresh cap for today (expired battery/ads/tasks drop out of effectiveDailyLimit)
-        patch.max_daily_limit = effectiveDailyLimit(
-          player as Record<string, unknown>,
-          nowDate,
-        );
+        const rowForCap = {
+          ...(player as Record<string, unknown>),
+          ...(patch.inventory ? { inventory: patch.inventory } : {}),
+        };
+        patch.max_daily_limit = effectiveDailyLimit(rowForCap, nowDate);
       }
       const { data: touched, error: touchErr } = await supabase
         .from("players")

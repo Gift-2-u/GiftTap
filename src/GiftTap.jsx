@@ -3948,6 +3948,16 @@ const GiftTapGame = () => {
           }
           flushErrorNotifiedRef.current = false;
           lastLocalSaveAtRef.current = Date.now();
+          // Referral milestones (Edge also pays inside commit-taps; this covers any gap)
+          if (credited > 0 && Number.isFinite(Number(data?.player?.lifetime_taps))) {
+            const life = Number(data.player.lifetime_taps);
+            tryPayReferrerForTaps1000(playerId, life).catch((e) =>
+              console.warn('referral taps1000', e?.message || e),
+            );
+            tryPayReferrerForLevel1(playerId, life).catch((e) =>
+              console.warn('referral L1', e?.message || e),
+            );
+          }
           // Tell the player WHY shards stopped (common report: tapping + last_tap today, shards flat)
           if (credited === 0 && (rejectReason === 'no_energy' || rejectReason === 'daily_limit')) {
             const nowN = Date.now();
@@ -7309,6 +7319,10 @@ const GiftTapGame = () => {
                 grantTaskEnergy={grantTaskEnergy}
                 weeklyState={stats.inventory?.weekly_quests}
                 onWeeklyStateChange={onWeeklyStateChange}
+                onMaxDailyLimitChange={(n) => {
+                  const v = Math.max(1000, Number(n) || 1000);
+                  setMaxDailyLimit(v);
+                }}
                 inventory={stats.inventory}
                 activeTab={tasksTab}
                 onTabChange={setTasksTab}

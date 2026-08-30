@@ -27,6 +27,67 @@ export function invObj(raw: unknown): Record<string, unknown> {
   return {};
 }
 
+/** Base raw taps for weekly "drain daily" quests (ignores boosts). */
+export const WEEKLY_QUEST_BASE_DAILY = 1000;
+
+/**
+ * Persist Tap-500 / Drain-1000 quest progress on inventory.weekly_quests.
+ * Must run in Edge (service_role) — client inventory writes are frozen.
+ */
+export function applyWeeklyQuestDayProgress(
+  inventory: unknown,
+  day: string,
+  dayTaps: number,
+  weekId: string,
+): Record<string, unknown> {
+  const inv = invObj(inventory);
+  const dayKey = String(day || "").slice(0, 10);
+  if (!dayKey || !weekId) return inv;
+
+  const raw = inv.weekly_quests;
+  let wq: Record<string, unknown> =
+    raw && typeof raw === "object" && !Array.isArray(raw)
+      ? { ...(raw as Record<string, unknown>) }
+      : {};
+
+  if (wq.weekId && String(wq.weekId) !== weekId) {
+    wq = {
+      weekId,
+      claimed: [],
+      daysTap500: [],
+      daysActive: [],
+      daysFull: [],
+      boostBuys: 0,
+    };
+  }
+  wq.weekId = weekId;
+  if (!Array.isArray(wq.claimed)) wq.claimed = [];
+
+  const taps = Math.max(0, Number(dayTaps) || 0);
+  const daysActive = new Set(
+    Array.isArray(wq.daysActive) ? (wq.daysActive as string[]) : [],
+  );
+  const daysTap500 = new Set(
+    Array.isArray(wq.daysTap500) ? (wq.daysTap500 as string[]) : [],
+  );
+  const daysFull = new Set(
+    Array.isArray(wq.daysFull) ? (wq.daysFull as string[]) : [],
+  );
+
+  if (taps > 0) daysActive.add(dayKey);
+  if (taps >= 500) daysTap500.add(dayKey);
+  else daysTap500.delete(dayKey);
+  if (taps >= WEEKLY_QUEST_BASE_DAILY) daysFull.add(dayKey);
+  else daysFull.delete(dayKey);
+
+  wq.daysActive = [...daysActive].sort();
+  wq.daysTap500 = [...daysTap500].sort();
+  wq.daysFull = [...daysFull].sort();
+  if (wq.boostBuys == null) wq.boostBuys = 0;
+
+  return { ...inv, weekly_quests: wq };
+}
+
 /** After a mining credit: apply energy to weekly, never lag daily. */
 export function applyWeeklyEnergyCredit(opts: {
   now?: Date;

@@ -14,8 +14,12 @@ import {
   echoMultiplierFromInv,
   rollFateJackpot,
   effectiveDailyLimit,
+  runReferralCredit,
 } from "../_shared/economy.ts";
-import { applyWeeklyEnergyCredit } from "../_shared/weeklyScore.ts";
+import {
+  applyWeeklyEnergyCredit,
+  applyWeeklyQuestDayProgress,
+} from "../_shared/weeklyScore.ts";
 import {
   drainActiveNfts,
   durabilitySnapshot,
@@ -214,7 +218,7 @@ serve(async (req) => {
 
     const now = new Date();
     const today = utcTodayStr(now);
-    const inv = invObj(row.inventory);
+    let inv = invObj(row.inventory);
 
     // Energy regen clock = energy_at (NOT last_updated — that is login/last-seen only)
     const energyAnchorIso =
@@ -384,6 +388,8 @@ serve(async (req) => {
     const weekId = weeklyCredit.weekId;
     const weeklyShards = weeklyCredit.weeklyShards;
     inv.weekly_lb = { weekId, score: weeklyShards };
+    // Weekly quest Tap-500 / Drain-1000 — persist here (client inventory writes are frozen)
+    inv = applyWeeklyQuestDayProgress(inv, today, nextDaily, weekId);
 
     // Mining NFT durability: 1% per 1,000 raw taps (Echo/Fate/Rush/Shadow)
     drainActiveNfts(inv, validTaps);
@@ -437,6 +443,19 @@ serve(async (req) => {
         .eq("telegram_id", playerId));
     }
     if (upErr) throw upErr;
+
+    // Referral payouts (service_role) — client save path no longer reaches tryPay*
+    try {
+      const prevLife = Number(lifetime) || 0;
+      if (prevLife < 1000 && nextLife >= 1000) {
+        await runReferralCredit(sb, playerId, "taps1000");
+      }
+      if (prevLife < 10000 && nextLife >= 10000) {
+        await runReferralCredit(sb, playerId, "lvl1");
+      }
+    } catch (e) {
+      console.warn("referral credit after taps", e);
+    }
 
     // Durable boards (GREATEST — never lower). Same model for weekly/season/lifetime.
     const boardUsername = String((row as Record<string, unknown>).username || "");

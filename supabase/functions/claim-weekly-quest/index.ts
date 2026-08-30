@@ -9,6 +9,7 @@ import {
   corsHeaders,
   jsonResponse,
   logEconomy,
+  effectiveDailyLimit,
 } from "../_shared/economy.ts";
 
 /** Canonical weekly quest rewards (shards / flags). Client cannot override. */
@@ -54,18 +55,50 @@ serve(async (req) => {
     });
     if (error) throw error;
 
+    // RPC stacks inventory.task_limit_boost — rewrite max_daily_limit so HUD matches.
+    let maxDailyLimit: number | null = null;
+    let inventoryOut =
+      typeof data === "object" && data && (data as { inventory?: unknown }).inventory
+        ? (data as { inventory: unknown }).inventory
+        : null;
+    try {
+      const { data: row } = await sb
+        .from("players")
+        .select(
+          "inventory, max_daily_limit, energy_boost_expires, limit_boost_amount, limit_boost_expires, ad_energy_boost, ad_energy_expires",
+        )
+        .eq("telegram_id", playerId)
+        .maybeSingle();
+      if (row) {
+        if (row.inventory) inventoryOut = row.inventory;
+        maxDailyLimit = effectiveDailyLimit(row as Record<string, unknown>, new Date());
+        await sb
+          .from("players")
+          .update({ max_daily_limit: maxDailyLimit })
+          .eq("telegram_id", playerId);
+      }
+    } catch (e) {
+      console.warn("weekly quest max_daily_limit", e);
+    }
+
     await logEconomy(sb, {
       player_id: playerId,
       kind: "weekly_quest_claim",
       delta: safeReward,
       ref: questId,
-      meta: { result: data, server_reward: safeReward },
+      meta: {
+        result: data,
+        server_reward: safeReward,
+        max_daily_limit: maxDailyLimit,
+      },
     });
 
     return jsonResponse({
       success: true,
       reward_amount: safeReward,
       ...(typeof data === "object" && data ? data : { data }),
+      ...(inventoryOut ? { inventory: inventoryOut } : {}),
+      ...(maxDailyLimit != null ? { max_daily_limit: maxDailyLimit } : {}),
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
