@@ -8093,6 +8093,7 @@ const GiftTapGame = () => {
                           variant="button"
                           inventory={stats?.inventory || inventoryRef.current || {}}
                           walletAddress={playerWallet || ''}
+                          decryptedPhrase={decryptedPhrase || generatedSecret || ''}
                           onInventoryChange={(inv) => {
                             inventoryRef.current = {
                               ...(inventoryRef.current || {}),

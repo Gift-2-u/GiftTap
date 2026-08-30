@@ -1,9 +1,12 @@
 /**
  * Claim one airdrop_allocations row → SPL $G2U from that source's vault.
- * Updates ONLY airdrop_allocations (claimed_at, claim_tx).
- * Does NOT touch players.last_updated / inventory.
  *
- * Body: { captcha_token, allocation_id }
+ * User pays Solana fees (fee payer = game wallet). Flow:
+ *   1) prepare → vault partial-signs tx, returns tx_base64
+ *   2) client signs + sends
+ *   3) confirm { tx_signature } → verify on-chain, mark claimed
+ *
+ * Body: { captcha_token, allocation_id, action?: "prepare"|"confirm", tx_signature? }
  */
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { requirePlayerFromRequest } from "../_shared/sessionJwt.ts";
@@ -16,7 +19,8 @@ import {
 import { verifyTurnstileToken } from "../_shared/turnstile.ts";
 import {
   getAirdropVaultConfig,
-  transferAirdropG2u,
+  buildAirdropClaimPartialTx,
+  verifyAirdropClaimTx,
   type AirdropSource,
 } from "../_shared/airdropVault.ts";
 
@@ -32,12 +36,21 @@ serve(async (req) => {
     const body = await req.json().catch(() => ({}));
     const captchaToken = body.captcha_token || body.captchaToken || "";
     const allocationId = String(body.allocation_id || body.id || "").trim();
+    const txSignature = String(body.tx_signature || body.signature || "").trim();
+    const actionRaw = String(body.action || "").toLowerCase();
+    const action =
+      actionRaw === "confirm" || txSignature.length >= 32
+        ? "confirm"
+        : "prepare";
     const remoteIp =
       req.headers.get("cf-connecting-ip") ||
       req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
       null;
 
-    await verifyTurnstileToken(captchaToken, remoteIp);
+    // Captcha on prepare only (confirm is bound to locked allocation + on-chain tx)
+    if (action === "prepare") {
+      await verifyTurnstileToken(captchaToken, remoteIp);
+    }
 
     if (Date.now() < TOKEN_LAUNCH_AT) {
       throw new Error("Airdrop claims open at token launch (1 Sept 2026 UTC)");
@@ -87,75 +100,113 @@ serve(async (req) => {
     const amount = Number(row.amount) || 0;
     if (amount <= 0) throw new Error("Invalid amount");
 
+    // ——— CONFIRM (user already paid fee on-chain) ———
+    if (action === "confirm") {
+      if (txSignature.length < 32) throw new Error("tx_signature required");
+      if (row.claim_tx && row.claim_tx !== "pending" && row.claim_tx !== txSignature) {
+        throw new Error("Allocation locked to another claim tx");
+      }
+
+      const verified = await verifyAirdropClaimTx({
+        signature: txSignature,
+        source,
+        amountUi: amount,
+        toWallet: wallet,
+      });
+      if (!verified.ok) {
+        throw new Error(verified.error || "Claim tx verification failed");
+      }
+
+      const { error: upErr } = await sb
+        .from("airdrop_allocations")
+        .update({
+          claimed_at: new Date().toISOString(),
+          claim_tx: txSignature,
+        })
+        .eq("id", allocationId)
+        .eq("telegram_id", playerId)
+        .is("claimed_at", null);
+      if (upErr) throw upErr;
+
+      await logEconomy(sb, {
+        player_id: playerId,
+        kind: "airdrop_g2u_claim",
+        delta: amount,
+        balance_after: null,
+        ref: txSignature,
+        meta: {
+          allocation_id: allocationId,
+          source,
+          period_id: row.period_id,
+          amount,
+          to_wallet: wallet,
+          tx: txSignature,
+          fee_payer: wallet,
+        },
+      });
+
+      return jsonResponse({
+        success: true,
+        already: false,
+        amount,
+        source,
+        period_id: row.period_id,
+        allocation_id: allocationId,
+        signature: txSignature,
+        to_wallet: wallet,
+      });
+    }
+
+    // ——— PREPARE (vault partial-sign; user will sign + pay fee) ———
     if (row.claim_tx === "pending") {
-      throw new Error("Claim already in progress — wait a moment");
+      // Allow re-prepare (stuck / expired blockhash)
+    } else if (row.claim_tx && row.claim_tx.length >= 32) {
+      throw new Error("Claim already submitted — wait for confirmation");
+    } else {
+      const { data: locked, error: lockErr } = await sb
+        .from("airdrop_allocations")
+        .update({ claim_tx: "pending" })
+        .eq("id", allocationId)
+        .eq("telegram_id", playerId)
+        .is("claimed_at", null)
+        .is("claim_tx", null)
+        .select("id")
+        .maybeSingle();
+      if (lockErr) throw lockErr;
+      if (!locked?.id) {
+        throw new Error("Claim already in progress or already claimed");
+      }
     }
 
-    // Soft lock via claim_tx sentinel (allocation row only — never players.last_updated)
-    const { data: locked, error: lockErr } = await sb
-      .from("airdrop_allocations")
-      .update({ claim_tx: "pending" })
-      .eq("id", allocationId)
-      .eq("telegram_id", playerId)
-      .is("claimed_at", null)
-      .is("claim_tx", null)
-      .select("id")
-      .maybeSingle();
-    if (lockErr) throw lockErr;
-    if (!locked?.id) {
-      throw new Error("Claim already in progress or already claimed");
-    }
-
-    const paid = await transferAirdropG2u({
+    const built = await buildAirdropClaimPartialTx({
       source,
       amountUi: amount,
       toWallet: wallet,
     });
 
-    if (!paid.ok) {
+    if (!built.ok) {
       await sb
         .from("airdrop_allocations")
         .update({ claim_tx: null })
         .eq("id", allocationId)
-        .eq("telegram_id", playerId);
-      throw new Error(paid.error || "Transfer failed");
+        .eq("telegram_id", playerId)
+        .eq("claim_tx", "pending");
+      throw new Error(built.error || "Could not build claim transaction");
     }
-
-    const { error: upErr } = await sb
-      .from("airdrop_allocations")
-      .update({
-        claimed_at: new Date().toISOString(),
-        claim_tx: paid.signature || null,
-      })
-      .eq("id", allocationId)
-      .eq("telegram_id", playerId);
-    if (upErr) throw upErr;
-
-    await logEconomy(sb, {
-      player_id: playerId,
-      kind: "airdrop_g2u_claim",
-      delta: amount,
-      balance_after: null,
-      ref: paid.signature || allocationId,
-      meta: {
-        allocation_id: allocationId,
-        source,
-        period_id: row.period_id,
-        amount,
-        to_wallet: wallet,
-        tx: paid.signature,
-      },
-    });
 
     return jsonResponse({
       success: true,
-      already: false,
+      need_sign: true,
+      allocation_id: allocationId,
       amount,
       source,
-      period_id: row.period_id,
-      allocation_id: allocationId,
-      signature: paid.signature,
       to_wallet: wallet,
+      tx_base64: built.tx_base64,
+      mint: built.mint,
+      vault: built.vault,
+      min_sol_lamports: built.min_sol_lamports,
+      message:
+        "Sign & send this transaction — you pay the Solana network fee; $G2U comes from the airdrop vault.",
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

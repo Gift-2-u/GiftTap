@@ -1,4 +1,6 @@
 import React, { useState, useCallback, useEffect } from 'react';
+import { Connection, Transaction, Keypair } from '@solana/web3.js';
+import bs58 from 'bs58';
 import TurnstileCaptcha, { turnstileRequired } from './TurnstileCaptcha';
 import {
   hasSecureSession,
@@ -12,6 +14,11 @@ import {
   TOKEN_LAUNCH_LABEL,
   formatLaunchCountdown,
 } from './tokenLaunch';
+import { keypairFromMnemonic } from './solanaWallet';
+import { RPC_URL } from './rpc';
+
+/** Minimum SOL so user can pay fee (+ ATA rent if needed). */
+const MIN_CLAIM_SOL = 0.01;
 
 /** Mystery queue from inventory */
 export function mysteryG2uPending(inventory) {
@@ -47,6 +54,7 @@ const panel = {
 export default function ClaimG2uPanel({
   inventory = {},
   walletAddress = '',
+  decryptedPhrase = '',
   onInventoryChange,
   notify,
   variant = 'block',
@@ -151,15 +159,79 @@ export default function ClaimG2uPanel({
       notify?.('Complete the captcha to claim $G2U');
       return;
     }
+    const secret = String(decryptedPhrase || '').trim();
+    if (!secret) {
+      notify?.(
+        'Unlock your game wallet first (Settings / login password) — you pay a small SOL network fee to claim.',
+      );
+      return;
+    }
     setBusyId(row.id);
     try {
       await ensureSecureSession();
-      const data = await secureAirdropClaimG2u(captchaToken, row.id);
-      const amt = Number(data?.amount) || 0;
-      if (data?.already || amt <= 0) notify?.('Already claimed');
+      let playerKeypair;
+      if (secret.includes(' ')) {
+        playerKeypair = keypairFromMnemonic(secret);
+      } else {
+        playerKeypair = Keypair.fromSecretKey(bs58.decode(secret));
+      }
+      if (
+        walletAddress &&
+        playerKeypair.publicKey.toBase58() !== String(walletAddress).trim()
+      ) {
+        throw new Error('Unlocked wallet does not match your game wallet');
+      }
+
+      const connection = new Connection(RPC_URL, 'confirmed');
+      const lamports = await connection.getBalance(playerKeypair.publicKey);
+      const sol = lamports / 1e9;
+      if (sol < MIN_CLAIM_SOL) {
+        throw new Error(
+          `Need at least ${MIN_CLAIM_SOL} SOL in your game wallet for the network fee (you have ${sol.toFixed(4)} SOL).`,
+        );
+      }
+
+      notify?.('Preparing claim… you will pay the Solana fee; $G2U comes from the vault.');
+      const prepared = await secureAirdropClaimG2u(captchaToken, row.id, {
+        action: 'prepare',
+      });
+      if (prepared?.already) {
+        notify?.('Already claimed');
+        resetCaptcha();
+        await refreshAirdrop();
+        return;
+      }
+      if (!prepared?.need_sign || !prepared?.tx_base64) {
+        throw new Error(prepared?.error || 'Could not prepare claim transaction');
+      }
+
+      const minLamports = Number(prepared.min_sol_lamports) || MIN_CLAIM_SOL * 1e9;
+      if (lamports < minLamports) {
+        throw new Error(
+          `Need ~${(minLamports / 1e9).toFixed(3)} SOL for fees / token account (you have ${sol.toFixed(4)} SOL).`,
+        );
+      }
+
+      const raw = Uint8Array.from(atob(prepared.tx_base64), (c) => c.charCodeAt(0));
+      const tx = Transaction.from(raw);
+      tx.partialSign(playerKeypair);
+
+      notify?.('Sending claim on Solana…');
+      const signature = await connection.sendRawTransaction(tx.serialize(), {
+        skipPreflight: false,
+        preflightCommitment: 'confirmed',
+      });
+      await connection.confirmTransaction(signature, 'confirmed');
+
+      const confirmed = await secureAirdropClaimG2u(captchaToken, row.id, {
+        action: 'confirm',
+        txSignature: signature,
+      });
+      const amt = Number(confirmed?.amount) || Number(prepared.amount) || 0;
+      if (confirmed?.already) notify?.('Already claimed');
       else {
         notify?.(
-          `✅ ${row.label || data.source}: ${amt.toLocaleString()} $G2U → ${shortWallet}`,
+          `✅ ${row.label || confirmed?.source || prepared.source}: ${amt.toLocaleString()} $G2U → ${shortWallet} (you paid the network fee)`,
         );
       }
       resetCaptcha();
@@ -284,6 +356,11 @@ export default function ClaimG2uPanel({
                 ✕
               </button>
             </div>
+            <p style={{ color: '#888', fontSize: 12, margin: '0 0 12px', lineHeight: 1.45 }}>
+              Airdrop claims: you pay a small <strong style={{ color: '#ccc' }}>SOL</strong> network
+              fee; <strong style={{ color: '#fbef43' }}>$G2U</strong> is sent from the vault to{' '}
+              {shortWallet}. Keep ~{MIN_CLAIM_SOL} SOL in your game wallet.
+            </p>
 
             <p
               style={{

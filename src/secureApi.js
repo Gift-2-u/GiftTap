@@ -216,12 +216,23 @@ export async function secureAirdropClaimStatus() {
   return callSecureFunction('airdrop-claim-status', {});
 }
 
-/** Claim one airdrop allocation → SPL from that source vault. */
-export async function secureAirdropClaimG2u(captchaToken, allocationId) {
-  return callSecureFunction('airdrop-claim-g2u', {
+/**
+ * Airdrop claim — user pays SOL fee.
+ * prepare: { need_sign, tx_base64, min_sol_lamports, ... }
+ * confirm: pass txSignature after client sendAndConfirm
+ */
+export async function secureAirdropClaimG2u(
+  captchaToken,
+  allocationId,
+  { action = 'prepare', txSignature = '' } = {},
+) {
+  const body = {
     captcha_token: captchaToken || '',
     allocation_id: allocationId,
-  });
+    action: action === 'confirm' ? 'confirm' : 'prepare',
+  };
+  if (txSignature) body.tx_signature = txSignature;
+  return callSecureFunction('airdrop-claim-g2u', body);
 }
 
 /** Secure weekly badge claim (requires JWT). */
