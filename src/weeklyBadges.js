@@ -129,19 +129,41 @@ export function isWeeklyFloorEligible(score, floor) {
 }
 
 /**
- * First UTC ISO week that uses %-based badge cuts (this week W34 stays legacy).
- * Of eligible N — if N≤4: #1 D · #2 G · #3 S · #4 B.
- * If N>4: top 10% Diamond, next 15% Gold, next 25% Silver, rest Bronze
+ * First UTC ISO week that uses %-based badge cuts (W34 and earlier = legacy top-10).
+ * W35: top 10% D · next 15% G · next 25% S · rest Bronze
+ * W36+: top 5% D · next 10% G · next 15% S · rest Bronze
  * (never 0 Diamond/Gold from floor% on a tiny board).
- * (W34 and earlier used fixed #1–#10 ranks in code.)
  */
 export const WEEKLY_PERCENT_BADGES_FROM_WEEK = '2026-W35';
 
-export const WEEKLY_BADGE_CUTS = {
+/** Tighter cuts start here; W35 snapshot stays on 10/15/25. */
+export const WEEKLY_TIGHTER_BADGE_CUTS_FROM_WEEK = '2026-W36';
+
+/** W35 cuts (frozen for that week’s snapshot math). */
+export const WEEKLY_BADGE_CUTS_W35 = {
   diamondPct: 0.1,
   goldPct: 0.15,
   silverPct: 0.25,
 };
+
+/** W36+ cuts. */
+export const WEEKLY_BADGE_CUTS_W36 = {
+  diamondPct: 0.05,
+  goldPct: 0.1,
+  silverPct: 0.15,
+};
+
+/** Default / live display = current (W36+) cuts. */
+export const WEEKLY_BADGE_CUTS = WEEKLY_BADGE_CUTS_W36;
+
+/** Resolve D/G/S percents for a week (W35 keeps old; else W36+). */
+export function weeklyBadgeCutsForWeek(weekId) {
+  const w = String(weekId || '');
+  if (/^\d{4}-W\d{2}$/.test(w) && w >= WEEKLY_PERCENT_BADGES_FROM_WEEK && w < WEEKLY_TIGHTER_BADGE_CUTS_FROM_WEEK) {
+    return WEEKLY_BADGE_CUTS_W35;
+  }
+  return WEEKLY_BADGE_CUTS_W36;
+}
 
 /**
  * Paid $G2U weekly pool seats (D/G/S/B pots). Rank 101+ eligible → Bronze badge only, no pool share.
@@ -163,16 +185,17 @@ export function weekUsesPercentBadges(weekId) {
  *
  * Always keep the 4-tier winners board by rank:
  *   1→≥1 Diamond, 2→≥1 Gold, 3→≥1 Silver (bronze = everyone else).
- * Percents (10% / 15% / 25%) use Math.round so more seats open when
- * N×% grows enough (e.g. 15→1.5 D rounds to 2, 2.25 G→2, 3.75 S→4).
+ * Percents use Math.round so more seats open when N×% grows enough.
+ * Pass weekId so W35 keeps 10/15/25 and W36+ uses 5/10/15.
  */
-export function weeklyBadgeTierCounts(totalEligible) {
+export function weeklyBadgeTierCounts(totalEligible, weekId) {
   const n = Math.max(0, Math.floor(Number(totalEligible) || 0));
   if (n < 1) return { diamond: 0, gold: 0, silver: 0, bronze: 0, total: 0 };
 
-  let diamond = Math.max(n >= 1 ? 1 : 0, Math.round(n * WEEKLY_BADGE_CUTS.diamondPct));
-  let gold = Math.max(n >= 2 ? 1 : 0, Math.round(n * WEEKLY_BADGE_CUTS.goldPct));
-  let silver = Math.max(n >= 3 ? 1 : 0, Math.round(n * WEEKLY_BADGE_CUTS.silverPct));
+  const cuts = weeklyBadgeCutsForWeek(weekId);
+  let diamond = Math.max(n >= 1 ? 1 : 0, Math.round(n * cuts.diamondPct));
+  let gold = Math.max(n >= 2 ? 1 : 0, Math.round(n * cuts.goldPct));
+  let silver = Math.max(n >= 3 ? 1 : 0, Math.round(n * cuts.silverPct));
 
   // Never allocate more paid seats than players (trim silver → gold → diamond).
   let paid = diamond + gold + silver;
@@ -221,7 +244,7 @@ export function badgeTierForWeeklyRank(rank, totalEligible, weekId) {
   if (n < 1 || r > n) return null;
   if (r > WEEKLY_G2U_TOP_N) return 'bronze';
   const paidN = Math.min(WEEKLY_G2U_TOP_N, n);
-  const { diamond, gold, silver } = weeklyBadgeTierCounts(paidN);
+  const { diamond, gold, silver } = weeklyBadgeTierCounts(paidN, weekId);
   if (r <= diamond) return 'diamond';
   if (r <= diamond + gold) return 'gold';
   if (r <= diamond + gold + silver) return 'silver';
@@ -689,9 +712,9 @@ export function mysteryOddsTableForGuide() {
   };
   const cols = [
     { tier: 'bronze', title: 'Bronze (rest eligible)' },
-    { tier: 'silver', title: 'Silver (next 25%)' },
-    { tier: 'gold', title: 'Gold (next 15%)' },
-    { tier: 'diamond', title: 'Diamond (top 10%)' },
+    { tier: 'silver', title: 'Silver (next 15%)' },
+    { tier: 'gold', title: 'Gold (next 10%)' },
+    { tier: 'diamond', title: 'Diamond (top 5%)' },
   ];
   return {
     columns: cols,

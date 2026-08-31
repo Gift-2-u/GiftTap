@@ -2,8 +2,8 @@
  * grant-weekly-badges — award YOUR badge from last week's snapshot (if any).
  * Body: { week_id?: string }  default = previous ISO week
  *
- * Only updates the authenticated player — never mass-writes all winners
- * (that stamped every winner's row on each login).
+ * Each week is independent: +1 badge stack per winning week.
+ * Idempotency = claim_log `weekly_badge:<week>:award` (not "already own tier").
  */
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { requirePlayerFromRequest } from "../_shared/sessionJwt.ts";
@@ -66,6 +66,8 @@ serve(async (req) => {
       });
     }
 
+    const claimKey = `weekly_badge:${weekId}:award`;
+
     const { data: existing } = await sb
       .from("badge_grants")
       .select("id, tier")
@@ -82,32 +84,12 @@ serve(async (req) => {
     if (!player) throw new Error("Player not found");
 
     const inv = invObj(player.inventory);
-    const have = Math.max(0, Math.floor(Number(inv[itemId]) || 0));
-    let granted = 0;
-    let repaired = 0;
-    let changed = false;
+    const log = Array.isArray(inv.claim_log)
+      ? [...(inv.claim_log as string[])]
+      : [];
+    const alreadyLogged = log.includes(claimKey);
 
-    if (!existing) {
-      const { error: gErr } = await sb.from("badge_grants").insert({
-        player_id: playerId,
-        week_id: weekId,
-        rank,
-        tier,
-      });
-      if (gErr && !/duplicate|unique/i.test(String(gErr.message || ""))) {
-        throw gErr;
-      }
-      changed = true;
-    }
-
-    if (have < 1) {
-      inv[itemId] = 1;
-      changed = true;
-      if (existing) repaired = 1;
-      else granted = 1;
-    }
-
-    if (!changed) {
+    if (alreadyLogged) {
       return jsonResponse({
         success: true,
         week_id: weekId,
@@ -121,6 +103,27 @@ serve(async (req) => {
       });
     }
 
+    if (!existing) {
+      const { error: gErr } = await sb.from("badge_grants").insert({
+        player_id: playerId,
+        week_id: weekId,
+        rank,
+        tier,
+      });
+      if (gErr && !/duplicate|unique/i.test(String(gErr.message || ""))) {
+        throw gErr;
+      }
+    } else if (String(existing.tier || "").toLowerCase() !== tier) {
+      await sb
+        .from("badge_grants")
+        .update({ tier, rank })
+        .eq("player_id", playerId)
+        .eq("week_id", weekId);
+    }
+
+    // New week award: always +1 (prior weeks / shop stock do not block)
+    const have = Math.max(0, Math.floor(Number(inv[itemId]) || 0));
+    inv[itemId] = have + 1;
     inv.weekly_badge_award = {
       weekId,
       tier,
@@ -128,14 +131,9 @@ serve(async (req) => {
       claimedAt: new Date().toISOString(),
       auto: true,
     };
-    const log = Array.isArray(inv.claim_log)
-      ? [...(inv.claim_log as string[])]
-      : [];
-    const claimKey = `weekly_badge:${weekId}:award`;
-    if (!log.includes(claimKey)) log.push(claimKey);
+    log.push(claimKey);
     inv.claim_log = log.sort();
 
-    // inventory only — never last_updated (energy / "last seen")
     const { error: upErr } = await sb
       .from("players")
       .update({ inventory: inv })
@@ -153,8 +151,8 @@ serve(async (req) => {
     return jsonResponse({
       success: true,
       week_id: weekId,
-      granted,
-      repaired,
+      granted: 1,
+      repaired: existing ? 1 : 0,
       skipped: 0,
       tier,
       rank,

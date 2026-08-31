@@ -2280,10 +2280,14 @@ Daily claim active · Pack → NFT to see it.`,
     }
   };
 
-  // --- BACKPACK: shop boosts + badges (not wall/swap metadata keys) ---
-  const SHOP_ITEM_IDS = new Set(allItems.map((i) => i.id));
+  // --- BACKPACK: boosts only here; badges live under Badges tab (not Boost) ---
   const BADGE_IDS = new Set(BADGE_ITEM_IDS);
-  const backpackBoostItems = allItems.filter((item) => Number(localInventory[item.id]) > 0);
+  const backpackBoostItems = allItems.filter(
+    (item) =>
+      !item.isBadgeShop &&
+      !BADGE_IDS.has(item.id) &&
+      Number(localInventory[item.id]) > 0,
+  );
   const badgeCounts = getBadgeCounts(localInventory);
   const badgeTotal = Object.values(badgeCounts).reduce((a, b) => a + b, 0);
   const backpackItemCount =

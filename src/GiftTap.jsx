@@ -7445,7 +7445,7 @@ const GiftTapGame = () => {
                       ) : null}
                     </div>
                     <div style={{ textAlign: 'center', color: '#666', fontSize: 10, marginBottom: 8, lineHeight: 1.35 }}>
-                      Badge floor ≥ {getWeeklyBadgeFloor().toLocaleString()} · every eligible wins a badge (10%◆ · 15%● · 25%● · rest●) · claim in Shop → Pack → Badges
+                      Badge floor ≥ {getWeeklyBadgeFloor().toLocaleString()} · every eligible wins a badge (5%◆ · 10%● · 15%● · rest● from W36) · claim in Shop → Pack → Badges
                     </div>
                     <div
                       style={{
@@ -7456,9 +7456,9 @@ const GiftTapGame = () => {
                       }}
                     >
                       {[
-                        ['diamond', 'top 10%'],
-                        ['gold', 'next 15%'],
-                        ['silver', 'next 25%'],
+                        ['diamond', 'top 5%'],
+                        ['gold', 'next 10%'],
+                        ['silver', 'next 15%'],
                         ['bronze', 'rest'],
                       ].map(([tier, rankLabel]) => {
                         const m = BADGE_TIERS[tier];

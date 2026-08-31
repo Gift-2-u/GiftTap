@@ -38,37 +38,37 @@ serve(async (req) => {
         .select("inventory, shard_balance")
         .eq("telegram_id", playerId)
         .maybeSingle();
-      // Re-sync backpack if grant exists but badge count missing (hard security freeze left UI empty)
+      // Repair: grant row exists but this week's +1 never hit claim_log / backpack
       let inv = invObj(player?.inventory);
       const tier = String(existing.tier || "");
       const itemId = BADGE_ITEM[tier] || (tier ? `badge_${tier}` : "");
+      const claimKey = `weekly_badge:${weekId}:award`;
+      const log = Array.isArray(inv.claim_log)
+        ? [...(inv.claim_log as string[])]
+        : [];
       let repaired = false;
-      if (itemId) {
+      if (itemId && !log.includes(claimKey)) {
         const have = Math.max(0, Math.floor(Number(inv[itemId]) || 0));
-        if (have < 1) {
-          inv[itemId] = 1;
-          inv.weekly_badge_award = {
-            weekId,
-            tier,
-            rank: existing.rank,
-            claimedAt: new Date().toISOString(),
-            repaired: true,
-          };
-          const log = Array.isArray(inv.claim_log) ? [...(inv.claim_log as string[])] : [];
-          const claimKey = `weekly_badge:${weekId}:award`;
-          if (!log.includes(claimKey)) log.push(claimKey);
-          inv.claim_log = log.sort();
-          // Do not bump last_updated (energy regen clock)
-          await sb
-            .from("players")
-            .update({ inventory: inv })
-            .eq("telegram_id", playerId);
-          repaired = true;
-        }
+        // Week-independent: +1 even if they already own this tier from another week
+        inv[itemId] = have + 1;
+        inv.weekly_badge_award = {
+          weekId,
+          tier,
+          rank: existing.rank,
+          claimedAt: new Date().toISOString(),
+          repaired: true,
+        };
+        log.push(claimKey);
+        inv.claim_log = log.sort();
+        await sb
+          .from("players")
+          .update({ inventory: inv })
+          .eq("telegram_id", playerId);
+        repaired = true;
       }
       return jsonResponse({
         success: true,
-        already: true,
+        already: !repaired,
         week_id: weekId,
         tier: existing.tier,
         rank: existing.rank,

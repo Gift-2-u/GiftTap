@@ -133,7 +133,7 @@ export const HELP_TIPS = {
       'Ranks → Weekly uses the same 15% activity idea as Season.\n\n' +
       'Main board floor = 15% × 1,000 × day of the UTC week (day 1 Mon = 150 … day 7 = 1,050).\n\n' +
       'At week end, players with ≥ 1,050 weekly score are badge-eligible.\n\n' +
-      'Every eligible player wins a badge. Small board (≤4): #1 Diamond · #2 Gold · #3 Silver · #4 Bronze. Larger boards: top 10% Diamond, next 15% Gold, next 25% Silver, rest Bronze.\n\n' +
+      'Every eligible player wins a badge. Small board (≤4): #1 Diamond · #2 Gold · #3 Silver · #4 Bronze. From 2026-W36: top 5% Diamond, next 10% Gold, next 15% Silver, rest Bronze (W35 used 10% / 15% / 25%).\n\n' +
       'Claim finished-week badges in Shop → Pack → Badges. Burn badges there for Mystery Gift.\n\n' +
       'In-game Badge market: sell badges from your backpack for SOL now (G2U token after launch — not G2Ushards). Listing escrows the badge. 5% fee to treasury (seller receives 95%). No external marketplaces.\n\n' +
       'Owned GiftLocksmith NFTs: Shop → NFTs or Pack → NFT → NFT market. List for SOL, buyer pays 95% to you + 5% treasury, then you tap Send NFT to transfer on-chain.\n\n' +

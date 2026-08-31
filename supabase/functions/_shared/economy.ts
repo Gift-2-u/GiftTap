@@ -181,14 +181,25 @@ export const BADGE_ITEM: Record<string, string> = {
 /** First week with %-based badges (W34 and earlier = legacy top-10). */
 export const WEEKLY_PERCENT_BADGES_FROM_WEEK = "2026-W35";
 
+/** Tighter cuts: 5% D / 10% G / 15% S. W35 keeps 10/15/25. */
+export const WEEKLY_TIGHTER_BADGE_CUTS_FROM_WEEK = "2026-W36";
+
 export function weekUsesPercentBadges(weekId: string | null | undefined): boolean {
   const w = String(weekId || "");
   return /^\d{4}-W\d{2}$/.test(w) && w >= WEEKLY_PERCENT_BADGES_FROM_WEEK;
 }
 
+export function weekUsesTighterBadgeCuts(weekId: string | null | undefined): boolean {
+  const w = String(weekId || "");
+  // Unknown week → current (tighter) cuts. Only W35 keeps the old band.
+  if (!/^\d{4}-W\d{2}$/.test(w)) return true;
+  return w >= WEEKLY_TIGHTER_BADGE_CUTS_FROM_WEEK;
+}
+
 /**
  * Legacy: #1 D · #2 G · #3 S · #4–10 B
- * From 2026-W35: top 10% D, next 15% G, next 25% S, rest eligible Bronze
+ * 2026-W35: top 10% D, next 15% G, next 25% S, rest eligible Bronze
+ * 2026-W36+: top 5% D, next 10% G, next 15% S, rest eligible Bronze
  */
 export function tierFromRank(
   rank: number,
@@ -212,9 +223,13 @@ export function tierFromRank(
   const TOP_N = 100;
   if (r > TOP_N) return "bronze";
   const paidN = Math.min(TOP_N, n);
-  let diamond = Math.max(paidN >= 1 ? 1 : 0, Math.round(paidN * 0.1));
-  let gold = Math.max(paidN >= 2 ? 1 : 0, Math.round(paidN * 0.15));
-  let silver = Math.max(paidN >= 3 ? 1 : 0, Math.round(paidN * 0.25));
+  const tighter = weekUsesTighterBadgeCuts(weekId);
+  const dPct = tighter ? 0.05 : 0.1;
+  const gPct = tighter ? 0.1 : 0.15;
+  const sPct = tighter ? 0.15 : 0.25;
+  let diamond = Math.max(paidN >= 1 ? 1 : 0, Math.round(paidN * dPct));
+  let gold = Math.max(paidN >= 2 ? 1 : 0, Math.round(paidN * gPct));
+  let silver = Math.max(paidN >= 3 ? 1 : 0, Math.round(paidN * sPct));
   let over = diamond + gold + silver - paidN;
   if (over > 0) {
     const cut = (v: number) => {
