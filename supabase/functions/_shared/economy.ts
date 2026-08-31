@@ -414,7 +414,7 @@ export function rollMystery(
 
 /** Shard shop catalog (server source of truth for costs) */
 export const SHARD_SHOP: Record<string, { name: string; cost: number }> = {
-  frenzy: { name: "Frenzy Mode", cost: 700 },
+  frenzy: { name: "30-Second Frenzy", cost: 700 },
   battery: { name: "Expanded Battery", cost: 750 },
   // heavy retired from catalog — replace later
   refill: { name: "Instant Refill", cost: 300 },
@@ -469,7 +469,8 @@ export function effectiveDailyLimit(
     row.energy_boost_expires &&
     now < new Date(String(row.energy_boost_expires))
   ) {
-    n += 1000;
+    // Expanded Battery (shard shop) — +500 max daily taps (was +1000)
+    n += 500;
   }
   if (
     row.limit_boost_expires &&

@@ -3973,7 +3973,7 @@ const GiftTapGame = () => {
                   show: true,
                   message:
                     "Daily limit reached for this UTC day.\n\n" +
-                    "Want to keep playing? Expanded Battery adds +1,000 max taps until UTC midnight (Shop · Free).",
+                    "Want to keep playing? Expanded Battery adds +500 max taps until UTC midnight (Shop · Free).",
                   loading: false,
                   success: false,
                   title: "Daily limit reached",
@@ -4512,7 +4512,7 @@ const GiftTapGame = () => {
           show: true,
           message:
             "Daily limit reached for this UTC day.\n\n" +
-            "Want to keep playing? Expanded Battery adds +1,000 max taps until UTC midnight (Shop · Free).",
+            "Want to keep playing? Expanded Battery adds +500 max taps until UTC midnight (Shop · Free).",
           loading: false,
           success: false,
           title: "Daily limit reached",
@@ -4601,7 +4601,7 @@ const GiftTapGame = () => {
             show: true,
             message:
               "Daily limit reached for this UTC day.\n\n" +
-              "Want to keep playing? Expanded Battery adds +1,000 max taps until UTC midnight (Shop · Free).",
+              "Want to keep playing? Expanded Battery adds +500 max taps until UTC midnight (Shop · Free).",
             loading: false,
             success: false,
             title: "Daily limit reached",

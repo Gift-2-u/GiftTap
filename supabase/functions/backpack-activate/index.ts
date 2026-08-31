@@ -96,7 +96,20 @@ serve(async (req) => {
       };
     }
     const today = utcToday();
-    if (dailyUsage[itemId] === today && itemId !== "refill" && itemId !== "crate") {
+    const TOKEN_LAUNCH_AT = Date.parse("2026-09-01T00:00:00Z");
+    const afterLaunch = Date.now() >= TOKEN_LAUNCH_AT;
+    // After launch: Instant Refill is 1× free/shard path per UTC day (extras via $G2U Premium).
+    const refillOncePerDay = itemId === "refill" && afterLaunch;
+    if (
+      dailyUsage[itemId] === today &&
+      itemId !== "crate" &&
+      (itemId !== "refill" || refillOncePerDay)
+    ) {
+      if (refillOncePerDay) {
+        throw new Error(
+          "Free Instant Refill already used today (UTC). Extra refills: Shop → Premium ($G2U).",
+        );
+      }
       throw new Error(`Already used ${itemId} today (UTC). Wait until midnight.`);
     }
 
@@ -108,7 +121,7 @@ serve(async (req) => {
       inv[itemId] = have - 1;
     }
 
-    if (itemId !== "refill" && itemId !== "crate") {
+    if (itemId !== "crate" && (itemId !== "refill" || refillOncePerDay)) {
       dailyUsage[itemId] = today;
     }
     inv.daily_usage = dailyUsage;
@@ -125,10 +138,10 @@ serve(async (req) => {
     if (!Number.isFinite(last_energy)) last_energy = ENERGY_CAP;
 
     if (itemId === "frenzy") {
-      // Shards ×2 for 60s only — do NOT touch last_energy / energy_at
-      updates.frenzy_expires = new Date(now + 60 * 1000).toISOString();
+      // Shards ×2 for 30s only — do NOT touch last_energy / energy_at
+      updates.frenzy_expires = new Date(now + 30 * 1000).toISOString();
     } else if (itemId === "battery") {
-      // Expanded daily tap cap only — do NOT touch the 500 energy pool
+      // Expanded daily tap cap +500 (effectiveDailyLimit) — not the 500 energy pool
       updates.energy_boost_expires = endOfUtcDay(0);
       updates.max_daily_limit = effectiveDailyLimit(
         {

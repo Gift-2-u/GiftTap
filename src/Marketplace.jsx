@@ -451,9 +451,9 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, bumpEner
   const shardListings = [
     {
       id: 'frenzy',
-      name: '60-Second Frenzy',
+      name: '30-Second Frenzy',
       desc: '2x Payout per energy',
-      duration: '60 Seconds',
+      duration: '30 Seconds',
       cost: 700,
       iconFrom: '#ff6b35',
       iconTo: '#7c1d12',
@@ -463,7 +463,7 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, bumpEner
     {
       id: 'battery',
       name: 'Expanded Battery',
-      desc: '+1,000 Max Energy',
+      desc: '+500 Max Daily Taps',
       duration: 'Until UTC midnight',
       cost: 750,
       iconFrom: '#4ade80',
@@ -475,7 +475,7 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, bumpEner
     {
       id: 'refill',
       name: 'Instant Refill',
-      desc: 'Fills energy to max',
+      desc: 'Fills energy to max · 1×/day after launch',
       duration: 'Instant',
       cost: 300,
       iconFrom: '#facc15',
@@ -618,6 +618,20 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, bumpEner
       iconTo: '#166534',
       iconRing: 'rgba(74,222,128,0.5)',
       iconGlow: 'rgba(34,197,94,0.3)',
+    },
+    {
+      id: 'refill',
+      name: 'Instant Refill',
+      type: 'Power',
+      rarity: 'Rare',
+      boost: 'Fills energy to max · extra after free daily',
+      duration: 'Instant',
+      price: 0.005,
+      currency: 'SOL',
+      iconFrom: '#facc15',
+      iconTo: '#854d0e',
+      iconRing: 'rgba(250,204,21,0.45)',
+      iconGlow: 'rgba(250,204,21,0.25)',
     },
   ];
 
@@ -1855,9 +1869,25 @@ Daily claim active · Pack → NFT to see it.`,
 
     // NEW: Check if this item has already been used today UTC
     const todayStr = getTodayUTCString();
-    if (dailyUsage[item.id] === todayStr && item.id !== 'refill' && item.id !== 'crate') {
-      setTxStatus({ show: true, loading: false, message: `❌ You have already used a ${item.name} today. Wait until UTC midnight.`, success: false });
-      setTimeout(() => setTxStatus(prev => ({ ...prev, show: false })), 3000);
+    // After launch: Instant Refill also 1× per UTC day (same activate path as before)
+    const afterLaunch = Date.now() >= Date.parse('2026-09-01T00:00:00Z');
+    const blockRefill =
+      item.id === 'refill' && afterLaunch && dailyUsage.refill === todayStr;
+    if (
+      (dailyUsage[item.id] === todayStr &&
+        item.id !== 'refill' &&
+        item.id !== 'crate') ||
+      blockRefill
+    ) {
+      setTxStatus({
+        show: true,
+        loading: false,
+        message: blockRefill
+          ? '❌ Free Instant Refill already used today (UTC). Extra refills: Premium ($G2U) after launch.'
+          : `❌ You have already used a ${item.name} today. Wait until UTC midnight.`,
+        success: false,
+      });
+      setTimeout(() => setTxStatus((prev) => ({ ...prev, show: false })), 3000);
       return;
     }
 
@@ -2098,7 +2128,7 @@ Daily claim active · Pack → NFT to see it.`,
     const sevenDayExpireUtc = getEndOfUtcDay(6);
 
     // Shard Items
-    if (item.id === 'frenzy') dbUpdates.frenzy_expires = new Date(now + 60 * 1000).toISOString();
+    if (item.id === 'frenzy') dbUpdates.frenzy_expires = new Date(now + 30 * 1000).toISOString();
    
     // Battery and Heavy Hands expire at end of current UTC day
     if (item.id === 'battery') dbUpdates.energy_boost_expires = midnightUtcTonight.toISOString();
