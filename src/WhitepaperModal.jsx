@@ -16,7 +16,7 @@ const WhitepaperModal = ({ isWhitepaperOpen, setIsWhitepaperOpen, onClose }) => 
     {
       id: 2,
       title: "2. Energy",
-      content: "Every tap costs 1 Energy from your pool.\n\n• Free daily Energy: 1,000 base (plus ads for more).\n• Energy pool / recharge holds 500 Energy, which regenerates automatically at a rate of 1 Energy every 1.5 seconds.\n• Shop (Shards tab): Expanded Battery, Instant Refill, Frenzy, Heavy Hands — temporary boosts, not NFTs.\n• Buying Energy with shards spends your bank; season taps can look high while shard balance stays lower."
+      content: "Every tap costs 1 Energy from your pool.\n\n• Free daily Energy: 1,000 base (plus ads for more).\n• Energy Battery / recharge holds 500 Energy, which regenerates automatically at a rate of 1 Energy every 1.5 seconds.\n• Shop: You can recharge your battery or Max Daily with free or Premium boost."
     },
     {
       id: 3,
