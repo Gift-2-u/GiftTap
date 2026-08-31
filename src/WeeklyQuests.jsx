@@ -299,8 +299,9 @@ export default function WeeklyQuests({
         markClaimedLocal(quest.id);
         let inv = data.inventory ? { ...data.inventory } : null;
 
-        // Re-read inventory + max_daily_limit (HUD syncs to this column)
-        let maxFromDb =
+        // HUD must ONLY use server max_daily_limit (already includes base + Battery + tasks).
+        // Never re-add Battery/tasks on the client — that caused 1500→2400 while DB stayed 1900.
+        let maxFromServer =
           data.max_daily_limit != null ? Number(data.max_daily_limit) : null;
         try {
           const { data: row } = await supabase
@@ -310,48 +311,21 @@ export default function WeeklyQuests({
             .maybeSingle();
           if (row?.inventory) inv = { ...row.inventory };
           if (row?.max_daily_limit != null) {
-            maxFromDb = Number(row.max_daily_limit);
+            maxFromServer = Number(row.max_daily_limit);
           }
         } catch {
-          /* keep edge inventory */
+          /* keep edge inventory / max */
         }
         if (
-          maxFromDb != null &&
-          Number.isFinite(maxFromDb) &&
+          maxFromServer != null &&
+          Number.isFinite(maxFromServer) &&
           typeof onMaxDailyLimitChange === 'function'
         ) {
-          onMaxDailyLimitChange(Math.max(1000, maxFromDb));
+          onMaxDailyLimitChange(Math.max(1000, maxFromServer));
         }
 
-        // If claim was new and boost did not increase vs pre-claim local, force +100 stack
-        if (inv && !data.already) {
-          const fromProps =
-            inventory && typeof inventory === 'object' ? inventory : {};
-          const clientBefore = getActiveTaskLimitBoostAmount(fromProps);
-          const serverAmt = getActiveTaskLimitBoostAmount(inv);
-          // After a real stack, serverAmt should be > clientBefore (0→100, 100→200)
-          if (serverAmt <= clientBefore) {
-            inv = applyTaskLimitBoostToInventory(
-              {
-                ...inv,
-                task_limit_boost:
-                  fromProps.task_limit_boost || inv.task_limit_boost,
-              },
-              WEEKLY_ENERGY_REWARD,
-            );
-            try {
-              await supabase
-                .from('players')
-                .update({
-                  inventory: inv,
-                  last_updated: new Date().toISOString(),
-                })
-                .eq(DB_PLAYER_ID, String(userId));
-            } catch (pe) {
-              console.warn('boost stack repair', pe);
-            }
-          }
-        }
+        // Trust Edge/RPC inventory only — do not client-stack task_limit_boost
+        // (hard lock blocks writes; local double-stack desynced the Daily Limit bar).
 
         if (inv && typeof onWeeklyStateChange === 'function') {
           onWeeklyStateChange(
