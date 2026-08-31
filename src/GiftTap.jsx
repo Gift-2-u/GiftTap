@@ -1132,47 +1132,7 @@ const GiftTapGame = () => {
           );
           nextInv = hydrateWeeklyClaimsFromLedger(nextInv, weekId);
           inventoryRef.current = nextInv;
-          if (playerId) {
-            (async () => {
-              try {
-                const { data: row } = await supabase
-                  .from('players')
-                  .select('inventory')
-                  .eq(DB_PLAYER_ID, String(playerId))
-                  .maybeSingle();
-                // Weekly progress must not touch shop qty. Server row is shop
-                // authority — preferConsumed(MIN) + local nextInv wiped buys to DB.
-                let merged = mergeInventoryWeekly(
-                  hydrateWeeklyClaimsFromLedger(row?.inventory || {}, weekId),
-                  nextInv,
-                  weekId,
-                );
-                merged = applyShopQtyAuthority(
-                  merged,
-                  row?.inventory || {},
-                );
-                merged = hydrateWeeklyClaimsFromLedger(merged, weekId);
-                inventoryRef.current = applyServerInventoryAuthority(
-                  inventoryRef.current || {},
-                  merged,
-                  weekId,
-                );
-                // Never touch last_updated here — it is the energy regen clock.
-                // Bumping it without last_energy freezes server battery at 0 while
-                // the UI still regenerates locally → flush returns no_energy and
-                // wipes optimistic taps / daily progress.
-                const { error } = await supabase
-                  .from('players')
-                  .update({
-                    inventory: inventoryRef.current,
-                  })
-                  .eq(DB_PLAYER_ID, String(playerId));
-                if (error) console.warn('weekly_quests save', error.message);
-              } catch (e) {
-                console.warn('weekly_quests save', e?.message || e);
-              }
-            })();
-          }
+          // Hard lock: no client inventory UPDATE (commit-taps persists weekly_quests).
           return { ...prev, inventory: nextInv };
         });
       } catch (e) {
@@ -1780,7 +1740,7 @@ const GiftTapGame = () => {
             );
           }
         }
-        // Eligible = ALL floor-qualified (badges). Top list = first 50 only (display).
+        // Eligible = floor-qualified. Display list = top 100; you-tag = full rank/score.
         const eligibleAll = (rows || []).filter((r) =>
           isWeeklyFloorEligible(r.weekly_score ?? r.score ?? 0, floor),
         );
@@ -1843,7 +1803,7 @@ const GiftTapGame = () => {
       };
 
       try {
-        // FAST PATH (same idea as Season): ledger + view in parallel — no Edge wait
+        // FAST PATH: load up to 500 for ranks; UI shows top 100; you-tag from full set
         const [led, viewRes, rpc] = await Promise.all([
           supabase
             .from('weekly_score_ledger')
@@ -1882,7 +1842,7 @@ const GiftTapGame = () => {
         if (stillThisTab()) setLeaderboardLoading(false);
       }
 
-      // BACKGROUND: flush + rollover + Edge reconcile (updates quietly)
+      // BACKGROUND: flush + rollover + Edge reconcile (limit=return size only)
       (async () => {
         try {
           try {
@@ -2109,12 +2069,12 @@ const GiftTapGame = () => {
     }
   };
 
-  // Live pull other miners while Weekly ranks is open (commit-taps is per-device)
+  // Live pull other miners while Weekly ranks is open (less often = less CPU)
   useEffect(() => {
     if (currentPage !== 'leaderboard' || leaderboardType !== 'Weekly') return undefined;
     const id = setInterval(() => {
       fetchFullLeaderboard('Weekly', { silent: true });
-    }, 12000);
+    }, 40000);
     return () => clearInterval(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentPage, leaderboardType, playerId]);
@@ -5178,8 +5138,20 @@ const GiftTapGame = () => {
   useEffect(() => {
     if (!isDataLoaded || !playerId) return;
 
+    const channelName = `main-page-sync-${playerId}`;
+    // Drop any leftover channel with the same name (nav remounts)
+    try {
+      for (const ch of supabase.getChannels()) {
+        if (ch.topic === `realtime:${channelName}` || ch.topic?.includes?.(channelName)) {
+          supabase.removeChannel(ch);
+        }
+      }
+    } catch {
+      /* ignore */
+    }
+
     const channel = supabase
-      .channel(`main-page-sync-${playerId}`)
+      .channel(channelName)
       .on('postgres_changes',
         { event: 'UPDATE', schema: 'public', table: 'players' },
         async (payload) => {

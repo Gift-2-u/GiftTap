@@ -457,35 +457,46 @@ serve(async (req) => {
       console.warn("referral credit after taps", e);
     }
 
-    // Durable boards (GREATEST — never lower). Same model for weekly/season/lifetime.
+    // Durable boards (GREATEST). Skip RPC when score did not move — same gameplay, less CPU.
     const boardUsername = String((row as Record<string, unknown>).username || "");
-    try {
-      await sb.rpc("upsert_weekly_score_ledger", {
-        p_week_id: weekId,
-        p_telegram_id: playerId,
-        p_username: boardUsername,
-        p_score: weeklyShards,
-      });
-    } catch (e) {
-      console.warn("upsert_weekly_score_ledger", e);
+    const prevWeekId = String(row.weekly_week_id || "");
+    const prevWeekly =
+      prevWeekId === weekId ? Number(row.weekly_shards) || 0 : 0;
+    const prevSeason = Number(row.season_shards) || 0;
+    const prevLifeBoard = Number(lifetime) || 0;
+    if (weeklyShards > prevWeekly + 0.0005) {
+      try {
+        await sb.rpc("upsert_weekly_score_ledger", {
+          p_week_id: weekId,
+          p_telegram_id: playerId,
+          p_username: boardUsername,
+          p_score: weeklyShards,
+        });
+      } catch (e) {
+        console.warn("upsert_weekly_score_ledger", e);
+      }
     }
-    try {
-      await sb.rpc("upsert_season_score_ledger", {
-        p_telegram_id: playerId,
-        p_username: boardUsername,
-        p_score: nextSeason,
-      });
-    } catch (e) {
-      console.warn("upsert_season_score_ledger", e);
+    if (nextSeason > prevSeason + 0.0005) {
+      try {
+        await sb.rpc("upsert_season_score_ledger", {
+          p_telegram_id: playerId,
+          p_username: boardUsername,
+          p_score: nextSeason,
+        });
+      } catch (e) {
+        console.warn("upsert_season_score_ledger", e);
+      }
     }
-    try {
-      await sb.rpc("upsert_lifetime_score_ledger", {
-        p_telegram_id: playerId,
-        p_username: boardUsername,
-        p_score: nextLife,
-      });
-    } catch (e) {
-      console.warn("upsert_lifetime_score_ledger", e);
+    if (nextLife > prevLifeBoard + 0.0005) {
+      try {
+        await sb.rpc("upsert_lifetime_score_ledger", {
+          p_telegram_id: playerId,
+          p_username: boardUsername,
+          p_score: nextLife,
+        });
+      } catch (e) {
+        console.warn("upsert_lifetime_score_ledger", e);
+      }
     }
 
     // Record batch (ignore unique conflict race)
