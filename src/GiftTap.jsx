@@ -2361,23 +2361,7 @@ const GiftTapGame = () => {
         // If daily already maxed on load, credit weekly "drain daily limit" for today
         try {
           const dbDaily = Number(playerRow.daily_taps) || 0;
-          let lim = Number(playerRow.max_daily_limit) || 1000;
-          if (
-            playerRow.energy_boost_expires &&
-            new Date(playerRow.energy_boost_expires) > new Date()
-          ) {
-            lim += 1000;
-          }
-          if (
-            playerRow.limit_boost_expires &&
-            new Date(playerRow.limit_boost_expires) > new Date()
-          ) {
-            lim += Number(playerRow.limit_boost_amount) || 0;
-          }
-          const tlb = inv?.task_limit_boost;
-          if (tlb?.expires && new Date(tlb.expires) > new Date()) {
-            lim += Number(tlb.amount) || 0;
-          }
+          // max_daily_limit already includes Battery / tasks / ads — never add them again.
           if (dbDaily > 0) {
             const nowLoad = new Date();
             // Credit 500/day, active day, and full-drain at BASE 1000 (boosts ignored)
@@ -7241,6 +7225,7 @@ const GiftTapGame = () => {
                 setStats={(updater) => {
                   setStats((prev) => {
                     // Plain objects must merge into prev (never replace with a partial stats blob)
+                    const prevMax = prev?.max_daily_limit;
                     const next =
                       typeof updater === 'function'
                         ? updater(prev)
@@ -7254,9 +7239,13 @@ const GiftTapGame = () => {
                     if (next?.tap_power != null && Number.isFinite(Number(next.tap_power))) {
                       setTapPower(Number(next.tap_power));
                     }
+                    // Only sync HUD when max_daily_limit actually changes in this update.
+                    // Preserved stale stats.max_daily_limit must NOT clobber a fresh claim value
+                    // (was re-adding Battery on top of an already-baked cap).
                     if (
                       next?.max_daily_limit != null &&
-                      Number.isFinite(Number(next.max_daily_limit))
+                      Number.isFinite(Number(next.max_daily_limit)) &&
+                      Number(next.max_daily_limit) !== Number(prevMax)
                     ) {
                       setMaxDailyLimit(Number(next.max_daily_limit));
                     }
@@ -7292,8 +7281,14 @@ const GiftTapGame = () => {
                 weeklyState={stats.inventory?.weekly_quests}
                 onWeeklyStateChange={onWeeklyStateChange}
                 onMaxDailyLimitChange={(n) => {
+                  // Absolute server cap only (Battery already baked into max_daily_limit).
                   const v = Math.max(1000, Number(n) || 1000);
                   setMaxDailyLimit(v);
+                  setStats((prev) =>
+                    prev?.max_daily_limit === v
+                      ? prev
+                      : { ...prev, max_daily_limit: v },
+                  );
                 }}
                 inventory={stats.inventory}
                 activeTab={tasksTab}

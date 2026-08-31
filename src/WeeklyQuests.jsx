@@ -299,22 +299,19 @@ export default function WeeklyQuests({
         markClaimedLocal(quest.id);
         let inv = data.inventory ? { ...data.inventory } : null;
 
-        // HUD must ONLY use server max_daily_limit (already includes base + Battery + tasks).
-        // Never re-add Battery/tasks on the client — that caused 1500→2400 while DB stayed 1900.
-        let maxFromServer =
+        // HUD: trust Edge max_daily_limit only (includes base + Battery + tasks).
+        // Do not re-read max from DB here (replica lag) and never add Battery again.
+        const maxFromServer =
           data.max_daily_limit != null ? Number(data.max_daily_limit) : null;
         try {
           const { data: row } = await supabase
             .from('players')
-            .select('inventory, max_daily_limit')
+            .select('inventory')
             .eq(DB_PLAYER_ID, String(userId))
             .maybeSingle();
           if (row?.inventory) inv = { ...row.inventory };
-          if (row?.max_daily_limit != null) {
-            maxFromServer = Number(row.max_daily_limit);
-          }
         } catch {
-          /* keep edge inventory / max */
+          /* keep edge inventory */
         }
         if (
           maxFromServer != null &&
