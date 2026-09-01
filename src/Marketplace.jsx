@@ -105,6 +105,7 @@ import {
 import WalletNftSection from './WalletNftSection';
 import { listGiftNfts, invalidateGiftNftListCache } from './locksmith';
 import { invalidateOwnershipSyncThrottle } from './nftOwnershipSync';
+import { isTokenLaunched } from './tokenLaunch';
 
 /**
  * Backpack writes: keep everything the player already has; only write keys
@@ -511,10 +512,11 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, bumpEner
     },
   ];
 
-  /** After launch: VITE_G2U_PREMIUM=true → prices in $G2U (gft_token_balance). */
+  /** After launch (or VITE_G2U_PREMIUM=true): prices in $G2U (gft_token_balance). */
   const G2U_PREMIUM =
     String(import.meta.env.VITE_G2U_PREMIUM || '').toLowerCase() === 'true' ||
-    String(import.meta.env.VITE_G2U_PREMIUM || '') === '1';
+    String(import.meta.env.VITE_G2U_PREMIUM || '') === '1' ||
+    isTokenLaunched();
   /** LP rate: 20 SOL / 100M G2U = 5M G2U per SOL — keep in sync with premium-grant G2U_PER_SOL */
   const G2U_PER_SOL = Number(import.meta.env.VITE_G2U_PER_SOL) || 5_000_000;
 

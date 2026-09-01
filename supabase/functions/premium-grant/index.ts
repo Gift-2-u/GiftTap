@@ -11,10 +11,13 @@ import {
   jsonResponse,
   logEconomy,
   invObj,
-  utcIsoWeekId} from "../_shared/economy.ts";
+  utcIsoWeekId,
+  g2uPerSol,
+  g2uShopEnabled,
+} from "../_shared/economy.ts";
 
 /** LP rate: 20 SOL / 100M G2U → 5_000_000 G2U per SOL */
-const G2U_PER_SOL = Number(Deno.env.get("G2U_PER_SOL") || 5_000_000);
+const G2U_PER_SOL = g2uPerSol();
 
 const PREMIUM: Record<
   string,
@@ -59,10 +62,7 @@ const PREMIUM: Record<
 const MASTER = "D4GufPTvp6tnzkaYGfombFLs48UjDANsxjMFJnSYz4Gh";
 
 function g2uPremiumEnabled(): boolean {
-  const v = String(Deno.env.get("G2U_PREMIUM_ENABLED") || "")
-    .trim()
-    .toLowerCase();
-  return ["1", "true", "yes", "on"].includes(v);
+  return g2uShopEnabled();
 }
 
 function bumpWeeklyBoost(inv: Record<string, unknown>) {

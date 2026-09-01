@@ -41,6 +41,8 @@ import { RPC_URL } from './rpc';
 import {
   getElfLevel,
   elfLevelUpCostSol,
+  elfLevelUpCostG2u,
+  g2uPerSolClient,
   ELF_MAX_LEVEL,
   ELF_LEVEL_UP_TREASURY,
   ELF_LEVEL_UP_FEE_WALLET,
@@ -51,6 +53,7 @@ import {
   wallsClimbedLabels,
   nextWallTargetLabel,
 } from './locksmithWalls';
+import { isTokenLaunched } from './tokenLaunch';
 
 /**
  * In-game wallet NFTs. Detail: Send / Sell.
@@ -170,13 +173,19 @@ export default function WalletNftSection({
     return getElfLevel(localInv, selected.id);
   }, [selected, localInv]);
 
+  const useG2uLevelUp = isTokenLaunched();
   const selectedLevelCost = useMemo(() => {
     if (!selected) return null;
-    if (String(selected.kind || '').toLowerCase() === 'star') {
-      return starLevelUpCostSol(selectedLevel);
+    const kind = String(selected.kind || '').toLowerCase();
+    if (kind === 'star') {
+      const sol = starLevelUpCostSol(selectedLevel);
+      if (sol == null) return null;
+      return useG2uLevelUp ? Math.round(sol * g2uPerSolClient()) : sol;
     }
-    return elfLevelUpCostSol(selected.rarity, selectedLevel, selected.kind);
-  }, [selected, selectedLevel]);
+    return useG2uLevelUp
+      ? elfLevelUpCostG2u(selected.rarity, selectedLevel, selected.kind)
+      : elfLevelUpCostSol(selected.rarity, selectedLevel, selected.kind);
+  }, [selected, selectedLevel, useG2uLevelUp]);
 
   const starEquipped = useMemo(() => {
     if (!selected?.id) return null;
@@ -294,67 +303,111 @@ export default function WalletNftSection({
       toast('Level up is for Gift2u Elves / Star Badge', false);
       return;
     }
-    const cost = isStar
+    const costSol = isStar
       ? starLevelUpCostSol(selectedLevel)
       : elfLevelUpCostSol(selected.rarity, selectedLevel, kind);
-    if (cost == null) {
+    if (costSol == null) {
       toast('Already max level (L5)', false);
       return;
     }
-    const secret = String(walletSecret || '').trim();
-    if (!secret) {
-      toast('Unlock your game wallet first', false);
-      return;
-    }
+    const payG2u = isTokenLaunched();
+    const costG2u = Math.round(costSol * g2uPerSolClient());
     setLevelBusy(true);
     try {
-      const connection = new Connection(RPC_URL, 'confirmed');
-      let playerKeypair;
-      if (secret.includes(' ')) {
-        playerKeypair = keypairFromMnemonic(secret.trim());
-      } else {
-        playerKeypair = Keypair.fromSecretKey(bs58.decode(secret));
-      }
-      const masterWallet = new PublicKey(ELF_LEVEL_UP_TREASURY);
-      const feeWallet = new PublicKey(ELF_LEVEL_UP_FEE_WALLET);
-      const itemLamports = Math.floor(cost * LAMPORTS_PER_SOL);
-      const feeLamports = Math.floor(ELF_LEVEL_UP_FEE_SOL * LAMPORTS_PER_SOL);
-      const need = itemLamports + feeLamports + 1_000_000;
-      const bal = await connection.getBalance(playerKeypair.publicKey);
-      if (bal < need) {
-        throw new Error(
-          `Need ~${(need / LAMPORTS_PER_SOL).toFixed(4)} SOL (level-up + fees)`,
-        );
-      }
-      const tx = new Transaction().add(
-        ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 1_000_000 }),
-        SystemProgram.transfer({
-          fromPubkey: playerKeypair.publicKey,
-          toPubkey: masterWallet,
-          lamports: itemLamports,
-        }),
-        SystemProgram.transfer({
-          fromPubkey: playerKeypair.publicKey,
-          toPubkey: feeWallet,
-          lamports: feeLamports,
-        }),
-      );
-      const signature = await sendAndConfirmTransaction(connection, tx, [
-        playerKeypair,
-      ]);
       let data;
-      if (isStar) {
-        data = await secureStarLevelUp({
-          assetId: selected.id,
-          txSignature: signature,
-        });
+      if (payG2u) {
+        if (!hasSecureSession()) {
+          await ensureSecureSession();
+        }
+        if (localGft + 1e-9 < costG2u) {
+          throw new Error(
+            `Need ${costG2u.toLocaleString()} $G2U (have ${Math.floor(localGft).toLocaleString()})`,
+          );
+        }
+        if (isStar) {
+          data = await secureStarLevelUp({
+            assetId: selected.id,
+            currency: 'g2u',
+          });
+        } else {
+          data = await secureElfLevelUp({
+            assetId: selected.id,
+            kind,
+            rarity: normElfRarity(selected.rarity),
+            currency: 'g2u',
+          });
+        }
+        const nextGft = Number(data.gft_token_balance);
+        if (Number.isFinite(nextGft)) {
+          setLocalGft(nextGft);
+          if (typeof onGftBalanceChange === 'function') onGftBalanceChange(nextGft);
+        }
       } else {
-        data = await secureElfLevelUp({
-          assetId: selected.id,
-          kind,
-          rarity: normElfRarity(selected.rarity),
-          txSignature: signature,
-        });
+        const secret = String(walletSecret || '').trim();
+        if (!secret) {
+          toast('Unlock your game wallet first', false);
+          return;
+        }
+        const connection = new Connection(RPC_URL, 'confirmed');
+        let playerKeypair;
+        if (secret.includes(' ')) {
+          playerKeypair = keypairFromMnemonic(secret.trim());
+        } else {
+          playerKeypair = Keypair.fromSecretKey(bs58.decode(secret));
+        }
+        const masterWallet = new PublicKey(ELF_LEVEL_UP_TREASURY);
+        const feeWallet = new PublicKey(ELF_LEVEL_UP_FEE_WALLET);
+        const itemLamports = Math.floor(costSol * LAMPORTS_PER_SOL);
+        const feeLamports = Math.floor(ELF_LEVEL_UP_FEE_SOL * LAMPORTS_PER_SOL);
+        const need = itemLamports + feeLamports + 1_000_000;
+        const bal = await connection.getBalance(playerKeypair.publicKey);
+        if (bal < need) {
+          throw new Error(
+            `Need ~${(need / LAMPORTS_PER_SOL).toFixed(4)} SOL (level-up + fees)`,
+          );
+        }
+        const tx = new Transaction().add(
+          ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 1_000_000 }),
+          SystemProgram.transfer({
+            fromPubkey: playerKeypair.publicKey,
+            toPubkey: masterWallet,
+            lamports: itemLamports,
+          }),
+          SystemProgram.transfer({
+            fromPubkey: playerKeypair.publicKey,
+            toPubkey: feeWallet,
+            lamports: feeLamports,
+          }),
+        );
+        const signature = await sendAndConfirmTransaction(connection, tx, [
+          playerKeypair,
+        ]);
+        if (isStar) {
+          data = await secureStarLevelUp({
+            assetId: selected.id,
+            txSignature: signature,
+            currency: 'sol',
+          });
+        } else {
+          data = await secureElfLevelUp({
+            assetId: selected.id,
+            kind,
+            rarity: normElfRarity(selected.rarity),
+            txSignature: signature,
+            currency: 'sol',
+          });
+        }
+        try {
+          const lamportsAfter = await connection.getBalance(
+            playerKeypair.publicKey,
+          );
+          const solAfter = lamportsAfter / LAMPORTS_PER_SOL;
+          if (typeof onChainBalanceChange === 'function') {
+            onChainBalanceChange({ sol: solAfter });
+          }
+        } catch (balErr) {
+          console.warn('post level-up SOL refresh', balErr?.message || balErr);
+        }
       }
       const nextInv = data.inventory || localInv;
       setLocalInv(nextInv);
@@ -364,23 +417,20 @@ export default function WalletNftSection({
         if (data.max_daily_limit != null) {
           patch.max_daily_limit = Number(data.max_daily_limit);
         }
+        if (data.gft_token_balance != null) {
+          patch.gft_token_balance = Number(data.gft_token_balance);
+        }
         onInventoryChange(
           nextInv,
           Object.keys(patch).length ? patch : undefined,
         );
       }
-      toast(`Level up → L${data.to_level} (−${cost} SOL)`, true);
-      // Push live SOL to Gift Tap HUD (don't wait for Wallet modal open)
-      try {
-        const lamportsAfter = await connection.getBalance(playerKeypair.publicKey);
-        const solAfter = lamportsAfter / LAMPORTS_PER_SOL;
-        if (typeof onChainBalanceChange === 'function') {
-          onChainBalanceChange({ sol: solAfter });
-        }
-      } catch (balErr) {
-        console.warn('post level-up SOL refresh', balErr?.message || balErr);
-      }
-      // Best-effort: refresh ME / wallet Level trait
+      toast(
+        payG2u
+          ? `Level up → L${data.to_level} (−${(data.cost_g2u ?? costG2u).toLocaleString()} $G2U)`
+          : `Level up → L${data.to_level} (−${costSol} SOL)`,
+        true,
+      );
       try {
         await secureNftSetLevel({
           assetId: selected.id,
@@ -403,8 +453,10 @@ export default function WalletNftSection({
     selectedLevel,
     walletSecret,
     localInv,
+    localGft,
     onInventoryChange,
     onChainBalanceChange,
+    onGftBalanceChange,
   ]);
 
 
@@ -1262,7 +1314,9 @@ export default function WalletNftSection({
                 {levelBusy
                   ? '…'
                   : selectedLevelCost != null
-                    ? `Level up L${selectedLevel + 1} · ${selectedLevelCost} SOL`
+                    ? useG2uLevelUp
+                      ? `Level up L${selectedLevel + 1} · ${Number(selectedLevelCost).toLocaleString()} $G2U`
+                      : `Level up L${selectedLevel + 1} · ${selectedLevelCost} SOL`
                     : `Max L${ELF_MAX_LEVEL}`}
               </button>
             ) : null}

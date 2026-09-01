@@ -75,3 +75,15 @@ export const ELF_LEVEL_UP_TREASURY =
 export const ELF_LEVEL_UP_FEE_WALLET =
   '8G7uEcPS6dwA5wW9bGoqi98EzBunF8trjbbFJkgkvBPm';
 export const ELF_LEVEL_UP_FEE_SOL = 0.0005;
+
+/** LP default 20 SOL / 100M G2U — keep in sync with premium-grant / Edge G2U_PER_SOL */
+export function g2uPerSolClient() {
+  const n = Number(import.meta.env.VITE_G2U_PER_SOL) || 5_000_000;
+  return Number.isFinite(n) && n > 0 ? n : 5_000_000;
+}
+
+export function elfLevelUpCostG2u(rarity, currentLevel, kind) {
+  const sol = elfLevelUpCostSol(rarity, currentLevel, kind);
+  if (sol == null) return null;
+  return Math.round(sol * g2uPerSolClient());
+}

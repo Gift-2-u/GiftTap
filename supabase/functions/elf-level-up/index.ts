@@ -1,6 +1,7 @@
 /**
- * elf-level-up — bump inventory.elf_levels[asset_id] after SOL payment.
- * Body: { asset_id, kind, rarity, tx_signature, from_level? }
+ * elf-level-up — bump inventory.elf_levels[asset_id].
+ * Body: { asset_id, kind, rarity, currency?: 'sol'|'g2u', tx_signature? }
+ * Post-launch: currency=g2u debits gft_token_balance (SOL price × G2U_PER_SOL).
  */
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { requirePlayerFromRequest } from "../_shared/sessionJwt.ts";
@@ -15,6 +16,8 @@ import {
   shadowHours,
   PLAYER_ECONOMY_SELECT,
   instantEconomyPatch,
+  g2uShopEnabled,
+  solToG2u,
 } from "../_shared/economy.ts";
 import { ensureNftDurabilityOnActivate } from "../_shared/nftDurability.ts";
 
@@ -148,16 +151,27 @@ serve(async (req) => {
     const assetId = String(body.asset_id || body.assetId || "").trim();
     const kind = String(body.kind || "").toLowerCase().trim();
     const rarity = normRarity(String(body.rarity || body.rarityKey || "common"));
+    const currency = String(body.currency || "sol").toLowerCase().trim();
     const txSignature = body.tx_signature ? String(body.tx_signature) : "";
 
     if (!assetId || assetId.length < 32) throw new Error("asset_id required");
     if (!KINDS.has(kind)) throw new Error("kind must be fate|echo|rush|shadow|locksmith");
-    if (!txSignature) throw new Error("tx_signature required after SOL payment");
+    if (currency === "g2u") {
+      if (!g2uShopEnabled()) {
+        throw new Error("NFT level-up with $G2U opens after token launch");
+      }
+    } else if (!txSignature) {
+      throw new Error("tx_signature required after SOL payment");
+    }
 
     const sb = adminClient();
+    const selectCols =
+      currency === "g2u"
+        ? `${PLAYER_ECONOMY_SELECT}, gft_token_balance`
+        : PLAYER_ECONOMY_SELECT;
     const { data: row, error } = await sb
       .from("players")
-      .select(PLAYER_ECONOMY_SELECT)
+      .select(selectCols)
       .eq("telegram_id", playerId)
       .maybeSingle();
     if (error) throw error;
@@ -171,6 +185,18 @@ serve(async (req) => {
       kind === "locksmith" ? LOCKSMITH_LEVEL_UP_SOL : ELF_LEVEL_UP_SOL[rarity];
     const costSol = ladder[fromLevel - 1];
     if (!Number.isFinite(costSol)) throw new Error("No level-up cost for this step");
+    const costG2u = solToG2u(costSol);
+
+    let gftBal =
+      Number((row as { gft_token_balance?: number }).gft_token_balance) || 0;
+    if (currency === "g2u") {
+      if (gftBal + 1e-9 < costG2u) {
+        throw new Error(
+          `Need ${costG2u.toLocaleString()} $G2U (have ${Math.floor(gftBal).toLocaleString()})`,
+        );
+      }
+      gftBal = Math.round((gftBal - costG2u) * 1000) / 1000;
+    }
 
     const toLevel = fromLevel + 1;
     const levels =
@@ -182,19 +208,22 @@ serve(async (req) => {
     syncActiveLevel(inv, kind, assetId, rarity, toLevel);
 
     const patch = instantEconomyPatch(row as Record<string, unknown>, inv);
+    if (currency === "g2u") {
+      (patch as Record<string, unknown>).gft_token_balance = gftBal;
+    }
     const { data: updated, error: upErr } = await sb
       .from("players")
       .update(patch)
       .eq("telegram_id", playerId)
-      .select("inventory, tap_power, max_daily_limit")
+      .select("inventory, tap_power, max_daily_limit, gft_token_balance")
       .maybeSingle();
     if (upErr) throw upErr;
 
     await logEconomy(sb, {
       player_id: playerId,
       kind: "elf_level_up",
-      delta: 0,
-      balance_after: null,
+      delta: currency === "g2u" ? -costG2u : 0,
+      balance_after: currency === "g2u" ? gftBal : null,
       ref: assetId,
       meta: {
         nft_kind: kind,
@@ -202,9 +231,13 @@ serve(async (req) => {
         from_level: fromLevel,
         to_level: toLevel,
         cost_sol: costSol,
+        cost_g2u: currency === "g2u" ? costG2u : undefined,
+        currency,
         tap_power: patch.tap_power,
         max_daily_limit: patch.max_daily_limit,
-        tx_signature: txSignature}});
+        tx_signature: txSignature || null,
+      },
+    });
 
     return jsonResponse({
       success: true,
@@ -214,13 +247,19 @@ serve(async (req) => {
       from_level: fromLevel,
       to_level: toLevel,
       cost_sol: costSol,
+      cost_g2u: currency === "g2u" ? costG2u : undefined,
+      currency,
       inventory: updated?.inventory ?? inv,
       tap_power:
         (updated as { tap_power?: number } | null)?.tap_power ?? patch.tap_power,
       max_daily_limit:
         (updated as { max_daily_limit?: number } | null)?.max_daily_limit ??
         patch.max_daily_limit,
-      tx_signature: txSignature});
+      gft_token_balance:
+        (updated as { gft_token_balance?: number } | null)?.gft_token_balance ??
+        (currency === "g2u" ? gftBal : undefined),
+      tx_signature: txSignature || null,
+    });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     const status =

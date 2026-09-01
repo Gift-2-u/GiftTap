@@ -293,26 +293,33 @@ export async function secureLocksmithActivate({
   });
 }
 
-/** Pay SOL then bump elf NFT level (Backpack → NFT). */
+/** Level up elf NFT (Backpack → NFT). Post-launch: currency 'g2u' (no tx). */
 export async function secureElfLevelUp({
   assetId,
   kind,
   rarity,
   txSignature,
+  currency = 'sol',
 }) {
   return callSecureFunction('elf-level-up', {
     asset_id: assetId,
     kind,
     rarity,
-    tx_signature: txSignature,
+    currency,
+    ...(txSignature ? { tx_signature: txSignature } : {}),
   });
 }
 
-/** Pay SOL then bump Star Badge level. */
-export async function secureStarLevelUp({ assetId, txSignature }) {
+/** Level up Star Badge. Post-launch: currency 'g2u' (no tx). */
+export async function secureStarLevelUp({
+  assetId,
+  txSignature,
+  currency = 'sol',
+}) {
   return callSecureFunction('star-level-up', {
     asset_id: assetId,
-    tx_signature: txSignature,
+    currency,
+    ...(txSignature ? { tx_signature: txSignature } : {}),
   });
 }
 

@@ -597,6 +597,32 @@ export function computeTapPowerForPlayer(row: {
 export const PLAYER_ECONOMY_SELECT =
   "inventory, lifetime_taps, max_unlocked_level, premium_multiplier, premium_multiplier_expires, energy_boost_expires, limit_boost_amount, limit_boost_expires, ad_energy_boost, ad_energy_expires";
 
+/** $G2U token launch (UTC) — premium + NFT level-up can debit gft_token_balance after this. */
+export const TOKEN_LAUNCH_AT_MS = Date.parse("2026-09-01T00:00:00Z");
+
+/** LP default: 20 SOL / 100M G2U. Override with env G2U_PER_SOL. */
+export function g2uPerSol(): number {
+  const n = Number(Deno.env.get("G2U_PER_SOL") || 5_000_000);
+  return Number.isFinite(n) && n > 0 ? n : 5_000_000;
+}
+
+/**
+ * Post-launch $G2U shop path.
+ * Env G2U_PREMIUM_ENABLED=true/false forces on/off; otherwise auto after TOKEN_LAUNCH_AT.
+ */
+export function g2uShopEnabled(nowMs = Date.now()): boolean {
+  const v = String(Deno.env.get("G2U_PREMIUM_ENABLED") || "")
+    .trim()
+    .toLowerCase();
+  if (["1", "true", "yes", "on"].includes(v)) return true;
+  if (["0", "false", "no", "off"].includes(v)) return false;
+  return nowMs >= TOKEN_LAUNCH_AT_MS;
+}
+
+export function solToG2u(costSol: number, rate = g2uPerSol()): number {
+  return Math.round(Math.max(0, Number(costSol) || 0) * rate);
+}
+
 /** Persist inventory + live tap_power + max_daily_limit in one Edge update. */
 export function instantEconomyPatch(
   row: Record<string, unknown>,
