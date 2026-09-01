@@ -13,8 +13,8 @@ import {
   invObj,
   utcIsoWeekId} from "../_shared/economy.ts";
 
-/** Test pool ratio ~25 SOL / 100M G2U → 4_000_000 G2U per SOL */
-const G2U_PER_SOL = Number(Deno.env.get("G2U_PER_SOL") || 4_000_000);
+/** LP rate: 20 SOL / 100M G2U → 5_000_000 G2U per SOL */
+const G2U_PER_SOL = Number(Deno.env.get("G2U_PER_SOL") || 5_000_000);
 
 const PREMIUM: Record<
   string,
@@ -49,8 +49,8 @@ const PREMIUM: Record<
   /** Extra Instant Refill ($G2U) — adds inventory charge; activate uses existing refill code */
   refill: {
     name: "Instant Refill",
-    priceSol: 0.005,
-    priceG2u: 0.005 * G2U_PER_SOL},
+    priceSol: 0.0002,
+    priceG2u: 0.0002 * G2U_PER_SOL},
   shard_badge: {
     name: "Star Badge",
     priceSol: 0.02,

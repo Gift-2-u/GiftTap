@@ -515,8 +515,8 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, bumpEner
   const G2U_PREMIUM =
     String(import.meta.env.VITE_G2U_PREMIUM || '').toLowerCase() === 'true' ||
     String(import.meta.env.VITE_G2U_PREMIUM || '') === '1';
-  /** Test pool ~4M G2U per SOL — keep in sync with premium-grant G2U_PER_SOL */
-  const G2U_PER_SOL = Number(import.meta.env.VITE_G2U_PER_SOL) || 4_000_000;
+  /** LP rate: 20 SOL / 100M G2U = 5M G2U per SOL — keep in sync with premium-grant G2U_PER_SOL */
+  const G2U_PER_SOL = Number(import.meta.env.VITE_G2U_PER_SOL) || 5_000_000;
 
   /** Premium boosts — SOL pre-launch, $G2U when flag on (not NFTs) */
   const premiumListingsRaw = [
