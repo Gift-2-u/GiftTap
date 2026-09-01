@@ -289,22 +289,57 @@ function allocationsFromWeekly(sortedEligible, poolAmt, weekId) {
   return out;
 }
 
+const MONTH_NAME_TO_NUM = {
+  january: 1,
+  february: 2,
+  march: 3,
+  april: 4,
+  may: 5,
+  june: 6,
+  july: 7,
+  august: 8,
+  september: 9,
+  october: 10,
+  november: 11,
+  december: 12,
+};
+
+/** Parse season_history.season_month labels like "2026-08" or "August 2026 Season". */
+function parseSeasonMonthLabel(label) {
+  const m = String(label || '').trim();
+  const iso = m.match(/^(\d{4})-(\d{2})$/);
+  if (iso) {
+    return { year: Number(iso[1]), month: Number(iso[2]), key: m };
+  }
+  const named = m.match(
+    /\b(january|february|march|april|may|june|july|august|september|october|november|december)\b(?:\s+(\d{4}))?/i,
+  );
+  if (named) {
+    const month = MONTH_NAME_TO_NUM[named[1].toLowerCase()];
+    const year = named[2] ? Number(named[2]) : new Date().getUTCFullYear();
+    return {
+      year,
+      month,
+      key: `${year}-${String(month).padStart(2, '0')}`,
+    };
+  }
+  return null;
+}
+
 /**
  * End-of-month main-board floor (same spirit as Ranks → Season).
  * Through 2026-08: 15% × 1000 × daysInMonth. From 2026-09: 20%.
  * Override with --floor N.
  */
 function monthlyBoardFloorEnd(monthId) {
-  const m = String(monthId || '');
-  const match = m.match(/^(\d{4})-(\d{2})$/);
-  let year = new Date().getUTCFullYear();
-  let month = new Date().getUTCMonth() + 1; // 1-12
-  if (match) {
-    year = Number(match[1]);
-    month = Number(match[2]);
-  }
+  const parsed = parseSeasonMonthLabel(monthId);
+  const year = parsed?.year ?? new Date().getUTCFullYear();
+  const month = parsed?.month ?? new Date().getUTCMonth() + 1;
+  const key =
+    parsed?.key ??
+    `${year}-${String(month).padStart(2, '0')}`;
   const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
-  const pct = m >= '2026-09' ? 0.2 : 0.15;
+  const pct = key >= '2026-09' ? 0.2 : 0.15;
   return Math.floor(1000 * pct * daysInMonth);
 }
 
@@ -328,6 +363,43 @@ async function buildMonthly() {
         : ''),
   );
 
+  // Resolve season_month label (exact, or unique fuzzy match e.g. August → "August 2026 Season")
+  let seasonMonth = period;
+  {
+    const { data: labels, error: labErr } = await sb
+      .from('season_history')
+      .select('season_month')
+      .limit(1000);
+    if (labErr) throw labErr;
+    const uniq = [
+      ...new Set((labels || []).map((r) => String(r.season_month || ''))),
+    ].filter(Boolean);
+    if (uniq.includes(period)) {
+      seasonMonth = period;
+    } else {
+      const needle = String(period).toLowerCase();
+      const hits = uniq.filter((u) => u.toLowerCase().includes(needle));
+      if (hits.length === 1) {
+        seasonMonth = hits[0];
+        console.log(`Matched season_month: "${seasonMonth}" (from --period ${period})`);
+      } else if (hits.length > 1) {
+        console.error(`Ambiguous --period "${period}". Matches:`);
+        for (const h of hits) console.error(`  --period "${h}"`);
+        return [];
+      }
+    }
+  }
+
+  // Recompute floor if period was a short name (August → 2026-08 → 15%×31)
+  const floorResolved =
+    floorArg != null ? floor : monthlyBoardFloorEnd(seasonMonth);
+  if (floorResolved !== floor) {
+    console.log(
+      `Monthly floor adjusted for "${seasonMonth}": ${floorResolved}`,
+    );
+  }
+  const floorUse = floorResolved;
+
   const pageSize = 1000;
   let from = 0;
   const hist = [];
@@ -335,8 +407,8 @@ async function buildMonthly() {
     const { data, error } = await sb
       .from('season_history')
       .select('telegram_id, final_season_shards, season_month, created_at')
-      .eq('season_month', period)
-      .gte('final_season_shards', floor)
+      .eq('season_month', seasonMonth)
+      .gte('final_season_shards', floorUse)
       .range(from, from + pageSize - 1);
     if (error) throw error;
     const batch = data || [];
@@ -347,11 +419,23 @@ async function buildMonthly() {
 
   if (hist.length === 0) {
     console.error(
-      `No season_history rows for season_month=${period} with final_season_shards≥${floor}`,
+      `No season_history rows for season_month="${seasonMonth}" with final_season_shards≥${floorUse}`,
     );
-    console.error(
-      'Check: SELECT season_month, count(*), min(final_season_shards), max(final_season_shards) FROM season_history GROUP BY 1;',
-    );
+    const { data: labels } = await sb
+      .from('season_history')
+      .select('season_month')
+      .limit(500);
+    const uniq = [
+      ...new Set((labels || []).map((r) => String(r.season_month || ''))),
+    ].filter(Boolean);
+    if (uniq.length) {
+      console.error('Available season_month values:');
+      for (const u of uniq) console.error(`  --period "${u}"`);
+    } else {
+      console.error(
+        'Check: SELECT season_month, count(*), min(final_season_shards), max(final_season_shards) FROM season_history GROUP BY 1;',
+      );
+    }
     return [];
   }
 
@@ -372,7 +456,7 @@ async function buildMonthly() {
   }
 
   console.log(
-    `season_history season_month=${period}: ${hist.length} eligible (≥${floor})`,
+    `season_history season_month="${seasonMonth}": ${hist.length} eligible (≥${floorUse})`,
   );
 
   return hist.map((r) => ({
