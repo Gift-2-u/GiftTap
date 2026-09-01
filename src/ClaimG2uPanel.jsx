@@ -17,9 +17,6 @@ import {
 import { keypairFromMnemonic } from './solanaWallet';
 import { RPC_URL } from './rpc';
 
-/** Minimum SOL so user can pay fee (+ ATA rent if needed). */
-const MIN_CLAIM_SOL = 0.01;
-
 /** Mystery queue from inventory */
 export function mysteryG2uPending(inventory) {
   return Math.max(0, Number(inventory?.mystery_g2u_pending) || 0);
@@ -194,11 +191,6 @@ export default function ClaimG2uPanel({
       const connection = new Connection(RPC_URL, 'confirmed');
       const lamports = await connection.getBalance(playerKeypair.publicKey);
       const sol = lamports / 1e9;
-      if (sol < MIN_CLAIM_SOL) {
-        throw new Error(
-          `Need at least ${MIN_CLAIM_SOL} SOL in your game wallet for the network fee (you have ${sol.toFixed(4)} SOL).`,
-        );
-      }
 
       notify?.('Preparing claim… you will pay the Solana fee; $G2U comes from the vault.');
       const prepared = await secureAirdropClaimG2u(captchaToken, row.id, {
@@ -214,11 +206,14 @@ export default function ClaimG2uPanel({
         throw new Error(prepared?.error || 'Could not prepare claim transaction');
       }
 
-      const minLamports = Number(prepared.min_sol_lamports) || MIN_CLAIM_SOL * 1e9;
-      if (lamports < minLamports) {
-        throw new Error(
-          `Need ~${(minLamports / 1e9).toFixed(3)} SOL for fees / token account (you have ${sol.toFixed(4)} SOL).`,
+      // Soft notice only against the real prepare estimate (fee + ATA if needed) — no fixed 0.01 gate.
+      const minLamports = Number(prepared.min_sol_lamports) || 0;
+      if (minLamports > 0 && lamports < minLamports) {
+        notify?.(
+          `Not enough SOL for the network fee (need ~${(minLamports / 1e9).toFixed(4)} SOL, you have ${sol.toFixed(4)} SOL).`,
         );
+        resetCaptcha();
+        return;
       }
 
       const raw = Uint8Array.from(atob(prepared.tx_base64), (c) => c.charCodeAt(0));
@@ -380,7 +375,8 @@ export default function ClaimG2uPanel({
             <p style={{ color: '#888', fontSize: 12, margin: '0 0 12px', lineHeight: 1.45 }}>
               Airdrop claims: you pay a small <strong style={{ color: '#ccc' }}>SOL</strong> network
               fee; <strong style={{ color: '#fbef43' }}>$G2U</strong> is sent from the vault to{' '}
-              {shortWallet}. Keep ~{MIN_CLAIM_SOL} SOL in your game wallet.
+              {shortWallet}. If you don&apos;t have enough SOL for fees, you&apos;ll see a notice when
+              you claim.
             </p>
 
             <p

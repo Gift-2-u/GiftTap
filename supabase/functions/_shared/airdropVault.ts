@@ -157,7 +157,12 @@ export async function buildAirdropClaimPartialTx(opts: {
     const fromAta = getAssociatedTokenAddressSync(mintPk, vaultKp.publicKey);
     const toAta = getAssociatedTokenAddressSync(mintPk, toPk);
 
-    // Player pays: fee + idempotent ATA create
+    // Player pays: fee + idempotent ATA create (rent only if ATA missing)
+    const toAtaInfo = await connection.getAccountInfo(toAta, "confirmed");
+    const ataRentLamports = toAtaInfo
+      ? 0
+      : await connection.getMinimumBalanceForRentExemption(165);
+
     const tx = new Transaction().add(
       ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 100_000 }),
       createAssociatedTokenAccountIdempotentInstruction(
@@ -183,6 +188,16 @@ export async function buildAirdropClaimPartialTx(opts: {
     tx.feePayer = toPk;
     tx.partialSign(vaultKp);
 
+    let feeLamports = 15_000; // fallback base + small priority buffer
+    try {
+      const feeRes = await connection.getFeeForMessage(tx.compileMessage(), "confirmed");
+      if (feeRes?.value != null && Number.isFinite(feeRes.value)) {
+        feeLamports = Math.max(feeRes.value, 5_000) + 5_000; // tiny headroom
+      }
+    } catch {
+      /* keep fallback */
+    }
+
     const serialized = tx.serialize({
       requireAllSignatures: false,
       verifySignatures: false,
@@ -199,8 +214,8 @@ export async function buildAirdropClaimPartialTx(opts: {
       mint: cfg.mint,
       amount_raw: amountRaw.toString(),
       blockhash,
-      // ~0.01 SOL covers fee + possible ATA rent with headroom
-      min_sol_lamports: 10_000_000,
+      // Real estimate: network fee (+ ATA rent only when creating the token account)
+      min_sol_lamports: ataRentLamports + feeLamports,
     };
   } catch (e) {
     return {
