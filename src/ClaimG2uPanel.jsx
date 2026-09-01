@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useEffect } from 'react';
-import { Connection, Transaction, Keypair } from '@solana/web3.js';
+import { Connection, Transaction, Keypair, PublicKey } from '@solana/web3.js';
 import bs58 from 'bs58';
 import TurnstileCaptcha, { turnstileRequired } from './TurnstileCaptcha';
 import {
@@ -189,8 +189,6 @@ export default function ClaimG2uPanel({
       }
 
       const connection = new Connection(RPC_URL, 'confirmed');
-      const lamports = await connection.getBalance(playerKeypair.publicKey);
-      const sol = lamports / 1e9;
 
       notify?.('Preparing claim… you will pay the Solana fee; $G2U comes from the vault.');
       const prepared = await secureAirdropClaimG2u(captchaToken, row.id, {
@@ -206,16 +204,7 @@ export default function ClaimG2uPanel({
         throw new Error(prepared?.error || 'Could not prepare claim transaction');
       }
 
-      // Soft notice only against the real prepare estimate (fee + ATA if needed) — no fixed 0.01 gate.
-      const minLamports = Number(prepared.min_sol_lamports) || 0;
-      if (minLamports > 0 && lamports < minLamports) {
-        notify?.(
-          `Not enough SOL for the network fee (need ~${(minLamports / 1e9).toFixed(4)} SOL, you have ${sol.toFixed(4)} SOL).`,
-        );
-        resetCaptcha();
-        return;
-      }
-
+      // No SOL pre-check — attempt send; only notice if the chain/simulation rejects.
       const raw = Uint8Array.from(atob(prepared.tx_base64), (c) => c.charCodeAt(0));
       const tx = Transaction.from(raw);
       tx.partialSign(playerKeypair);
@@ -253,7 +242,30 @@ export default function ClaimG2uPanel({
         }
       }
     } catch (e) {
-      notify?.(e?.message || 'Claim failed');
+      const msg = String(e?.message || e || 'Claim failed');
+      const lowSol =
+        /insufficient|no record of a prior|Attempt to debit an account but found no record|lamport/i.test(
+          msg,
+        );
+      if (lowSol) {
+        let balTxt = '';
+        try {
+          if (walletAddress) {
+            const connection = new Connection(RPC_URL, 'confirmed');
+            const lamportsNow = await connection.getBalance(
+              new PublicKey(String(walletAddress).trim()),
+            );
+            balTxt = ` (you have ${(lamportsNow / 1e9).toFixed(4)} SOL)`;
+          }
+        } catch {
+          /* ignore */
+        }
+        notify?.(
+          `Not enough SOL for the network fee / token account${balTxt}. Add a little SOL and try again.`,
+        );
+      } else {
+        notify?.(msg);
+      }
       resetCaptcha();
     } finally {
       setBusyId(null);
@@ -375,8 +387,9 @@ export default function ClaimG2uPanel({
             <p style={{ color: '#888', fontSize: 12, margin: '0 0 12px', lineHeight: 1.45 }}>
               Airdrop claims: you pay a small <strong style={{ color: '#ccc' }}>SOL</strong> network
               fee; <strong style={{ color: '#fbef43' }}>$G2U</strong> is sent from the vault to{' '}
-              {shortWallet}. If you don&apos;t have enough SOL for fees, you&apos;ll see a notice when
-              you claim.
+              {shortWallet}. Tip: leave a little SOL in your game wallet for fees (first claim may
+              also need rent for a $G2U token account). If you&apos;re short, you&apos;ll get a notice
+              — we don&apos;t block on a fixed 0.01.
             </p>
 
             <p
