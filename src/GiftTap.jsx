@@ -8144,6 +8144,27 @@ const GiftTapGame = () => {
                               inventory: inventoryRef.current,
                             }));
                           }}
+                          onBalancesRefresh={async ({ amount } = {}) => {
+                            const add = Math.max(0, Number(amount) || 0);
+                            if (add > 0) {
+                              setBalances((prev) => ({
+                                ...prev,
+                                G2U: Math.max(0, (Number(prev.G2U) || 0) + add),
+                              }));
+                              setStats((prev) => ({
+                                ...prev,
+                                gft_token_balance: Math.max(
+                                  0,
+                                  (Number(prev?.gft_token_balance) || 0) + add,
+                                ),
+                              }));
+                            }
+                            try {
+                              await fetchBalances();
+                            } catch (e) {
+                              console.warn('post-claim fetchBalances', e?.message || e);
+                            }
+                          }}
                           notify={(msg) => {
                             const m = String(msg || '');
                             setTxStatus({

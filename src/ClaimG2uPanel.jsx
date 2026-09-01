@@ -56,6 +56,8 @@ export default function ClaimG2uPanel({
   walletAddress = '',
   decryptedPhrase = '',
   onInventoryChange,
+  /** After on-chain $G2U lands — parent should refetch wallet balances (no manual Refresh). */
+  onBalancesRefresh = null,
   notify,
   variant = 'block',
 }) {
@@ -141,6 +143,13 @@ export default function ClaimG2uPanel({
       else notify?.(`✅ Mystery: ${amt.toLocaleString()} $G2U → ${shortWallet}`);
       resetCaptcha();
       await refreshAirdrop();
+      if (typeof onBalancesRefresh === 'function') {
+        try {
+          await onBalancesRefresh({ source: 'mystery', amount: amt });
+        } catch (e) {
+          console.warn('claim balance refresh', e?.message || e);
+        }
+      }
     } catch (e) {
       notify?.(e?.message || 'Claim failed');
       resetCaptcha();
@@ -236,6 +245,18 @@ export default function ClaimG2uPanel({
       }
       resetCaptcha();
       await refreshAirdrop();
+      // Pull on-chain $G2U into wallet UI without manual Refresh
+      if (typeof onBalancesRefresh === 'function') {
+        try {
+          await onBalancesRefresh({
+            source: row.source || confirmed?.source || prepared?.source,
+            amount: amt,
+            txSignature: signature,
+          });
+        } catch (e) {
+          console.warn('claim balance refresh', e?.message || e);
+        }
+      }
     } catch (e) {
       notify?.(e?.message || 'Claim failed');
       resetCaptcha();

@@ -710,6 +710,7 @@ export function GameWalletPanel({ onClose }) {
   const [error, setError] = useState('');
   const [row, setRow] = useState(null);
   const [liveSol, setLiveSol] = useState(null);
+  const [liveG2u, setLiveG2u] = useState(null);
   const [authBusy, setAuthBusy] = useState(false);
   const [fiatRates, setFiatRates] = useState({ sol: {}, usdc: {} });
   /** 'receive' | 'send' | 'swap' | 'shard' | null — all stay on main site */
@@ -753,20 +754,30 @@ export function GameWalletPanel({ onClose }) {
       if (qErr) throw qErr;
       setRow(data || null);
 
-      // Live SOL on-chain when we have an address (DB can be stale)
+      // Live SOL + $G2U on-chain when we have an address (DB can be stale)
       if (data?.wallet_address) {
         try {
           const rpc =
             import.meta.env.VITE_SOLANA_RPC_URL ||
             'https://api.mainnet-beta.solana.com';
           const conn = new Connection(rpc, 'confirmed');
-          const lamports = await conn.getBalance(new PublicKey(data.wallet_address));
+          const owner = new PublicKey(data.wallet_address);
+          const lamports = await conn.getBalance(owner);
           setLiveSol(lamports / LAMPORTS_PER_SOL);
+          try {
+            const ata = getAssociatedTokenAddressSync(G2U_MINT, owner, false);
+            const tok = await conn.getTokenAccountBalance(ata);
+            setLiveG2u(tok?.value?.uiAmount || 0);
+          } catch {
+            setLiveG2u(0);
+          }
         } catch {
           setLiveSol(null);
+          setLiveG2u(null);
         }
       } else {
         setLiveSol(null);
+        setLiveG2u(null);
       }
     } catch (e) {
       console.error('Game wallet load:', e);
@@ -873,7 +884,8 @@ export function GameWalletPanel({ onClose }) {
       ? liveSol
       : Number(row?.sol_balance) || 0;
   const shards = Number(row?.shard_balance) || 0;
-  const g2u = Number(row?.gft_token_balance) || 0;
+  const g2u =
+    liveG2u != null ? liveG2u : Number(row?.gft_token_balance) || 0;
   const usdc = Number(row?.usdc_balance) || 0;
   const uname = row?.username || profile.username || 'Player';
 
@@ -981,6 +993,15 @@ export function GameWalletPanel({ onClose }) {
               walletAddress={address || ''}
               onInventoryChange={(inv) => {
                 setRow((prev) => (prev ? { ...prev, inventory: inv } : prev));
+              }}
+              onBalancesRefresh={async ({ amount } = {}) => {
+                const add = Math.max(0, Number(amount) || 0);
+                if (add > 0) {
+                  setLiveG2u((prev) =>
+                    Math.max(0, (prev != null ? Number(prev) : g2u) + add),
+                  );
+                }
+                await load();
               }}
               notify={(msg) => {
                 const m = String(msg || '');
