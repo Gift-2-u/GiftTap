@@ -3384,7 +3384,7 @@ Daily claim active · Pack → NFT to see it.`,
                     </div>
                     <p style={{ fontSize: 12, margin: 0 }}>No badges yet.</p>
                     <p style={{ fontSize: 11, color: '#666', margin: '6px 0 0' }}>
-                      Reach ≥1,050 on Ranks → Weekly to win a badge (top 10% Diamond · next 15% Gold · next 25% Silver · rest Bronze).
+                      Reach ≥1,400 on Ranks → Weekly to win a badge (from W36: top 5% Diamond · next 10% Gold · next 15% Silver · rest Bronze).
                     </p>
                   </div>
                 ) : (

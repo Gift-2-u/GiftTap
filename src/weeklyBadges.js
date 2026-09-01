@@ -90,16 +90,16 @@ export const BADGE_SHOP_WEEK_CAP = 3;
 export const BADGE_ITEM_IDS = Object.values(BADGE_TIERS).map((t) => t.itemId);
 
 /**
- * Weekly main-board / badge floor (same spirit as season 15% rule).
+ * Weekly main-board / badge floor (same spirit as season 20% rule).
  *
  * Reference pace: 1000 score/day.
- * Live board floor = 15% × 1000 × ISO weekday (Mon=1 … Sun=7)
- *   → day 1 = 150 … day 7 = 1050
- * Badge floor at week end (finished week) = 15% × 1000 × 7 = 1050
+ * Live board floor = 20% × 1000 × ISO weekday (Mon=1 … Sun=7)
+ *   → day 1 = 200 … day 7 = 1400
+ * Badge floor at week end (finished week) = 20% × 1000 × 7 = 1400
  * Only players at/above the badge floor can win Diamond/Gold/Silver/Bronze.
  */
 export const WEEKLY_DAILY_REFERENCE = 1000;
-export const WEEKLY_FLOOR_PCT = 0.15;
+export const WEEKLY_FLOOR_PCT = 0.2;
 export const WEEKLY_DAYS = 7;
 
 /** Full-week badge eligibility floor (end of UTC week). */

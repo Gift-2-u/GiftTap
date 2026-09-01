@@ -2,13 +2,13 @@
  * Season main board eligibility (GiftLocksmith giveaway tiers use the same set).
  *
  * Reference pace: 1000 taps/day of the season.
- * Floor = 15% of that pace × day number:
- *   day 1 → 150, day 5 → 750, day 10 → 1500, …
+ * Floor = 20% of that pace × day number:
+ *   day 1 → 200, day 5 → 1000, day 10 → 2000, …
  */
 
 export const SEASON_DAILY_REFERENCE = 1000;
-/** 15% — fairer for casuals; 20% would be 200 × day */
-export const SEASON_FLOOR_PCT = 0.15;
+/** 20% of 1000/day reference pace */
+export const SEASON_FLOOR_PCT = 0.2;
 
 /**
  * 1-based UTC-ish day index from season start.

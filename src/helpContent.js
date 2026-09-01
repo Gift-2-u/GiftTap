@@ -106,7 +106,7 @@ export const HELP_TIPS = {
       '• Echo — always-on tap multi (up to 3.00×)\n' +
       '• Rush — higher max daily taps (up to 3,000)\n' +
       '• Shadow — daily claim without tapping\n\n' +
-      'Level up in Backpack → NFT (SOL). Full boards + level-up prices: ' +
+      'Level up in Backpack → NFT ($G2U after launch). Full boards + level-up prices: ' +
       'Menu → Game Guide → Gift2u Elves NFTs.',
   },
   mystery_gift: {
@@ -130,9 +130,9 @@ export const HELP_TIPS = {
   weekly_badges: {
     title: 'Weekly badges',
     body:
-      'Ranks → Weekly uses the same 15% activity idea as Season.\n\n' +
-      'Main board floor = 15% × 1,000 × day of the UTC week (day 1 Mon = 150 … day 7 = 1,050).\n\n' +
-      'At week end, players with ≥ 1,050 weekly score are badge-eligible.\n\n' +
+      'Ranks → Weekly uses the same 20% activity idea as Season.\n\n' +
+      'Main board floor = 20% × 1,000 × day of the UTC week (day 1 Mon = 200 … day 7 = 1,400).\n\n' +
+      'At week end, players with ≥ 1,400 weekly score are badge-eligible.\n\n' +
       'Every eligible player wins a badge. Small board (≤4): #1 Diamond · #2 Gold · #3 Silver · #4 Bronze. From 2026-W36: top 5% Diamond, next 10% Gold, next 15% Silver, rest Bronze (W35 used 10% / 15% / 25%).\n\n' +
       'Claim finished-week badges in Shop → Pack → Badges. Burn badges there for Mystery Gift.\n\n' +
       'In-game Badge market: sell badges from your backpack for SOL now (G2U token after launch — not G2Ushards). Listing escrows the badge. 5% fee to treasury (seller receives 95%). No external marketplaces.\n\n' +

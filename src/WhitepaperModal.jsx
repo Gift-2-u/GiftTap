@@ -139,14 +139,14 @@ const WhitepaperModal = ({ isWhitepaperOpen, setIsWhitepaperOpen, onClose }) => 
         "Open Ranks from the bottom nav (or Menu → Ranks). Three boards:\n\n" +
         "WEEKLY\n" +
         "• Ordered by your mining score this UTC week (resets every Monday 00:00 UTC).\n" +
-        "• Eligible players (≥1,050 weekly score) each win a badge when the week freezes (claim in Shop → BackPack → Badges):\n" +
-        "  top 10% Diamond · next 15% Gold · next 25% Silver · rest Bronze.\n" +
+        "• Eligible players (≥1,400 weekly score) each win a badge when the week freezes (claim in Shop → BackPack → Badges):\n" +
+        "  from W36: top 5% Diamond · next 10% Gold · next 15% Silver · rest Bronze.\n" +
         "• Winners freeze automatically at week end; the new week starts on its own.\n" +
         "• Burn badges in Pack for Mystery Gift (costs & full odds: § 11 Mystery Gift).\n\n" +
         "SEASON (monthly)\n" +
         "• Ordered by season mining score for the current season period shown in-app.\n" +
         "• At month end a snapshot can select winners / giveaways as announced.\n" +
-        "• Main board uses a rising activity floor (~15% of 1,000 taps/day × day of season). Under the floor you still see your rank on the last line.\n" +
+        "• Main board uses a rising activity floor (~20% of 1,000 taps/day × day of season). Under the floor you still see your rank on the last line.\n" +
         "• Some promotions count only main-board players.\n\n" +
         "ALL-TIME\n" +
         "• Ordered by lifetime taps. Always on — long-term prestige, no monthly reset.\n\n" +

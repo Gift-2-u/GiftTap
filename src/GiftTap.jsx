@@ -729,14 +729,14 @@ const GiftTapGame = () => {
   // Leaderboard page tab: always open on Season when navigating to Ranks
   const [leaderboardType, setLeaderboardType] = useState('Season');
   const [leaderboardLoading, setLeaderboardLoading] = useState(false);
-  /** Season main-board floor (15% × 1000 × day) + your rank if off-board */
+  /** Season main-board floor (20% × 1000 × day) + your rank if off-board */
   const [seasonBoardFloor, setSeasonBoardFloor] = useState(150);
   const [seasonBoardDay, setSeasonBoardDay] = useState(1);
   const [seasonYouRank, setSeasonYouRank] = useState(null); // { rank, score, onMain, need }
   const [seasonEligibleCount, setSeasonEligibleCount] = useState(0);
   /** Weekly board: your rank this UTC week */
   const [weeklyYouRank, setWeeklyYouRank] = useState(null);
-  /** Live weekly main-board floor (15% × 1000 × ISO weekday) */
+  /** Live weekly main-board floor (20% × 1000 × ISO weekday) */
   const [weeklyBoardFloor, setWeeklyBoardFloor] = useState(() => getWeeklyBoardFloor());
   const [weeklyBoardDay, setWeeklyBoardDay] = useState(() => getUtcIsoWeekDayNumber());
   const [weeklyEligibleCount, setWeeklyEligibleCount] = useState(0);
@@ -1910,7 +1910,7 @@ const GiftTapGame = () => {
         return;
       }
 
-      // Season: pull a wide list, apply 15% floor, show top eligible + your rank if off-board
+      // Season: pull a wide list, apply 20% floor, show top eligible + your rank if off-board
       const day = getSeasonDayNumber(seasonData?.startTime);
       const floor = getSeasonBoardFloor(day);
       setSeasonBoardDay(day);
