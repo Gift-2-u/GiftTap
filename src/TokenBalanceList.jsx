@@ -58,7 +58,9 @@ export default function TokenBalanceList({
         </div>
         {portfolio.hasUnpriced ? (
           <div style={{ color: '#555', fontSize: '9px', marginTop: '6px', lineHeight: 1.3 }}>
-            G2U &amp; shards not in total (no market price yet).
+            {portfolio.lines?.G2U?.priced
+              ? 'G2Ushards not in total (in-game only).'
+              : 'G2Ushards not in total; $G2U price loading or no pool yet.'}
           </div>
         ) : portfolio.total == null ? (
           <div style={{ color: '#555', fontSize: '9px', marginTop: '6px' }}>
@@ -96,9 +98,11 @@ export default function TokenBalanceList({
                 <div style={{ color: '#888', fontSize: '11px', marginTop: '2px' }}>
                   {line.priced && line.fiat != null
                     ? formatFiat(line.fiat, currency)
-                    : key === 'G2U' || key === 'G2Ushards'
-                      ? 'No market price yet'
-                      : '—'}
+                    : key === 'G2Ushards'
+                      ? 'In-game only'
+                      : key === 'G2U'
+                        ? 'Price loading…'
+                        : '—'}
                 </div>
               </div>
             </div>

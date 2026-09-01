@@ -11,11 +11,10 @@
  *   # Top 100 eligible share D/G/S/B pots; rank 101+ get Bronze badge only (0 G2U).
  *   node scripts/snapshot-airdrop.mjs --type weekly --pool 500000 --period 2026-W35
  *
- *   # Monthly: 1.5M pool = 100% of season board total.
- *   # prize = pool × (player season_shards / sum of all season_shards in snapshot)
- *   # e.g. 70k / 650k = 10.7692% → 1_500_000 × 0.107692 ≈ 161_538 G2U
- *   node scripts/snapshot-airdrop.mjs --type monthly --pool 1500000 --period 2026-08
- *   # --pool defaults to 1500000 if omitted for monthly
+ *   # Monthly: from season_history — only main-board eligible (floor like Season UI).
+ *   # Aug 2026 auto floor = 15%×1000×31 = 4650; from 2026-09 = 20%×1000×days.
+ *   node scripts/snapshot-airdrop.mjs --type monthly --pool 1500000 --period 2026-08 --dry
+ *   node scripts/snapshot-airdrop.mjs --type monthly --pool 1500000 --period 2026-08 --floor 4650
  *
  * Dry run (no writes):
  *   node scripts/snapshot-airdrop.mjs --type l5 --pool 500000 --dry
@@ -290,16 +289,96 @@ function allocationsFromWeekly(sortedEligible, poolAmt, weekId) {
   return out;
 }
 
+/**
+ * End-of-month main-board floor (same spirit as Ranks → Season).
+ * Through 2026-08: 15% × 1000 × daysInMonth. From 2026-09: 20%.
+ * Override with --floor N.
+ */
+function monthlyBoardFloorEnd(monthId) {
+  const m = String(monthId || '');
+  const match = m.match(/^(\d{4})-(\d{2})$/);
+  let year = new Date().getUTCFullYear();
+  let month = new Date().getUTCMonth() + 1; // 1-12
+  if (match) {
+    year = Number(match[1]);
+    month = Number(match[2]);
+  }
+  const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  const pct = m >= '2026-09' ? 0.2 : 0.15;
+  return Math.floor(1000 * pct * daysInMonth);
+}
+
+/**
+ * Monthly weights from public.season_history (not live players.season_shards).
+ * Columns: id, season_month, telegram_id, final_season_shards, created_at
+ * --period should match season_month (e.g. 2026-08).
+ * Only main-board eligible (score ≥ floor) share the pool — same as Season UI.
+ */
 async function buildMonthly() {
-  // Weight = season_shards (season board). period_id = YYYY-MM label for the drop.
-  const players = await fetchAllPlayers(
-    'telegram_id, username, season_shards',
-    (p) => Number(p.season_shards) > 0,
+  const floorArg = arg('floor', null);
+  const floor =
+    floorArg != null ? Number(floorArg) : monthlyBoardFloorEnd(period);
+  if (!Number.isFinite(floor) || floor < 0) {
+    throw new Error(`Invalid --floor ${floor}`);
+  }
+  console.log(
+    `Monthly floor (eligible if final_season_shards ≥): ${floor}` +
+      (floorArg == null
+        ? ` (auto end-of-month; override with --floor N)`
+        : ''),
   );
-  return players.map((p) => ({
-    telegram_id: String(p.telegram_id),
-    username: p.username || null,
-    weight: Number(p.season_shards) || 0,
+
+  const pageSize = 1000;
+  let from = 0;
+  const hist = [];
+  for (;;) {
+    const { data, error } = await sb
+      .from('season_history')
+      .select('telegram_id, final_season_shards, season_month, created_at')
+      .eq('season_month', period)
+      .gte('final_season_shards', floor)
+      .range(from, from + pageSize - 1);
+    if (error) throw error;
+    const batch = data || [];
+    hist.push(...batch);
+    if (batch.length < pageSize) break;
+    from += pageSize;
+  }
+
+  if (hist.length === 0) {
+    console.error(
+      `No season_history rows for season_month=${period} with final_season_shards≥${floor}`,
+    );
+    console.error(
+      'Check: SELECT season_month, count(*), min(final_season_shards), max(final_season_shards) FROM season_history GROUP BY 1;',
+    );
+    return [];
+  }
+
+  // Username from players (history table has no username)
+  const ids = [...new Set(hist.map((r) => String(r.telegram_id)))];
+  const nameById = new Map();
+  const chunk = 80;
+  for (let i = 0; i < ids.length; i += chunk) {
+    const slice = ids.slice(i, i + chunk);
+    const { data: pl, error: pErr } = await sb
+      .from('players')
+      .select('telegram_id, username')
+      .in('telegram_id', slice);
+    if (pErr) throw pErr;
+    for (const p of pl || []) {
+      nameById.set(String(p.telegram_id), p.username || null);
+    }
+  }
+
+  console.log(
+    `season_history season_month=${period}: ${hist.length} eligible (≥${floor})`,
+  );
+
+  return hist.map((r) => ({
+    telegram_id: String(r.telegram_id),
+    username: nameById.get(String(r.telegram_id)) || null,
+    weight: Number(r.final_season_shards) || 0,
   }));
 }
 
@@ -372,9 +451,10 @@ async function main() {
         amount: Math.max(amount, 0.000001),
         weight: r.weight,
         meta: {
-          formula: 'pool * (season_shards / sum_season_shards)',
+          formula: 'pool * (final_season_shards / sum) from season_history',
           pool,
-          season_shards: r.weight,
+          season_month: period,
+          final_season_shards: r.weight,
           sum_season_shards: sumW,
           share_pct: sharePct,
           snapshot_at: new Date().toISOString(),
