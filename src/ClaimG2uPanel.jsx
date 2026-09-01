@@ -118,26 +118,32 @@ export default function ClaimG2uPanel({
     setCaptchaReset((n) => n + 1);
   };
 
+  /** notify(msg) | notify(msg, true/false) | notify(msg, { loading, success }) */
+  const ping = (msg, okOrOpts) => {
+    if (typeof notify === 'function') notify(msg, okOrOpts);
+  };
+
   const claimMystery = async () => {
     if (busyId || mysteryAmt <= 0) return;
     if (beforeLaunch) {
-      notify?.(`Claim opens ${TOKEN_LAUNCH_LABEL} UTC`);
+      ping(`Claim opens ${TOKEN_LAUNCH_LABEL} UTC`, false);
       return;
     }
     if (needCaptcha && !captchaToken) {
-      notify?.('Complete the captcha to claim $G2U');
+      ping('Complete the captcha to claim $G2U', false);
       return;
     }
     setBusyId('mystery');
     try {
+      ping('Claiming Mystery $G2U…', { loading: true });
       await ensureSecureSession();
       const data = await secureMysteryClaimG2u(captchaToken);
       if (data?.inventory && typeof onInventoryChange === 'function') {
         onInventoryChange(data.inventory);
       }
       const amt = Number(data?.amount) || 0;
-      if (data?.already || amt <= 0) notify?.('Nothing to claim from Mystery');
-      else notify?.(`✅ Mystery: ${amt.toLocaleString()} $G2U → ${shortWallet}`);
+      if (data?.already || amt <= 0) ping('Nothing to claim from Mystery', true);
+      else ping(`✅ Mystery: ${amt.toLocaleString()} $G2U → ${shortWallet}`, true);
       resetCaptcha();
       await refreshAirdrop();
       if (typeof onBalancesRefresh === 'function') {
@@ -148,7 +154,7 @@ export default function ClaimG2uPanel({
         }
       }
     } catch (e) {
-      notify?.(e?.message || 'Claim failed');
+      ping(e?.message || 'Claim failed', false);
       resetCaptcha();
     } finally {
       setBusyId(null);
@@ -158,17 +164,18 @@ export default function ClaimG2uPanel({
   const claimAirdropRow = async (row) => {
     if (busyId || !row?.id) return;
     if (beforeLaunch) {
-      notify?.(`Claim opens ${TOKEN_LAUNCH_LABEL} UTC`);
+      ping(`Claim opens ${TOKEN_LAUNCH_LABEL} UTC`, false);
       return;
     }
     if (needCaptcha && !captchaToken) {
-      notify?.('Complete the captcha to claim $G2U');
+      ping('Complete the captcha to claim $G2U', false);
       return;
     }
     const secret = String(decryptedPhrase || '').trim();
     if (!secret) {
-      notify?.(
+      ping(
         'Unlock your game wallet first (Settings / login password) — you pay a small SOL network fee to claim.',
+        false,
       );
       return;
     }
@@ -190,12 +197,16 @@ export default function ClaimG2uPanel({
 
       const connection = new Connection(RPC_URL, 'confirmed');
 
-      notify?.('Preparing claim… you will pay the Solana fee; $G2U comes from the vault.');
+      // Progress: loading toast (⏳) — not a red ❌
+      ping(
+        'Preparing claim… you will pay the Solana fee; $G2U comes from the vault.',
+        { loading: true },
+      );
       const prepared = await secureAirdropClaimG2u(captchaToken, row.id, {
         action: 'prepare',
       });
       if (prepared?.already) {
-        notify?.('Already claimed');
+        ping('Already claimed', true);
         resetCaptcha();
         await refreshAirdrop();
         return;
@@ -209,7 +220,7 @@ export default function ClaimG2uPanel({
       const tx = Transaction.from(raw);
       tx.partialSign(playerKeypair);
 
-      notify?.('Sending claim on Solana…');
+      ping('Sending claim on Solana…', { loading: true });
       const signature = await connection.sendRawTransaction(tx.serialize(), {
         skipPreflight: false,
         preflightCommitment: 'confirmed',
@@ -221,10 +232,11 @@ export default function ClaimG2uPanel({
         txSignature: signature,
       });
       const amt = Number(confirmed?.amount) || Number(prepared.amount) || 0;
-      if (confirmed?.already) notify?.('Already claimed');
+      if (confirmed?.already) ping('Already claimed', true);
       else {
-        notify?.(
+        ping(
           `✅ ${row.label || confirmed?.source || prepared.source}: ${amt.toLocaleString()} $G2U → ${shortWallet} (you paid the network fee)`,
+          true,
         );
       }
       resetCaptcha();
@@ -260,11 +272,12 @@ export default function ClaimG2uPanel({
         } catch {
           /* ignore */
         }
-        notify?.(
+        ping(
           `Not enough SOL for the network fee / token account${balTxt}. Add a little SOL and try again.`,
+          false,
         );
       } else {
-        notify?.(msg);
+        ping(msg, false);
       }
       resetCaptcha();
     } finally {

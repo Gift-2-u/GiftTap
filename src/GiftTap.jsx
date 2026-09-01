@@ -8165,22 +8165,36 @@ const GiftTapGame = () => {
                               console.warn('post-claim fetchBalances', e?.message || e);
                             }
                           }}
-                          notify={(msg) => {
+                          notify={(msg, okOrOpts) => {
                             const m = String(msg || '');
+                            let loading = false;
+                            let success = false;
+                            if (typeof okOrOpts === 'boolean') {
+                              success = okOrOpts;
+                            } else if (okOrOpts && typeof okOrOpts === 'object') {
+                              loading = !!okOrOpts.loading;
+                              if ('success' in okOrOpts) success = !!okOrOpts.success;
+                              else if (!loading) success = m.startsWith('✅');
+                            } else {
+                              success = m.startsWith('✅');
+                            }
                             setTxStatus({
                               show: true,
-                              loading: false,
-                              message: m.startsWith('✅') ? m : m,
-                              success: m.startsWith('✅'),
+                              loading,
+                              message: m,
+                              success: loading ? false : success,
                             });
-                            setTimeout(
-                              () =>
-                                setTxStatus((prev) => ({
-                                  ...prev,
-                                  show: false,
-                                })),
-                              3500,
-                            );
+                            // Keep progress toasts up until the next update; auto-hide finals.
+                            if (!loading) {
+                              setTimeout(
+                                () =>
+                                  setTxStatus((prev) => ({
+                                    ...prev,
+                                    show: false,
+                                  })),
+                                3500,
+                              );
+                            }
                           }}
                         />
                       </div>

@@ -708,6 +708,11 @@ export function GameWalletPanel({ onClose }) {
   const profile = getPlayerProfile();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [appNotice, setAppNotice] = useState({
+    show: false,
+    message: '',
+    success: true,
+  });
   const [row, setRow] = useState(null);
   const [liveSol, setLiveSol] = useState(null);
   const [liveG2u, setLiveG2u] = useState(null);
@@ -1003,12 +1008,20 @@ export function GameWalletPanel({ onClose }) {
                 }
                 await load();
               }}
-              notify={(msg) => {
+              notify={(msg, okOrOpts) => {
                 const m = String(msg || '');
-                setError(m);
-                if (m.startsWith('✅')) {
-                  setTimeout(() => setError(''), 4000);
+                let success = m.startsWith('✅');
+                if (typeof okOrOpts === 'boolean') success = okOrOpts;
+                else if (okOrOpts && typeof okOrOpts === 'object') {
+                  // Progress steps use loading — treat as non-error (green/neutral toast)
+                  if (okOrOpts.loading) success = true;
+                  else if ('success' in okOrOpts) success = !!okOrOpts.success;
                 }
+                setAppNotice({
+                  show: true,
+                  message: m,
+                  success,
+                });
               }}
             />
           </div>
@@ -1048,6 +1061,13 @@ export function GameWalletPanel({ onClose }) {
         currentLevel={0}
         playerId={playerId}
         onSuccess={load}
+      />
+
+      <AppNotice
+        show={appNotice.show}
+        message={appNotice.message}
+        success={appNotice.success}
+        onClose={() => setAppNotice((n) => ({ ...n, show: false }))}
       />
     </div>
   );
