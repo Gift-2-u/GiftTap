@@ -139,7 +139,10 @@ serve(async (req) => {
     const loginIp = clientIpHint(req);
     try {
       const loginPatch: Record<string, unknown> = { last_updated: loginAt };
-      if (loginIp) loginPatch.last_login_ip = loginIp;
+      if (loginIp) {
+        loginPatch.ip = loginIp;
+        loginPatch.last_login_ip = loginIp;
+      }
       await supabase
         .from("players")
         .update(loginPatch)

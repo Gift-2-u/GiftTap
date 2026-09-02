@@ -247,6 +247,7 @@ export async function reconcileAllWeeklyScores(
       last_tap_date: string | null;
       inventory: unknown;
       last_updated: string | null;
+      is_banned?: boolean;
     }
   >();
 
@@ -256,6 +257,10 @@ export async function reconcileAllWeeklyScores(
     for (const r of rows || []) {
       const id = String(r.telegram_id || "").trim();
       if (!id) continue;
+      if (r.is_banned === true) {
+        byId.delete(id);
+        continue;
+      }
       byId.set(id, {
         telegram_id: id,
         username: String(r.username || "Player"),
@@ -266,11 +271,12 @@ export async function reconcileAllWeeklyScores(
           r.last_tap_date != null ? String(r.last_tap_date).slice(0, 10) : null,
         inventory: r.inventory,
         last_updated: r.last_updated != null ? String(r.last_updated) : null,
+        is_banned: false,
       });
     }
   };
 
-  // Prefer durable ledger (no player writes)
+  // Prefer durable ledger (no player writes). Ban status resolved via players join below.
   {
     let from = 0;
     const pageSize = 500;
@@ -302,7 +308,28 @@ export async function reconcileAllWeeklyScores(
     }
   }
 
-  // Merge players already tagged this week (read only)
+  // Drop banned IDs that came from the ledger (ledger has no is_banned column)
+  {
+    const ids = [...byId.keys()];
+    for (let i = 0; i < ids.length; i += 200) {
+      const chunk = ids.slice(i, i + 200);
+      const { data, error } = await sb
+        .from("players")
+        .select("telegram_id, is_banned")
+        .in("telegram_id", chunk);
+      if (error) {
+        console.warn("ban filter page", error.message);
+        break;
+      }
+      for (const r of data || []) {
+        if ((r as { is_banned?: boolean }).is_banned === true) {
+          byId.delete(String((r as { telegram_id: string }).telegram_id));
+        }
+      }
+    }
+  }
+
+  // Merge players already tagged this week (read only) — skip banned
   {
     let from = 0;
     const pageSize = 500;
@@ -310,13 +337,28 @@ export async function reconcileAllWeeklyScores(
       const { data, error } = await sb
         .from("players")
         .select(
-          "telegram_id, username, weekly_shards, weekly_week_id, daily_taps, last_tap_date, inventory, last_updated",
+          "telegram_id, username, weekly_shards, weekly_week_id, daily_taps, last_tap_date, inventory, last_updated, is_banned",
         )
         .eq("weekly_week_id", weekId)
+        .eq("is_banned", false)
         .range(from, from + pageSize - 1);
       if (error) {
-        console.warn("players week page", error.message);
-        break;
+        // Older DBs without is_banned filter — fall back unfiltered then absorb skips
+        const { data: data2, error: err2 } = await sb
+          .from("players")
+          .select(
+            "telegram_id, username, weekly_shards, weekly_week_id, daily_taps, last_tap_date, inventory, last_updated, is_banned",
+          )
+          .eq("weekly_week_id", weekId)
+          .range(from, from + pageSize - 1);
+        if (err2) {
+          console.warn("players week page", error.message);
+          break;
+        }
+        absorbPlayers(data2 as Array<Record<string, unknown>>);
+        if (!data2 || data2.length < pageSize) break;
+        from += pageSize;
+        continue;
       }
       absorbPlayers(data as Array<Record<string, unknown>>);
       if (!data || data.length < pageSize) break;
@@ -330,7 +372,7 @@ export async function reconcileAllWeeklyScores(
     const { data } = await sb
       .from("players")
       .select(
-        "telegram_id, username, weekly_shards, weekly_week_id, daily_taps, last_tap_date, inventory, last_updated",
+        "telegram_id, username, weekly_shards, weekly_week_id, daily_taps, last_tap_date, inventory, last_updated, is_banned",
       )
       .eq("telegram_id", id)
       .maybeSingle();

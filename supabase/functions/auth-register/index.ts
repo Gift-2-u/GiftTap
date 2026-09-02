@@ -161,6 +161,7 @@ serve(async (req) => {
       wallet_address,
       referred_by,
       signup_ip: signupIp,
+      ip: signupIp,
       last_login_ip: signupIp,
     };
 

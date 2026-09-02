@@ -130,10 +130,11 @@ export async function assertSignupIpCap(
   const client = sb || admin();
   const max = maxAccountsPerIp();
 
+  // Count accounts that signed up on this IP, or whose latest ip matches
   const { count: signupCount, error: cErr } = await client
     .from("players")
     .select("telegram_id", { count: "exact", head: true })
-    .eq("signup_ip", ip);
+    .or(`signup_ip.eq.${ip},ip.eq.${ip}`);
   if (cErr) throw cErr;
 
   let sessionDistinct = 0;
