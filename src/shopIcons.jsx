@@ -136,54 +136,56 @@ export function IconBot({ size }) {
   );
 }
 
-/** Daily energy cap boost — battery + raised limit bar + “2K” */
-export function IconEnergy2K({ size }) {
+/** Daily tap-cap boosts — blue lightning (not the green battery / refill glyph). */
+function IconEnergyLightning({ size, label }) {
   const id = useId().replace(/:/g, '');
   return (
     <S size={size}>
-      <rect x="10" y="12" width="22" height="26" rx="3" fill={`url(#${id}g)`} stroke="#93C5FD" strokeWidth="1.5" />
-      <rect x="32" y="20" width="4" height="10" rx="1" fill="#93C5FD" />
-      {/* Energy fill bars */}
-      <rect x="14" y="28" width="14" height="6" rx="1" fill="#4ADE80" />
-      <rect x="14" y="20" width="14" height="6" rx="1" fill="#4ADE80" opacity="0.7" />
-      <rect x="14" y="16" width="10" height="2" rx="0.5" fill="#86EFAC" opacity="0.5" />
-      {/* Cap raise arrow */}
-      <path d="M38 30V16M38 16l-3 3M38 16l3 3" stroke="#FDE68A" strokeWidth="1.6" strokeLinecap="round" />
-      <text x="21" y="11" textAnchor="middle" fill="#FDE68A" fontSize="7" fontWeight="800" fontFamily="system-ui,sans-serif">
-        +2K
-      </text>
+      <path
+        d="M28 4L12 26h9l-3 18 18-24h-9l3-16z"
+        fill={`url(#${id}g)`}
+        stroke="#93C5FD"
+        strokeWidth="1.3"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M26 10l-8 12h5l-2 10 10-14h-5l2-8z"
+        fill="#E0F2FE"
+        opacity="0.55"
+      />
+      {label ? (
+        <text
+          x="24"
+          y="44"
+          textAnchor="middle"
+          fill="#FDE68A"
+          fontSize="7"
+          fontWeight="800"
+          fontFamily="system-ui,sans-serif"
+        >
+          {label}
+        </text>
+      ) : null}
       <defs>
-        <linearGradient id={`${id}g`} x1="10" y1="12" x2="32" y2="38" gradientUnits="userSpaceOnUse">
-          <stop stopColor="#1D4ED8" />
-          <stop offset="1" stopColor="#0F172A" />
+        <linearGradient id={`${id}g`} x1="12" y1="4" x2="36" y2="44" gradientUnits="userSpaceOnUse">
+          <stop stopColor="#60A5FA" />
+          <stop offset="1" stopColor="#1E3A8A" />
         </linearGradient>
       </defs>
     </S>
   );
 }
 
-/** Daily energy cap boost — larger battery + “5K” */
+export function IconEnergy500({ size }) {
+  return <IconEnergyLightning size={size} label="+500" />;
+}
+
+export function IconEnergy2K({ size }) {
+  return <IconEnergyLightning size={size} label="+2K" />;
+}
+
 export function IconEnergy5K({ size }) {
-  const id = useId().replace(/:/g, '');
-  return (
-    <S size={size}>
-      <rect x="8" y="10" width="24" height="28" rx="3" fill={`url(#${id}g)`} stroke="#7DD3FC" strokeWidth="1.5" />
-      <rect x="32" y="18" width="5" height="12" rx="1" fill="#7DD3FC" />
-      <rect x="12" y="30" width="16" height="5" rx="1" fill="#22D3EE" />
-      <rect x="12" y="23" width="16" height="5" rx="1" fill="#22D3EE" opacity="0.85" />
-      <rect x="12" y="16" width="16" height="5" rx="1" fill="#67E8F9" opacity="0.65" />
-      <path d="M40 32V12M40 12l-3.5 3.5M40 12l3.5 3.5" stroke="#FDE68A" strokeWidth="1.7" strokeLinecap="round" />
-      <text x="20" y="9" textAnchor="middle" fill="#FDE68A" fontSize="7.5" fontWeight="800" fontFamily="system-ui,sans-serif">
-        +5K
-      </text>
-      <defs>
-        <linearGradient id={`${id}g`} x1="8" y1="10" x2="34" y2="38" gradientUnits="userSpaceOnUse">
-          <stop stopColor="#0891B2" />
-          <stop offset="1" stopColor="#0C4A6E" />
-        </linearGradient>
-      </defs>
-    </S>
-  );
+  return <IconEnergyLightning size={size} label="+5K" />;
 }
 
 export function IconGem({ size }) {
@@ -259,18 +261,19 @@ export function IconX3({ size }) {
 
 const BY_ID = {
   frenzy: IconFrenzy,
-  battery: IconBattery,
-  heavy: IconHeavy,
-  // Free + Premium refill both use the battery glyph
-  refill: IconBattery,
-  refill_extra: IconBattery,
-  bot: IconBot,
+  // Daily tap-cap (energy limit) — blue lightning
+  battery: IconEnergy500,
   grinder: IconEnergy2K,
   whale: IconEnergy5K,
+  heavy: IconHeavy,
+  // Real battery pool — green battery glyph
+  refill: IconBattery,
+  refill_extra: IconBattery,
+  expanded_energy: IconBattery,
+  bot: IconBot,
   crate: IconGem,
   x2_boost: IconX2,
   x3_boost: IconX3,
-  expanded_energy: IconBattery,
 };
 
 export function ShopGlyph({ itemId, size = 28 }) {

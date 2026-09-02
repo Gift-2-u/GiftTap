@@ -475,10 +475,10 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, bumpEner
       desc: 'Update your Max Daily limit by 500',
       duration: 'Until UTC midnight',
       cost: 400,
-      iconFrom: '#4ade80',
-      iconTo: '#14532d',
-      iconRing: 'rgba(74,222,128,0.4)',
-      iconGlow: 'rgba(74,222,128,0.2)',
+      iconFrom: '#60a5fa',
+      iconTo: '#1e3a8a',
+      iconRing: 'rgba(96,165,250,0.45)',
+      iconGlow: 'rgba(59,130,246,0.25)',
     },
     // Heavy Hands removed from shop (replace later). Leftover inventory charges stay inert.
     {
