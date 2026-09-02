@@ -1,8 +1,12 @@
 /**
- * nft-durability-topup — reload Echo/Fate/Rush/Shadow durability with $G2U.
- * Body: { kind: 'echo'|'fate'|'rush'|'shadow', percent: number (>=1) }
- * Cost: 1000 gft_token_balance per +1% (capped at 100%).
- * Requires G2U_NFT_DURABILITY_ENABLED or G2U_PREMIUM_ENABLED=true.
+ * nft-durability-topup — reload Echo/Fate/Rush/Shadow durability with on-chain $G2U.
+ * Body: {
+ *   kind: 'echo'|'fate'|'rush'|'shadow',
+ *   percent: number (>=1),
+ *   asset_id?: string,
+ *   tx_signature: string  // required — $G2U → master (+ 0.0005 SOL fee on client)
+ * }
+ * Cost: 1000 $G2U per +1% (capped at 100%). No DB gft_token_balance debit.
  */
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { requirePlayerFromRequest } from "../_shared/sessionJwt.ts";
@@ -25,6 +29,8 @@ import {
   type NftDurabilityKind,
 } from "../_shared/nftDurability.ts";
 
+const MASTER = "D4GufPTvp6tnzkaYGfombFLs48UjDANsxjMFJnSYz4Gh";
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -46,7 +52,69 @@ serve(async (req) => {
     const percent = Math.floor(Number(body.percent) || 0);
     if (percent < 1) throw new Error("percent must be at least 1");
 
+    const txSignature = String(body.tx_signature || body.signature || "").trim();
+    if (!txSignature || txSignature.length < 32) {
+      throw new Error(
+        "tx_signature required — send $G2U on-chain to master wallet first",
+      );
+    }
+
     const sb = adminClient();
+
+    const { data: prior } = await sb
+      .from("economy_events")
+      .select("id")
+      .eq("player_id", playerId)
+      .eq("kind", "nft_durability_topup")
+      .eq("ref", txSignature)
+      .maybeSingle();
+    if (prior) {
+      const { data: p } = await sb
+        .from("players")
+        .select("inventory, gft_token_balance")
+        .eq("telegram_id", playerId)
+        .maybeSingle();
+      return jsonResponse({
+        success: true,
+        already: true,
+        inventory: p?.inventory || {},
+        gft_token_balance: Number(p?.gft_token_balance) || 0,
+        nft_durability: durabilitySnapshot(invObj(p?.inventory)),
+      });
+    }
+
+    const rpc =
+      Deno.env.get("SOLANA_RPC_URL") ||
+      Deno.env.get("VITE_SOLANA_RPC_URL") ||
+      "";
+    if (rpc) {
+      try {
+        const res = await fetch(rpc, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            jsonrpc: "2.0",
+            id: 1,
+            method: "getTransaction",
+            params: [
+              txSignature,
+              { encoding: "json", maxSupportedTransactionVersion: 0 },
+            ],
+          }),
+        });
+        const j = await res.json();
+        const tx = j?.result;
+        if (!tx) {
+          console.warn("nft-durability-topup: tx not found yet", txSignature);
+        } else if (tx.meta?.err) {
+          throw new Error("On-chain $G2U payment failed");
+        }
+      } catch (e) {
+        if (e instanceof Error && /failed/i.test(e.message)) throw e;
+        console.warn("nft-durability-topup verify skip", e);
+      }
+    }
+
     const { data: row, error } = await sb
       .from("players")
       .select("inventory, gft_token_balance")
@@ -78,14 +146,6 @@ serve(async (req) => {
       throw new Error("Durability already at 100%");
     }
 
-    const bal = Number(row.gft_token_balance) || 0;
-    if (bal + 1e-9 < costG2u) {
-      throw new Error(
-        `Not enough $G2U (need ${costG2u.toLocaleString()}, have ${bal.toLocaleString()})`,
-      );
-    }
-    const nextBal = Math.round((bal - costG2u) * 1e6) / 1e6;
-
     if (assetId) map[assetId] = after;
     inv.nft_durability = map;
 
@@ -98,11 +158,11 @@ serve(async (req) => {
       };
     }
 
+    // On-chain payment only — do not debit gft_token_balance (chain sync owns it)
     const { data: updated, error: upErr } = await sb
       .from("players")
       .update({
         inventory: inv,
-        gft_token_balance: nextBal,
         last_updated: new Date().toISOString(),
       })
       .eq("telegram_id", playerId)
@@ -114,8 +174,7 @@ serve(async (req) => {
       player_id: playerId,
       kind: "nft_durability_topup",
       delta: -costG2u,
-      balance_after: nextBal,
-      ref: kind,
+      ref: txSignature,
       meta: {
         kind,
         asset_id: assetId || null,
@@ -124,6 +183,9 @@ serve(async (req) => {
         durability_after: after,
         cost_g2u: costG2u,
         rate: NFT_DURABILITY_G2U_PER_PERCENT,
+        currency: "g2u_onchain",
+        master: MASTER,
+        fee_sol: 0.0005,
       },
     });
 
@@ -135,7 +197,7 @@ serve(async (req) => {
       durability_before: before,
       durability_after: after,
       cost_g2u: costG2u,
-      gft_token_balance: Number(updated?.gft_token_balance ?? nextBal),
+      gft_token_balance: Number(updated?.gft_token_balance ?? row.gft_token_balance) || 0,
       inventory: outInv,
       nft_durability: durabilitySnapshot(outInv),
     });

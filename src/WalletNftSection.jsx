@@ -137,24 +137,131 @@ export default function WalletNftSection({
     async (percent = 1) => {
       if (!selectedDurKind || durBusy) return;
       const pct = Math.max(1, Math.floor(Number(percent) || 1));
+      const costG2u = pct * NFT_DURABILITY_G2U_PER_PERCENT;
       setDurBusy(true);
       try {
+        if (!isTokenLaunched()) {
+          throw new Error('Durability reload opens after $G2U launch');
+        }
+        const secret = String(walletSecret || '').trim();
+        if (!secret) {
+          throw new Error('Unlock your game wallet first');
+        }
+        if (!hasSecureSession()) {
+          await ensureSecureSession();
+        }
+        const connection = new Connection(RPC_URL, 'confirmed');
+        let playerKeypair;
+        if (secret.includes(' ')) {
+          playerKeypair = keypairFromMnemonic(secret.trim());
+        } else {
+          playerKeypair = Keypair.fromSecretKey(bs58.decode(secret));
+        }
+        if (
+          walletAddress &&
+          playerKeypair.publicKey.toBase58() !== String(walletAddress).trim()
+        ) {
+          throw new Error('Unlocked wallet does not match your game wallet');
+        }
+
+        // On-chain $G2U → master + 0.0005 SOL → treasury (same as NFT level-up)
+        const masterWallet = new PublicKey(ELF_LEVEL_UP_TREASURY);
+        const feeWallet = new PublicKey(ELF_LEVEL_UP_FEE_WALLET);
+        const feeLamports = Math.floor(ELF_LEVEL_UP_FEE_SOL * LAMPORTS_PER_SOL);
+        const G2U_DECIMALS = 9;
+        const amountRaw = BigInt(costG2u) * 10n ** BigInt(G2U_DECIMALS);
+        const fromAta = getAssociatedTokenAddressSync(
+          MINT_ADDRESS,
+          playerKeypair.publicKey,
+        );
+        const toAta = getAssociatedTokenAddressSync(MINT_ADDRESS, masterWallet);
+        const solBal = await connection.getBalance(playerKeypair.publicKey);
+        const needSol = feeLamports + 5_000_000;
+        if (solBal < needSol) {
+          throw new Error(
+            `Need ~${(needSol / LAMPORTS_PER_SOL).toFixed(4)} SOL (0.0005 treasury fee + network).`,
+          );
+        }
+
+        toast(
+          `Sending ${costG2u.toLocaleString()} $G2U + ${ELF_LEVEL_UP_FEE_SOL} SOL fee…`,
+          true,
+        );
+
+        const g2uTx = new Transaction().add(
+          ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 100_000 }),
+          createAssociatedTokenAccountIdempotentInstruction(
+            playerKeypair.publicKey,
+            toAta,
+            masterWallet,
+            MINT_ADDRESS,
+            TOKEN_PROGRAM_ID,
+            ASSOCIATED_TOKEN_PROGRAM_ID,
+          ),
+          createTransferCheckedInstruction(
+            fromAta,
+            MINT_ADDRESS,
+            toAta,
+            playerKeypair.publicKey,
+            amountRaw,
+            G2U_DECIMALS,
+          ),
+          SystemProgram.transfer({
+            fromPubkey: playerKeypair.publicKey,
+            toPubkey: feeWallet,
+            lamports: feeLamports,
+          }),
+        );
+        const latest = await connection.getLatestBlockhash('confirmed');
+        g2uTx.recentBlockhash = latest.blockhash;
+        g2uTx.feePayer = playerKeypair.publicKey;
+        const signature = await sendAndConfirmTransaction(connection, g2uTx, [
+          playerKeypair,
+        ]);
+
         const data = await secureNftDurabilityTopUp({
           kind: selectedDurKind,
           percent: pct,
           asset_id: selected?.id || undefined,
+          tx_signature: signature,
         });
         const nextInv = data.inventory || localInv;
         setLocalInv(nextInv);
         if (typeof onInventoryChange === 'function') onInventoryChange(nextInv);
-        const nextGft = Number(data.gft_token_balance);
-        if (Number.isFinite(nextGft)) {
-          setLocalGft(nextGft);
-          if (typeof onGftBalanceChange === 'function') onGftBalanceChange(nextGft);
+
+        // Refresh live $G2U / SOL from chain (not DB debit)
+        try {
+          const balInfo = await connection.getTokenAccountBalance(fromAta);
+          const g2uUi = Number(balInfo?.value?.uiAmount);
+          const lamportsAfter = await connection.getBalance(
+            playerKeypair.publicKey,
+          );
+          const solAfter = lamportsAfter / LAMPORTS_PER_SOL;
+          if (Number.isFinite(g2uUi)) {
+            setLocalGft(g2uUi);
+            if (typeof onGftBalanceChange === 'function') onGftBalanceChange(g2uUi);
+          }
+          if (typeof onChainBalanceChange === 'function') {
+            onChainBalanceChange({
+              ...(Number.isFinite(g2uUi) ? { g2u: g2uUi } : {}),
+              sol: solAfter,
+            });
+          }
+          try {
+            await secureSyncChainBalances();
+          } catch {
+            /* ignore */
+          }
+        } catch (balErr) {
+          console.warn('post durability balance refresh', balErr?.message || balErr);
+          if (typeof onChainBalanceChange === 'function') {
+            onChainBalanceChange({});
+          }
         }
+
         setReloadOpen(false);
         toast(
-          `${selectedDurKind} +${data.percent_added}% durability (−${Number(data.cost_g2u).toLocaleString()} G2U) → ${Math.round(data.durability_after)}%`,
+          `${selectedDurKind} +${data.percent_added}% durability (−${Number(data.cost_g2u ?? costG2u).toLocaleString()} $G2U + ${ELF_LEVEL_UP_FEE_SOL} SOL) → ${Math.round(data.durability_after)}%`,
           true,
         );
       } catch (e) {
@@ -165,10 +272,14 @@ export default function WalletNftSection({
     },
     [
       selectedDurKind,
+      selected,
       durBusy,
       localInv,
+      walletSecret,
+      walletAddress,
       onInventoryChange,
       onGftBalanceChange,
+      onChainBalanceChange,
     ],
   );
 
@@ -1299,6 +1410,7 @@ export default function WalletNftSection({
                 <div style={{ color: '#666', fontSize: 10, marginBottom: 8, lineHeight: 1.35 }}>
                   Drains 1% / 1,000 taps · perk fully off at 0% ·{' '}
                   {NFT_DURABILITY_G2U_PER_PERCENT.toLocaleString()} $G2U = 1%
+                  {' '}(+ 0.0005 SOL fee)
                 </div>
                 <button
                   type="button"

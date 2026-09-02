@@ -108,7 +108,7 @@ export default function DurabilityReloadModal({
           Reload durability
         </h3>
         <p style={{ margin: '0 0 12px', color: '#888', fontSize: 12, lineHeight: 1.4 }}>
-          {kindLabel} · {shownPct}%
+          {kindLabel} · {shownPct}% · pays on-chain $G2U + 0.0005 SOL fee
         </p>
 
         <div

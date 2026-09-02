@@ -360,18 +360,22 @@ export async function securePremiumGrant(itemId, txSignature, opts = {}) {
   return callSecureFunction('premium-grant', body);
 }
 
-/** Reload Echo/Fate/Rush/Shadow durability with $G2U (post-launch). */
+/** Reload Echo/Fate/Rush/Shadow durability with on-chain $G2U (post-launch). */
 export async function secureNftDurabilityTopUp({
   kind,
   percent = 1,
   asset_id,
   assetId,
+  tx_signature,
+  signature,
 } = {}) {
   const aid = asset_id || assetId;
+  const tx = tx_signature || signature;
   return callSecureFunction('nft-durability-topup', {
     kind,
     percent,
     ...(aid ? { asset_id: aid } : {}),
+    ...(tx ? { tx_signature: tx } : {}),
   });
 }
 
