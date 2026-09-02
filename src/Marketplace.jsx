@@ -520,7 +520,7 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, bumpEner
     },
   ];
 
-  /** After launch (or VITE_G2U_PREMIUM=true): prices in $G2U (gft_token_balance). */
+  /** After launch (or VITE_G2U_PREMIUM=true): Premium priced in $G2U (on-chain to master). */
   const G2U_PREMIUM =
     String(import.meta.env.VITE_G2U_PREMIUM || '').toLowerCase() === 'true' ||
     String(import.meta.env.VITE_G2U_PREMIUM || '') === '1' ||
@@ -1693,43 +1693,21 @@ Daily claim active · Pack → NFT to see it.`,
     setTxStatus({ show: true, loading: true, message: `Initiating purchase for ${item.name}...`, success: false });
 
     try {
-      // Post-launch Extra Battery Refill: on-chain $G2U A→B (player → master), then grant.
-      // Other Premium $G2U items still use DB gft_token_balance until migrated the same way.
-      const payG2uOnChain = item.id === 'refill_extra';
-      if (
-        (G2U_PREMIUM || String(item.currency || '').toUpperCase() === 'G2U') &&
-        !payG2uOnChain
-      ) {
-        if (!hasSecureSession()) {
-          throw new Error('Log in again to buy with $G2U (secure session required).');
-        }
-        setTxStatus({
-          show: true,
-          loading: true,
-          message: `Spending ${Number(item.price).toLocaleString()} $G2U…`,
-          success: false,
-        });
-        const data = await securePremiumGrant(item.id, null, { currency: 'g2u' });
-        const newInventory = data.inventory || {};
-        setLocalInventory((prev) => addToBackpackInventory(prev, newInventory));
-        if (setStats) {
-          setStats((prev) => ({
-            ...prev,
-            inventory: addToBackpackInventory(prev?.inventory || {}, newInventory),
-            has_made_purchase: true,
-            ...(data.gft_token_balance != null
-              ? { gft_token_balance: Number(data.gft_token_balance) }
-              : {}),
-          }));
-        }
-        setTxStatus({
-          show: true,
-          loading: false,
-          message: `✅ Success! ${item.name} purchased with $G2U. Check Backpack!`,
-          success: true,
-        });
-        return;
-      }
+      // Post-launch Premium: all $G2U buys are on-chain A→B (player → master), then grant.
+      const payG2uOnChain =
+        String(item.currency || '').toUpperCase() === 'G2U' ||
+        (G2U_PREMIUM &&
+          [
+            'bot',
+            'grinder',
+            'whale',
+            'crate',
+            'x2_boost',
+            'x3_boost',
+            'expanded_energy',
+            'refill_extra',
+            'shard_badge',
+          ].includes(String(item.id || '')));
 
       // 1. Get Secret Key (Now pulling securely from React State, not local storage)
       const storedSecret = decryptedPhrase;
@@ -1753,10 +1731,10 @@ Daily claim active · Pack → NFT to see it.`,
       const masterWallet = new PublicKey("D4GufPTvp6tnzkaYGfombFLs48UjDANsxjMFJnSYz4Gh"); 
       const treasuryWallet = new PublicKey("8G7uEcPS6dwA5wW9bGoqi98EzBunF8trjbbFJkgkvBPm"); 
 
-      // —— Extra Battery Refill: SPL $G2U player → master (A→B), then grant ——
+      // —— Premium $G2U: SPL transfer player → master, then Edge grant ——
       if (payG2uOnChain) {
         if (!hasSecureSession()) {
-          throw new Error('Log in again to buy Extra Battery Refill (secure session required).');
+          throw new Error('Log in again to buy with $G2U (secure session required).');
         }
         if (
           playerWallet &&

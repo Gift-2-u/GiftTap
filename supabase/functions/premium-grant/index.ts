@@ -1,7 +1,8 @@
 /**
  * Grant premium shop item.
- * - currency=sol (default): client pays SOL, passes tx_signature (pre-launch)
- * - currency=g2u: debit gft_token_balance when G2U_PREMIUM_ENABLED=true
+ * - currency=sol (default): client pays SOL, passes tx_signature
+ * - currency=g2u: client sends on-chain $G2U → master, passes tx_signature
+ *   (no DB-only gft_token_balance debit)
  */
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { requirePlayerFromRequest } from "../_shared/sessionJwt.ts";
@@ -109,7 +110,7 @@ serve(async (req) => {
 
     const sb = adminClient();
 
-    // —— $G2U path (post-launch) ——
+    // —— $G2U path (post-launch): always on-chain $G2U → master (tx_signature) ——
     if (currency === "g2u") {
       if (!g2uPremiumEnabled()) {
         throw new Error("Premium $G2U shop opens after launch (G2U_PREMIUM_ENABLED)");
@@ -117,136 +118,74 @@ serve(async (req) => {
       const priceG2u = Math.round(Number(catalog.priceG2u) || 0);
       if (priceG2u <= 0) throw new Error("Invalid G2U price");
 
-      // Extra Battery Refill: must pay on-chain $G2U to master (tx_signature), not DB-only debit
-      const onChainG2u = itemId === "refill_extra";
-      if (onChainG2u) {
-        if (!txSignature || txSignature.length < 32) {
-          throw new Error(
-            "tx_signature required — send $G2U on-chain to master wallet first",
-          );
-        }
+      if (!txSignature || txSignature.length < 32) {
+        throw new Error(
+          "tx_signature required — send $G2U on-chain to master wallet first",
+        );
+      }
 
-        const { data: prior } = await sb
-          .from("economy_events")
-          .select("id")
-          .eq("player_id", playerId)
-          .eq("kind", "premium_grant")
-          .eq("ref", txSignature)
-          .maybeSingle();
-        if (prior) {
-          const { data: p } = await sb
-            .from("players")
-            .select("inventory")
-            .eq("telegram_id", playerId)
-            .maybeSingle();
-          return jsonResponse({
-            success: true,
-            already: true,
-            inventory: p?.inventory || {},
-          });
-        }
-
-        const rpc =
-          Deno.env.get("SOLANA_RPC_URL") ||
-          Deno.env.get("VITE_SOLANA_RPC_URL") ||
-          "";
-        if (rpc) {
-          try {
-            const res = await fetch(rpc, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                jsonrpc: "2.0",
-                id: 1,
-                method: "getTransaction",
-                params: [
-                  txSignature,
-                  { encoding: "json", maxSupportedTransactionVersion: 0 },
-                ],
-              }),
-            });
-            const j = await res.json();
-            const tx = j?.result;
-            if (!tx) {
-              console.warn("premium-grant g2u: tx not found yet", txSignature);
-            } else if (tx.meta?.err) {
-              throw new Error("On-chain $G2U payment failed");
-            }
-          } catch (e) {
-            if (e instanceof Error && /failed/i.test(e.message)) throw e;
-            console.warn("premium-grant g2u verify skip", e);
-          }
-        }
-
-        const { data: row, error: selErr } = await sb
+      const { data: prior } = await sb
+        .from("economy_events")
+        .select("id")
+        .eq("player_id", playerId)
+        .eq("kind", "premium_grant")
+        .eq("ref", txSignature)
+        .maybeSingle();
+      if (prior) {
+        const { data: p } = await sb
           .from("players")
-          .select("inventory, has_made_purchase, daily_usage")
+          .select("inventory")
           .eq("telegram_id", playerId)
           .maybeSingle();
-        if (selErr) throw selErr;
-        if (!row) throw new Error("Player not found");
-
-        const inv = invObj(row.inventory);
-        inv[itemId] = (Number(inv[itemId]) || 0) + 1;
-        let daily_usage =
-          row.daily_usage && typeof row.daily_usage === "object"
-            ? { ...(row.daily_usage as Record<string, string>) }
-            : {};
-        bumpWeeklyBoost(inv);
-
-        const { error: upErr } = await sb
-          .from("players")
-          .update({
-            inventory: inv,
-            daily_usage,
-            has_made_purchase: true,
-            last_updated: new Date().toISOString(),
-          })
-          .eq("telegram_id", playerId);
-        if (upErr) throw upErr;
-
-        await logEconomy(sb, {
-          player_id: playerId,
-          kind: "premium_grant",
-          delta: -priceG2u,
-          ref: txSignature,
-          meta: {
-            item_id: itemId,
-            currency: "g2u_onchain",
-            priceG2u,
-            master: MASTER,
-          },
-        });
-
         return jsonResponse({
           success: true,
-          already: false,
-          item_id: itemId,
-          currency: "g2u",
-          price_g2u: priceG2u,
-          inventory: inv,
+          already: true,
+          inventory: p?.inventory || {},
         });
       }
 
-      // Legacy DB debit for other Premium $G2U items (bot, grinder, …)
+      const rpc =
+        Deno.env.get("SOLANA_RPC_URL") ||
+        Deno.env.get("VITE_SOLANA_RPC_URL") ||
+        "";
+      if (rpc) {
+        try {
+          const res = await fetch(rpc, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              jsonrpc: "2.0",
+              id: 1,
+              method: "getTransaction",
+              params: [
+                txSignature,
+                { encoding: "json", maxSupportedTransactionVersion: 0 },
+              ],
+            }),
+          });
+          const j = await res.json();
+          const tx = j?.result;
+          if (!tx) {
+            console.warn("premium-grant g2u: tx not found yet", txSignature);
+          } else if (tx.meta?.err) {
+            throw new Error("On-chain $G2U payment failed");
+          }
+        } catch (e) {
+          if (e instanceof Error && /failed/i.test(e.message)) throw e;
+          console.warn("premium-grant g2u verify skip", e);
+        }
+      }
+
       const { data: row, error: selErr } = await sb
         .from("players")
-        .select("inventory, has_made_purchase, gft_token_balance, daily_usage")
+        .select("inventory, has_made_purchase, daily_usage")
         .eq("telegram_id", playerId)
         .maybeSingle();
       if (selErr) throw selErr;
       if (!row) throw new Error("Player not found");
 
-      const bal = Number(row.gft_token_balance) || 0;
-      if (bal + 1e-9 < priceG2u) {
-        throw new Error(
-          `Not enough $G2U (need ${priceG2u.toLocaleString()}, have ${bal.toLocaleString()})`,
-        );
-      }
-      const nextBal = Math.round((bal - priceG2u) * 1e6) / 1e6;
       const inv = invObj(row.inventory);
       inv[itemId] = (Number(inv[itemId]) || 0) + 1;
-
       let daily_usage =
         row.daily_usage && typeof row.daily_usage === "object"
           ? { ...(row.daily_usage as Record<string, string>) }
@@ -258,7 +197,6 @@ serve(async (req) => {
         .update({
           inventory: inv,
           daily_usage,
-          gft_token_balance: nextBal,
           has_made_purchase: true,
           last_updated: new Date().toISOString(),
         })
@@ -269,12 +207,12 @@ serve(async (req) => {
         player_id: playerId,
         kind: "premium_grant",
         delta: -priceG2u,
-        balance_after: nextBal,
-        ref: `g2u:${itemId}:${Date.now()}`,
+        ref: txSignature,
         meta: {
           item_id: itemId,
-          currency: "g2u",
+          currency: "g2u_onchain",
           priceG2u,
+          master: MASTER,
         },
       });
 
@@ -284,7 +222,6 @@ serve(async (req) => {
         item_id: itemId,
         currency: "g2u",
         price_g2u: priceG2u,
-        gft_token_balance: nextBal,
         inventory: inv,
       });
     }
