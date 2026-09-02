@@ -11,6 +11,11 @@ import {
   verifySessionJwtForRefresh,
 } from "../_shared/sessionJwt.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.7";
+import {
+  assertIpAllowed,
+  assertPlayerAllowed,
+  clientIpHint,
+} from "../_shared/abuseGuard.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -44,20 +49,24 @@ serve(async (req) => {
     const playerId = String(claims.sub);
     const username = String(claims.username || "");
 
+    const supabase = createClient(
+      Deno.env.get("SUPABASE_URL") ?? "",
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
+    );
+    await assertIpAllowed(req, supabase);
+    await assertPlayerAllowed(playerId, supabase);
+
     const minted = await mintSessionJwt(playerId, username);
 
     // Best-effort session registry (non-fatal)
     try {
-      const supabase = createClient(
-        Deno.env.get("SUPABASE_URL") ?? "",
-        Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
-      );
       const token_hash = await sha256Hex(minted.token);
       await supabase.from("player_sessions").insert({
         player_id: playerId,
         token_hash,
         expires_at: minted.expires_at,
         user_agent: req.headers.get("user-agent")?.slice(0, 200) || null,
+        ip_hint: clientIpHint(req),
       });
     } catch (regErr) {
       console.warn("player_sessions insert", regErr);

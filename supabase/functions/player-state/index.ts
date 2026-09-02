@@ -42,7 +42,7 @@ function g2uChainSyncEnabled(nowMs = Date.now()): boolean {
   return nowMs >= TOKEN_LAUNCH_AT_MS;
 }
 
-/** Read live SOL (+ $G2U ATA after launch) for wallet; service_role writes columns. */
+/** Read live SOL (+ $G2U after launch) for wallet; service_role writes columns. */
 async function readChainBalances(walletAddress: string): Promise<{
   sol: number;
   g2u: number | null;
@@ -51,22 +51,34 @@ async function readChainBalances(walletAddress: string): Promise<{
     Connection,
     PublicKey,
   } = await import("npm:@solana/web3.js@1.98.4");
-  const { getAssociatedTokenAddressSync } = await import(
-    "npm:@solana/spl-token@0.4.9"
-  );
   const connection = new Connection(rpcUrl(), "confirmed");
   const owner = new PublicKey(String(walletAddress).trim());
-  const lamports = await connection.getBalance(owner);
-  const sol = Math.round((lamports / 1e9) * 1e9) / 1e9;
+
+  let sol = 0;
+  try {
+    const lamports = await connection.getBalance(owner);
+    sol = Math.round((lamports / 1e9) * 1e9) / 1e9;
+  } catch (e) {
+    console.warn("readChainBalances sol", e);
+  }
 
   let g2u: number | null = null;
   if (g2uChainSyncEnabled()) {
     try {
+      // Prefer by-owner scan so closed/missing ATA still resolves to 0 after sells.
       const mint = new PublicKey(g2uMint());
-      const ata = getAssociatedTokenAddressSync(mint, owner);
-      const bal = await connection.getTokenAccountBalance(ata);
-      g2u = Number(bal?.value?.uiAmount) || 0;
-    } catch {
+      const accounts = await connection.getParsedTokenAccountsByOwner(owner, {
+        mint,
+      });
+      let total = 0;
+      for (const a of accounts.value || []) {
+        const ui =
+          a?.account?.data?.parsed?.info?.tokenAmount?.uiAmount;
+        total += Number(ui) || 0;
+      }
+      g2u = total;
+    } catch (e) {
+      console.warn("readChainBalances g2u", e);
       g2u = 0;
     }
   }
@@ -220,18 +232,32 @@ serve(async (req) => {
         .select("sol_balance, gft_token_balance, wallet_address")
         .maybeSingle();
       if (upErr) throw upErr;
+      // Always trust chain for the response (never re-poison HUD with stale DB).
+      const gftOut =
+        chain.g2u != null
+          ? Number(chain.g2u) || 0
+          : Number(
+            (player as Record<string, unknown>).gft_token_balance,
+          ) || 0;
+      if (
+        chain.g2u != null &&
+        updated &&
+        Math.abs(Number(updated.gft_token_balance) - gftOut) > 0.000001
+      ) {
+        console.warn(
+          "gft_token_balance write did not stick",
+          updated.gft_token_balance,
+          "expected",
+          gftOut,
+        );
+      }
       return new Response(
         JSON.stringify({
           success: true,
           synced: true,
           g2u_chain_sync: chain.g2u != null,
-          sol_balance: Number(updated?.sol_balance ?? chain.sol) || 0,
-          gft_token_balance:
-            chain.g2u != null
-              ? Number(updated?.gft_token_balance ?? chain.g2u) || 0
-              : Number(
-                (player as Record<string, unknown>).gft_token_balance,
-              ) || 0,
+          sol_balance: Number(chain.sol) || 0,
+          gft_token_balance: gftOut,
         }),
         {
           headers: { ...corsHeaders, "Content-Type": "application/json" },

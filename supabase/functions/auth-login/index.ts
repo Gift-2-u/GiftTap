@@ -2,6 +2,11 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.7";
 import { mintSessionJwt } from "../_shared/sessionJwt.ts";
 import { verifyTurnstileToken } from "../_shared/turnstile.ts";
+import {
+  assertAuthAllowed,
+  assertPlayerAllowed,
+  clientIpHint,
+} from "../_shared/abuseGuard.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -45,20 +50,6 @@ async function verifyPassword(password: string, stored: string): Promise<boolean
   return b64(bits) === expected;
 }
 
-/** Best-effort client IP for abuse checks (player_sessions.ip_hint). */
-function clientIpHint(req: Request): string | null {
-  const cf = req.headers.get("cf-connecting-ip")?.trim();
-  if (cf) return cf.slice(0, 64);
-  const xff = req.headers.get("x-forwarded-for");
-  if (xff) {
-    const first = xff.split(",")[0]?.trim();
-    if (first) return first.slice(0, 64);
-  }
-  const real = req.headers.get("x-real-ip")?.trim();
-  if (real) return real.slice(0, 64);
-  return null;
-}
-
 async function sha256Hex(s: string): Promise<string> {
   const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s));
   return Array.from(new Uint8Array(buf))
@@ -91,14 +82,21 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
     );
 
+    // IP + username hard blocks (sybil farm)
+    await assertAuthAllowed(req, cleanName, supabase);
+
     const { data: row, error } = await supabase
       .from("players")
-      .select("telegram_id, username, wallet_address, has_beta_access")
+      .select("telegram_id, username, wallet_address, has_beta_access, is_banned")
       .ilike("username", cleanName)
       .maybeSingle();
 
     if (error) throw error;
     if (!row) throw new Error("No account with that username.");
+    if ((row as { is_banned?: boolean }).is_banned === true) {
+      throw new Error("Account suspended.");
+    }
+    await assertPlayerAllowed(String(row.telegram_id), supabase);
 
     const { data: sec, error: secErr } = await supabase
       .from("player_secrets")

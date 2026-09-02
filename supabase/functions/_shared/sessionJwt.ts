@@ -157,11 +157,31 @@ export async function requirePlayerFromRequest(req: Request): Promise<SessionCla
     req.headers.get("X-Gift-Session") ||
     req.headers.get("x-session-token") ||
     req.headers.get("X-Session-Token");
+  let claims: SessionClaims;
   if (custom && String(custom).trim()) {
-    return verifySessionJwt(String(custom).trim());
+    claims = await verifySessionJwt(String(custom).trim());
+  } else {
+    const bearer = bearerFromRequest(req);
+    if (!bearer) throw new Error("Not authenticated (missing session token)");
+    // Legacy: game JWT still sent as Bearer
+    claims = await verifySessionJwt(bearer);
   }
-  const bearer = bearerFromRequest(req);
-  if (!bearer) throw new Error("Not authenticated (missing session token)");
-  // Legacy: game JWT still sent as Bearer
-  return verifySessionJwt(bearer);
+  // Enforce bans on every secure Edge call (existing JWTs must not keep working)
+  try {
+    const { assertIpAllowed, assertPlayerAllowed } = await import(
+      "./abuseGuard.ts"
+    );
+    await assertIpAllowed(req);
+    await assertPlayerAllowed(String(claims.sub));
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (/suspended|blocked/i.test(msg)) throw e;
+    // If abuse table missing mid-deploy, fail open on lookup errors only
+    if (/abuse_blocks|is_banned|Could not find/i.test(msg)) {
+      console.warn("abuseGuard skip", msg);
+    } else {
+      throw e;
+    }
+  }
+  return claims;
 }

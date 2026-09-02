@@ -3,6 +3,10 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.7";
 import { PublicKey } from "npm:@solana/web3.js";
 import { mintSessionJwt } from "../_shared/sessionJwt.ts";
 import { verifyTurnstileToken } from "../_shared/turnstile.ts";
+import {
+  assertAuthAllowed,
+  clientIpHint,
+} from "../_shared/abuseGuard.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -58,20 +62,6 @@ async function sha256Hex(s: string): Promise<string> {
     .join("");
 }
 
-/** Best-effort client IP for abuse checks (player_sessions.ip_hint). */
-function clientIpHint(req: Request): string | null {
-  const cf = req.headers.get("cf-connecting-ip")?.trim();
-  if (cf) return cf.slice(0, 64);
-  const xff = req.headers.get("x-forwarded-for");
-  if (xff) {
-    const first = xff.split(",")[0]?.trim();
-    if (first) return first.slice(0, 64);
-  }
-  const real = req.headers.get("x-real-ip")?.trim();
-  if (real) return real.slice(0, 64);
-  return null;
-}
-
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -107,6 +97,9 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_URL") ?? "",
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
     );
+
+    // Block banned IPs / usernames before creating any row
+    await assertAuthAllowed(req, cleanName, supabase);
 
     const { data: existing } = await supabase
       .from("players")
