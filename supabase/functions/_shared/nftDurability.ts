@@ -187,17 +187,24 @@ export function computeDurabilityTopUp(
   };
 }
 
-export function g2uNftEconomyEnabled(): boolean {
+/** Same launch gate as Premium shop: env override, else open after 1 Sept 2026 UTC. */
+export function g2uNftEconomyEnabled(nowMs = Date.now()): boolean {
   try {
     const v = String(Deno.env.get("G2U_NFT_DURABILITY_ENABLED") || "")
       .trim()
       .toLowerCase();
     if (["1", "true", "yes", "on"].includes(v)) return true;
-    // Shared launch switch with premium
+    if (["0", "false", "no", "off"].includes(v)) return false;
+
     const p = String(Deno.env.get("G2U_PREMIUM_ENABLED") || "")
       .trim()
       .toLowerCase();
-    return ["1", "true", "yes", "on"].includes(p);
+    if (["1", "true", "yes", "on"].includes(p)) return true;
+    if (["0", "false", "no", "off"].includes(p)) return false;
+
+    // Auto after token launch (was missing — required explicit env forever)
+    const launchAt = Date.parse("2026-09-01T00:00:00Z");
+    return nowMs >= launchAt;
   } catch {
     return false;
   }

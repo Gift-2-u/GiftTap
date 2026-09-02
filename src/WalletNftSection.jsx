@@ -9,6 +9,13 @@ import {
   sendAndConfirmTransaction,
   LAMPORTS_PER_SOL,
 } from '@solana/web3.js';
+import {
+  getAssociatedTokenAddressSync,
+  createAssociatedTokenAccountIdempotentInstruction,
+  createTransferCheckedInstruction,
+  TOKEN_PROGRAM_ID,
+  ASSOCIATED_TOKEN_PROGRAM_ID,
+} from '@solana/spl-token';
 import bs58 from 'bs58';
 import { listGiftNfts } from './locksmith';
 import { transferCoreNft } from './nftTransfer';
@@ -22,6 +29,7 @@ import {
   hasSecureSession,
   ensureSecureSession,
 } from './secureApi';
+import { MINT_ADDRESS } from './config';
 import { syncAllGiftNftOwnership } from './nftOwnershipSync';
 import {
   durabilityForWalletNft,
@@ -315,18 +323,77 @@ export default function WalletNftSection({
     setLevelBusy(true);
     try {
       let data;
+      const secret = String(walletSecret || '').trim();
+      if (!secret) {
+        toast('Unlock your game wallet first', false);
+        return;
+      }
+      if (!hasSecureSession()) {
+        await ensureSecureSession();
+      }
+      const connection = new Connection(RPC_URL, 'confirmed');
+      let playerKeypair;
+      if (secret.includes(' ')) {
+        playerKeypair = keypairFromMnemonic(secret.trim());
+      } else {
+        playerKeypair = Keypair.fromSecretKey(bs58.decode(secret));
+      }
+      if (
+        walletAddress &&
+        playerKeypair.publicKey.toBase58() !== String(walletAddress).trim()
+      ) {
+        throw new Error('Unlocked wallet does not match your game wallet');
+      }
+      const masterWallet = new PublicKey(ELF_LEVEL_UP_TREASURY);
+
       if (payG2u) {
-        if (!hasSecureSession()) {
-          await ensureSecureSession();
-        }
-        if (localGft + 1e-9 < costG2u) {
+        // On-chain $G2U A→B (player → master), then server bumps elf_levels / star_levels
+        const G2U_DECIMALS = 9;
+        const amountRaw = BigInt(costG2u) * 10n ** BigInt(G2U_DECIMALS);
+        const fromAta = getAssociatedTokenAddressSync(
+          MINT_ADDRESS,
+          playerKeypair.publicKey,
+        );
+        const toAta = getAssociatedTokenAddressSync(MINT_ADDRESS, masterWallet);
+        const solBal = await connection.getBalance(playerKeypair.publicKey);
+        if (solBal < 5_000_000) {
           throw new Error(
-            `Need ${costG2u.toLocaleString()} $G2U (have ${Math.floor(localGft).toLocaleString()})`,
+            'Need a little SOL in your game wallet for the network fee (~0.005 SOL).',
           );
         }
+        toast(
+          `Sending ${costG2u.toLocaleString()} $G2U to master…`,
+          true,
+        );
+        const g2uTx = new Transaction().add(
+          ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 100_000 }),
+          createAssociatedTokenAccountIdempotentInstruction(
+            playerKeypair.publicKey,
+            toAta,
+            masterWallet,
+            MINT_ADDRESS,
+            TOKEN_PROGRAM_ID,
+            ASSOCIATED_TOKEN_PROGRAM_ID,
+          ),
+          createTransferCheckedInstruction(
+            fromAta,
+            MINT_ADDRESS,
+            toAta,
+            playerKeypair.publicKey,
+            amountRaw,
+            G2U_DECIMALS,
+          ),
+        );
+        const latest = await connection.getLatestBlockhash('confirmed');
+        g2uTx.recentBlockhash = latest.blockhash;
+        g2uTx.feePayer = playerKeypair.publicKey;
+        const signature = await sendAndConfirmTransaction(connection, g2uTx, [
+          playerKeypair,
+        ]);
         if (isStar) {
           data = await secureStarLevelUp({
             assetId: selected.id,
+            txSignature: signature,
             currency: 'g2u',
           });
         } else {
@@ -334,28 +401,18 @@ export default function WalletNftSection({
             assetId: selected.id,
             kind,
             rarity: normElfRarity(selected.rarity),
+            txSignature: signature,
             currency: 'g2u',
           });
         }
-        const nextGft = Number(data.gft_token_balance);
-        if (Number.isFinite(nextGft)) {
-          setLocalGft(nextGft);
-          if (typeof onGftBalanceChange === 'function') onGftBalanceChange(nextGft);
+        try {
+          if (typeof onChainBalanceChange === 'function') {
+            onChainBalanceChange({});
+          }
+        } catch {
+          /* ignore */
         }
       } else {
-        const secret = String(walletSecret || '').trim();
-        if (!secret) {
-          toast('Unlock your game wallet first', false);
-          return;
-        }
-        const connection = new Connection(RPC_URL, 'confirmed');
-        let playerKeypair;
-        if (secret.includes(' ')) {
-          playerKeypair = keypairFromMnemonic(secret.trim());
-        } else {
-          playerKeypair = Keypair.fromSecretKey(bs58.decode(secret));
-        }
-        const masterWallet = new PublicKey(ELF_LEVEL_UP_TREASURY);
         const feeWallet = new PublicKey(ELF_LEVEL_UP_FEE_WALLET);
         const itemLamports = Math.floor(costSol * LAMPORTS_PER_SOL);
         const feeLamports = Math.floor(ELF_LEVEL_UP_FEE_SOL * LAMPORTS_PER_SOL);
@@ -452,6 +509,7 @@ export default function WalletNftSection({
     levelBusy,
     selectedLevel,
     walletSecret,
+    walletAddress,
     localInv,
     localGft,
     onInventoryChange,

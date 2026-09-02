@@ -32,7 +32,7 @@ serve(async (req) => {
   try {
     if (!g2uNftEconomyEnabled()) {
       throw new Error(
-        "NFT durability reload opens after $G2U launch (G2U_NFT_DURABILITY_ENABLED)",
+        "NFT durability reload opens after $G2U launch (1 Sept 2026 UTC)",
       );
     }
 

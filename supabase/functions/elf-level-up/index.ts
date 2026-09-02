@@ -160,18 +160,80 @@ serve(async (req) => {
       if (!g2uShopEnabled()) {
         throw new Error("NFT level-up with $G2U opens after token launch");
       }
+      if (!txSignature || txSignature.length < 32) {
+        throw new Error(
+          "tx_signature required — send $G2U on-chain to master first",
+        );
+      }
     } else if (!txSignature) {
       throw new Error("tx_signature required after SOL payment");
     }
 
     const sb = adminClient();
-    const selectCols =
-      currency === "g2u"
-        ? `${PLAYER_ECONOMY_SELECT}, gft_token_balance`
-        : PLAYER_ECONOMY_SELECT;
+
+    // Idempotent: same payment tx cannot level twice
+    if (txSignature) {
+      const { data: prior } = await sb
+        .from("economy_events")
+        .select("id")
+        .eq("player_id", playerId)
+        .eq("kind", "elf_level_up")
+        .eq("ref", txSignature)
+        .maybeSingle();
+      if (prior) {
+        const { data: p } = await sb
+          .from("players")
+          .select("inventory, tap_power, max_daily_limit, gft_token_balance")
+          .eq("telegram_id", playerId)
+          .maybeSingle();
+        return jsonResponse({
+          success: true,
+          already: true,
+          inventory: p?.inventory || {},
+          tap_power: p?.tap_power,
+          max_daily_limit: p?.max_daily_limit,
+          gft_token_balance: p?.gft_token_balance,
+        });
+      }
+    }
+
+    if (currency === "g2u" || currency === "sol") {
+      const rpc =
+        Deno.env.get("SOLANA_RPC_URL") ||
+        Deno.env.get("VITE_SOLANA_RPC_URL") ||
+        "";
+      if (rpc && txSignature) {
+        try {
+          const res = await fetch(rpc, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              jsonrpc: "2.0",
+              id: 1,
+              method: "getTransaction",
+              params: [
+                txSignature,
+                { encoding: "json", maxSupportedTransactionVersion: 0 },
+              ],
+            }),
+          });
+          const j = await res.json();
+          const tx = j?.result;
+          if (!tx) {
+            console.warn("elf-level-up: tx not found yet", txSignature);
+          } else if (tx.meta?.err) {
+            throw new Error("On-chain level-up payment failed");
+          }
+        } catch (e) {
+          if (e instanceof Error && /failed/i.test(e.message)) throw e;
+          console.warn("elf-level-up verify skip", e);
+        }
+      }
+    }
+
     const { data: row, error } = await sb
       .from("players")
-      .select(selectCols)
+      .select(`${PLAYER_ECONOMY_SELECT}, gft_token_balance`)
       .eq("telegram_id", playerId)
       .maybeSingle();
     if (error) throw error;
@@ -187,17 +249,6 @@ serve(async (req) => {
     if (!Number.isFinite(costSol)) throw new Error("No level-up cost for this step");
     const costG2u = solToG2u(costSol);
 
-    let gftBal =
-      Number((row as { gft_token_balance?: number }).gft_token_balance) || 0;
-    if (currency === "g2u") {
-      if (gftBal + 1e-9 < costG2u) {
-        throw new Error(
-          `Need ${costG2u.toLocaleString()} $G2U (have ${Math.floor(gftBal).toLocaleString()})`,
-        );
-      }
-      gftBal = Math.round((gftBal - costG2u) * 1000) / 1000;
-    }
-
     const toLevel = fromLevel + 1;
     const levels =
       inv.elf_levels && typeof inv.elf_levels === "object"
@@ -208,9 +259,7 @@ serve(async (req) => {
     syncActiveLevel(inv, kind, assetId, rarity, toLevel);
 
     const patch = instantEconomyPatch(row as Record<string, unknown>, inv);
-    if (currency === "g2u") {
-      (patch as Record<string, unknown>).gft_token_balance = gftBal;
-    }
+    // G2U is paid on-chain to master — do not silently debit gft_token_balance
     const { data: updated, error: upErr } = await sb
       .from("players")
       .update(patch)
@@ -219,20 +268,30 @@ serve(async (req) => {
       .maybeSingle();
     if (upErr) throw upErr;
 
+    // Verify write stuck (guards against silent inventory clobber)
+    const written = invObj(updated?.inventory);
+    const confirmLvl = readLevel(written, assetId);
+    if (confirmLvl < toLevel) {
+      throw new Error(
+        `Level write failed (still L${confirmLvl} in DB). Payment tx: ${txSignature}`,
+      );
+    }
+
     await logEconomy(sb, {
       player_id: playerId,
       kind: "elf_level_up",
       delta: currency === "g2u" ? -costG2u : 0,
-      balance_after: currency === "g2u" ? gftBal : null,
-      ref: assetId,
+      balance_after: null,
+      ref: txSignature || assetId,
       meta: {
         nft_kind: kind,
+        asset_id: assetId,
         rarity,
         from_level: fromLevel,
         to_level: toLevel,
         cost_sol: costSol,
         cost_g2u: currency === "g2u" ? costG2u : undefined,
-        currency,
+        currency: currency === "g2u" ? "g2u_onchain" : currency,
         tap_power: patch.tap_power,
         max_daily_limit: patch.max_daily_limit,
         tx_signature: txSignature || null,
@@ -255,9 +314,8 @@ serve(async (req) => {
       max_daily_limit:
         (updated as { max_daily_limit?: number } | null)?.max_daily_limit ??
         patch.max_daily_limit,
-      gft_token_balance:
-        (updated as { gft_token_balance?: number } | null)?.gft_token_balance ??
-        (currency === "g2u" ? gftBal : undefined),
+      gft_token_balance: (updated as { gft_token_balance?: number } | null)
+        ?.gft_token_balance,
       tx_signature: txSignature || null,
     });
   } catch (error) {

@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { supabase } from './supabaseClient';
 import { getPlayerId, isLoggedIn, DB_PLAYER_ID } from './playerIdentity';
-import { hasLocksmith } from './locksmith';
+import { hasLocksmith, listGiftNfts } from './locksmith';
 import {
   AIRDROP_META,
   computeAirdropProgress,
@@ -12,6 +12,7 @@ import AirdropBoard from './AirdropBoard';
 
 /**
  * Public site: gift2u.fun/airdrop
+ * NFT scoring must match /play (Locksmith + Fate/Echo/Rush/Shadow by rarity).
  */
 export default function AirdropPage() {
   const [loading, setLoading] = useState(true);
@@ -41,12 +42,32 @@ export default function AirdropPage() {
           setLoading(false);
           return;
         }
+
+        // Same NFT path as GiftTap.refreshAirdropProgress
         let hasNft = false;
+        let nfts = [];
         if (raw.walletAddress) {
           try {
-            hasNft = await hasLocksmith(raw.walletAddress);
+            const owned = await listGiftNfts(raw.walletAddress);
+            if (Array.isArray(owned) && owned.length) {
+              nfts = owned.map((n) => ({
+                kind: n.kind || n.name,
+                rarity: n.rarity,
+                name: n.name,
+              }));
+              hasNft = nfts.length > 0;
+            } else {
+              hasNft = await hasLocksmith(raw.walletAddress);
+              if (hasNft) nfts = [{ kind: 'locksmith', rarity: 'rare' }];
+            }
           } catch {
-            hasNft = false;
+            try {
+              hasNft = await hasLocksmith(raw.walletAddress);
+              if (hasNft) nfts = [{ kind: 'locksmith', rarity: 'rare' }];
+            } catch {
+              hasNft = false;
+              nfts = [];
+            }
           }
         }
         if (cancelled) return;
@@ -59,6 +80,7 @@ export default function AirdropPage() {
             hasIap: raw.hasIap,
             completedTasks: raw.completedTasks || [],
             hasNft,
+            nfts,
             friendsTaps1000: raw.friendsTaps1000,
             friendsL5: raw.friendsL5,
           }),
@@ -126,7 +148,11 @@ export default function AirdropPage() {
               Claim unlocks on 14-day and 30-day Tasks.
             </li>
             <li>Lifetime taps (all-time mined), not spendable balance.</li>
-            <li>NFT = GiftLocksmith in your game wallet. IAP = any recorded in-app purchase.</li>
+            <li>
+              NFTs in your game wallet: GiftLocksmith (+25% once) plus each Fate / Echo / Rush /
+              Shadow elf by rarity (Common +5% · Rare +10% · Epic +20% · Legendary +30%). IAP =
+              any recorded in-app purchase.
+            </li>
             <li>
               Friends: 3 referrals with 1,000+ lifetime taps (+5%), 3 who cleared L5 (+10%).
             </li>

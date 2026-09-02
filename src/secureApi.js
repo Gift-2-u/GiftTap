@@ -293,7 +293,7 @@ export async function secureLocksmithActivate({
   });
 }
 
-/** Level up elf NFT (Backpack → NFT). Post-launch: currency 'g2u' (no tx). */
+/** Level up elf NFT. Post-launch: currency 'g2u' + on-chain $G2U tx_signature. */
 export async function secureElfLevelUp({
   assetId,
   kind,
@@ -310,7 +310,7 @@ export async function secureElfLevelUp({
   });
 }
 
-/** Level up Star Badge. Post-launch: currency 'g2u' (no tx). */
+/** Level up Star Badge. Post-launch: currency 'g2u' + on-chain $G2U tx_signature. */
 export async function secureStarLevelUp({
   assetId,
   txSignature,
