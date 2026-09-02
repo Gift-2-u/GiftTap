@@ -824,6 +824,8 @@ const GiftTapGame = () => {
     title: undefined,
     confirm: null,
   });
+  /** Daily UTC airdrop how-to until “Don’t show again” */
+  const [showAirdropTip, setShowAirdropTip] = useState(false);
   const notify = useCallback((message, opts = {}) => {
     // Accept notify(msg, true|false) from older callers, or notify(msg, { success, … })
     const o =
@@ -3228,6 +3230,35 @@ const GiftTapGame = () => {
       wallAutoPromptRef.current = null;
     }
   }, [maxUnlockedLevel]);
+
+  // Airdrop how-to: once per UTC day until “Don’t show again” (skip while wall climb is up)
+  useEffect(() => {
+    if (!isDataLoaded || !playerId || showAscensionModal) return undefined;
+    const today = new Date().toISOString().slice(0, 10);
+    const key = `gift2u_airdrop_tip_v1_${playerId}`;
+    let tip = { dismissed: false, lastShown: '' };
+    try {
+      tip = JSON.parse(localStorage.getItem(key) || '{}') || tip;
+    } catch {
+      /* ignore */
+    }
+    if (tip.dismissed) return undefined;
+    if (String(tip.lastShown || '') === today) return undefined;
+
+    const t = setTimeout(() => {
+      if (showAscensionModal) return;
+      setShowAirdropTip(true);
+      try {
+        localStorage.setItem(
+          key,
+          JSON.stringify({ ...tip, lastShown: today }),
+        );
+      } catch {
+        /* ignore */
+      }
+    }, 1800);
+    return () => clearTimeout(t);
+  }, [isDataLoaded, playerId, showAscensionModal]);
 
   // All Gift2u NFTs (5 elves + Star equip): prove ownership before clear; activate when owned.
   useEffect(() => {
@@ -6465,6 +6496,144 @@ const GiftTapGame = () => {
           if (resolve) resolve(false);
         }}
       />
+
+      {showAirdropTip && !showAscensionModal && !appNotice.show && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,0.85)',
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center',
+            zIndex: 190000,
+            padding: 16,
+            boxSizing: 'border-box',
+          }}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Airdrop how-to"
+        >
+          <div
+            style={{
+              background: '#1c1e22',
+              padding: 22,
+              borderRadius: 16,
+              border: '2px solid #fbef43',
+              width: '100%',
+              maxWidth: 340,
+              boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
+              textAlign: 'left',
+            }}
+          >
+            <h3
+              style={{
+                color: '#fbef43',
+                margin: '0 0 12px',
+                fontSize: 18,
+                textAlign: 'center',
+              }}
+            >
+              🎁 How to get your $G2U airdrop
+            </h3>
+            <ul
+              style={{
+                color: '#ccc',
+                fontSize: 13,
+                lineHeight: 1.5,
+                margin: '0 0 16px',
+                paddingLeft: 18,
+              }}
+            >
+              <li style={{ marginBottom: 8 }}>
+                <strong style={{ color: '#fff' }}>Earn</strong> — play weekly
+                (top 100 / badges), grind season shards, clear Level 5 for the L5
+                board.
+              </li>
+              <li style={{ marginBottom: 8 }}>
+                <strong style={{ color: '#fff' }}>Claim</strong> — open{' '}
+                <strong style={{ color: '#fbef43' }}>Wallet → Claim $G2U</strong>{' '}
+                when your allocation is ready.
+              </li>
+              <li style={{ marginBottom: 8 }}>
+                Keep a little <strong style={{ color: '#fff' }}>SOL</strong> in
+                your game wallet — you pay the Solana network fee; $G2U comes from
+                the vault.
+              </li>
+              <li>
+                Full rules: Menu → Game Guide → Airdrop &amp; Claim $G2U.
+              </li>
+            </ul>
+            <button
+              type="button"
+              onClick={() => {
+                setShowAirdropTip(false);
+                setIsModalOpen(true);
+              }}
+              style={{
+                width: '100%',
+                background: 'linear-gradient(90deg,#fbef43,#fbbf24)',
+                color: '#000',
+                border: 'none',
+                padding: '12px',
+                borderRadius: 10,
+                fontWeight: 'bold',
+                cursor: 'pointer',
+                marginBottom: 8,
+              }}
+            >
+              Open Wallet / Claim $G2U
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowAirdropTip(false)}
+              style={{
+                width: '100%',
+                background: '#333',
+                color: '#fff',
+                border: '1px solid #555',
+                padding: '12px',
+                borderRadius: 10,
+                fontWeight: 'bold',
+                cursor: 'pointer',
+                marginBottom: 10,
+              }}
+            >
+              Got it
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                try {
+                  const key = `gift2u_airdrop_tip_v1_${playerId}`;
+                  localStorage.setItem(
+                    key,
+                    JSON.stringify({
+                      dismissed: true,
+                      lastShown: new Date().toISOString().slice(0, 10),
+                    }),
+                  );
+                } catch {
+                  /* ignore */
+                }
+                setShowAirdropTip(false);
+              }}
+              style={{
+                width: '100%',
+                background: 'transparent',
+                color: '#888',
+                border: '1px solid #444',
+                padding: '10px',
+                borderRadius: 8,
+                fontSize: 12,
+                cursor: 'pointer',
+              }}
+            >
+              Don&apos;t show this again
+            </button>
+          </div>
+        </div>
+      )}
       {/* Public launch: no BetaGate / invite codes */}
         <div style={{ ...styles.container, flexDirection: 'column', height: '100%', width: '100%', overflow: 'hidden' }}>
           

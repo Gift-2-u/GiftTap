@@ -2,8 +2,16 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from './supabaseClient';
 import { DB_PLAYER_ID } from './playerIdentity';
 import { Connection, PublicKey, Keypair, Transaction, SystemProgram, ComputeBudgetProgram, sendAndConfirmTransaction } from '@solana/web3.js';
+import {
+  getAssociatedTokenAddressSync,
+  createAssociatedTokenAccountIdempotentInstruction,
+  createTransferCheckedInstruction,
+  TOKEN_PROGRAM_ID,
+  ASSOCIATED_TOKEN_PROGRAM_ID,
+} from '@solana/spl-token';
 import bs58 from 'bs58';
 import { keypairFromMnemonic } from './solanaWallet';
+import { MINT_ADDRESS } from './config';
 import {
   mintLocksmithWave1,
   LOCKSMITH_WAVE1,
@@ -1685,8 +1693,13 @@ Daily claim active · Pack → NFT to see it.`,
     setTxStatus({ show: true, loading: true, message: `Initiating purchase for ${item.name}...`, success: false });
 
     try {
-      // Post-launch: pay with liquid $G2U (gft_token_balance)
-      if (G2U_PREMIUM || String(item.currency || '').toUpperCase() === 'G2U') {
+      // Post-launch Extra Battery Refill: on-chain $G2U A→B (player → master), then grant.
+      // Other Premium $G2U items still use DB gft_token_balance until migrated the same way.
+      const payG2uOnChain = item.id === 'refill_extra';
+      if (
+        (G2U_PREMIUM || String(item.currency || '').toUpperCase() === 'G2U') &&
+        !payG2uOnChain
+      ) {
         if (!hasSecureSession()) {
           throw new Error('Log in again to buy with $G2U (secure session required).');
         }
@@ -1739,6 +1752,99 @@ Daily claim active · Pack → NFT to see it.`,
       // 3. Set Destination Wallets & Costs
       const masterWallet = new PublicKey("D4GufPTvp6tnzkaYGfombFLs48UjDANsxjMFJnSYz4Gh"); 
       const treasuryWallet = new PublicKey("8G7uEcPS6dwA5wW9bGoqi98EzBunF8trjbbFJkgkvBPm"); 
+
+      // —— Extra Battery Refill: SPL $G2U player → master (A→B), then grant ——
+      if (payG2uOnChain) {
+        if (!hasSecureSession()) {
+          throw new Error('Log in again to buy Extra Battery Refill (secure session required).');
+        }
+        if (
+          playerWallet &&
+          playerKeypair.publicKey.toBase58() !== String(playerWallet).trim()
+        ) {
+          throw new Error('Unlocked wallet does not match your game wallet');
+        }
+        const priceG2u = Math.max(1, Math.round(Number(item.price) || 0));
+        const G2U_DECIMALS = 9;
+        const amountRaw = BigInt(priceG2u) * 10n ** BigInt(G2U_DECIMALS);
+        const fromAta = getAssociatedTokenAddressSync(
+          MINT_ADDRESS,
+          playerKeypair.publicKey,
+        );
+        const toAta = getAssociatedTokenAddressSync(MINT_ADDRESS, masterWallet);
+
+        const solBal = await connection.getBalance(playerKeypair.publicKey);
+        if (solBal < 5_000_000) {
+          throw new Error(
+            'Need a little SOL in your game wallet for the network fee (~0.005 SOL).',
+          );
+        }
+
+        setTxStatus({
+          show: true,
+          loading: true,
+          message: `🔗 Sending ${priceG2u.toLocaleString()} $G2U to master wallet…`,
+          success: false,
+        });
+
+        const g2uTx = new Transaction().add(
+          ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 100_000 }),
+          createAssociatedTokenAccountIdempotentInstruction(
+            playerKeypair.publicKey,
+            toAta,
+            masterWallet,
+            MINT_ADDRESS,
+            TOKEN_PROGRAM_ID,
+            ASSOCIATED_TOKEN_PROGRAM_ID,
+          ),
+          createTransferCheckedInstruction(
+            fromAta,
+            MINT_ADDRESS,
+            toAta,
+            playerKeypair.publicKey,
+            amountRaw,
+            G2U_DECIMALS,
+          ),
+        );
+        const latestG2u = await connection.getLatestBlockhash('confirmed');
+        g2uTx.recentBlockhash = latestG2u.blockhash;
+        g2uTx.feePayer = playerKeypair.publicKey;
+
+        const g2uSig = await sendAndConfirmTransaction(connection, g2uTx, [
+          playerKeypair,
+        ]);
+
+        const data = await securePremiumGrant(item.id, g2uSig, {
+          currency: 'g2u',
+        });
+        const newInventory = data.inventory || {};
+        setLocalInventory((prev) => addToBackpackInventory(prev, newInventory));
+        if (setStats) {
+          setStats((prev) => ({
+            ...prev,
+            inventory: addToBackpackInventory(
+              prev?.inventory || {},
+              newInventory,
+            ),
+            has_made_purchase: true,
+          }));
+        }
+        if (typeof onChainBalanceChange === 'function') {
+          try {
+            await onChainBalanceChange();
+          } catch {
+            /* ignore */
+          }
+        }
+        setTxStatus({
+          show: true,
+          loading: false,
+          message: `✅ Sent ${priceG2u.toLocaleString()} $G2U → master. ${item.name} is in your Backpack!`,
+          success: true,
+        });
+        setTimeout(() => setTxStatus((prev) => ({ ...prev, show: false })), 3000);
+        return;
+      }
 
       const itemPriceLamports = Math.floor(item.price * 1e9);
       const projectFeeLamports = Math.floor(0.0005 * 1e9); 

@@ -352,7 +352,8 @@ export async function securePremiumGrant(itemId, txSignature, opts = {}) {
     item_id: itemId,
     currency,
   };
-  if (currency === 'sol') {
+  // SOL and on-chain $G2U both pass the payment signature for server verify
+  if (txSignature) {
     body.tx_signature = txSignature;
   }
   return callSecureFunction('premium-grant', body);

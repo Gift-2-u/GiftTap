@@ -117,6 +117,118 @@ serve(async (req) => {
       const priceG2u = Math.round(Number(catalog.priceG2u) || 0);
       if (priceG2u <= 0) throw new Error("Invalid G2U price");
 
+      // Extra Battery Refill: must pay on-chain $G2U to master (tx_signature), not DB-only debit
+      const onChainG2u = itemId === "refill_extra";
+      if (onChainG2u) {
+        if (!txSignature || txSignature.length < 32) {
+          throw new Error(
+            "tx_signature required — send $G2U on-chain to master wallet first",
+          );
+        }
+
+        const { data: prior } = await sb
+          .from("economy_events")
+          .select("id")
+          .eq("player_id", playerId)
+          .eq("kind", "premium_grant")
+          .eq("ref", txSignature)
+          .maybeSingle();
+        if (prior) {
+          const { data: p } = await sb
+            .from("players")
+            .select("inventory")
+            .eq("telegram_id", playerId)
+            .maybeSingle();
+          return jsonResponse({
+            success: true,
+            already: true,
+            inventory: p?.inventory || {},
+          });
+        }
+
+        const rpc =
+          Deno.env.get("SOLANA_RPC_URL") ||
+          Deno.env.get("VITE_SOLANA_RPC_URL") ||
+          "";
+        if (rpc) {
+          try {
+            const res = await fetch(rpc, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                jsonrpc: "2.0",
+                id: 1,
+                method: "getTransaction",
+                params: [
+                  txSignature,
+                  { encoding: "json", maxSupportedTransactionVersion: 0 },
+                ],
+              }),
+            });
+            const j = await res.json();
+            const tx = j?.result;
+            if (!tx) {
+              console.warn("premium-grant g2u: tx not found yet", txSignature);
+            } else if (tx.meta?.err) {
+              throw new Error("On-chain $G2U payment failed");
+            }
+          } catch (e) {
+            if (e instanceof Error && /failed/i.test(e.message)) throw e;
+            console.warn("premium-grant g2u verify skip", e);
+          }
+        }
+
+        const { data: row, error: selErr } = await sb
+          .from("players")
+          .select("inventory, has_made_purchase, daily_usage")
+          .eq("telegram_id", playerId)
+          .maybeSingle();
+        if (selErr) throw selErr;
+        if (!row) throw new Error("Player not found");
+
+        const inv = invObj(row.inventory);
+        inv[itemId] = (Number(inv[itemId]) || 0) + 1;
+        let daily_usage =
+          row.daily_usage && typeof row.daily_usage === "object"
+            ? { ...(row.daily_usage as Record<string, string>) }
+            : {};
+        bumpWeeklyBoost(inv);
+
+        const { error: upErr } = await sb
+          .from("players")
+          .update({
+            inventory: inv,
+            daily_usage,
+            has_made_purchase: true,
+            last_updated: new Date().toISOString(),
+          })
+          .eq("telegram_id", playerId);
+        if (upErr) throw upErr;
+
+        await logEconomy(sb, {
+          player_id: playerId,
+          kind: "premium_grant",
+          delta: -priceG2u,
+          ref: txSignature,
+          meta: {
+            item_id: itemId,
+            currency: "g2u_onchain",
+            priceG2u,
+            master: MASTER,
+          },
+        });
+
+        return jsonResponse({
+          success: true,
+          already: false,
+          item_id: itemId,
+          currency: "g2u",
+          price_g2u: priceG2u,
+          inventory: inv,
+        });
+      }
+
+      // Legacy DB debit for other Premium $G2U items (bot, grinder, …)
       const { data: row, error: selErr } = await sb
         .from("players")
         .select("inventory, has_made_purchase, gft_token_balance, daily_usage")
@@ -135,7 +247,6 @@ serve(async (req) => {
       const inv = invObj(row.inventory);
       inv[itemId] = (Number(inv[itemId]) || 0) + 1;
 
-      // Extra Battery Refill is its own stack (refill_extra) — no need to clear free day lock
       let daily_usage =
         row.daily_usage && typeof row.daily_usage === "object"
           ? { ...(row.daily_usage as Record<string, string>) }
@@ -163,7 +274,9 @@ serve(async (req) => {
         meta: {
           item_id: itemId,
           currency: "g2u",
-          priceG2u}});
+          priceG2u,
+        },
+      });
 
       return jsonResponse({
         success: true,
@@ -172,7 +285,8 @@ serve(async (req) => {
         currency: "g2u",
         price_g2u: priceG2u,
         gft_token_balance: nextBal,
-        inventory: inv});
+        inventory: inv,
+      });
     }
 
     // —— SOL path (default / pre-launch) ——
