@@ -107,18 +107,21 @@ serve(async (req) => {
       }
     }
 
-    // Qualified = cleared Level 5 wall (max_unlocked_level >= 9)
+    // Qualified = cleared Level 5 wall (max_unlocked_level >= 9); hide banned
     const { data: rows, error } = await sb
       .from("players")
       .select(
-        "telegram_id, username, lifetime_taps, max_unlocked_level, current_streak, has_made_purchase, completed_tasks, inventory",
+        "telegram_id, username, lifetime_taps, max_unlocked_level, current_streak, has_made_purchase, completed_tasks, inventory, is_banned",
       )
       .gte("max_unlocked_level", L5_MAX_UNLOCKED)
+      .or("is_banned.is.null,is_banned.eq.false")
       .order("lifetime_taps", { ascending: false })
       .limit(Math.min(limit * 3, 500));
     if (error) throw error;
 
-    const list = Array.isArray(rows) ? rows : [];
+    const list = (Array.isArray(rows) ? rows : []).filter(
+      (r) => (r as { is_banned?: boolean }).is_banned !== true,
+    );
     const ids = list
       .map((r) => String(r.telegram_id || "").trim())
       .filter(Boolean);
