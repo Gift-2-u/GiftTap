@@ -97,6 +97,30 @@ export function formatFiat(amount, currency = 'USD') {
 }
 
 /**
+ * Fiat value of a swap token amount (SOL / USDC / G2U).
+ * @returns {number|null}
+ */
+export function tokenFiatValue(token, amount, currency = 'USD', rates) {
+  const amt = Number(amount);
+  if (!Number.isFinite(amt) || amt <= 0) return null;
+  const t = String(token || '').toUpperCase();
+  let price = null;
+  if (t === 'SOL') price = rates?.sol?.[currency] ?? null;
+  else if (t === 'USDC')
+    price = rates?.usdc?.[currency] ?? (currency === 'USD' ? 1 : null);
+  else if (t === 'G2U' || t === 'GFT') price = rates?.g2u?.[currency] ?? null;
+  if (price == null || !Number.isFinite(price) || price <= 0) return null;
+  return amt * price;
+}
+
+/** Ready-to-display swap line, e.g. "≈ $12.34" or "" if unknown. */
+export function formatTokenFiatLine(token, amount, currency = 'USD', rates) {
+  const v = tokenFiatValue(token, amount, currency, rates);
+  if (v == null) return '';
+  return `≈ ${formatFiat(v, currency)}`;
+}
+
+/**
  * @param {object} bal - { sol, G2U, G2Ushards, usdc } amounts
  * @param {string} currency - e.g. USD
  * @param {{ sol?: Record<string,number>, usdc?: Record<string,number>, g2u?: Record<string,number> }} rates

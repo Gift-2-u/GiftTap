@@ -138,7 +138,7 @@ import HelpTip from './HelpTip';
 import { showRewardedAdWaterfall, AD_MIN_WATCH_SECONDS, isSeekerShell } from './adService';
 import WalletHub from './WalletHub';
 import TokenBalanceList from './TokenBalanceList';
-import { fetchFiatRates, FIAT_CURRENCIES } from './fiatPrices';
+import { fetchFiatRates, FIAT_CURRENCIES, formatTokenFiatLine } from './fiatPrices';
 import bs58 from "bs58";
 import CryptoJS from 'crypto-js';
 import { keypairFromMnemonic } from './solanaWallet';
@@ -8580,6 +8580,28 @@ const GiftTapGame = () => {
                       <option value="G2U">G2U</option>
                     </select>
                   </div>
+                  {formatTokenFiatLine(
+                    swapFromToken,
+                    swapFromAmount,
+                    displayCurrency,
+                    fiatRates,
+                  ) ? (
+                    <div
+                      style={{
+                        color: '#888',
+                        fontSize: 12,
+                        marginTop: 6,
+                        fontWeight: 600,
+                      }}
+                    >
+                      {formatTokenFiatLine(
+                        swapFromToken,
+                        swapFromAmount,
+                        displayCurrency,
+                        fiatRates,
+                      )}
+                    </div>
+                  ) : null}
                 </div>
 
                 {/* Swap Arrow Icon */}
@@ -8624,6 +8646,28 @@ const GiftTapGame = () => {
                       <option value="G2U">G2U</option>
                     </select>
                   </div>
+                  {formatTokenFiatLine(
+                    swapToToken,
+                    swapToAmount,
+                    displayCurrency,
+                    fiatRates,
+                  ) ? (
+                    <div
+                      style={{
+                        color: '#888',
+                        fontSize: 12,
+                        marginTop: 6,
+                        fontWeight: 600,
+                      }}
+                    >
+                      {formatTokenFiatLine(
+                        swapToToken,
+                        swapToAmount,
+                        displayCurrency,
+                        fiatRates,
+                      )}
+                    </div>
+                  ) : null}
                 </div>
 
                 <p style={{ fontSize: '12px', color: '#888', marginTop: '20px', textAlign: 'center' }}>

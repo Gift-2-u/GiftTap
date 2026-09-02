@@ -18,6 +18,7 @@ import {
 // SwapBadgeCard kept in repo — UI hidden (Locksmith-only swap path in game)
 import { supabase } from './supabaseClient';
 import { DB_PLAYER_ID, getPlayerId } from './playerIdentity';
+import { fetchFiatRates, formatTokenFiatLine } from './fiatPrices';
 
 /**
  * Receive / Send / Swap / Shard sheets for the main-site game wallet.
@@ -115,10 +116,34 @@ export default function GameWalletActionModals({
   const [inventory, setInventory] = useState(inventoryProp || {});
   const [hasLocksmithNft, setHasLocksmithNft] = useState(false);
   const [shardBusy, setShardBusy] = useState(false);
+  const [fiatRates, setFiatRates] = useState({ sol: {}, usdc: {}, g2u: {} });
+  const [displayCurrency] = useState(() => {
+    try {
+      return localStorage.getItem('gift2u_display_currency') || 'USD';
+    } catch {
+      return 'USD';
+    }
+  });
 
   useEffect(() => {
     setInventory(inventoryProp || {});
   }, [inventoryProp]);
+
+  useEffect(() => {
+    if (action !== 'swap') return undefined;
+    let cancelled = false;
+    (async () => {
+      try {
+        const rates = await fetchFiatRates();
+        if (!cancelled) setFiatRates(rates);
+      } catch (e) {
+        console.warn('swap fiat rates', e?.message || e);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [action]);
 
   useEffect(() => {
     let cancelled = false;
@@ -786,6 +811,23 @@ export default function GameWalletActionModals({
                   <option value="G2U">G2U</option>
                 </select>
               </div>
+              {formatTokenFiatLine(fromToken, amount, displayCurrency, fiatRates) ? (
+                <div
+                  style={{
+                    color: '#888',
+                    fontSize: 12,
+                    marginTop: 6,
+                    fontWeight: 600,
+                  }}
+                >
+                  {formatTokenFiatLine(
+                    fromToken,
+                    amount,
+                    displayCurrency,
+                    fiatRates,
+                  )}
+                </div>
+              ) : null}
             </div>
 
             <div
@@ -893,6 +935,23 @@ export default function GameWalletActionModals({
                   <option value="G2U">G2U</option>
                 </select>
               </div>
+              {formatTokenFiatLine(toToken, outAmt, displayCurrency, fiatRates) ? (
+                <div
+                  style={{
+                    color: '#888',
+                    fontSize: 12,
+                    marginTop: 6,
+                    fontWeight: 600,
+                  }}
+                >
+                  {formatTokenFiatLine(
+                    toToken,
+                    outAmt,
+                    displayCurrency,
+                    fiatRates,
+                  )}
+                </div>
+              ) : null}
             </div>
 
             <p
