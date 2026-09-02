@@ -49,11 +49,12 @@ const PREMIUM: Record<
     name: "Expanded Energy",
     priceSol: 0.01,
     priceG2u: 0.01 * G2U_PER_SOL},
-  /** Extra Instant Refill ($G2U) — adds inventory charge; activate uses existing refill code */
-  refill: {
-    name: "Instant Refill",
+  /** Extra Battery Refill ($G2U) — separate stack from free Battery Refill; no day lock */
+  refill_extra: {
+    name: "Extra Battery Refill",
     priceSol: 0.0002,
-    priceG2u: 0.0002 * G2U_PER_SOL},
+    priceG2u: 0.0002 * G2U_PER_SOL,
+  },
   shard_badge: {
     name: "Star Badge",
     priceSol: 0.02,
@@ -134,20 +135,11 @@ serve(async (req) => {
       const inv = invObj(row.inventory);
       inv[itemId] = (Number(inv[itemId]) || 0) + 1;
 
-      // Paid Instant Refill: clear day lock so existing backpack-activate refill runs
+      // Extra Battery Refill is its own stack (refill_extra) — no need to clear free day lock
       let daily_usage =
         row.daily_usage && typeof row.daily_usage === "object"
           ? { ...(row.daily_usage as Record<string, string>) }
           : {};
-      if (itemId === "refill") {
-        const duInv =
-          inv.daily_usage && typeof inv.daily_usage === "object"
-            ? { ...(inv.daily_usage as Record<string, string>) }
-            : {};
-        delete duInv.refill;
-        inv.daily_usage = duInv;
-        delete daily_usage.refill;
-      }
       bumpWeeklyBoost(inv);
 
       const { error: upErr } = await sb

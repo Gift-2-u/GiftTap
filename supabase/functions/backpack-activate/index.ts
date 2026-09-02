@@ -20,6 +20,7 @@ const ACTIVATABLE = new Set([
   "battery",
   "heavy",
   "refill",
+  "refill_extra",
   "bot",
   "grinder",
   "whale",
@@ -98,16 +99,18 @@ serve(async (req) => {
     const today = utcToday();
     const TOKEN_LAUNCH_AT = Date.parse("2026-09-01T00:00:00Z");
     const afterLaunch = Date.now() >= TOKEN_LAUNCH_AT;
-    // After launch: Instant Refill is 1× free/shard path per UTC day (extras via $G2U Premium).
+    // Free Battery Refill: 1× / UTC day after launch. Extra Battery Refill: no day lock.
     const refillOncePerDay = itemId === "refill" && afterLaunch;
+    const isExtraRefill = itemId === "refill_extra";
     if (
       dailyUsage[itemId] === today &&
       itemId !== "crate" &&
+      !isExtraRefill &&
       (itemId !== "refill" || refillOncePerDay)
     ) {
       if (refillOncePerDay) {
         throw new Error(
-          "Free Instant Refill already used today (UTC). Extra refills: Shop → Premium ($G2U).",
+          "Battery Refill already used today (UTC). Use Extra Battery Refill from Premium, or wait until midnight UTC.",
         );
       }
       throw new Error(`Already used ${itemId} today (UTC). Wait until midnight.`);
@@ -121,7 +124,11 @@ serve(async (req) => {
       inv[itemId] = have - 1;
     }
 
-    if (itemId !== "crate" && (itemId !== "refill" || refillOncePerDay)) {
+    if (
+      itemId !== "crate" &&
+      !isExtraRefill &&
+      (itemId !== "refill" || refillOncePerDay)
+    ) {
       dailyUsage[itemId] = today;
     }
     inv.daily_usage = dailyUsage;
@@ -154,7 +161,7 @@ serve(async (req) => {
     } else if (itemId === "heavy") {
       // Heavy Hands retired from shop — block new activates (replace later).
       throw new Error("Heavy Hands is unavailable right now.");
-    } else if (itemId === "refill") {
+    } else if (itemId === "refill" || itemId === "refill_extra") {
       last_energy = ENERGY_CAP;
       updates.last_energy = ENERGY_CAP;
       updates.energy_at = new Date(now).toISOString();
@@ -233,8 +240,11 @@ serve(async (req) => {
     if (outInv.daily_usage && typeof outInv.daily_usage === "object") {
       outDaily = { ...outDaily, ...(outInv.daily_usage as Record<string, string>) };
     }
-    if (itemId !== "refill" && itemId !== "crate") {
+    if (itemId !== "refill" && itemId !== "refill_extra" && itemId !== "crate") {
       outDaily[itemId] = today;
+    }
+    if (itemId === "refill" && refillOncePerDay) {
+      outDaily.refill = today;
     }
     outInv.daily_usage = outDaily;
     // Never return a ghost charge for the item just activated
@@ -257,22 +267,22 @@ serve(async (req) => {
       meta: { dailyUsage: outDaily[itemId] || null },
     });
 
-    // Only Instant Refill changes the 500 energy pool
-    const outEnergy =
-      itemId === "refill"
-        ? ENERGY_CAP
-        : Number.isFinite(Number(verified?.last_energy))
-          ? Number(verified?.last_energy)
-          : last_energy;
+    // Battery Refill / Extra change the 500 energy pool
+    const isAnyRefill = itemId === "refill" || itemId === "refill_extra";
+    const outEnergy = isAnyRefill
+      ? ENERGY_CAP
+      : Number.isFinite(Number(verified?.last_energy))
+        ? Number(verified?.last_energy)
+        : last_energy;
 
     return jsonResponse({
       success: true,
       item_id: itemId,
       inventory: outInv,
       shard_balance: Number(verified?.shard_balance) || shard_balance,
-      last_energy: itemId === "refill" ? outEnergy : undefined,
+      last_energy: isAnyRefill ? outEnergy : undefined,
       energy_at:
-        itemId === "refill" && updates.energy_at != null
+        isAnyRefill && updates.energy_at != null
           ? String(updates.energy_at)
           : undefined,
       updates: { ...updates, inventory: outInv },

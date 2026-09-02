@@ -475,14 +475,14 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, bumpEner
     // Heavy Hands removed from shop (replace later). Leftover inventory charges stay inert.
     {
       id: 'refill',
-      name: 'Instant Refill',
-      desc: 'Fills 500 to your Battery · 1×/day after launch',
+      name: 'Battery Refill',
+      desc: 'Fills 500 to your Battery · 1× free / UTC day after launch',
       duration: 'Instant',
       cost: 300,
-      iconFrom: '#facc15',
-      iconTo: '#854d0e',
-      iconRing: 'rgba(250,204,21,0.45)',
-      iconGlow: 'rgba(250,204,21,0.25)',
+      iconFrom: '#4ade80',
+      iconTo: '#14532d',
+      iconRing: 'rgba(74,222,128,0.4)',
+      iconGlow: 'rgba(74,222,128,0.2)',
     },
     {
       id: 'badge_bronze',
@@ -607,18 +607,18 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, bumpEner
       iconGlow: 'rgba(34,197,94,0.3)',
     },
     {
-      id: 'refill',
-      name: 'Instant Refill',
+      id: 'refill_extra',
+      name: 'Extra Battery Refill',
       type: 'Power',
       rarity: 'Rare',
-      boost: 'Fills 500 to your Battery · extra after free daily',
+      boost: 'Fills 500 to your Battery · use anytime (no free-day lock)',
       duration: 'Instant',
       price: 0.0002,
       currency: 'SOL',
-      iconFrom: '#facc15',
-      iconTo: '#854d0e',
-      iconRing: 'rgba(250,204,21,0.45)',
-      iconGlow: 'rgba(250,204,21,0.25)',
+      iconFrom: '#4ade80',
+      iconTo: '#14532d',
+      iconRing: 'rgba(74,222,128,0.5)',
+      iconGlow: 'rgba(34,197,94,0.3)',
     },
   ];
 
@@ -1856,13 +1856,16 @@ Daily claim active · Pack → NFT to see it.`,
 
     // NEW: Check if this item has already been used today UTC
     const todayStr = getTodayUTCString();
-    // After launch: Instant Refill also 1× per UTC day (same activate path as before)
+    // Free Battery Refill: 1× / UTC day after launch. Extra Battery Refill: no day lock.
     const afterLaunch = Date.now() >= Date.parse('2026-09-01T00:00:00Z');
+    const isFreeRefill = item.id === 'refill';
+    const isExtraRefill = item.id === 'refill_extra';
     const blockRefill =
-      item.id === 'refill' && afterLaunch && dailyUsage.refill === todayStr;
+      isFreeRefill && afterLaunch && dailyUsage.refill === todayStr;
     if (
       (dailyUsage[item.id] === todayStr &&
-        item.id !== 'refill' &&
+        !isFreeRefill &&
+        !isExtraRefill &&
         item.id !== 'crate') ||
       blockRefill
     ) {
@@ -1870,7 +1873,7 @@ Daily claim active · Pack → NFT to see it.`,
         show: true,
         loading: false,
         message: blockRefill
-          ? '❌ Free Instant Refill already used today (UTC). Extra refills: Premium ($G2U) after launch.'
+          ? '❌ Battery Refill already used today (UTC). Use Extra Battery Refill from Premium, or wait until midnight UTC.'
           : `❌ You have already used a ${item.name} today. Wait until UTC midnight.`,
         success: false,
       });
@@ -1889,9 +1892,12 @@ Daily claim active · Pack → NFT to see it.`,
 
     if (hasSecureSession()) {
       try {
-        // Drain in-flight taps before Instant Refill so an old commit cannot
+        // Drain in-flight taps before Battery Refill so an old commit cannot
         // fight the new 500 bar (stuck-at-500 / stuck-at-390 desyncs).
-        if (item.id === 'refill' && typeof flushPendingTaps === 'function') {
+        if (
+          (item.id === 'refill' || item.id === 'refill_extra') &&
+          typeof flushPendingTaps === 'function'
+        ) {
           try {
             await flushPendingTaps();
           } catch {
@@ -1934,19 +1940,24 @@ Daily claim active · Pack → NFT to see it.`,
         }
 
         const todayUse = getTodayUTCString();
+        // Free Battery Refill stamps day lock; Extra does not
         const nextDailyUsage = {
           ...(data.daily_usage || dailyUsage || {}),
-          ...(item.id !== 'refill' && item.id !== 'crate'
-            ? { [item.id]: todayUse }
-            : {}),
+          ...(item.id === 'refill' && afterLaunch
+            ? { refill: todayUse }
+            : item.id !== 'refill' &&
+                item.id !== 'refill_extra' &&
+                item.id !== 'crate'
+              ? { [item.id]: todayUse }
+              : {}),
         };
         authInv.daily_usage = nextDailyUsage;
 
         setLocalInventory({ ...authInv });
         setDailyUsage(nextDailyUsage);
         if (data.shard_balance != null) setBalance(Number(data.shard_balance));
-        // Instant Refill only — Frenzy must never touch the energy bar
-        if (item.id === 'refill' && setEnergy) {
+        // Battery Refill / Extra — Frenzy must never touch the energy bar
+        if ((item.id === 'refill' || item.id === 'refill_extra') && setEnergy) {
           const en =
             data.last_energy != null ? Number(data.last_energy) : 500;
           if (Number.isFinite(en)) {
@@ -2047,7 +2058,7 @@ Daily claim active · Pack → NFT to see it.`,
           show: true,
           loading: false,
           message:
-            item.id === 'refill'
+            item.id === 'refill' || item.id === 'refill_extra'
               ? '⚡ Battery refilled to 500/500!'
               : `⚡ ${item.name} is now ACTIVE!`,
           success: true,
@@ -2120,7 +2131,7 @@ Daily claim active · Pack → NFT to see it.`,
     // Battery and Heavy Hands expire at end of current UTC day
     if (item.id === 'battery') dbUpdates.energy_boost_expires = midnightUtcTonight.toISOString();
     if (item.id === 'heavy') dbUpdates.efficiency_expires = midnightUtcTonight.toISOString();
-    if (item.id === 'refill') {
+    if (item.id === 'refill' || item.id === 'refill_extra') {
       // Never client-write last_energy — backpack-activate Edge owns the battery.
       throw new Error('Log in again to refill battery (secure session required).');
     }
@@ -3069,7 +3080,13 @@ Daily claim active · Pack → NFT to see it.`,
                   </div>
                 ) : (
                   backpackItems.map((item) => {
-                    const isUsedToday = dailyUsage[item.id] === currentTodayStr;
+                    // Free Battery Refill: 1×/day. Extra Battery Refill: never day-locked.
+                    const isUsedToday =
+                      item.id === 'refill_extra'
+                        ? false
+                        : item.id === 'refill'
+                          ? dailyUsage.refill === currentTodayStr
+                          : dailyUsage[item.id] === currentTodayStr;
                     return (
                       <div
                         key={item.id}

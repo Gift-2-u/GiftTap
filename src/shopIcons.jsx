@@ -261,13 +261,16 @@ const BY_ID = {
   frenzy: IconFrenzy,
   battery: IconBattery,
   heavy: IconHeavy,
-  refill: IconRefill,
+  // Free + Premium refill both use the battery glyph
+  refill: IconBattery,
+  refill_extra: IconBattery,
   bot: IconBot,
   grinder: IconEnergy2K,
   whale: IconEnergy5K,
   crate: IconGem,
   x2_boost: IconX2,
   x3_boost: IconX3,
+  expanded_energy: IconBattery,
 };
 
 export function ShopGlyph({ itemId, size = 28 }) {
