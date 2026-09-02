@@ -122,7 +122,9 @@ serve(async (req) => {
     const password_hash = await hashPassword(pass);
 
     // Invite link: /play?ref=<referrer telegram_id>. Set once at signup only.
+    // Cap: each referrer may credit at most MAX_REFERRALS invitees (anti multi-account farm).
     const JOINER_BONUS = 500;
+    const MAX_REFERRALS = 5;
     const referredRaw = String(body.referred_by || body.ref || "").trim();
     let referred_by: string | null = null;
     let shard_balance = 0;
@@ -133,8 +135,20 @@ serve(async (req) => {
         .eq("telegram_id", referredRaw)
         .maybeSingle();
       if (referrer?.telegram_id) {
-        referred_by = String(referrer.telegram_id);
-        shard_balance = JOINER_BONUS;
+        const refId = String(referrer.telegram_id);
+        const { count, error: countErr } = await supabase
+          .from("players")
+          .select("telegram_id", { count: "exact", head: true })
+          .eq("referred_by", refId);
+        if (countErr) {
+          console.warn("referral cap count", countErr.message || countErr);
+        }
+        const used = Number(count) || 0;
+        if (used < MAX_REFERRALS) {
+          referred_by = refId;
+          shard_balance = JOINER_BONUS;
+        }
+        // else: signup OK, but no referred_by / joiner bonus (cap full)
       }
     }
 

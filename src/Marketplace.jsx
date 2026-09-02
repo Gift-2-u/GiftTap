@@ -2283,13 +2283,19 @@ Daily claim active · Pack → NFT to see it.`,
   };
 
   // --- BACKPACK: boosts only here; badges live under Badges tab (not Boost) ---
+  // Deduplicate by id — Instant Refill (etc.) appears in both Free + Premium catalogs
+  // with the same inventory key; show one tile with Owned: N, not N duplicate icons.
   const BADGE_IDS = new Set(BADGE_ITEM_IDS);
-  const backpackBoostItems = allItems.filter(
-    (item) =>
-      !item.isBadgeShop &&
-      !BADGE_IDS.has(item.id) &&
-      Number(localInventory[item.id]) > 0,
-  );
+  const backpackBoostItems = [];
+  const seenBoostIds = new Set();
+  for (const item of allItems) {
+    if (item.isBadgeShop || BADGE_IDS.has(item.id)) continue;
+    const qty = Number(localInventory[item.id]) || 0;
+    if (qty <= 0) continue;
+    if (seenBoostIds.has(item.id)) continue;
+    seenBoostIds.add(item.id);
+    backpackBoostItems.push(item);
+  }
   const badgeCounts = getBadgeCounts(localInventory);
   const badgeTotal = Object.values(badgeCounts).reduce((a, b) => a + b, 0);
   const backpackItemCount =

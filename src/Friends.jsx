@@ -12,8 +12,11 @@ const Friends = ({ player, tgUser }) => {
   const TAPS1000_REWARD = REFERRAL.REFERRER_TAPS_1000; // 500
   const LVL1_REWARD = REFERRAL.REFERRER_LVL1; // 1000
   const WALL5_REWARD = REFERRAL.REFERRER_WALL5; // 3000
+  const MAX_REFERRALS = REFERRAL.MAX_REFERRALS || 5;
 
   const inviteLink = getInviteLink(user?.id);
+  const usedSlots = friendsList.length;
+  const slotsFull = usedSlots >= MAX_REFERRALS;
 
   const fetchFriends = useCallback(async () => {
     if (!user?.id) return;
@@ -101,9 +104,28 @@ const Friends = ({ player, tgUser }) => {
           <br />
           <span style={{ color: '#4ade80', fontWeight: 'bold' }}>+{WALL5_REWARD.toLocaleString()}</span> when they pass the <strong>Level 5 wall</strong>
         </p>
+        <p
+          style={{
+            color: slotsFull ? '#fbbf24' : '#aaa',
+            fontSize: '13px',
+            margin: '12px 0 0',
+            fontWeight: 'bold',
+          }}
+        >
+          Referral slots: {Math.min(usedSlots, MAX_REFERRALS)} / {MAX_REFERRALS}
+          {slotsFull
+            ? ' — full. New joins via your link won\u2019t credit you.'
+            : ''}
+        </p>
       </div>
 
       <div style={{ background: '#1c1e22', borderRadius: '15px', padding: '15px', border: '1px solid #333', marginBottom: '25px' }}>
+        {slotsFull ? (
+          <p style={{ color: '#888', fontSize: '12px', margin: '0 0 12px', lineHeight: 1.45 }}>
+            You&apos;ve used all {MAX_REFERRALS} referral slots. You can still share the game — only the
+            first {MAX_REFERRALS} friends count for bonuses.
+          </p>
+        ) : null}
         <button
           onClick={handleInvite}
           style={{ width: '100%', background: '#24A1DE', color: '#fff', border: 'none', padding: '15px', borderRadius: '12px', fontWeight: 'bold', fontSize: '16px', cursor: 'pointer', marginBottom: '10px' }}
@@ -126,7 +148,11 @@ const Friends = ({ player, tgUser }) => {
 
       <div style={{ textAlign: 'left' }}>
         <h3 style={{ color: '#fff', fontSize: '16px', marginBottom: '15px', borderBottom: '1px solid #333', paddingBottom: '10px' }}>
-          Your Referrals ({friendsList.length})
+          Your Referrals ({friendsList.length}
+          {friendsList.length > MAX_REFERRALS
+            ? ` · ${MAX_REFERRALS} count for rewards`
+            : ''}
+          )
         </h3>
 
         {isLoading ? (

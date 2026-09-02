@@ -286,6 +286,17 @@ serve(async (req) => {
           ...(patch.inventory ? { inventory: patch.inventory } : {}),
         };
         patch.max_daily_limit = effectiveDailyLimit(rowForCap, nowDate);
+      } else {
+        // Same-day reconcile: lifetime task claims write task_limit_boost but used to
+        // skip max_daily_limit — pick up +100/+250 (etc.) on next login/player-state.
+        const rowForCap = {
+          ...(player as Record<string, unknown>),
+          ...(patch.inventory ? { inventory: patch.inventory } : {}),
+        };
+        const eff = effectiveDailyLimit(rowForCap, nowDate);
+        if (eff !== Math.max(1000, Number(player.max_daily_limit) || 1000)) {
+          patch.max_daily_limit = eff;
+        }
       }
       const { data: touched, error: touchErr } = await supabase
         .from("players")

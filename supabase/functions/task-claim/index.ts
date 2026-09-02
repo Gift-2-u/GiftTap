@@ -8,7 +8,9 @@ import {
   corsHeaders,
   jsonResponse,
   logEconomy,
-  invObj} from "../_shared/economy.ts";
+  invObj,
+  effectiveDailyLimit,
+} from "../_shared/economy.ts";
 
 type TaskDef =
   | { id: string; type: "shards"; reward: number }
@@ -49,7 +51,7 @@ serve(async (req) => {
     const { data: row, error: selErr } = await sb
       .from("players")
       .select(
-        "shard_balance, lifetime_taps, current_streak, completed_tasks, inventory",
+        "shard_balance, lifetime_taps, current_streak, completed_tasks, inventory, max_daily_limit, energy_boost_expires, limit_boost_amount, limit_boost_expires, ad_energy_boost, ad_energy_expires",
       )
       .eq("telegram_id", playerId)
       .maybeSingle();
@@ -95,6 +97,8 @@ serve(async (req) => {
       last_updated: new Date().toISOString(),
     };
 
+    let max_daily_limit: number | null = null;
+
     if (task.type === "shards") {
       shard_balance = Math.round((shard_balance + task.reward) * 1000) / 1000;
       updates.shard_balance = shard_balance;
@@ -107,8 +111,15 @@ serve(async (req) => {
       }
       inv.task_limit_boost = {
         amount,
-        expires: utcMidnightIso()};
+        expires: utcMidnightIso(),
+      };
       updates.inventory = inv;
+      // Same as weekly quest claim: rewrite HUD cap so +100 / +250 show immediately
+      max_daily_limit = effectiveDailyLimit(
+        { ...(row as Record<string, unknown>), inventory: inv },
+        new Date(),
+      );
+      updates.max_daily_limit = max_daily_limit;
     }
 
     const { error: upErr } = await sb
@@ -123,7 +134,12 @@ serve(async (req) => {
       delta: task.type === "shards" ? task.reward : 0,
       balance_after: shard_balance,
       ref: taskId,
-      meta: { type: task.type, reward: task.reward }});
+      meta: {
+        type: task.type,
+        reward: task.reward,
+        max_daily_limit,
+      },
+    });
 
     return jsonResponse({
       success: true,
@@ -131,7 +147,9 @@ serve(async (req) => {
       task_id: taskId,
       completed_tasks: newDone,
       inventory: inv,
-      shard_balance});
+      shard_balance,
+      ...(max_daily_limit != null ? { max_daily_limit } : {}),
+    });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     const status = /authenticated|expired|signature|Invalid session|Not authenticated/i.test(

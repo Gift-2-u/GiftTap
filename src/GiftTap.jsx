@@ -1266,10 +1266,25 @@ const GiftTapGame = () => {
           ...(inventoryRef.current || {}),
           ...forceInventory,
         };
-        setStats((prev) => ({
-          ...prev,
-          inventory: inventoryRef.current,
-        }));
+        const boostNow = getTaskLimitBoost(inventoryRef.current);
+        setStats((prev) => {
+          const next = {
+            ...prev,
+            inventory: inventoryRef.current,
+          };
+          // If server already set max_daily_limit, prefer that; else bake boost into HUD
+          if (prev?.max_daily_limit != null && boostNow > 0) {
+            const baseGuess = Math.max(
+              1000,
+              (Number(prev.max_daily_limit) || 1000) -
+                getTaskLimitBoost(prev.inventory || {}),
+            );
+            const capped = Math.max(1000, baseGuess + boostNow);
+            next.max_daily_limit = capped;
+            setMaxDailyLimit(capped);
+          }
+          return next;
+        });
         return 0;
       }
       const add = Math.max(0, Number(amount) || 0);

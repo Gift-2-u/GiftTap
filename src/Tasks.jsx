@@ -403,6 +403,13 @@ const Tasks = ({
             /* ignore */
           }
         }
+        // Server rewrote max_daily_limit (task_limit_boost) — push HUD immediately
+        if (
+          data.max_daily_limit != null &&
+          typeof onMaxDailyLimitChange === 'function'
+        ) {
+          onMaxDailyLimitChange(Number(data.max_daily_limit));
+        }
         setAppNotice({
           show: true,
           message: data.already

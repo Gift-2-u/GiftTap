@@ -49,6 +49,9 @@ export async function logEconomy(
   }
 }
 
+/** Max invitees that can credit one referrer (anti multi-account farm). */
+export const MAX_REFERRALS = 5;
+
 /** Referral milestone amounts (same as referral-credit Edge). */
 const REFERRAL_AMOUNTS: Record<
   string,
@@ -58,6 +61,40 @@ const REFERRAL_AMOUNTS: Record<
   lvl1: { amount: 1000, flag: "referral_lvl1_paid", needTaps: 10000 },
   wall5: { amount: 3000, flag: "referral_wall5_paid", needMaxUnlocked: 9 },
 };
+
+/**
+ * True if invitee is within the referrer's first MAX_REFERRALS slots
+ * (oldest first by created_at, else telegram_id).
+ */
+async function inviteeWithinReferralCap(
+  sb: SupabaseClient,
+  referrerId: string,
+  inviteeId: string,
+): Promise<boolean> {
+  let rows: { telegram_id: string }[] | null = null;
+  const withCreated = await sb
+    .from("players")
+    .select("telegram_id, created_at")
+    .eq("referred_by", referrerId)
+    .order("created_at", { ascending: true })
+    .limit(MAX_REFERRALS);
+  if (!withCreated.error && withCreated.data) {
+    rows = withCreated.data as { telegram_id: string }[];
+  } else {
+    const fallback = await sb
+      .from("players")
+      .select("telegram_id")
+      .eq("referred_by", referrerId)
+      .order("telegram_id", { ascending: true })
+      .limit(MAX_REFERRALS);
+    if (fallback.error) {
+      console.warn("referral cap list", fallback.error.message || fallback.error);
+      return true; // fail open on query error so real referrals are not bricked
+    }
+    rows = fallback.data as { telegram_id: string }[];
+  }
+  return (rows || []).some((r) => String(r.telegram_id) === String(inviteeId));
+}
 
 /**
  * Pay referrer once per invitee milestone (service_role).
@@ -100,6 +137,12 @@ export async function runReferralCredit(
     (Number(invitee.max_unlocked_level) || 0) < meta.needMaxUnlocked
   ) {
     return { success: true, skipped: "not_reached" };
+  }
+
+  const referrerPreview = String(invitee.referred_by);
+  const inCap = await inviteeWithinReferralCap(sb, referrerPreview, id);
+  if (!inCap) {
+    return { success: true, skipped: "referral_cap", max: MAX_REFERRALS };
   }
 
   const { data: claimed, error: claimErr } = await sb

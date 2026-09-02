@@ -17,6 +17,8 @@ export const REFERRAL = {
   REFERRER_LVL1: 1000,
   REFERRER_WALL5: 3000,
   TAPS_1000_THRESHOLD: 1000,
+  /** Max invitees that credit one referrer (anti multi-account farm). */
+  MAX_REFERRALS: 5,
 };
 
 /** Level 1 = 10,000 lifetime taps (same curve as calculateLevel for early levels). */
