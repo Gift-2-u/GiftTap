@@ -403,6 +403,31 @@ serve(async (req) => {
       secure_economy = true;
     }
 
+    // Targeted admin warnings (e.g. multi-account). Active until we deactivate in DB.
+    let notices: Array<{
+      id: number;
+      kind: string;
+      title: string | null;
+      message: string;
+    }> = [];
+    try {
+      const { data: noteRows } = await supabase
+        .from("player_notices")
+        .select("id, kind, title, message")
+        .eq("player_id", playerId)
+        .eq("active", true)
+        .order("id", { ascending: false })
+        .limit(5);
+      notices = (noteRows || []).map((n) => ({
+        id: Number((n as { id: number }).id),
+        kind: String((n as { kind?: string }).kind || "warning"),
+        title: (n as { title?: string | null }).title ?? null,
+        message: String((n as { message?: string }).message || ""),
+      }));
+    } catch (e) {
+      console.warn("player_notices", e);
+    }
+
     return new Response(
       JSON.stringify({
         success: true,
@@ -410,6 +435,7 @@ serve(async (req) => {
         has_password,
         has_vault,
         secure_economy: true,
+        notices,
         session: {
           player_id: playerId,
           username: claims.username,

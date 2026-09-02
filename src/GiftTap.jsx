@@ -2304,6 +2304,23 @@ const GiftTapGame = () => {
         try {
           await ensureSecureSession();
           const state = await fetchPlayerState();
+          // Targeted admin notices (e.g. multi-account warning) — every open until cleared in DB
+          try {
+            const notes = Array.isArray(state?.notices) ? state.notices : [];
+            const warn = notes.find((n) => n && String(n.message || '').trim());
+            if (warn) {
+              setAppNotice({
+                show: true,
+                message: String(warn.message),
+                loading: false,
+                success: false,
+                title: warn.title || 'Account warning',
+                confirm: null,
+              });
+            }
+          } catch {
+            /* ignore */
+          }
           if (state?.player) {
             // player-state returns the same players row — always prefer it for
             // inventory, max daily, and active boosts (login / last_updated).

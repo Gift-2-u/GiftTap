@@ -102,3 +102,61 @@ export async function assertAuthAllowed(
   await assertIpAllowed(req, client);
   await assertUsernameAllowed(username, client);
 }
+
+/** Default max accounts that may be created from one IP (override: MAX_ACCOUNTS_PER_IP). */
+export function maxAccountsPerIp(): number {
+  const n = Number(Deno.env.get("MAX_ACCOUNTS_PER_IP") || "3");
+  if (!Number.isFinite(n) || n < 1) return 3;
+  return Math.min(20, Math.floor(n));
+}
+
+/**
+ * Signup-only: reject if this IP already has >= MAX accounts.
+ * Counts:
+ *  1) players.signup_ip = ip
+ *  2) distinct player_id in player_sessions with ip_hint = ip (legacy / extra signal)
+ * Uses the larger of the two so farms can't dodge by missing signup_ip.
+ */
+export async function assertSignupIpCap(
+  req: Request,
+  sb?: SupabaseClient,
+): Promise<string> {
+  const ip = clientIpHint(req);
+  if (!ip) {
+    throw new Error(
+      "Could not verify your network. Disable VPN/proxy and try again.",
+    );
+  }
+  const client = sb || admin();
+  const max = maxAccountsPerIp();
+
+  const { count: signupCount, error: cErr } = await client
+    .from("players")
+    .select("telegram_id", { count: "exact", head: true })
+    .eq("signup_ip", ip);
+  if (cErr) throw cErr;
+
+  let sessionDistinct = 0;
+  try {
+    const { data: sess, error: sErr } = await client
+      .from("player_sessions")
+      .select("player_id")
+      .eq("ip_hint", ip)
+      .limit(500);
+    if (sErr) throw sErr;
+    sessionDistinct = new Set(
+      (sess || []).map((r) => String((r as { player_id?: string }).player_id || ""))
+        .filter(Boolean),
+    ).size;
+  } catch (e) {
+    console.warn("signup ip session count", e);
+  }
+
+  const used = Math.max(Number(signupCount) || 0, sessionDistinct);
+  if (used >= max) {
+    throw new Error(
+      "Too many accounts from this network. Please log in to an existing account.",
+    );
+  }
+  return ip;
+}

@@ -136,10 +136,13 @@ serve(async (req) => {
 
     // last_updated = this player logged in (NOT taps — those use last_tap_date)
     const loginAt = new Date().toISOString();
+    const loginIp = clientIpHint(req);
     try {
+      const loginPatch: Record<string, unknown> = { last_updated: loginAt };
+      if (loginIp) loginPatch.last_login_ip = loginIp;
       await supabase
         .from("players")
-        .update({ last_updated: loginAt })
+        .update(loginPatch)
         .eq("telegram_id", String(row.telegram_id));
     } catch (luErr) {
       console.warn("login last_updated", luErr);

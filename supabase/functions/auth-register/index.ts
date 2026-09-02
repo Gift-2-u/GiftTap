@@ -5,6 +5,7 @@ import { mintSessionJwt } from "../_shared/sessionJwt.ts";
 import { verifyTurnstileToken } from "../_shared/turnstile.ts";
 import {
   assertAuthAllowed,
+  assertSignupIpCap,
   clientIpHint,
 } from "../_shared/abuseGuard.ts";
 
@@ -100,6 +101,8 @@ serve(async (req) => {
 
     // Block banned IPs / usernames before creating any row
     await assertAuthAllowed(req, cleanName, supabase);
+    // Hard cap: max N accounts per IP (stops 14-account farms)
+    const signupIp = await assertSignupIpCap(req, supabase);
 
     const { data: existing } = await supabase
       .from("players")
@@ -157,6 +160,8 @@ serve(async (req) => {
       usdc_balance: 0,
       wallet_address,
       referred_by,
+      signup_ip: signupIp,
+      last_login_ip: signupIp,
     };
 
     const { error: insertError } = await supabase.from("players").insert(insertRow);
