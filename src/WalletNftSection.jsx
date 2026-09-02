@@ -1409,7 +1409,7 @@ export default function WalletNftSection({
                 </div>
                 <div style={{ color: '#666', fontSize: 10, marginBottom: 8, lineHeight: 1.35 }}>
                   Drains 1% / 1,000 taps · perk fully off at 0% ·{' '}
-                  {NFT_DURABILITY_G2U_PER_PERCENT.toLocaleString()} $G2U = 1%
+                  {NFT_DURABILITY_G2U_PER_PERCENT.toLocaleString()} $G2U = 1% (+0.0005 SOL)
                   {' '}(+ 0.0005 SOL fee)
                 </div>
                 <button
