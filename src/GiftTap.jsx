@@ -2119,22 +2119,20 @@ const GiftTapGame = () => {
 
   // Live chain → HUD; secure Edge mirrors into players.sol_balance (+ gft after launch).
   const chainDbSyncAtRef = useRef(0);
-  const pushChainBalancesToDb = useCallback(async () => {
+  const lastChainSolRef = useRef(null);
+  const pushChainBalancesToDb = useCallback(async (opts = {}) => {
     if (!hasSecureSession()) return;
+    const force = !!opts.force;
     const now = Date.now();
-    // Deposit poll is 6s — don't hammer Edge harder than ~8s
-    if (now - chainDbSyncAtRef.current < 8000) return;
+    // Normal poll: don't hammer Edge harder than ~5s. Force on deposit/spend.
+    if (!force && now - chainDbSyncAtRef.current < 5000) return;
     chainDbSyncAtRef.current = now;
     try {
       const data = await secureSyncChainBalances();
       if (!data?.synced) return;
-      if (Number.isFinite(Number(data.sol_balance))) {
-        setBalances((prev) => ({
-          ...prev,
-          sol: Number(data.sol_balance),
-        }));
-      }
-      // After launch, gft_token_balance = on-chain $G2U
+      // HUD SOL/G2U come from chain reads — do NOT overwrite balances.sol here
+      // (avoids stale DB response undoing a fresh deposit on screen).
+      // After launch, mirror on-chain $G2U into HUD + stats.
       if (
         data.g2u_chain_sync &&
         Number.isFinite(Number(data.gft_token_balance))
@@ -2144,7 +2142,9 @@ const GiftTapGame = () => {
         setStats((prev) => ({
           ...prev,
           gft_token_balance: g2u,
-          sol_balance: Number(data.sol_balance),
+          sol_balance: Number.isFinite(Number(data.sol_balance))
+            ? Number(data.sol_balance)
+            : prev?.sol_balance,
         }));
       } else if (Number.isFinite(Number(data.sol_balance))) {
         setStats((prev) => ({
@@ -2193,6 +2193,7 @@ const GiftTapGame = () => {
             }
           }
 
+          lastChainSolRef.current = liveSol;
           setBalances((prev) => ({
             ...prev,
             sol: liveSol,
@@ -2200,11 +2201,17 @@ const GiftTapGame = () => {
             ...(liveG2u != null ? { G2U: liveG2u } : {}),
           }));
           if (liveG2u != null) {
-            setStats((prev) => ({ ...prev, gft_token_balance: liveG2u }));
+            setStats((prev) => ({
+              ...prev,
+              gft_token_balance: liveG2u,
+              sol_balance: liveSol,
+            }));
+          } else {
+            setStats((prev) => ({ ...prev, sol_balance: liveSol }));
           }
-          // Force Supabase mirror so gft_token_balance matches sold/spent wallet
+          // Force Supabase mirror so sol/gft match the wallet without a page refresh
           chainDbSyncAtRef.current = 0;
-          pushChainBalancesToDb();
+          pushChainBalancesToDb({ force: true });
       } catch (err) {
           console.error("Live balance sync failed:", err);
       }
@@ -5787,11 +5794,13 @@ const GiftTapGame = () => {
       const pubKey = new PublicKey(playerWallet);
       const usdcMint = new PublicKey("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v");
 
-      // Use Promise.all to fetch everything in parallel (faster)
-      const [solLamports] = await Promise.all([
-        connection.getBalance(pubKey),
-        connection.getLatestBlockhash('confirmed')
-      ]);
+      // Prefer processed for faster deposit detection; confirmed is fine as fallback
+      let solLamports;
+      try {
+        solLamports = await connection.getBalance(pubKey, 'processed');
+      } catch {
+        solLamports = await connection.getBalance(pubKey, 'confirmed');
+      }
       const realSol = solLamports / 1e9;
       const baseFee = 800000 / 1e9;
       const baseFeeWithBuffer = baseFee * 1.25; // Your 25% safety buffer
@@ -5820,6 +5829,11 @@ const GiftTapGame = () => {
         }
       }
 
+      const prevSol = lastChainSolRef.current;
+      const solChanged =
+        prevSol == null || Math.abs(Number(prevSol) - realSol) > 0.000000001;
+      lastChainSolRef.current = realSol;
+
       setBalances((prev) => ({
         ...prev,
         sol: realSol,
@@ -5828,7 +5842,13 @@ const GiftTapGame = () => {
         ...(realG2u != null ? { G2U: realG2u } : {}),
       }));
       if (realG2u != null) {
-        setStats((prev) => ({ ...prev, gft_token_balance: realG2u }));
+        setStats((prev) => ({
+          ...prev,
+          gft_token_balance: realG2u,
+          sol_balance: realSol,
+        }));
+      } else {
+        setStats((prev) => ({ ...prev, sol_balance: realSol }));
       }
 
       // Set Fees separately
@@ -5837,8 +5857,13 @@ const GiftTapGame = () => {
         projectFee: 0.0005 // Your fixed Gift launch fee
       });
 
-      // Mirror into Supabase (service_role Edge — never client UPDATE)
-      pushChainBalancesToDb();
+      // Mirror into Supabase immediately when SOL changes (deposit/withdraw)
+      if (solChanged) {
+        chainDbSyncAtRef.current = 0;
+        pushChainBalancesToDb({ force: true });
+      } else {
+        pushChainBalancesToDb();
+      }
       
     } catch (err) { 
       console.error("Balance/Fee fetch failed", err); 
@@ -5853,29 +5878,51 @@ const GiftTapGame = () => {
     }
   }, [isModalOpen, playerWallet, isDataLoaded, fetchBalances, showSettings]);
 
-  // Deposit (Receive): poll live SOL while open; refresh once on close
+  // Deposit (Receive): poll live SOL quickly while open; refresh once on close
   useEffect(() => {
     if (!isReceiveOpen || !playerWallet) return;
     fetchBalances();
     const id = setInterval(() => {
       fetchBalances();
-    }, 6000);
+    }, 2500);
     return () => {
       clearInterval(id);
       fetchBalances();
     };
   }, [isReceiveOpen, playerWallet, fetchBalances]);
 
+  // Background: keep HUD + Supabase SOL fresh without needing a full page refresh
+  useEffect(() => {
+    if (!playerWallet || !isDataLoaded) return;
+    fetchBalances();
+    const id = setInterval(() => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
+        return;
+      }
+      fetchBalances();
+    }, 12000);
+    return () => clearInterval(id);
+  }, [playerWallet, isDataLoaded, fetchBalances]);
+
   // When app tab becomes visible again (after external deposit), re-read chain SOL
   useEffect(() => {
     if (!playerWallet || !isDataLoaded) return;
     const onVis = () => {
       if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+        chainDbSyncAtRef.current = 0;
         fetchBalances();
       }
     };
+    const onFocus = () => {
+      chainDbSyncAtRef.current = 0;
+      fetchBalances();
+    };
     document.addEventListener('visibilitychange', onVis);
-    return () => document.removeEventListener('visibilitychange', onVis);
+    window.addEventListener('focus', onFocus);
+    return () => {
+      document.removeEventListener('visibilitychange', onVis);
+      window.removeEventListener('focus', onFocus);
+    };
   }, [playerWallet, isDataLoaded, fetchBalances]);
 
   /** Phrase in RAM, or password → Edge unlock (JWT alone never drains). */
