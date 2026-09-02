@@ -121,7 +121,14 @@ function getTaskLimitBoost(statsOrInv, now = new Date()) {
   return Math.max(0, Number(b.amount) || 0);
 }
 
-import { getAssociatedTokenAddressSync } from '@solana/spl-token';
+import {
+  getAssociatedTokenAddressSync,
+  createAssociatedTokenAccountIdempotentInstruction,
+  createTransferCheckedInstruction,
+  TOKEN_PROGRAM_ID,
+  ASSOCIATED_TOKEN_PROGRAM_ID,
+} from '@solana/spl-token';
+import { MINT_ADDRESS } from './config';
 
 import AuthScreen from './AuthScreen';
 import ClaimAccountModal from './ClaimAccountModal';
@@ -407,12 +414,13 @@ export function stackPayoutMultis(...multis) {
 }
 
 export const ASCENSION_WALLS = {
-  // Early: pay with EITHER shards OR SOL
+  // L5: after launch = shards + $G2U (solCost kept as pricing base → × G2U_PER_SOL)
   4: {
     targetLevel: 5,
     shardCost: 15000,
-    solCost: 0.025,
-    requiresBoth: false,
+    solCost: 0.02,
+    requiresBoth: true,
+    payWithG2u: true,
     newCap: 9,
   },
   9: {
@@ -459,6 +467,13 @@ export const ASCENSION_WALLS = {
     newCap: 100,
   },
 };
+
+/** $G2U amount for a wall when payWithG2u (from solCost × rate). */
+export function wallG2uCost(wall) {
+  const sol = Number(wall?.solCost) || 0;
+  const rate = Number(import.meta.env.VITE_G2U_PER_SOL) || 5_000_000;
+  return Math.round(sol * rate);
+}
 
 /**
  * After climbing a wall, max_unlocked jumps (e.g. 4→9) but lifetime may still be
@@ -2157,11 +2172,38 @@ const GiftTapGame = () => {
               ? usdcAccounts.value[0].account.data.parsed.info.tokenAmount.uiAmount 
               : 0;
 
-          setBalances(prev => ({
-              ...prev,
-              sol: liveSol,
-              usdc: liveUsdc
+          let liveG2u = null;
+          if (isTokenLaunched()) {
+            try {
+              const g2uMint = new PublicKey(
+                import.meta.env.VITE_G2U_MINT ||
+                  'EvFu9qKTNi3wWDbgnm5qmZjLFUHDN3o4A8HjUrqaGMBR',
+              );
+              const g2uAccounts = await connection.getParsedTokenAccountsByOwner(
+                pubKey,
+                { mint: g2uMint },
+              );
+              liveG2u =
+                g2uAccounts.value.length > 0
+                  ? g2uAccounts.value[0].account.data.parsed.info.tokenAmount
+                      .uiAmount
+                  : 0;
+            } catch {
+              liveG2u = 0;
+            }
+          }
+
+          setBalances((prev) => ({
+            ...prev,
+            sol: liveSol,
+            usdc: liveUsdc,
+            ...(liveG2u != null ? { G2U: liveG2u } : {}),
           }));
+          if (liveG2u != null) {
+            setStats((prev) => ({ ...prev, gft_token_balance: liveG2u }));
+          }
+          // Force Supabase mirror so gft_token_balance matches sold/spent wallet
+          chainDbSyncAtRef.current = 0;
           pushChainBalancesToDb();
       } catch (err) {
           console.error("Live balance sync failed:", err);
@@ -4883,11 +4925,12 @@ const GiftTapGame = () => {
     const newLevel = wallData.targetLevel;
     const method = opts.method || 'shards';
     const txSignature = opts.txSignature || null;
+    const currency = opts.currency || null;
 
     // Hard security: server deducts shards + raises max_unlocked_level
     if (hasSecureSession()) {
       try {
-        const data = await secureWallClimb({ method, txSignature });
+        const data = await secureWallClimb({ method, txSignature, currency });
         const bal = Number(data.shard_balance);
         const cap = Number(data.max_unlocked_level);
         const lvl = Number(data.target_level);
@@ -5011,10 +5054,21 @@ const GiftTapGame = () => {
       return;
     }
 
+    // L5 after launch: shards + $G2U only (not shards-alone / SOL-alone)
+    const l5G2u = wallKey === 4 && !!wallData.payWithG2u && isTokenLaunched();
+    if (l5G2u && method !== 'both') {
+      notify(
+        `Level 5 needs BOTH ${wallData.shardCost.toLocaleString()} shards AND ${wallG2uCost(wallData).toLocaleString()} $G2U.`,
+      );
+      return;
+    }
+
     // Mid/late walls: only the combined path unlocks
     if (needsBoth && method !== 'both') {
       notify(
-        `This wall needs BOTH ${wallData.shardCost.toLocaleString()} shards AND ${wallData.solCost} SOL.`,
+        l5G2u || wallData.payWithG2u
+          ? `This wall needs BOTH ${wallData.shardCost.toLocaleString()} shards AND ${wallG2uCost(wallData).toLocaleString()} $G2U.`
+          : `This wall needs BOTH ${wallData.shardCost.toLocaleString()} shards AND ${wallData.solCost} SOL.`,
       );
       return;
     }
@@ -5024,6 +5078,12 @@ const GiftTapGame = () => {
     }
 
     if (method === 'shards') {
+      if (l5G2u) {
+        notify(
+          `Level 5 needs shards + $G2U (not shards alone).`,
+        );
+        return;
+      }
       if (Number(balance) < wallData.shardCost) {
         notify(
           `Need ${wallData.shardCost.toLocaleString()} shards to climb (optional). You have ${Number(balance).toLocaleString()}. Keep mining anytime — wall is extra power, not required.`,
@@ -5039,9 +5099,14 @@ const GiftTapGame = () => {
 
     if (method === 'sol' || method === 'both') {
       try {
+        const useG2u =
+          !!wallData.payWithG2u && isTokenLaunched() && method === 'both';
+        const g2uCost = useG2u ? wallG2uCost(wallData) : 0;
         if (method === 'both' && Number(balance) < wallData.shardCost) {
           notify(
-            `Need ${wallData.shardCost.toLocaleString()} shards + ${wallData.solCost} SOL. You have ${Number(balance).toLocaleString()} shards.`,
+            useG2u
+              ? `Need ${wallData.shardCost.toLocaleString()} shards + ${g2uCost.toLocaleString()} $G2U. You have ${Number(balance).toLocaleString()} shards.`
+              : `Need ${wallData.shardCost.toLocaleString()} shards + ${wallData.solCost} SOL. You have ${Number(balance).toLocaleString()} shards.`,
           );
           return;
         }
@@ -5052,11 +5117,13 @@ const GiftTapGame = () => {
           const pw =
             typeof window !== 'undefined'
               ? window.prompt(
-                  'Enter your account password to unlock your wallet for this SOL payment:',
+                  useG2u
+                    ? 'Enter your account password to unlock your wallet for $G2U payment:'
+                    : 'Enter your account password to unlock your wallet for this SOL payment:',
                 )
               : '';
           if (!pw || String(pw).length < 6) {
-            throw new Error('Password required to unlock wallet for SOL payment.');
+            throw new Error('Password required to unlock wallet for payment.');
           }
           try {
             await ensureSecureSession();
@@ -5082,60 +5149,116 @@ const GiftTapGame = () => {
           );
         }
 
-        // Temporary alert so the player knows the transaction is processing
-        notify(`Initiating SOL transaction for Level ${wallData.targetLevel}... Please wait.`);
+        notify(
+          useG2u
+            ? `Paying ${g2uCost.toLocaleString()} $G2U + shards for Level ${wallData.targetLevel}…`
+            : `Initiating SOL transaction for Level ${wallData.targetLevel}... Please wait.`,
+        );
 
-        // --- 2. Setup Connection & Keypair (Using the decrypted storedSecret) ---
         const connection = new Connection(RPC_URL, 'confirmed');
-        
         let playerKeypair;
-        if (storedSecret.includes(" ")) {
+        if (storedSecret.includes(' ')) {
           playerKeypair = keypairFromMnemonic(storedSecret.trim());
         } else {
           playerKeypair = Keypair.fromSecretKey(bs58.decode(storedSecret));
         }
 
-        // --- 3. Set Destination Wallets & Costs ---
-        const masterWallet = new PublicKey("D4GufPTvp6tnzkaYGfombFLs48UjDANsxjMFJnSYz4Gh");
-        const treasuryWallet = new PublicKey("8G7uEcPS6dwA5wW9bGoqi98EzBunF8trjbbFJkgkvBPm"); 
+        const masterWallet = new PublicKey(
+          'D4GufPTvp6tnzkaYGfombFLs48UjDANsxjMFJnSYz4Gh',
+        );
+        const treasuryWallet = new PublicKey(
+          '8G7uEcPS6dwA5wW9bGoqi98EzBunF8trjbbFJkgkvBPm',
+        );
+        const projectFeeLamports = Math.floor(0.0005 * 1e9);
 
-        // Convert the SOL cost from your ascension wall data to lamports
-        const itemPriceLamports = Math.floor(wallData.solCost * 1e9);
-        const projectFeeLamports = Math.floor(0.0005 * 1e9); // The 0.0005 SOL Treasury Fee
-        const totalRequired = itemPriceLamports + projectFeeLamports + 1000000; // Total + buffer for network fee
-
-        // --- 4. Check Balance ---
-        const currentBalance = await connection.getBalance(playerKeypair.publicKey);
-        if (currentBalance < totalRequired) {
-          throw new Error(`Insufficient SOL. You need at least ${(totalRequired / 1e9).toFixed(4)} SOL to cover the ascension and network fees.`);
+        let signature;
+        if (useG2u) {
+          const G2U_DECIMALS = 9;
+          const amountRaw = BigInt(g2uCost) * 10n ** BigInt(G2U_DECIMALS);
+          const fromAta = getAssociatedTokenAddressSync(
+            MINT_ADDRESS,
+            playerKeypair.publicKey,
+          );
+          const toAta = getAssociatedTokenAddressSync(
+            MINT_ADDRESS,
+            masterWallet,
+          );
+          const solBal = await connection.getBalance(playerKeypair.publicKey);
+          const needSol = projectFeeLamports + 5_000_000;
+          if (solBal < needSol) {
+            throw new Error(
+              `Need ~${(needSol / 1e9).toFixed(4)} SOL (0.0005 treasury fee + network).`,
+            );
+          }
+          const g2uTx = new Transaction().add(
+            ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 100_000 }),
+            createAssociatedTokenAccountIdempotentInstruction(
+              playerKeypair.publicKey,
+              toAta,
+              masterWallet,
+              MINT_ADDRESS,
+              TOKEN_PROGRAM_ID,
+              ASSOCIATED_TOKEN_PROGRAM_ID,
+            ),
+            createTransferCheckedInstruction(
+              fromAta,
+              MINT_ADDRESS,
+              toAta,
+              playerKeypair.publicKey,
+              amountRaw,
+              G2U_DECIMALS,
+            ),
+            SystemProgram.transfer({
+              fromPubkey: playerKeypair.publicKey,
+              toPubkey: treasuryWallet,
+              lamports: projectFeeLamports,
+            }),
+          );
+          const latest = await connection.getLatestBlockhash('confirmed');
+          g2uTx.recentBlockhash = latest.blockhash;
+          g2uTx.feePayer = playerKeypair.publicKey;
+          signature = await sendAndConfirmTransaction(connection, g2uTx, [
+            playerKeypair,
+          ]);
+        } else {
+          const itemPriceLamports = Math.floor(wallData.solCost * 1e9);
+          const totalRequired =
+            itemPriceLamports + projectFeeLamports + 1_000_000;
+          const currentBalance = await connection.getBalance(
+            playerKeypair.publicKey,
+          );
+          if (currentBalance < totalRequired) {
+            throw new Error(
+              `Insufficient SOL. You need at least ${(totalRequired / 1e9).toFixed(4)} SOL.`,
+            );
+          }
+          const transaction = new Transaction().add(
+            ComputeBudgetProgram.setComputeUnitPrice({
+              microLamports: 1_000_000,
+            }),
+            SystemProgram.transfer({
+              fromPubkey: playerKeypair.publicKey,
+              toPubkey: masterWallet,
+              lamports: itemPriceLamports,
+            }),
+            SystemProgram.transfer({
+              fromPubkey: playerKeypair.publicKey,
+              toPubkey: treasuryWallet,
+              lamports: projectFeeLamports,
+            }),
+          );
+          signature = await sendAndConfirmTransaction(
+            connection,
+            transaction,
+            [playerKeypair],
+          );
         }
 
-        // --- 5. Build Split Transaction ---
-        const transaction = new Transaction().add(
-          ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 1000000 }),
-          // Instruction 1: Send the ascension cost to your Master Wallet
-          SystemProgram.transfer({
-            fromPubkey: playerKeypair.publicKey,
-            toPubkey: masterWallet,
-            lamports: itemPriceLamports,
-          }),
-          // Instruction 2: Send the game fee directly to your Treasury
-          SystemProgram.transfer({
-            fromPubkey: playerKeypair.publicKey,
-            toPubkey: treasuryWallet,
-            lamports: projectFeeLamports,
-          })
-        );
-
-        // --- 6. Send and Confirm ---
-        const signature = await sendAndConfirmTransaction(connection, transaction, [playerKeypair]);
-
-        // --- 7. Payment cleared — unlock (and burn shards if requiresBoth) ---
         let newBalance = Number(balance) || 0;
         if (method === 'both') {
           if (newBalance < wallData.shardCost) {
             throw new Error(
-              `SOL paid but not enough shards (${wallData.shardCost.toLocaleString()} required). Contact support with tx if needed.`,
+              `Payment sent but not enough shards (${wallData.shardCost.toLocaleString()} required).`,
             );
           }
           newBalance =
@@ -5144,17 +5267,19 @@ const GiftTapGame = () => {
         await finishAscensionUnlock(newBalance, wallData, wallKey, {
           method: method === 'both' ? 'both' : 'sol',
           txSignature: signature,
+          currency: useG2u ? 'g2u' : 'sol',
         });
-        // Live SOL on Gift Tap chip after wall climb payment
         try {
+          chainDbSyncAtRef.current = 0;
           await fetchBalances();
         } catch {
           /* ignore */
         }
-
       } catch (err) {
-        console.error("SOL Payment Error:", err);
-        notify(`Transaction Failed: ${err.message || "An error occurred during the SOL payment."}`);
+        console.error('Wall payment error:', err);
+        notify(
+          `Transaction Failed: ${err.message || 'An error occurred during payment.'}`,
+        );
         try {
           await fetchBalances();
         } catch {
@@ -6678,7 +6803,11 @@ const GiftTapGame = () => {
                     <span>Climb fee (payers)</span>
                     <strong style={{ color: '#ffd700' }}>
                       {need.toLocaleString()} shards
-                      {wall.requiresBoth ? ` + ${wall.solCost} SOL` : ''}
+                      {wall.requiresBoth
+                        ? wall.payWithG2u && isTokenLaunched()
+                          ? ` + ${wallG2uCost(wall).toLocaleString()} $G2U`
+                          : ` + ${wall.solCost} SOL`
+                        : ''}
                     </strong>
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6 }}>
@@ -6735,7 +6864,13 @@ const GiftTapGame = () => {
                   <>
                     <div style={{ background: '#111', borderRadius: 10, padding: 10, marginBottom: 10, fontSize: 12, color: '#ccc', textAlign: 'left' }}>
                       <div style={{ color: '#fbbf24', fontWeight: 'bold', marginBottom: 4 }}>Both required</div>
-                      <div>{need.toLocaleString()} shards <strong style={{ color: '#ffd700' }}>+</strong> {wall.solCost} SOL</div>
+                      <div>
+                        {need.toLocaleString()} shards{' '}
+                        <strong style={{ color: '#ffd700' }}>+</strong>{' '}
+                        {wall.payWithG2u && isTokenLaunched()
+                          ? `${wallG2uCost(wall).toLocaleString()} $G2U`
+                          : `${wall.solCost} SOL`}
+                      </div>
                     </div>
                     <button
                       type="button"
@@ -6756,7 +6891,9 @@ const GiftTapGame = () => {
                       }}
                     >
                       {ready
-                        ? `Climb to L${wall.targetLevel} (${need.toLocaleString()} shards + ${wall.solCost} SOL)`
+                        ? wall.payWithG2u && isTokenLaunched()
+                          ? `Climb to L${wall.targetLevel} (${need.toLocaleString()} shards + ${wallG2uCost(wall).toLocaleString()} $G2U)`
+                          : `Climb to L${wall.targetLevel} (${need.toLocaleString()} shards + ${wall.solCost} SOL)`
                         : `Mine ${missing.toLocaleString()} more shards first`}
                     </button>
                   </>
@@ -7444,8 +7581,21 @@ const GiftTapGame = () => {
                 onInitialTabConsumed={() => setShopFocusTab(null)}
                 onChainBalanceChange={(info) => {
                   const sol = Number(info?.sol);
-                  if (Number.isFinite(sol)) {
-                    setBalances((prev) => ({ ...prev, sol }));
+                  const g2u = Number(info?.g2u);
+                  if (Number.isFinite(sol) || Number.isFinite(g2u)) {
+                    setBalances((prev) => ({
+                      ...prev,
+                      ...(Number.isFinite(sol) ? { sol } : {}),
+                      ...(Number.isFinite(g2u) ? { G2U: g2u } : {}),
+                    }));
+                    if (Number.isFinite(g2u)) {
+                      setStats((prev) => ({
+                        ...prev,
+                        gft_token_balance: g2u,
+                      }));
+                    }
+                    // Force DB mirror (bypass 8s throttle) so Supabase matches wallet after sell/spend
+                    chainDbSyncAtRef.current = 0;
                     pushChainBalancesToDb();
                   } else {
                     fetchBalances();

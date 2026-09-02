@@ -16,12 +16,29 @@ import {
   runReferralCredit,
 } from "../_shared/economy.ts";
 
+const TOKEN_LAUNCH_AT_MS = Date.parse("2026-09-01T00:00:00Z");
+
 const WALLS: Record<
   number,
-  { targetLevel: number; shardCost: number; solCost: number; requiresBoth: boolean; newCap: number }
+  {
+    targetLevel: number;
+    shardCost: number;
+    solCost: number;
+    requiresBoth: boolean;
+    payWithG2u?: boolean;
+    newCap: number;
+  }
 > = {
-  4: { targetLevel: 5, shardCost: 15000, solCost: 0.025, requiresBoth: false, newCap: 9 },
-  9: { targetLevel: 10, shardCost: 30000, solCost: 0.05, requiresBoth: false, newCap: 19 },
+  // L5: shards + $G2U after launch (solCost = G2U pricing base)
+  4: {
+    targetLevel: 5,
+    shardCost: 15000,
+    solCost: 0.02,
+    requiresBoth: true,
+    payWithG2u: true,
+    newCap: 9,
+  },
+  9: { targetLevel: 10, shardCost: 30000, solCost: 0.03, requiresBoth: true, newCap: 19 },
   19: { targetLevel: 20, shardCost: 50000, solCost: 0.05, requiresBoth: true, newCap: 29 },
   29: { targetLevel: 30, shardCost: 100000, solCost: 0.1, requiresBoth: true, newCap: 49 },
   49: { targetLevel: 50, shardCost: 300000, solCost: 0.35, requiresBoth: true, newCap: 74 },
@@ -63,6 +80,8 @@ serve(async (req) => {
     const body = await req.json().catch(() => ({}));
     const method = String(body.method || "shards").toLowerCase();
     const txSignature = body.tx_signature ? String(body.tx_signature) : null;
+    const currency = String(body.currency || "").toLowerCase().trim();
+    const launched = Date.now() >= TOKEN_LAUNCH_AT_MS;
 
     const sb = adminClient();
     const { data: row, error: selErr } = await sb
@@ -83,6 +102,7 @@ serve(async (req) => {
     const lsLevel = locksmithLevel(inv);
     const needLs = LOCKSMITH_LEVEL_FOR_WALL[wallKey] || 99;
     const locksmithFree = method === "locksmith";
+    const payG2u = !!(wall.payWithG2u && launched);
 
     if (locksmithFree) {
       if (lsLevel < needLs) {
@@ -93,16 +113,30 @@ serve(async (req) => {
         );
       }
     } else {
-      if (wall.requiresBoth && method !== "both") {
-        throw new Error(
-          `This wall needs BOTH ${wall.shardCost} shards AND ${wall.solCost} SOL`,
-        );
-      }
-      if (!wall.requiresBoth && method === "both") {
-        throw new Error("Use method shards or sol for this wall");
-      }
-      if ((method === "sol" || method === "both") && !txSignature) {
-        throw new Error("tx_signature required after SOL payment");
+      if (payG2u) {
+        if (method !== "both") {
+          throw new Error(
+            `Level 5 needs BOTH ${wall.shardCost.toLocaleString()} shards AND $G2U`,
+          );
+        }
+        if (!txSignature || txSignature.length < 32) {
+          throw new Error("tx_signature required after $G2U payment");
+        }
+        if (currency && currency !== "g2u") {
+          throw new Error("Level 5 paid climb uses $G2U after launch");
+        }
+      } else {
+        if (wall.requiresBoth && method !== "both") {
+          throw new Error(
+            `This wall needs BOTH ${wall.shardCost} shards AND ${wall.solCost} SOL`,
+          );
+        }
+        if (!wall.requiresBoth && method === "both") {
+          throw new Error("Use method shards or sol for this wall");
+        }
+        if ((method === "sol" || method === "both") && !txSignature) {
+          throw new Error("tx_signature required after SOL payment");
+        }
       }
     }
 
@@ -156,13 +190,18 @@ serve(async (req) => {
       kind: "wall_climb",
       delta: needShards ? -wall.shardCost : 0,
       balance_after: balance,
-      ref: `wall_${wallKey}`,
+      ref: txSignature || `wall_${wallKey}`,
       meta: {
         method,
+        currency: payG2u ? "g2u" : method === "sol" || method === "both" ? "sol" : "shards",
         targetLevel: wall.targetLevel,
         newCap: wall.newCap,
         tx_signature: txSignature,
-        solCost: locksmithFree ? 0 : wall.solCost,
+        solCost: locksmithFree || payG2u ? 0 : wall.solCost,
+        g2uCost:
+          payG2u && !locksmithFree
+            ? Math.round(wall.solCost * 5_000_000)
+            : undefined,
         locksmith_level: lsLevel,
         shoe_granted: shoeGranted,
         shoe_common_after: inv[SHOE_KEY] ?? null,

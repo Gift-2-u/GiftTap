@@ -26,6 +26,7 @@ import {
   secureNftSetLevel,
   secureFateEquip,
   secureNftDurabilityTopUp,
+  secureSyncChainBalances,
   hasSecureSession,
   ensureSecureSession,
 } from './secureApi';
@@ -102,6 +103,7 @@ export default function WalletNftSection({
   const [listKey, setListKey] = useState(0);
   const [equipBusy, setEquipBusy] = useState(false);
   const [levelBusy, setLevelBusy] = useState(false);
+  const [levelConfirmOpen, setLevelConfirmOpen] = useState(false);
   const [durBusy, setDurBusy] = useState(false);
   const [reloadOpen, setReloadOpen] = useState(false);
   const [localInv, setLocalInv] = useState(inventory || {});
@@ -347,8 +349,10 @@ export default function WalletNftSection({
       const masterWallet = new PublicKey(ELF_LEVEL_UP_TREASURY);
 
       if (payG2u) {
-        // On-chain $G2U A→B (player → master), then server bumps elf_levels / star_levels
+        // On-chain $G2U → master + 0.0005 SOL project fee → treasury
         const G2U_DECIMALS = 9;
+        const feeWallet = new PublicKey(ELF_LEVEL_UP_FEE_WALLET);
+        const feeLamports = Math.floor(ELF_LEVEL_UP_FEE_SOL * LAMPORTS_PER_SOL);
         const amountRaw = BigInt(costG2u) * 10n ** BigInt(G2U_DECIMALS);
         const fromAta = getAssociatedTokenAddressSync(
           MINT_ADDRESS,
@@ -356,13 +360,14 @@ export default function WalletNftSection({
         );
         const toAta = getAssociatedTokenAddressSync(MINT_ADDRESS, masterWallet);
         const solBal = await connection.getBalance(playerKeypair.publicKey);
-        if (solBal < 5_000_000) {
+        const needSol = feeLamports + 5_000_000;
+        if (solBal < needSol) {
           throw new Error(
-            'Need a little SOL in your game wallet for the network fee (~0.005 SOL).',
+            `Need ~${(needSol / LAMPORTS_PER_SOL).toFixed(4)} SOL (0.0005 treasury fee + network).`,
           );
         }
         toast(
-          `Sending ${costG2u.toLocaleString()} $G2U to master…`,
+          `Sending ${costG2u.toLocaleString()} $G2U + ${ELF_LEVEL_UP_FEE_SOL} SOL fee…`,
           true,
         );
         const g2uTx = new Transaction().add(
@@ -383,6 +388,11 @@ export default function WalletNftSection({
             amountRaw,
             G2U_DECIMALS,
           ),
+          SystemProgram.transfer({
+            fromPubkey: playerKeypair.publicKey,
+            toPubkey: feeWallet,
+            lamports: feeLamports,
+          }),
         );
         const latest = await connection.getLatestBlockhash('confirmed');
         g2uTx.recentBlockhash = latest.blockhash;
@@ -390,6 +400,35 @@ export default function WalletNftSection({
         const signature = await sendAndConfirmTransaction(connection, g2uTx, [
           playerKeypair,
         ]);
+        // Refresh wallet $G2U (+ SOL) immediately and mirror into Supabase
+        try {
+          const balInfo = await connection.getTokenAccountBalance(fromAta);
+          const g2uUi = Number(balInfo?.value?.uiAmount);
+          const lamportsAfter = await connection.getBalance(
+            playerKeypair.publicKey,
+          );
+          const solAfter = lamportsAfter / LAMPORTS_PER_SOL;
+          if (Number.isFinite(g2uUi)) {
+            setLocalGft(g2uUi);
+            if (typeof onGftBalanceChange === 'function') onGftBalanceChange(g2uUi);
+          }
+          if (typeof onChainBalanceChange === 'function') {
+            onChainBalanceChange({
+              ...(Number.isFinite(g2uUi) ? { g2u: g2uUi } : {}),
+              sol: solAfter,
+            });
+          }
+          try {
+            await secureSyncChainBalances();
+          } catch {
+            /* ignore — HUD already updated */
+          }
+        } catch (balErr) {
+          console.warn('post level-up balance refresh', balErr?.message || balErr);
+          if (typeof onChainBalanceChange === 'function') {
+            onChainBalanceChange({});
+          }
+        }
         if (isStar) {
           data = await secureStarLevelUp({
             assetId: selected.id,
@@ -404,13 +443,6 @@ export default function WalletNftSection({
             txSignature: signature,
             currency: 'g2u',
           });
-        }
-        try {
-          if (typeof onChainBalanceChange === 'function') {
-            onChainBalanceChange({});
-          }
-        } catch {
-          /* ignore */
         }
       } else {
         const feeWallet = new PublicKey(ELF_LEVEL_UP_FEE_WALLET);
@@ -1351,7 +1383,10 @@ export default function WalletNftSection({
               <button
                 type="button"
                 disabled={levelBusy || selectedLevelCost == null}
-                onClick={handleLevelUp}
+                onClick={() => {
+                  if (levelBusy || selectedLevelCost == null) return;
+                  setLevelConfirmOpen(true);
+                }}
                 style={{
                   width: '100%',
                   marginBottom: 12,
@@ -1555,6 +1590,108 @@ export default function WalletNftSection({
           </div>
         </div>
       )}
+
+      {levelConfirmOpen && selected && selectedLevelCost != null ? (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Confirm level up"
+          onClick={() => !levelBusy && setLevelConfirmOpen(false)}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,0.9)',
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center',
+            zIndex: 100100,
+            padding: 16,
+            boxSizing: 'border-box',
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: '#1c1e22',
+              padding: 25,
+              borderRadius: 15,
+              border: '2px solid #ffd700',
+              textAlign: 'center',
+              width: '100%',
+              maxWidth: 320,
+              boxShadow: '0 20px 60px rgba(0,0,0,0.7)',
+            }}
+          >
+            <h3 style={{ color: '#fff', marginTop: 0 }}>Confirm Purchase?</h3>
+            <p style={{ color: '#ccc', fontSize: 14, lineHeight: 1.45 }}>
+              Level up <strong style={{ color: '#ffd700' }}>{selected.name}</strong> to{' '}
+              <strong style={{ color: '#14F195' }}>L{selectedLevel + 1}</strong> for{' '}
+              <strong style={{ color: useG2uLevelUp ? '#fbef43' : '#14F195' }}>
+                {useG2uLevelUp
+                  ? `${Number(selectedLevelCost).toLocaleString()} $G2U`
+                  : `${selectedLevelCost} SOL`}
+              </strong>
+              ?
+              {useG2uLevelUp ? (
+                <>
+                  <br />
+                  <span
+                    style={{
+                      fontSize: 12,
+                      color: '#888',
+                      display: 'block',
+                      marginTop: 10,
+                    }}
+                  >
+                    Pays {Number(selectedLevelCost).toLocaleString()} $G2U to master
+                    + {ELF_LEVEL_UP_FEE_SOL} SOL treasury fee (plus network fee).
+                  </span>
+                </>
+              ) : null}
+            </p>
+            <button
+              type="button"
+              disabled={levelBusy}
+              onClick={async () => {
+                setLevelConfirmOpen(false);
+                await handleLevelUp();
+              }}
+              style={{
+                width: '100%',
+                background: '#ffd700',
+                color: '#000',
+                border: 'none',
+                padding: 14,
+                borderRadius: 30,
+                fontWeight: 'bold',
+                fontSize: 15,
+                cursor: levelBusy ? 'not-allowed' : 'pointer',
+                marginBottom: 10,
+              }}
+            >
+              {levelBusy ? 'Processing…' : 'Confirm'}
+            </button>
+            <button
+              type="button"
+              disabled={levelBusy}
+              onClick={() => setLevelConfirmOpen(false)}
+              style={{
+                width: '100%',
+                background: 'transparent',
+                color: '#888',
+                border: '1px solid #555',
+                padding: 14,
+                borderRadius: 30,
+                fontWeight: 'bold',
+                fontSize: 14,
+                cursor: levelBusy ? 'not-allowed' : 'pointer',
+              }}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      ) : null}
 
       <DurabilityReloadModal
         open={reloadOpen && !!selectedDurKind}

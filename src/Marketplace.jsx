@@ -2431,7 +2431,7 @@ Daily claim active · Pack → NFT to see it.`,
      
       {/* --- CUSTOM POP-UP MODAL --- */}
       {txStatus.show && (
-        <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', background: 'rgba(0,0,0,0.85)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 100050 }}>
+        <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', background: 'rgba(0,0,0,0.85)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 100110 }}>
           <div style={{ background: '#1c1e22', padding: '25px', borderRadius: '15px', border: txStatus.success ? '2px solid #4ade80' : '2px solid #ffd700', textAlign: 'center', width: '80%', maxWidth: '320px', boxShadow: '0 4px 20px rgba(0,0,0,0.5)' }}>
             <h3 style={{ color: '#fff', marginTop: 0, marginBottom: '15px' }}>
               {txStatus.loading ? '⚙️ Processing...' : txStatus.success ? '🎉 Complete!' : '⚠️ Notice'}
@@ -3630,11 +3630,44 @@ Daily claim active · Pack → NFT to see it.`,
                   inventory={localInventory}
                   gftTokenBalance={Number(stats?.gft_token_balance) || 0}
                   onGftBalanceChange={(gft) => {
+                    const n = Number(gft);
+                    if (!Number.isFinite(n)) return;
                     if (setStats) {
                       setStats((prev) => ({
                         ...prev,
-                        gft_token_balance: gft,
+                        gft_token_balance: n,
                       }));
+                    }
+                    // Push into parent wallet HUD (GiftTap balances.G2U)
+                    if (typeof onChainBalanceChangeRef.current === 'function') {
+                      onChainBalanceChangeRef.current({ g2u: n });
+                    }
+                  }}
+                  onChainBalanceChange={(info) => {
+                    applyWalletSol(info?.sol);
+                    const g2u = Number(info?.g2u);
+                    if (Number.isFinite(g2u)) {
+                      if (setStats) {
+                        setStats((prev) => ({
+                          ...prev,
+                          gft_token_balance: g2u,
+                        }));
+                      }
+                      if (typeof onChainBalanceChangeRef.current === 'function') {
+                        onChainBalanceChangeRef.current({
+                          g2u,
+                          ...(Number.isFinite(Number(info?.sol))
+                            ? { sol: Number(info.sol) }
+                            : {}),
+                        });
+                      }
+                    } else if (
+                      info &&
+                      typeof info === 'object' &&
+                      !('sol' in info) &&
+                      typeof onChainBalanceChangeRef.current === 'function'
+                    ) {
+                      onChainBalanceChangeRef.current(info);
                     }
                   }}
                   onInventoryChange={(inv, playerPatch) => {
@@ -3677,13 +3710,10 @@ Daily claim active · Pack → NFT to see it.`,
                     const m = String(msg || '');
                     setTxStatus({
                       show: true,
-                      loading: false,
+                      loading: !!okOrOpts?.loading,
                       message: m,
                       success: !!ok,
                     });
-                  }}
-                  onChainBalanceChange={(info) => {
-                    applyWalletSol(info?.sol);
                   }}
                   onOpenShopNfts={() => setActiveTab('nft')}
                   onSellNft={() => setActiveTab('nft')}

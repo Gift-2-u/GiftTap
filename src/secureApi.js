@@ -273,10 +273,11 @@ export async function secureBackpackActivate(itemId) {
   return callSecureFunction('backpack-activate', { item_id: itemId });
 }
 
-export async function secureWallClimb({ method, txSignature }) {
+export async function secureWallClimb({ method, txSignature, currency }) {
   return callSecureFunction('wall-climb', {
     method,
     tx_signature: txSignature || null,
+    ...(currency ? { currency } : {}),
   });
 }
 
