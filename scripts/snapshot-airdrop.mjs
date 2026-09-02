@@ -7,14 +7,14 @@
  *   # amount = base × (1 + bonus%/100)  e.g. 500000 + 30% → 650000
  *   node scripts/snapshot-airdrop.mjs --type l5 --pool 500000 --period launch
  *
- *   # Weekly: --pool split into 4 equal tier pots (default 500k → 125k each).
+ *   # Weekly: --pool split into 4 equal tier pots (default 300k → 75k each).
  *   # Top 100 eligible share D/G/S/B pots; rank 101+ get Bronze badge only (0 G2U).
- *   node scripts/snapshot-airdrop.mjs --type weekly --pool 500000 --period 2026-W35
+ *   node scripts/snapshot-airdrop.mjs --type weekly --pool 300000 --period 2026-W35
  *
  *   # Monthly: from season_history — only main-board eligible (floor like Season UI).
  *   # Aug 2026 auto floor = 15%×1000×31 = 4650; from 2026-09 = 20%×1000×days.
- *   node scripts/snapshot-airdrop.mjs --type monthly --pool 1500000 --period 2026-08 --dry
- *   node scripts/snapshot-airdrop.mjs --type monthly --pool 1500000 --period 2026-08 --floor 4650
+ *   node scripts/snapshot-airdrop.mjs --type monthly --pool 1000000 --period 2026-08 --dry
+ *   node scripts/snapshot-airdrop.mjs --type monthly --pool 1000000 --period 2026-08 --floor 4650
  *
  * Dry run (no writes):
  *   node scripts/snapshot-airdrop.mjs --type l5 --pool 500000 --dry
@@ -92,14 +92,17 @@ if (!url || !key) {
 }
 
 const type = String(arg('type', '')).toLowerCase();
-const MONTHLY_DEFAULT_POOL = 1_500_000;
+const WEEKLY_DEFAULT_POOL = 300_000;
+const MONTHLY_DEFAULT_POOL = 1_000_000;
 const poolArg = arg('pool', null);
 const pool = Number(
   poolArg != null
     ? poolArg
     : type === 'monthly'
       ? MONTHLY_DEFAULT_POOL
-      : 0,
+      : type === 'weekly'
+        ? WEEKLY_DEFAULT_POOL
+        : 0,
 );
 const dry = hasFlag('dry');
 let period = arg('period', null);
@@ -111,8 +114,10 @@ if (!['l5', 'weekly', 'monthly'].includes(type)) {
 if (!Number.isFinite(pool) || pool <= 0) {
   console.error(
     type === 'monthly'
-      ? '--pool must be a positive G2U amount (default 1500000 for monthly)'
-      : '--pool must be a positive G2U amount',
+      ? '--pool must be a positive G2U amount (default 1000000 for monthly)'
+      : type === 'weekly'
+        ? '--pool must be a positive G2U amount (default 300000 for weekly)'
+        : '--pool must be a positive G2U amount',
   );
   process.exit(1);
 }
@@ -473,7 +478,7 @@ async function main() {
       : type === 'weekly'
         ? `Snapshot weekly · period=${period} · pool=${pool} (÷4 pots) · top ${WEEKLY_G2U_TOP_N} · dry=${dry}`
         : `Snapshot monthly · period=${period} · pool=${pool} G2U (=100% of season total) · dry=${dry}` +
-          (poolArg == null ? ' [default --pool 1500000]' : ''),
+          (poolArg == null ? ' [default --pool 1000000]' : ''),
   );
 
   let weighted =

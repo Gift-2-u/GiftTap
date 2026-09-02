@@ -164,11 +164,11 @@ const WhitepaperModal = ({ isWhitepaperOpen, setIsWhitepaperOpen, onClose }) => 
         "You need a little SOL in your game wallet to claim (you pay the Solana network fee).\n\n" +
         "Claim $G2U in your game wallet — Wallet → Claim $G2U (unlock wallet first).\n\n" +
         "WEEKLY airdrop\n" +
-        "• The weekly $G2U pool is split into 4 equal pots.\n" +
+        "• Pool (e.g. 300k $G2U) is split into 4 equal pots.\n" +
         "• Top 100 share by tier (equal split inside each pot).\n" +
         "• Outside top 100: weekly badges / eligibility — not that G2U pot.\n\n" +
         "SEASON (monthly) airdrop\n" +
-        "• Pool (e.g. 1.5M $G2U) is shared by season board weight.\n" +
+        "• Pool (e.g. 1M $G2U) is shared by season board weight.\n" +
         "• Your $G2U ≈ pool × (your season shards ÷ sum of all season shards).\n" +
         "• More season shards → larger share.\n\n" +
         "L5 airdrop (Ranks → Airdrop)\n" +
