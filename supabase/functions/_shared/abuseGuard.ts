@@ -130,6 +130,24 @@ export async function assertSignupIpCap(
   const client = sb || admin();
   const max = maxAccountsPerIp();
 
+  // Owner / trusted IPs: skip the per-IP signup cap
+  try {
+    const { data: allow } = await client
+      .from("signup_ip_whitelist")
+      .select("ip")
+      .eq("ip", ip)
+      .maybeSingle();
+    if (allow) return ip;
+  } catch (e) {
+    console.warn("signup_ip_whitelist lookup", e);
+  }
+  // Env fallback: SIGNUP_IP_WHITELIST=1.2.3.4,5.6.7.8
+  const envAllow = String(Deno.env.get("SIGNUP_IP_WHITELIST") || "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (envAllow.includes(ip)) return ip;
+
   // Count accounts that signed up on this IP, or whose latest ip matches
   const { count: signupCount, error: cErr } = await client
     .from("players")
