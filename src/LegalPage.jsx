@@ -46,6 +46,10 @@ export default function LegalPage({ kind: kindProp }) {
         <Link to="/play" className="text-purple-400 hover:underline">
           Play Gift Tap
         </Link>
+        {' · '}
+        <Link to="/delete-account" className="text-red-400 hover:underline">
+          Delete account
+        </Link>
       </p>
 
       <div className="rounded-2xl border border-white/10 bg-slate-900/80 p-5 sm:p-8 shadow-xl">

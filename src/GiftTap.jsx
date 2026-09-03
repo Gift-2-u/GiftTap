@@ -3281,6 +3281,21 @@ const GiftTapGame = () => {
   // 5. EFFECTS
   useEffect(() => { syncPlayer(); }, [syncPlayer]);
 
+  // Deep link from https://gift2u.fun/delete-account → /play?delete=1
+  useEffect(() => {
+    if (!isAuthed || !isDataLoaded) return;
+    try {
+      const q = new URLSearchParams(window.location.search || '');
+      if (q.get('delete') !== '1') return;
+      setShowDeleteAccount(true);
+      q.delete('delete');
+      const next = `${window.location.pathname}${q.toString() ? `?${q}` : ''}${window.location.hash || ''}`;
+      window.history.replaceState({}, '', next);
+    } catch {
+      /* ignore */
+    }
+  }, [isAuthed, isDataLoaded]);
+
   // Auto climb popup on load: already at/past this wall's tap cap and not dismissed
   useEffect(() => {
     if (!isDataLoaded) return;

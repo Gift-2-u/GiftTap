@@ -24,6 +24,7 @@ import DailyGiftBox from './DailyGiftBox';
 import WalletHub from './WalletHub';
 import VaultPage from './VaultPage';
 import LegalPage from './LegalPage';
+import DeleteAccountPage from './DeleteAccountPage';
 import RoadmapPage from './RoadmapPage';
 import AirdropPage from './AirdropPage';
 import { getPlayerId, isLoggedIn } from './playerIdentity';
@@ -113,6 +114,8 @@ export default function App() {
                 <Route path="/privacy" element={<LegalPage kind="privacy" />} />
                 <Route path="/legal/terms" element={<LegalPage kind="terms" />} />
                 <Route path="/legal/privacy" element={<LegalPage kind="privacy" />} />
+                <Route path="/delete-account" element={<DeleteAccountPage />} />
+                <Route path="/account-deletion" element={<DeleteAccountPage />} />
               </Routes>
               <SiteFooter />
             </div>
@@ -135,6 +138,9 @@ const SiteFooter = () => {
         </Link>
         <Link to="/privacy" className="hover:text-purple-300 font-semibold">
           Privacy Policy
+        </Link>
+        <Link to="/delete-account" className="hover:text-red-300 font-semibold">
+          Delete account
         </Link>
         <Link to="/roadmap" className="hover:text-yellow-300 font-semibold">
           Roadmap
