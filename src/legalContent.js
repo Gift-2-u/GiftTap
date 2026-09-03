@@ -105,7 +105,7 @@ We may share data with:
 We do not sell your personal email list as a product; we also do not ask for unnecessary personal documents unless required for a specific legal/compliance feature in the future.
 
 6. Retention
-We keep account and game data while your account exists and as needed for security, disputes, and legal obligations. You may request account deletion by contacting official channels; some blockchain data cannot be deleted.
+We keep account and game data while your account exists and as needed for security, disputes, and legal obligations. You can delete your Gift Tap account in Settings → Delete my account (password + username confirmation). That removes your profile, login, and in-app progress from our servers. On-chain SOL, $G2U, and NFTs in your Solana wallet cannot be deleted by us.
 
 7. Security
 We use reasonable technical measures (e.g. hashed passwords, HTTPS). No method is 100% secure. Protect your password and recovery phrase.
