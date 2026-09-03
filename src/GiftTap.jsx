@@ -9611,12 +9611,16 @@ const GiftTapGame = () => {
             playerId={playerId}
             currentUsername={player.username || getPlayerProfile().username || ''}
             required={false}
+            needsPassword={needsPassword}
             onSuccess={(newName) => {
               setUsername(newName);
               setPlayer(getPlayerProfile());
               setNeedsPassword(false);
               setShowClaimAccount(false);
               setIsMenuOpen(true); // after save → back to menu
+              notify('Saved! You can log in with this username and password.', {
+                success: true,
+              });
             }}
           />
 

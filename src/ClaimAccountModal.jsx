@@ -12,16 +12,21 @@ const ClaimAccountModal = ({
   currentUsername,
   onSuccess,
   required = false, // if true, must complete (e.g. after restore)
+  /** true = first-time set (no current password). false = change (require current). */
+  needsPassword = false,
 }) => {
   const [username, setUsername] = useState(currentUsername || '');
+  const [currentPassword, setCurrentPassword] = useState('');
   const [password, setPassword] = useState('');
   const [password2, setPassword2] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const isChange = !needsPassword && !required;
 
   useEffect(() => {
     if (isOpen) {
       setUsername(currentUsername || '');
+      setCurrentPassword('');
       setPassword('');
       setPassword2('');
       setError('');
@@ -50,15 +55,19 @@ const ClaimAccountModal = ({
       setError('Passwords do not match.');
       return;
     }
+    if (isChange && String(currentPassword || '').length < 6) {
+      setError('Enter your current password to change it.');
+      return;
+    }
     setLoading(true);
     try {
       const data = await claimAccountCredentials({
         playerId,
         username: username.trim(),
         password,
+        currentPassword: isChange ? currentPassword : '',
       });
       onSuccess?.(data.username);
-      alert('Saved! You can now log in on any device with this username and password.');
       onClose?.();
     } catch (err) {
       setError(formatAuthError(err));
@@ -126,8 +135,15 @@ const ClaimAccountModal = ({
           )}
         </div>
         <p style={{ color: '#aaa', fontSize: '13px', lineHeight: 1.45 }}>
-          Coming from Telegram? Keep your name or change it, then create a password so you can open
-          Gift Tap on phone or desktop <strong style={{ color: '#fff' }}>without</strong> your 12 words every time.
+          {isChange
+            ? 'Update your username and/or password. You must enter your current password to save changes.'
+            : (
+              <>
+                Keep your name or change it, then create a password so you can open Gift Tap on
+                phone or desktop <strong style={{ color: '#fff' }}>without</strong> your 12 words
+                every time.
+              </>
+            )}
         </p>
 
         <form onSubmit={handleSubmit}>
@@ -144,8 +160,27 @@ const ClaimAccountModal = ({
             required
           />
 
+          {isChange && (
+            <>
+              <label style={{ color: '#888', fontSize: '12px', display: 'block', marginBottom: '6px' }}>
+                Current password
+              </label>
+              <input
+                style={input}
+                type="password"
+                value={currentPassword}
+                onChange={(e) => setCurrentPassword(e.target.value)}
+                placeholder="••••••••"
+                autoComplete="current-password"
+                disabled={loading}
+                required
+                minLength={6}
+              />
+            </>
+          )}
+
           <label style={{ color: '#888', fontSize: '12px', display: 'block', marginBottom: '6px' }}>
-            New password (min 6 characters)
+            {isChange ? 'New password (min 6 characters)' : 'Password (min 6 characters)'}
           </label>
           <input
             style={input}

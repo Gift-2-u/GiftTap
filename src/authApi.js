@@ -287,7 +287,16 @@ export async function loginAccount(username, password, captchaToken = '') {
   };
 }
 
-export async function claimAccountCredentials({ playerId, username, password }) {
+/**
+ * Set or change username + password via Edge (player_secrets).
+ * Client can no longer write password_hash / username under hard lock.
+ */
+export async function claimAccountCredentials({
+  playerId,
+  username,
+  password,
+  currentPassword = '',
+}) {
   const cleanName = String(username || '').trim();
   const pass = String(password || '');
   const id = String(playerId || '');
@@ -303,47 +312,37 @@ export async function claimAccountCredentials({ playerId, username, password }) 
     throw new Error('Username "Player" is reserved. Keep your Telegram name or pick a new unique one.');
   }
 
-  // Unique among OTHER players
-  const { data: taken, error: checkErr } = await supabase
-    .from('players')
-    .select('telegram_id')
-    .ilike('username', cleanName)
-    .maybeSingle();
-
-  if (checkErr) throw new Error(formatAuthError(checkErr));
-  if (taken && String(taken.telegram_id) !== id) {
-    throw new Error('That username is already taken. Choose another or keep your current one.');
+  const base = (import.meta.env.VITE_SUPABASE_URL || '').replace(/\/$/, '');
+  const anon = import.meta.env.VITE_SUPABASE_ANON_KEY;
+  const tok =
+    typeof localStorage !== 'undefined'
+      ? localStorage.getItem('gift2u_session_token')
+      : '';
+  if (!base || !anon) throw new Error('App is missing Supabase config.');
+  if (!tok) {
+    throw new Error('Session expired — log in again, then change password.');
   }
 
-  let password_hash;
-  try {
-    password_hash = await hashPassword(pass);
-  } catch {
-    throw new Error('Could not secure password. Use a modern browser.');
-  }
-
-  const { error: updateError } = await supabase
-    .from('players')
-    .update({
+  const res = await fetch(`${base}/functions/v1/wallet-vault`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${anon}`,
+      apikey: anon,
+      'x-gift-session': tok,
+    },
+    body: JSON.stringify({
+      action: 'set_credentials',
       username: cleanName,
-      password_hash,
-    })
-    .eq('telegram_id', id);
-
-  if (updateError) {
-    const msg = formatAuthError(updateError);
-    if (updateError.code === '23505' || /unique|duplicate/i.test(msg)) {
-      throw new Error('That username is already taken.');
-    }
-    if (/password_hash/i.test(msg)) {
-      throw new Error(
-        'Database missing password_hash. Run SQL: alter table players add column if not exists password_hash text;',
-      );
-    }
-    throw new Error(msg);
+      password: pass,
+      current_password: currentPassword || undefined,
+    }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(data.error || data.message || `Save failed (${res.status})`);
   }
-
-  return { success: true, username: cleanName };
+  return { success: true, username: data.username || cleanName };
 }
 
 /** Check if this player still needs to set a password (TG restore). */

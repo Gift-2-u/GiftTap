@@ -5,6 +5,7 @@
  *   get / status — NEVER return encrypted_vault (JWT alone must not unlock keys)
  *   unlock       — password required; verified against player_secrets.password_hash
  *   set_if_empty — bind vault once after signup
+ *   set_credentials — set/change username + password (service_role; client cannot)
  */
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.7";
@@ -70,6 +71,25 @@ async function verifyPassword(password: string, stored: string): Promise<boolean
   );
   return b64(bits) === expected;
 }
+
+async function hashPassword(password: string): Promise<string> {
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const keyMaterial = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(password),
+    "PBKDF2",
+    false,
+    ["deriveBits"],
+  );
+  const bits = await crypto.subtle.deriveBits(
+    { name: "PBKDF2", salt, iterations: 100_000, hash: "SHA-256" },
+    keyMaterial,
+    256,
+  );
+  return `pbkdf2_sha256$100000$${b64(salt)}$${b64(bits)}`;
+}
+
+const USERNAME_RE = /^[a-zA-Z0-9_]{3,20}$/;
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -190,7 +210,105 @@ serve(async (req) => {
       return json({ success: true, already_set: false, has_vault: true });
     }
 
-    throw new Error("Unknown action (get|status|unlock|set_if_empty)");
+    // Set or change username + password (Settings → Change username / password)
+    if (
+      action === "set_credentials" ||
+      action === "change_password" ||
+      action === "claim_credentials"
+    ) {
+      const cleanName = String(body.username || "").trim();
+      const pass = String(body.password || body.new_password || "");
+      const currentPass = String(
+        body.current_password || body.old_password || "",
+      );
+
+      if (!USERNAME_RE.test(cleanName)) {
+        throw new Error(
+          "Username must be 3–20 characters: letters, numbers, underscore only.",
+        );
+      }
+      if (cleanName.toLowerCase() === "player") {
+        throw new Error('Username "Player" is reserved.');
+      }
+      if (pass.length < 6) {
+        throw new Error("Password must be at least 6 characters.");
+      }
+
+      const { data: me, error: meErr } = await sb
+        .from("players")
+        .select("telegram_id, username")
+        .eq("telegram_id", playerId)
+        .maybeSingle();
+      if (meErr) throw meErr;
+      if (!me) throw new Error("Player not found");
+
+      // Username unique among other players
+      const { data: taken, error: takeErr } = await sb
+        .from("players")
+        .select("telegram_id")
+        .ilike("username", cleanName)
+        .maybeSingle();
+      if (takeErr) throw takeErr;
+      if (taken && String(taken.telegram_id) !== playerId) {
+        throw new Error("That username is already taken. Choose another.");
+      }
+
+      const { data: sec, error: secErr } = await sb
+        .from("player_secrets")
+        .select("password_hash, encrypted_vault")
+        .eq("telegram_id", playerId)
+        .maybeSingle();
+      if (secErr) throw secErr;
+
+      const existingHash = sec?.password_hash
+        ? String(sec.password_hash).trim()
+        : "";
+      if (existingHash) {
+        if (currentPass.length < 6) {
+          throw new Error("Enter your current password to change it.");
+        }
+        const ok = await verifyPassword(currentPass, existingHash);
+        if (!ok) throw new Error("Wrong current password.");
+      }
+
+      const password_hash = await hashPassword(pass);
+      const { error: upSec } = await sb.from("player_secrets").upsert(
+        {
+          telegram_id: playerId,
+          password_hash,
+          encrypted_vault: sec?.encrypted_vault ?? null,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: "telegram_id" },
+      );
+      if (upSec) throw upSec;
+
+      if (String(me.username || "") !== cleanName) {
+        const { error: upName } = await sb
+          .from("players")
+          .update({ username: cleanName })
+          .eq("telegram_id", playerId);
+        if (upName) {
+          if (
+            upName.code === "23505" ||
+            /unique|duplicate/i.test(String(upName.message || ""))
+          ) {
+            throw new Error("That username is already taken.");
+          }
+          throw upName;
+        }
+      }
+
+      return json({
+        success: true,
+        username: cleanName,
+        has_password: true,
+      });
+    }
+
+    throw new Error(
+      "Unknown action (get|status|unlock|set_if_empty|set_credentials)",
+    );
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     const status = /authenticated|expired|signature|Invalid session|Not authenticated/i
