@@ -410,8 +410,19 @@ export function applyWeeklyClaimToInventory(inv, weekId, questId) {
 
 /** Shop / boost item quantity keys — counts must never stick after consume. */
 export const SHOP_INVENTORY_QTY_KEYS = [
-  'frenzy', 'battery', 'heavy', 'refill', 'bot', 'grinder', 'whale', 'crate',
-  'x2_boost', 'x3_boost', 'exclusive_nft_voucher',
+  'frenzy',
+  'battery',
+  'heavy',
+  'refill',
+  'refill_extra', // Extra Battery Refill (was missing → stayed in backpack after use)
+  'expanded_energy',
+  'bot',
+  'grinder',
+  'whale',
+  'crate',
+  'x2_boost',
+  'x3_boost',
+  'exclusive_nft_voucher',
 ];
 
 /** Weekly badge qty keys — burns (Mystery Gift) must clear UI when server omits key */
