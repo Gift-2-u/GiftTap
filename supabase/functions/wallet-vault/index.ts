@@ -6,6 +6,7 @@
  *   unlock       — password required; verified against player_secrets.password_hash
  *   set_if_empty — bind vault once after signup
  *   set_credentials — set/change username + password (service_role; client cannot)
+ *   delete_account  — password + confirm username; wipe secrets + player row
  */
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.7";
@@ -306,8 +307,109 @@ serve(async (req) => {
       });
     }
 
+    // Self-serve account deletion (GDPR / Play Data safety)
+    if (action === "delete_account") {
+      const password = String(body.password || "");
+      const confirmName = String(body.confirm_username || body.username || "")
+        .trim();
+      if (password.length < 6) {
+        throw new Error("Password required to delete your account.");
+      }
+      if (!confirmName) {
+        throw new Error("Type your username to confirm deletion.");
+      }
+
+      const { data: me, error: meErr } = await sb
+        .from("players")
+        .select("telegram_id, username, wallet_address")
+        .eq("telegram_id", playerId)
+        .maybeSingle();
+      if (meErr) throw meErr;
+      if (!me) throw new Error("Player not found");
+
+      if (
+        String(me.username || "").toLowerCase() !== confirmName.toLowerCase()
+      ) {
+        throw new Error("Username does not match. Deletion cancelled.");
+      }
+
+      const { data: sec, error: secErr } = await sb
+        .from("player_secrets")
+        .select("password_hash")
+        .eq("telegram_id", playerId)
+        .maybeSingle();
+      if (secErr) throw secErr;
+      const hash = sec?.password_hash ? String(sec.password_hash).trim() : "";
+      if (!hash) {
+        throw new Error(
+          "Set a password first (Settings), then you can delete this account.",
+        );
+      }
+      const okPw = await verifyPassword(password, hash);
+      if (!okPw) throw new Error("Wrong password.");
+
+      const id = playerId;
+
+      // Sessions
+      try {
+        await sb.from("player_sessions").delete().eq("player_id", id);
+      } catch (e) {
+        console.warn("delete sessions", e);
+      }
+
+      // Notices / abuse player_id rows
+      try {
+        await sb.from("player_notices").delete().eq("player_id", id);
+      } catch (e) {
+        console.warn("delete notices", e);
+      }
+      try {
+        await sb
+          .from("abuse_blocks")
+          .delete()
+          .eq("kind", "player_id")
+          .eq("value", id);
+      } catch (e) {
+        console.warn("delete abuse player_id", e);
+      }
+
+      // Score ledgers (leave ranks)
+      for (const table of [
+        "weekly_score_ledger",
+        "season_score_ledger",
+        "lifetime_score_ledger",
+      ]) {
+        try {
+          await sb.from(table).delete().eq("telegram_id", id);
+        } catch (e) {
+          console.warn("delete ledger", table, e);
+        }
+      }
+
+      // Secrets first (password + vault)
+      const { error: delSec } = await sb
+        .from("player_secrets")
+        .delete()
+        .eq("telegram_id", id);
+      if (delSec) throw delSec;
+
+      // Public player row
+      const { error: delPl } = await sb
+        .from("players")
+        .delete()
+        .eq("telegram_id", id);
+      if (delPl) throw delPl;
+
+      return json({
+        success: true,
+        deleted: true,
+        message:
+          "Account deleted. On-chain SOL / $G2U / NFTs in your wallet remain on Solana.",
+      });
+    }
+
     throw new Error(
-      "Unknown action (get|status|unlock|set_if_empty|set_credentials)",
+      "Unknown action (get|status|unlock|set_if_empty|set_credentials|delete_account)",
     );
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

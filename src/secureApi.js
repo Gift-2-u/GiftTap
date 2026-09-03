@@ -191,6 +191,20 @@ export async function secureVaultStatus() {
   return secureWalletVault('status');
 }
 
+/** Permanently delete Gift Tap account (password + confirm username). */
+export async function secureDeleteAccount({ password, confirmUsername }) {
+  if (!password || String(password).length < 6) {
+    throw new Error('Password required to delete your account.');
+  }
+  if (!confirmUsername || !String(confirmUsername).trim()) {
+    throw new Error('Type your username to confirm deletion.');
+  }
+  return secureWalletVault('delete_account', {
+    password: String(password),
+    confirm_username: String(confirmUsername).trim(),
+  });
+}
+
 /** Secure shard shop buy (requires JWT). */
 export async function secureShopBuy(itemId) {
   return callSecureFunction('shop-buy', { item_id: itemId });

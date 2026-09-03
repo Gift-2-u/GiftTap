@@ -132,6 +132,7 @@ import { MINT_ADDRESS } from './config';
 
 import AuthScreen from './AuthScreen';
 import ClaimAccountModal from './ClaimAccountModal';
+import DeleteAccountModal from './DeleteAccountModal';
 import Marketplace from './Marketplace';
 import Tasks from './Tasks';
 import { markPlayedTodayUtc } from './streakReminders';
@@ -728,6 +729,7 @@ const GiftTapGame = () => {
   const [isAuthed, setIsAuthed] = useState(() => !!getPlayerId());
   const [needsPassword, setNeedsPassword] = useState(false);
   const [showClaimAccount, setShowClaimAccount] = useState(false);
+  const [showDeleteAccount, setShowDeleteAccount] = useState(false);
 
   // 1. GAME STATE
   const [balance, setBalance] = useState(0);
@@ -9575,6 +9577,10 @@ const GiftTapGame = () => {
               setIsMenuOpen(false);
               setShowClaimAccount(true);
             }}
+            onOpenDeleteAccount={() => {
+              setIsMenuOpen(false);
+              setShowDeleteAccount(true);
+            }}
             onOpenTerms={() => {
               setIsMenuOpen(false);
               setLegalKind('terms');
@@ -9621,6 +9627,34 @@ const GiftTapGame = () => {
               notify('Saved! You can log in with this username and password.', {
                 success: true,
               });
+            }}
+          />
+
+          <DeleteAccountModal
+            isOpen={showDeleteAccount}
+            onClose={() => {
+              setShowDeleteAccount(false);
+              setIsMenuOpen(true);
+            }}
+            username={player.username || getPlayerProfile().username || ''}
+            onDeleted={() => {
+              setShowDeleteAccount(false);
+              try {
+                clearSession();
+              } catch {
+                /* ignore */
+              }
+              notify(
+                'Account deleted. On-chain tokens/NFTs in your wallet stay on Solana.',
+                { success: true },
+              );
+              setTimeout(() => {
+                try {
+                  window.location.reload();
+                } catch {
+                  /* ignore */
+                }
+              }, 800);
             }}
           />
 

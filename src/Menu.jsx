@@ -54,6 +54,7 @@ const Menu = ({
   onLogout,
   onOpenClaimAccount,
   needsPassword,
+  onOpenDeleteAccount,
   onOpenTerms,
   onOpenPrivacy,
   onOpenLeaderboard,
@@ -477,13 +478,40 @@ const Menu = ({
                         setIsMenuOpen(false);
                         onOpenSecret();
                       }}
-                      style={{ ...rowBtn, marginBottom: '4px' }}
+                      style={{ ...rowBtn, marginBottom: '8px' }}
                     >
                       <span style={{ color: '#ef4444', fontWeight: 'bold', fontSize: '13px' }}>
                         🔐 {t('secret') || 'View 12 words'}
                       </span>
                       <span style={{ color: '#888' }}>{'❯'}</span>
                     </button>
+
+                    {typeof onOpenDeleteAccount === 'function' && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsMenuOpen(false);
+                          onOpenDeleteAccount();
+                        }}
+                        style={{
+                          ...rowBtn,
+                          marginBottom: '4px',
+                          border: '1px solid #663333',
+                          background: 'rgba(248,113,113,0.06)',
+                        }}
+                      >
+                        <span
+                          style={{
+                            color: '#f87171',
+                            fontWeight: 'bold',
+                            fontSize: '13px',
+                          }}
+                        >
+                          🗑️ Delete my account
+                        </span>
+                        <span style={{ color: '#888' }}>{'❯'}</span>
+                      </button>
+                    )}
                   </div>
                 )}
               </div>
