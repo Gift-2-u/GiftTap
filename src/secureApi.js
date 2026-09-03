@@ -263,10 +263,11 @@ export async function secureGrantWeeklyBadges(weekId) {
 }
 
 /** Server-authoritative mining credit (requires JWT). */
-export async function secureCommitTaps({ batchId, taps }) {
+export async function secureCommitTaps({ batchId, taps, frenzyTaps = 0 }) {
   return callSecureFunction('commit-taps', {
     batch_id: batchId,
     taps,
+    frenzy_taps: Math.max(0, Math.floor(Number(frenzyTaps) || 0)),
   });
 }
 

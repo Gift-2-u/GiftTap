@@ -771,8 +771,10 @@ const GiftTapGame = () => {
     all_time: null,
   });
   const lbFetchSeqRef = useRef(0);
-  /** Hard security: accumulate valid taps, flush via commit-taps */
-  const pendingTapsRef = useRef({ count: 0, batchId: null });
+  /** Hard security: accumulate valid taps, flush via commit-taps.
+   * frenzyCount = taps while Frenzy was active (so delayed flush still pays ×2). */
+  const pendingTapsRef = useRef({ count: 0, frenzyCount: 0, batchId: null });
+  const frenzyFlushTimerRef = useRef(null);
   const tapFlushTimerRef = useRef(null);
   const flushInFlightRef = useRef(false);
   /** Throttle 'why shards stopped' notices (no_energy / daily_limit) */
@@ -3209,7 +3211,7 @@ const GiftTapGame = () => {
     optimisticEnergy.current = 500;
     energyAnchorRef.current = { value: 500, at: Date.now() };
     optimisticDaily.current = 0;
-    pendingTapsRef.current = { count: 0, batchId: null };
+    pendingTapsRef.current = { count: 0, frenzyCount: 0, batchId: null };
     if (tapFlushTimerRef.current) {
       try { clearTimeout(tapFlushTimerRef.current); } catch { /* ignore */ }
       tapFlushTimerRef.current = null;
@@ -3811,6 +3813,17 @@ const GiftTapGame = () => {
         const pending = pendingTapsRef.current;
         const taps = Math.min(Math.max(0, Math.floor(pending.count)), 500);
         if (taps <= 0) break;
+        const pendingFrenzy = Math.max(
+          0,
+          Math.floor(Number(pending.frenzyCount) || 0),
+        );
+        // Take frenzy taps proportionally from this chunk
+        const frenzyTaps = Math.min(
+          taps,
+          pending.count > 0
+            ? Math.round((pendingFrenzy * taps) / pending.count)
+            : 0,
+        );
         const batchId =
           pending.batchId ||
           (crypto.randomUUID
@@ -3819,6 +3832,7 @@ const GiftTapGame = () => {
         // Reserve this chunk; new taps during await land in the leftover count
         pendingTapsRef.current = {
           count: pending.count - taps,
+          frenzyCount: Math.max(0, pendingFrenzy - frenzyTaps),
           batchId:
             pending.count - taps > 0
               ? crypto.randomUUID
@@ -3831,7 +3845,7 @@ const GiftTapGame = () => {
         // overwrite the new 500 bar (UI stuck at ~390 while taps continue).
         const flushEpoch = energyEpochRef.current;
         try {
-          const data = await secureCommitTaps({ batchId, taps });
+          const data = await secureCommitTaps({ batchId, taps, frenzyTaps });
           const p = data?.player;
           const credited = Math.max(0, Number(data?.taps) || 0);
           const rejectReason = data?.reason || '';
@@ -4069,7 +4083,7 @@ const GiftTapGame = () => {
           // DO NOT re-queue unpaid taps — client already spent local energy for them;
           // re-queue caused phantom flushes (2 taps → drain whole bar / snap to 0).
           if (credited > 0 && credited < taps) {
-            pendingTapsRef.current = { count: 0, batchId: null };
+            pendingTapsRef.current = { count: 0, frenzyCount: 0, batchId: null };
             if (p && Number.isFinite(Number(p.daily_taps))) {
               const serverDt = Number(p.daily_taps) || 0;
               optimisticDaily.current = serverDt;
@@ -4081,7 +4095,7 @@ const GiftTapGame = () => {
           if (credited === 0) {
             if (rejectReason === 'no_energy' || rejectReason === 'daily_limit') {
               // Drop queue — unpaid optimistic taps must not retry-drain the battery
-              pendingTapsRef.current = { count: 0, batchId: null };
+              pendingTapsRef.current = { count: 0, frenzyCount: 0, batchId: null };
               if (p && Number.isFinite(Number(p.daily_taps))) {
                 const serverDt = Number(p.daily_taps) || 0;
                 optimisticDaily.current = serverDt;
@@ -4094,6 +4108,8 @@ const GiftTapGame = () => {
           // Re-queue this chunk with same batch_id (idempotent replay on server)
           pendingTapsRef.current = {
             count: (pendingTapsRef.current.count || 0) + taps,
+            frenzyCount:
+              (pendingTapsRef.current.frenzyCount || 0) + frenzyTaps,
             batchId: batchId,
           };
           console.warn('commit-taps failed', e?.message || e);
@@ -4111,15 +4127,43 @@ const GiftTapGame = () => {
     }
   }, [playerId, notify, bumpWeeklyLiveUi]);
 
-  const scheduleTapFlush = useCallback(() => {
+  const scheduleTapFlush = useCallback((delayMs) => {
     if (tapFlushTimerRef.current) clearTimeout(tapFlushTimerRef.current);
     // Fast flush so weekly leaders + daily bar track real mining
     const pending = pendingTapsRef.current?.count || 0;
-    const delay = pending >= 40 ? 200 : pending >= 10 ? 350 : 450;
+    const delay =
+      Number.isFinite(Number(delayMs)) && Number(delayMs) >= 0
+        ? Number(delayMs)
+        : pending >= 40
+          ? 200
+          : pending >= 10
+            ? 350
+            : 450;
     tapFlushTimerRef.current = setTimeout(() => {
       flushPendingTaps();
     }, delay);
   }, [flushPendingTaps]);
+
+  // Flush when Frenzy timer ends so ×2 taps aren't scored after expiry
+  useEffect(() => {
+    if (frenzyFlushTimerRef.current) {
+      clearTimeout(frenzyFlushTimerRef.current);
+      frenzyFlushTimerRef.current = null;
+    }
+    const fe = stats?.frenzy_expires
+      ? new Date(stats.frenzy_expires).getTime()
+      : NaN;
+    if (!Number.isFinite(fe) || fe <= Date.now()) return undefined;
+    frenzyFlushTimerRef.current = setTimeout(() => {
+      flushPendingTaps();
+    }, Math.max(50, fe - Date.now() + 80));
+    return () => {
+      if (frenzyFlushTimerRef.current) {
+        clearTimeout(frenzyFlushTimerRef.current);
+        frenzyFlushTimerRef.current = null;
+      }
+    };
+  }, [stats?.frenzy_expires, flushPendingTaps]);
 
   // Silent JWT renew on open / return to tab / periodic — phone tabs sleep for days
   useEffect(() => {
@@ -4882,9 +4926,15 @@ const GiftTapGame = () => {
       // HARD SECURITY: client cannot write weekly_shards / daily_taps / balances.
       // Queue taps for commit-taps (service_role) — sole authority for weekly season score.
       if (playerId && validTaps > 0) {
-        const prevQ = pendingTapsRef.current || { count: 0, batchId: null };
+        const prevQ = pendingTapsRef.current || {
+          count: 0,
+          frenzyCount: 0,
+          batchId: null,
+        };
         pendingTapsRef.current = {
           count: (Number(prevQ.count) || 0) + validTaps,
+          frenzyCount:
+            (Number(prevQ.frenzyCount) || 0) + (frenzyOn ? validTaps : 0),
           batchId:
             prevQ.batchId ||
             (crypto.randomUUID
@@ -4897,7 +4947,8 @@ const GiftTapGame = () => {
           tapFlushTimerRef.current = null;
           flushPendingTaps();
         } else {
-          scheduleTapFlush();
+          // During Frenzy flush often so ×2 credits land before the 30s window ends
+          scheduleTapFlush(frenzyOn ? 400 : undefined);
         }
       }
       // Local UI sync only under secureLock (no last_updated heartbeat — that

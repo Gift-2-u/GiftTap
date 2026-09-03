@@ -2058,7 +2058,7 @@ Daily claim active · Pack → NFT to see it.`,
             );
             next = applyShopQtyAuthority(next, authInv);
             next.daily_usage = nextDailyUsage;
-            return {
+            const merged = {
               ...prev,
               ...data.updates,
               last_energy:
@@ -2068,6 +2068,11 @@ Daily claim active · Pack → NFT to see it.`,
               inventory: next,
               daily_usage: nextDailyUsage,
             };
+            // Ensure Frenzy timer is on the merged stats even if updates was partial
+            if (item.id === 'frenzy' && data.updates?.frenzy_expires) {
+              merged.frenzy_expires = data.updates.frenzy_expires;
+            }
+            return merged;
           });
         }
 

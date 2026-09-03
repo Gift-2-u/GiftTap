@@ -337,6 +337,35 @@ serve(async (req) => {
       streak = streakAfterPlayDay(prevLtd, streak, today);
     }
 
+    // Frenzy taps credited by client count (taps during active buff), not "frenzy still
+    // on at flush time" — otherwise a delayed flush after the 30s window pays 1× for
+    // taps that were actually during Frenzy. Cap + grace keep it honest.
+    const claimedFrenzy = Math.max(
+      0,
+      Math.floor(Number(body?.frenzy_taps ?? body?.frenzyTaps) || 0),
+    );
+    const frenzyEndMs = row.frenzy_expires
+      ? Date.parse(String(row.frenzy_expires))
+      : NaN;
+    const nowMs = now.getTime();
+    const FRENZY_FLUSH_GRACE_MS = 12_000; // allow commit shortly after 30s ends
+    let frenzyTapsAllowed = 0;
+    if (Number.isFinite(frenzyEndMs) && nowMs <= frenzyEndMs + FRENZY_FLUSH_GRACE_MS) {
+      // Max ~1 tap / 40ms over window; also cap by claimed + validTaps
+      const frenzyStartMs = frenzyEndMs - 30_000;
+      const windowMs = Math.max(
+        0,
+        Math.min(nowMs, frenzyEndMs) - frenzyStartMs + FRENZY_FLUSH_GRACE_MS,
+      );
+      const maxByWindow = Math.min(validTaps, Math.ceil(windowMs / 40) + 5);
+      if (claimedFrenzy > 0) {
+        frenzyTapsAllowed = Math.min(claimedFrenzy, validTaps, maxByWindow);
+      } else if (frenzyOn) {
+        // Legacy clients: no frenzy_taps field — if buff still active, all taps ×2
+        frenzyTapsAllowed = validTaps;
+      }
+    }
+
     // Per-tap payout: Fate jackpot replaces Frenzy → tap_power × jackpot multi
     let shardsEarned = 0;
     let scoreCredit = 0;
@@ -344,6 +373,7 @@ serve(async (req) => {
     let jackpotBestMulti = 0;
     let payoutMultiplier = basePayoutMulti; // summary / batch avg reference
     const jackpotLog: Array<{ multi: number; rung: number; rarity: string }> = [];
+    let frenzyLeft = frenzyTapsAllowed;
     for (let i = 0; i < validTaps; i++) {
       const hit = rollFateJackpot(inv);
       let tapMulti: number;
@@ -353,8 +383,12 @@ serve(async (req) => {
         jackpotHits += 1;
         jackpotBestMulti = Math.max(jackpotBestMulti, hit.multi);
         if (jackpotLog.length < 5) jackpotLog.push(hit);
+        if (frenzyLeft > 0) frenzyLeft -= 1; // still consume a frenzy slot if claimed
+      } else if (frenzyLeft > 0) {
+        tapMulti = Math.round(tapPower * 2 * 1000) / 1000;
+        frenzyLeft -= 1;
       } else {
-        tapMulti = basePayoutMulti;
+        tapMulti = tapPower;
       }
       shardsEarned += tapMulti;
       scoreCredit += tapMulti;
