@@ -91,8 +91,8 @@ android {
         applicationId 'fun.gift2u.tap'
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 7
-        versionName "1.0.5"
+        versionCode 9
+        versionName "1.0.7"
     }
     signingConfigs {
         debug {
@@ -137,7 +137,8 @@ android {
             }
             shrinkResources (findProperty('android.enableShrinkResourcesInReleaseBuilds')?.toBoolean() ?: false)
             minifyEnabled enableProguardInReleaseBuilds
-            proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
+            // optimize.txt = stronger R8 (Play "optimisation / brouillage / réduction")
+            proguardFiles getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"
             crunchPngs (findProperty('android.enablePngCrunchInReleaseBuilds')?.toBoolean() ?: true)
         }
     }

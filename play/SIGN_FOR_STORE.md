@@ -1,5 +1,28 @@
 # Sign Seeker AdMob APK for Solana Mobile Store
 
+## Google Play AAB (recommended)
+
+```bash
+cd ~/gift_memecoin/play/android
+./bundle-release.sh
+```
+
+Upload:
+
+`app/build/outputs/bundle/release/app-release.aab`
+
+**versionCode must be higher than what’s already on Play** (e.g. if 7 is live, build must be 8+).
+
+R8 minify + shrink are **on** for release (`gradle.properties`). After build, optionally upload the mapping file for crash deobfuscation:
+
+`app/build/outputs/mapping/release/mapping.txt`
+
+→ Play Console → App bundle explorer → download/upload deobfuscation file for that version.
+
+Play tip about **AGP 9.0** is optional; enabling R8 is enough to improve optimisation scores without breaking Expo.
+
+---
+
 The portal error **"Debug APKs are not supported"** means the APK was signed with the Android **debug** key.  
 Store needs the **same production keystore** as your first release (`gift2u-twa/android.keystore`, alias `Gift2u`).
 
