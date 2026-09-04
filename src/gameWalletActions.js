@@ -272,5 +272,6 @@ export async function quoteJupiter({ fromToken, toToken, amount }) {
   );
   const quote = await res.json();
   if (!quote?.outAmount) return '';
-  return fromAtomicAmount(quote.outAmount, toToken, 4);
+  const outDp = String(toToken).toUpperCase() === 'SOL' ? 4 : 2;
+  return fromAtomicAmount(quote.outAmount, toToken, outDp);
 }

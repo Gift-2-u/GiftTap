@@ -192,10 +192,22 @@ export default function GameWalletActionModals({
     return amt > fees ? (amt - fees).toFixed(6) : '0.000000';
   }, [amount, transactionCosts]);
 
+  const getSwapBalanceRaw = (token) => {
+    if (token === 'SOL') return Math.max(0, balSol);
+    if (token === 'USDC') return Math.max(0, balUsdc);
+    if (token === 'G2U') return Math.max(0, balGft);
+    return 0;
+  };
+
   const getSwapBalance = (token) => {
-    if (token === 'SOL') return balSol.toFixed(4);
-    if (token === 'USDC') return balUsdc.toFixed(2);
-    if (token === 'G2U') return balGft.toFixed(4);
+    if (token === 'SOL') return getSwapBalanceRaw(token).toFixed(4);
+    if (token === 'USDC') return getSwapBalanceRaw(token).toFixed(2);
+    if (token === 'G2U') {
+      return getSwapBalanceRaw(token).toLocaleString(undefined, {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      });
+    }
     return '0';
   };
 
@@ -741,12 +753,13 @@ export default function GameWalletActionModals({
                   <button
                     type="button"
                     onClick={() => {
-                      const currentBal = parseFloat(getSwapBalance(fromToken)) || 0;
+                      // Never parseFloat(locale string) — "171,437" → 171
+                      const currentBal = getSwapBalanceRaw(fromToken);
                       const maxAmount =
                         fromToken === 'SOL'
                           ? Math.max(0, currentBal - 0.005)
                           : currentBal;
-                      setAmount(maxAmount > 0 ? maxAmount.toString() : '');
+                      setAmount(maxAmount > 0 ? String(maxAmount) : '');
                     }}
                     style={{
                       background: 'rgba(255, 215, 0, 0.15)',

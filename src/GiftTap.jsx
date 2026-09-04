@@ -1442,7 +1442,7 @@ const GiftTapGame = () => {
         if (setStats) setStats({ ...stats, ...dbUpdates });
         setIsAdModalOpen(false);
 
-        notify("✅ +100 Energy Capacity added. Thanks for watching!");
+        notify("✅ +50 daily tap capacity added. Thanks for watching!");
       } else {
         notify(
           result?.error ||
@@ -1461,10 +1461,24 @@ const GiftTapGame = () => {
     }
   };
 
+  /** Raw token balance for math (never parse locale-formatted strings). */
+  const getSwapBalanceRaw = (token) => {
+    if (token === 'SOL') return Math.max(0, Number(balances.sol) || 0);
+    if (token === 'USDC') return Math.max(0, Number(balances.usdc) || 0);
+    if (token === 'G2U') return Math.max(0, Number(balances.G2U) || 0);
+    return 0;
+  };
+
+  /** Display only — G2U uses locale commas/spaces; do not parseFloat this. */
   const getSwapBalance = (token) => {
-    if (token === 'SOL') return balances.sol?.toFixed(4) || '0.0000';
-    if (token === 'USDC') return balances.usdc?.toFixed(2) || '0.00'; // Adjust if your USDC state name is different
-    if (token === 'G2U') return balances.G2U?.toLocaleString() || '0.00';
+    if (token === 'SOL') return getSwapBalanceRaw(token).toFixed(4);
+    if (token === 'USDC') return getSwapBalanceRaw(token).toFixed(2);
+    if (token === 'G2U') {
+      return getSwapBalanceRaw(token).toLocaleString(undefined, {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      });
+    }
     return '0.00';
   };
 
@@ -6248,10 +6262,11 @@ const GiftTapGame = () => {
 
         // 4. Update the UI with the real number
         if (quoteResponse && quoteResponse.outAmount) {
+          const outDp = swapToToken === 'SOL' ? 4 : 2; // G2U/USDC like money
           const estimatedAmount = fromAtomicAmount(
             quoteResponse.outAmount,
             swapToToken,
-            4,
+            outDp,
           );
           setSwapToAmount(estimatedAmount); 
         } else {
@@ -8764,34 +8779,41 @@ const GiftTapGame = () => {
 
                 {/* From Section */}
                 <div style={{ background: '#1c1e22', borderRadius: '16px', padding: '15px', textAlign: 'left', marginBottom: '5px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', color: '#888', fontSize: '12px' }}>
-                    <span>You pay</span>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', color: '#888', fontSize: '12px', gap: '8px' }}>
+                    <span style={{ flex: '0 0 auto' }}>You pay</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flex: '1 1 auto', justifyContent: 'center' }}>
                       {[0.25, 0.5, 1].map((pct) => (
                         <button
                           key={`swap-pct-${pct}`}
                           type="button"
                           onClick={() => {
-                            const currentBal = parseFloat(getSwapBalance(swapFromToken)) || 0;
-                            const maxAmount = swapFromToken === 'SOL'
-                              ? Math.max(0, currentBal - 0.005)
-                              : currentBal;
+                            // Use raw number — parseFloat(toLocaleString()) breaks on "171,437" → 171
+                            const currentBal = getSwapBalanceRaw(swapFromToken);
+                            const maxAmount =
+                              swapFromToken === 'SOL'
+                                ? Math.max(0, currentBal - 0.005)
+                                : currentBal;
                             if (maxAmount <= 0) {
                               setSwapFromAmount('');
                               return;
                             }
                             const raw = maxAmount * pct;
-                            const formatted =
-                              Math.floor(raw * 1e6) / 1e6;
-                            setSwapFromAmount(formatted > 0 ? String(formatted) : '');
+                            // Money-style display: G2U 2dp, SOL 4dp, USDC 2dp
+                            const decimals =
+                              swapFromToken === 'SOL' ? 4 : 2;
+                            const factor = 10 ** decimals;
+                            const formatted = Math.floor(raw * factor + 1e-9) / factor;
+                            setSwapFromAmount(
+                              formatted > 0 ? formatted.toFixed(decimals) : '',
+                            );
                           }}
                           style={{ background: 'rgba(255, 215, 0, 0.15)', color: '#ffd700', border: '1px solid rgba(255, 215, 0, 0.3)', borderRadius: '6px', fontSize: '10px', fontWeight: 'bold', padding: '2px 6px', cursor: 'pointer', outline: 'none', WebkitTapHighlightColor: 'transparent' }}
                         >
                           {pct === 1 ? 'MAX' : `${Math.round(pct * 100)}%`}
                         </button>
                       ))}
-                      <span>Balance: {getSwapBalance(swapFromToken)}</span>
                     </div>
+                    <span style={{ flex: '0 0 auto' }}>Balance: {getSwapBalance(swapFromToken)}</span>
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '10px' }}>
                     <input 
@@ -9753,7 +9775,7 @@ const GiftTapGame = () => {
                   </>
                 ) : (
                   <p style={{ color: '#ccc', fontSize: '14px', marginBottom: '20px', lineHeight: '1.5' }}>
-                    Want to tap more? Watch a short rewarded ad to expand your Daily Energy Limit by +100 for today.
+                    Want to tap more? Watch a short rewarded ad to expand your Daily Energy Limit by +50 for today.
                     {isSeekerShell()
                       ? ' On Seeker, ads run in-app (AdMob) — energy only after the ad finishes.'
                       : ' Energy is only granted when the ad network confirms the view (blocked ads do not count).'}

@@ -3,8 +3,15 @@
   <head>
     <!-- Solana Web3 Polyfills (Crucial for Staking Vault) -->
     <script>
+      // Must include process.version — readable-stream (via ed25519-hd-key / ripemd160)
+      // calls process.version.slice(...) at load; { env: {} } alone blank-screens the app.
       window.global = window;
-      window.process = { env: {} };
+      window.process = {
+        env: {},
+        version: 'v18.0.0',
+        versions: { node: '18.0.0' },
+        browser: true,
+      };
     </script>
     <script type="module">
       import { Buffer } from 'buffer';

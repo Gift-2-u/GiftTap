@@ -357,7 +357,7 @@ export async function secureTaskClaim(taskId) {
   return callSecureFunction('task-claim', { task_id: taskId });
 }
 
-/** Rewarded ad → +100 daily tap capacity (server computes cap; client cannot set it). */
+/** Rewarded ad → +50 daily tap capacity (server computes cap; client cannot set it). */
 export async function secureAdReward() {
   return callSecureFunction('shop-buy', { item_id: 'ad_watch' });
 }

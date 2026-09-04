@@ -416,6 +416,8 @@ export const SHOP_INVENTORY_QTY_KEYS = [
   'refill',
   'refill_extra', // Extra Battery Refill (was missing → stayed in backpack after use)
   'expanded_energy',
+  'frenzy_60', // Premium 60s Frenzy (1000 G2U, 1×/day)
+  'daily_plus_1000', // Premium +1000 max daily (1000 G2U, 1×/day)
   'bot',
   'grinder',
   'whale',

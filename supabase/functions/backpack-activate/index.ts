@@ -28,6 +28,8 @@ const ACTIVATABLE = new Set([
   "x2_boost",
   "x3_boost",
   "expanded_energy",
+  "frenzy_60",
+  "daily_plus_1000",
 ]);
 
 function energyCapFromInv(inv: Record<string, unknown>, nowMs = Date.now()): number {
@@ -147,6 +149,9 @@ serve(async (req) => {
     if (itemId === "frenzy") {
       // Shards ×2 for 30s only — do NOT touch last_energy / energy_at
       updates.frenzy_expires = new Date(now + 30 * 1000).toISOString();
+    } else if (itemId === "frenzy_60") {
+      // Premium 60s Frenzy (same ×2, longer window)
+      updates.frenzy_expires = new Date(now + 60 * 1000).toISOString();
     } else if (itemId === "battery") {
       // Expanded daily tap cap +500 (effectiveDailyLimit) — not the 500 energy pool
       updates.energy_boost_expires = endOfUtcDay(0);
@@ -154,6 +159,20 @@ serve(async (req) => {
         {
           ...row,
           energy_boost_expires: updates.energy_boost_expires,
+          inventory: inv,
+        },
+        new Date(),
+      );
+    } else if (itemId === "daily_plus_1000") {
+      // Premium +1000 max daily taps until UTC midnight (NOT battery pool)
+      inv.premium_daily_boost = {
+        amount: 1000,
+        expires: endOfUtcDay(0),
+      };
+      updates.inventory = inv;
+      updates.max_daily_limit = effectiveDailyLimit(
+        {
+          ...row,
           inventory: inv,
         },
         new Date(),

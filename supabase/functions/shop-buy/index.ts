@@ -15,7 +15,7 @@ import {
 } from "../_shared/economy.ts";
 
 const AD_DAILY_MAX = 10;
-const AD_CAP_PER_WATCH = 100;
+const AD_CAP_PER_WATCH = 50;
 
 function utcTodayStr(d = new Date()): string {
   return d.toISOString().slice(0, 10);
@@ -51,7 +51,7 @@ serve(async (req) => {
     const body = await req.json().catch(() => ({}));
     const itemId = String(body.item_id || body.itemId || "").toLowerCase();
 
-    // Rewarded ad → +100 daily tap capacity (server authority; client cannot set the cap)
+    // Rewarded ad → +50 daily tap capacity (server authority; client cannot set the cap)
     if (itemId === "ad_watch" || body.action === "ad_reward") {
       const sb = adminClient();
       const { data: row, error: selErr } = await sb

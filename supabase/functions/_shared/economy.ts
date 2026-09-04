@@ -543,6 +543,11 @@ export function effectiveDailyLimit(
   ) {
     n += Math.max(0, Number(row.ad_energy_boost) || 0);
   }
+  // Premium shop: +1000 max daily until UTC midnight (daily_plus_1000)
+  const pdb = inv?.premium_daily_boost as { amount?: number; expires?: string } | undefined;
+  if (pdb?.expires && new Date(String(pdb.expires)).getTime() > now.getTime()) {
+    n += Math.max(0, Number(pdb.amount) || 0);
+  }
   return Math.max(1000, Math.floor(n));
 }
 

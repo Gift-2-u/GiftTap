@@ -411,7 +411,7 @@ const GiftTapGame = () => {
           limit_boost_amount: stats.limit_boost_amount,
           limit_boost_expires: stats.limit_boost_expires,
           // Synchronize the Ad Energy Boost fields too
-          ad_energy_boost: (stats.ad_energy_boost || 0) + 100,
+          ad_energy_boost: (stats.ad_energy_boost || 0) + 50,
           ad_energy_expires: midnightTonight.toISOString(),
           last_updated: new Date().toISOString()
         };

@@ -56,6 +56,18 @@ const PREMIUM: Record<
     priceSol: 0.0002,
     priceG2u: 0.0002 * G2U_PER_SOL,
   },
+  /** Premium: 60s Frenzy — fixed 1000 $G2U, 1× / UTC day */
+  frenzy_60: {
+    name: "60-Second Frenzy",
+    priceSol: 1000 / G2U_PER_SOL,
+    priceG2u: 1000,
+  },
+  /** Premium: +1000 max daily taps until UTC midnight — fixed 1000 $G2U, 1× / UTC day */
+  daily_plus_1000: {
+    name: "+1000 Max Daily",
+    priceSol: 1000 / G2U_PER_SOL,
+    priceG2u: 1000,
+  },
   shard_badge: {
     name: "Star Badge",
     priceSol: 0.02,
@@ -65,6 +77,35 @@ const MASTER = "D4GufPTvp6tnzkaYGfombFLs48UjDANsxjMFJnSYz4Gh";
 
 function g2uPremiumEnabled(): boolean {
   return g2uShopEnabled();
+}
+
+const ONCE_PER_UTC_DAY = new Set(["frenzy_60", "daily_plus_1000"]);
+
+function utcToday(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+/** Block buy if already bought/used this UTC day, or still holding an unused charge. */
+function assertOncePerDayOk(
+  itemId: string,
+  inv: Record<string, unknown>,
+  dailyUsageCol: unknown,
+) {
+  if (!ONCE_PER_UTC_DAY.has(itemId)) return;
+  const today = utcToday();
+  let usage: Record<string, string> = {};
+  if (dailyUsageCol && typeof dailyUsageCol === "object") {
+    usage = { ...(dailyUsageCol as Record<string, string>) };
+  }
+  if (inv.daily_usage && typeof inv.daily_usage === "object") {
+    usage = { ...usage, ...(inv.daily_usage as Record<string, string>) };
+  }
+  if (usage[itemId] === today || usage[`${itemId}_bought`] === today) {
+    throw new Error(`Already bought today (UTC). Wait until midnight.`);
+  }
+  if ((Number(inv[itemId]) || 0) >= 1) {
+    throw new Error(`Use your boost from Backpack first (1 charge max).`);
+  }
 }
 
 function bumpWeeklyBoost(inv: Record<string, unknown>) {
@@ -185,11 +226,20 @@ serve(async (req) => {
       if (!row) throw new Error("Player not found");
 
       const inv = invObj(row.inventory);
+      assertOncePerDayOk(itemId, inv, row.daily_usage);
       inv[itemId] = (Number(inv[itemId]) || 0) + 1;
       let daily_usage =
         row.daily_usage && typeof row.daily_usage === "object"
           ? { ...(row.daily_usage as Record<string, string>) }
           : {};
+      // Stamp buy day so a second purchase today is blocked even before activate
+      if (ONCE_PER_UTC_DAY.has(itemId)) {
+        daily_usage[`${itemId}_bought`] = utcToday();
+        inv.daily_usage = {
+          ...((inv.daily_usage as Record<string, string>) || {}),
+          [`${itemId}_bought`]: utcToday(),
+        };
+      }
       bumpWeeklyBoost(inv);
 
       const { error: upErr } = await sb
@@ -282,20 +332,33 @@ serve(async (req) => {
 
     const { data: row, error: selErr } = await sb
       .from("players")
-      .select("inventory, has_made_purchase")
+      .select("inventory, has_made_purchase, daily_usage")
       .eq("telegram_id", playerId)
       .maybeSingle();
     if (selErr) throw selErr;
     if (!row) throw new Error("Player not found");
 
     const inv = invObj(row.inventory);
+    assertOncePerDayOk(itemId, inv, row.daily_usage);
     inv[itemId] = (Number(inv[itemId]) || 0) + 1;
+    let daily_usage =
+      row.daily_usage && typeof row.daily_usage === "object"
+        ? { ...(row.daily_usage as Record<string, string>) }
+        : {};
+    if (ONCE_PER_UTC_DAY.has(itemId)) {
+      daily_usage[`${itemId}_bought`] = utcToday();
+      inv.daily_usage = {
+        ...((inv.daily_usage as Record<string, string>) || {}),
+        [`${itemId}_bought`]: utcToday(),
+      };
+    }
     bumpWeeklyBoost(inv);
 
     const { error: upErr } = await sb
       .from("players")
       .update({
         inventory: inv,
+        daily_usage,
         has_made_purchase: true,
         last_updated: new Date().toISOString(),
       })

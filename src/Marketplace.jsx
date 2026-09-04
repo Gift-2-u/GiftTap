@@ -628,6 +628,36 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, bumpEner
       iconRing: 'rgba(74,222,128,0.5)',
       iconGlow: 'rgba(34,197,94,0.3)',
     },
+    {
+      id: 'frenzy_60',
+      name: '60-Second Frenzy',
+      type: 'Power',
+      rarity: 'Epic',
+      boost: '2× shards per energy for 60 seconds',
+      duration: '60 Seconds · 1× / UTC day',
+      price: 1000 / G2U_PER_SOL,
+      priceG2uFixed: 1000,
+      currency: 'SOL',
+      iconFrom: '#ff6b35',
+      iconTo: '#7c1d12',
+      iconRing: 'rgba(255,107,53,0.55)',
+      iconGlow: 'rgba(255,107,53,0.3)',
+    },
+    {
+      id: 'daily_plus_1000',
+      name: '+1000 Max Daily',
+      type: 'Power',
+      rarity: 'Epic',
+      boost: '+1,000 max daily taps (not battery) until UTC midnight',
+      duration: 'Until UTC midnight · 1× / UTC day',
+      price: 1000 / G2U_PER_SOL,
+      priceG2uFixed: 1000,
+      currency: 'SOL',
+      iconFrom: '#60a5fa',
+      iconTo: '#1e3a8a',
+      iconRing: 'rgba(96,165,250,0.55)',
+      iconGlow: 'rgba(59,130,246,0.3)',
+    },
   ];
 
   const premiumListings = premiumListingsRaw.map((item) => {
@@ -2069,8 +2099,18 @@ Daily claim active · Pack → NFT to see it.`,
               daily_usage: nextDailyUsage,
             };
             // Ensure Frenzy timer is on the merged stats even if updates was partial
-            if (item.id === 'frenzy' && data.updates?.frenzy_expires) {
+            if (
+              (item.id === 'frenzy' || item.id === 'frenzy_60') &&
+              data.updates?.frenzy_expires
+            ) {
               merged.frenzy_expires = data.updates.frenzy_expires;
+            }
+            if (
+              item.id === 'daily_plus_1000' &&
+              data.updates?.max_daily_limit != null &&
+              typeof onMaxDailyLimitChange === 'function'
+            ) {
+              onMaxDailyLimitChange(Number(data.updates.max_daily_limit));
             }
             return merged;
           });
