@@ -150,6 +150,24 @@ const TASK_LIST = [
     target: 30,
   },
   {
+    id: 'streak_60',
+    title: 'Tap 60 Days in a Row',
+    reward: 5000,
+    icon: '🔥',
+    reqLevel: 1,
+    type: 'streak',
+    target: 60,
+  },
+  {
+    id: 'streak_90',
+    title: 'Tap 90 Days in a Row',
+    reward: 10000,
+    icon: '🔥',
+    reqLevel: 1,
+    type: 'streak',
+    target: 90,
+  },
+  {
     id: 'first_purchase',
     title: 'Make an In-App Purchase',
     reward: 5000,
@@ -261,6 +279,29 @@ const Tasks = ({
     };
     fetchTasks();
   }, [userId]);
+
+  // Re-read purchase flag when opening Lifetime (after a shop buy in the same session)
+  useEffect(() => {
+    if (taskTab !== 'lifetime' || !userId) return;
+    let cancelled = false;
+    (async () => {
+      const { data, error } = await supabase
+        .from('players')
+        .select('completed_tasks, has_made_purchase, lifetime_taps, current_streak')
+        .eq(DB_PLAYER_ID, userId)
+        .maybeSingle();
+      if (cancelled || error || !data) return;
+      setCompletedTasks(Array.isArray(data.completed_tasks) ? data.completed_tasks : []);
+      setPlayerStats({
+        streak: data.current_streak || 0,
+        purchased: !!data.has_made_purchase,
+        lifetimeTaps: Number(data.lifetime_taps) || 0,
+      });
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [taskTab, userId]);
 
   const progress = useMemo(
     () => ({

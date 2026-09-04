@@ -41,3 +41,7 @@ seeker/node_modules/
 seeker/android/
 seeker/ios/
 seeker/.expo/
+
+# Miles / YouTube CGI channel (separate project — never ship with Gift2U)
+youtube_channel/
+**/youtube_channel/

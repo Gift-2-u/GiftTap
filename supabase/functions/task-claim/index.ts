@@ -24,11 +24,14 @@ const TASKS: Record<string, TaskDef> = {
   streak_7: { id: "streak_7", type: "shards", reward: 500 },
   streak_14: { id: "streak_14", type: "shards", reward: 1250 },
   streak_30: { id: "streak_30", type: "shards", reward: 3000 },
+  streak_60: { id: "streak_60", type: "shards", reward: 5000 },
+  streak_90: { id: "streak_90", type: "shards", reward: 10000 },
+  first_purchase: { id: "first_purchase", type: "shards", reward: 5000 },
   taps_1000: { id: "taps_1000", type: "daily_limit", reward: 100, dayLimited: true },
   taps_5000: { id: "taps_5000", type: "daily_limit", reward: 250, dayLimited: true },
   streak_3: { id: "streak_3", type: "daily_limit", reward: 200, dayLimited: true },
-  streak_10: { id: "streak_10", type: "daily_limit", reward: 500, dayLimited: true }};
-
+  streak_10: { id: "streak_10", type: "daily_limit", reward: 500, dayLimited: true },
+};
 function utcMidnightIso(d = new Date()): string {
   return new Date(
     Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 23, 59, 59, 999),
@@ -51,7 +54,7 @@ serve(async (req) => {
     const { data: row, error: selErr } = await sb
       .from("players")
       .select(
-        "shard_balance, lifetime_taps, current_streak, completed_tasks, inventory, max_daily_limit, energy_boost_expires, limit_boost_amount, limit_boost_expires, ad_energy_boost, ad_energy_expires",
+        "shard_balance, lifetime_taps, current_streak, completed_tasks, inventory, max_daily_limit, energy_boost_expires, limit_boost_amount, limit_boost_expires, ad_energy_boost, ad_energy_expires, has_made_purchase",
       )
       .eq("telegram_id", playerId)
       .maybeSingle();
@@ -65,7 +68,8 @@ serve(async (req) => {
         already: true,
         completed_tasks: done,
         inventory: row.inventory,
-        shard_balance: row.shard_balance});
+        shard_balance: row.shard_balance,
+      });
     }
 
     // Light readiness checks (server)
@@ -78,6 +82,11 @@ serve(async (req) => {
     if (taskId === "streak_10" && streak < 10) throw new Error("Need 10-day streak");
     if (taskId === "streak_14" && streak < 14) throw new Error("Need 14-day streak");
     if (taskId === "streak_30" && streak < 30) throw new Error("Need 30-day streak");
+    if (taskId === "streak_60" && streak < 60) throw new Error("Need 60-day streak");
+    if (taskId === "streak_90" && streak < 90) throw new Error("Need 90-day streak");
+    if (taskId === "first_purchase" && !row.has_made_purchase) {
+      throw new Error("Make an in-app purchase first");
+    }
     // social tasks: trust client opened link once (or require future proof)
 
     const inv = invObj(row.inventory);

@@ -175,7 +175,12 @@ import {
 
 import { hasLocksmith, listGiftNfts } from './locksmith';
 import { RPC_URL } from './rpc';
-import { TOKEN_MINTS, TREASURY_TOKEN_ACCOUNTS } from './gameWalletActions';
+import {
+  TOKEN_MINTS,
+  TREASURY_TOKEN_ACCOUNTS,
+  toAtomicAmount,
+  fromAtomicAmount,
+} from './gameWalletActions';
 import AirdropBoard from './AirdropBoard';
 import {
   computeAirdropProgress,
@@ -6227,8 +6232,11 @@ const GiftTapGame = () => {
       try {
         const inputMint = TOKEN_MINTS[swapFromToken];
         const outputMint = TOKEN_MINTS[swapToToken];
-        const decimals = swapFromToken === 'SOL' ? 1000000000 : 1000000;
-        const amountInSmallestUnits = Math.floor(parseFloat(swapFromAmount) * decimals);
+        // G2U is 9 decimals (not 6 like USDC) — wrong divisor inflated "You receive" ~1000x
+        const amountInSmallestUnits = toAtomicAmount(
+          parseFloat(swapFromAmount),
+          swapFromToken,
+        );
 
         // 3. Ask Jupiter for the quote (using lite-api and 200 slippage)
         const res = await fetch(`https://lite-api.jup.ag/swap/v1/quote?inputMint=${inputMint}&outputMint=${outputMint}&amount=${amountInSmallestUnits}&slippageBps=200&platformFeeBps=100`);
@@ -6239,8 +6247,11 @@ const GiftTapGame = () => {
 
         // 4. Update the UI with the real number
         if (quoteResponse && quoteResponse.outAmount) {
-          const outDecimals = swapToToken === 'SOL' ? 1000000000 : 1000000; 
-          const estimatedAmount = (parseInt(quoteResponse.outAmount) / outDecimals).toFixed(4);
+          const estimatedAmount = fromAtomicAmount(
+            quoteResponse.outAmount,
+            swapToToken,
+            4,
+          );
           setSwapToAmount(estimatedAmount); 
         } else {
           setSwapToAmount('');
@@ -6487,8 +6498,11 @@ const GiftTapGame = () => {
       // 3. PREPARE JUPITER INPUTS
       const inputMint = TOKEN_MINTS[swapFromToken];
       const outputMint = TOKEN_MINTS[swapToToken];
-      const decimals = swapFromToken === 'SOL' ? 1000000000 : 1000000;
-      const amountInSmallestUnits = Math.floor(parseFloat(swapFromAmount) * decimals);
+      const amountInSmallestUnits = toAtomicAmount(
+        parseFloat(swapFromAmount),
+        swapFromToken,
+      );
+      if (!amountInSmallestUnits) throw new Error('Enter an amount to swap.');
 
       // 4. FETCH QUOTE
       const quoteResponse = await (

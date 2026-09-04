@@ -35,6 +35,36 @@ export const TOKEN_MINTS = {
   G2U: MINT_ADDRESS.toBase58(),
 };
 
+/** On-chain decimals for Jupiter amount math (G2U is 9 — NOT 6 like USDC). */
+export const TOKEN_DECIMALS = {
+  SOL: 9,
+  USDC: 6,
+  G2U: 9,
+  GFT: 9,
+};
+
+export function tokenDecimals(symbol) {
+  const key = String(symbol || '').toUpperCase();
+  const n = TOKEN_DECIMALS[key];
+  if (typeof n === 'number' && n >= 0) return n;
+  // Safe default for unknown SPL: 6 (USDC-style). Never assume G2U is 6.
+  return 6;
+}
+
+export function toAtomicAmount(uiAmount, symbol) {
+  const amt = Number(uiAmount);
+  if (!Number.isFinite(amt) || amt <= 0) return 0;
+  const dec = tokenDecimals(symbol);
+  return Math.floor(amt * 10 ** dec);
+}
+
+export function fromAtomicAmount(atomic, symbol, fractionDigits = 4) {
+  const raw = typeof atomic === 'bigint' ? Number(atomic) : parseInt(String(atomic), 10);
+  if (!Number.isFinite(raw) || raw <= 0) return (0).toFixed(fractionDigits);
+  const dec = tokenDecimals(symbol);
+  return (raw / 10 ** dec).toFixed(fractionDigits);
+}
+
 /** Jupiter platform fee ATAs (token accounts for each mint under TREASURY). */
 export const TREASURY_TOKEN_ACCOUNTS = {
   USDC: 'H5nSSix2Q4xrSPJCn8f4tY2FNDRazeUot1MNcgATYKEq',
@@ -166,8 +196,8 @@ export async function swapFromGameWallet({ fromToken, toToken, amount, password,
     throw new Error('That token is not available for swap yet.');
   }
 
-  const decimals = fromToken === 'SOL' ? 1e9 : 1e6;
-  const amountIn = Math.floor(amt * decimals);
+  const amountIn = toAtomicAmount(amt, fromToken);
+  if (!amountIn) throw new Error('Enter an amount to swap.');
 
   const quoteRes = await fetch(
     `https://lite-api.jup.ag/swap/v1/quote?inputMint=${inputMint}&outputMint=${outputMint}&amount=${amountIn}&slippageBps=500&platformFeeBps=100`,
@@ -223,13 +253,12 @@ export async function quoteJupiter({ fromToken, toToken, amount }) {
   const inputMint = TOKEN_MINTS[fromToken];
   const outputMint = TOKEN_MINTS[toToken];
   if (!inputMint || !outputMint || String(inputMint).includes('YOUR_')) return '';
-  const decimals = fromToken === 'SOL' ? 1e9 : 1e6;
-  const amountIn = Math.floor(amt * decimals);
+  const amountIn = toAtomicAmount(amt, fromToken);
+  if (!amountIn) return '';
   const res = await fetch(
     `https://lite-api.jup.ag/swap/v1/quote?inputMint=${inputMint}&outputMint=${outputMint}&amount=${amountIn}&slippageBps=200&platformFeeBps=100`,
   );
   const quote = await res.json();
   if (!quote?.outAmount) return '';
-  const outDec = toToken === 'SOL' ? 1e9 : 1e6;
-  return (parseInt(quote.outAmount, 10) / outDec).toFixed(4);
+  return fromAtomicAmount(quote.outAmount, toToken, 4);
 }
