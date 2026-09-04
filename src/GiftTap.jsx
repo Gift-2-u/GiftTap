@@ -180,6 +180,7 @@ import {
   TREASURY_TOKEN_ACCOUNTS,
   toAtomicAmount,
   fromAtomicAmount,
+  swapFromGameWallet,
 } from './gameWalletActions';
 import AirdropBoard from './AirdropBoard';
 import {
@@ -6238,8 +6239,8 @@ const GiftTapGame = () => {
           swapFromToken,
         );
 
-        // 3. Ask Jupiter for the quote (using lite-api and 200 slippage)
-        const res = await fetch(`https://lite-api.jup.ag/swap/v1/quote?inputMint=${inputMint}&outputMint=${outputMint}&amount=${amountInSmallestUnits}&slippageBps=200&platformFeeBps=100`);
+        // 3. Ask Jupiter for the quote (no platformFeeBps — needs referral fee ATAs)
+        const res = await fetch(`https://lite-api.jup.ag/swap/v1/quote?inputMint=${inputMint}&outputMint=${outputMint}&amount=${amountInSmallestUnits}&slippageBps=200`);
         const quoteResponse = await res.json();
         
         // 🚨 DEBUGGER: Prints the math to your F12 console
@@ -6469,150 +6470,88 @@ const GiftTapGame = () => {
     }
   };
 
-  // --- THE BRAIN: Web3 Jupiter Swap Logic (Solflare Standard) ---
+  // --- Jupiter swap (shared path with gameWalletActions; no broken platformFee) ---
   const executeJupiterSwap = async () => {
     if (!swapFromAmount || parseFloat(swapFromAmount) <= 0) return;
-    
-    // 🚨 1. MOVE TXID OUTSIDE THE TRY BLOCK so it survives timeout errors!
-    let currentTxid = null; 
+    if (swapFromToken === swapToToken) {
+      notify('Choose two different tokens.');
+      return;
+    }
 
-    // ONE SINGLE START MESSAGE 
-    setTxStatus({ show: true, loading: true, message: `Confirming transaction...`, success: false, txid: null });
-    
+    let currentTxid = null;
+    setTxStatus({
+      show: true,
+      loading: true,
+      message: 'Confirming transaction...',
+      success: false,
+      txid: null,
+    });
+
     try {
-      // 1. SETUP WALLET — password unlock if phrase not in RAM
       const storedSecret = await ensureWalletSecret(
         'Enter your account password to unlock wallet for swap:',
       );
 
-      let playerKeypair;
-      if (storedSecret.includes(" ")) {
-        playerKeypair = keypairFromMnemonic(storedSecret.trim());
-      } else {
-        playerKeypair = Keypair.fromSecretKey(bs58.decode(storedSecret));
-      }
+      const { signature, publicKey } = await swapFromGameWallet({
+        fromToken: swapFromToken,
+        toToken: swapToToken,
+        amount: swapFromAmount,
+        phrase: storedSecret,
+      });
+      currentTxid = signature;
+      console.log(`TRACK TX: https://solscan.io/tx/${currentTxid}`);
 
-      // 2. SETUP CONNECTION
-      const connection = new Connection(RPC_URL, 'confirmed');
-      
-      // 3. PREPARE JUPITER INPUTS
-      const inputMint = TOKEN_MINTS[swapFromToken];
-      const outputMint = TOKEN_MINTS[swapToToken];
-      const amountInSmallestUnits = toAtomicAmount(
-        parseFloat(swapFromAmount),
-        swapFromToken,
-      );
-      if (!amountInSmallestUnits) throw new Error('Enter an amount to swap.');
-
-      // 4. FETCH QUOTE
-      const quoteResponse = await (
-        await fetch(`https://lite-api.jup.ag/swap/v1/quote?inputMint=${inputMint}&outputMint=${outputMint}&amount=${amountInSmallestUnits}&slippageBps=500&platformFeeBps=100`)
-      ).json();
-
-      if (quoteResponse.error) throw new Error(quoteResponse.error);
-
-      // 5. FETCH ASSEMBLED TRANSACTION (fee ATA from gameWalletActions / G2U mint)
-      const activeFeeAccount = TREASURY_TOKEN_ACCOUNTS[swapToToken]; 
-
-      const { swapTransaction } = await (
-        await fetch('https://lite-api.jup.ag/swap/v1/swap', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            quoteResponse,
-            userPublicKey: playerKeypair.publicKey.toString(),
-            wrapAndUnwrapSol: true,
-            feeAccount: activeFeeAccount,
-            dynamicComputeUnitLimit: true,
-            prioritizationFeeLamports: { autoMultiplier: 2 } 
-          })
-        })
-      ).json();
-
-      if (!swapTransaction) throw new Error("Failed to build swap transaction.");
-
-      // 6. DESERIALIZE AND SIGN
-      const swapTransactionBuf = Buffer.from(swapTransaction, 'base64');
-      var transaction = VersionedTransaction.deserialize(swapTransactionBuf);
-      transaction.sign([playerKeypair]);
-
-      // 7. SEND TO NETWORK
-      const rawTransaction = transaction.serialize();
-      
-      // 🚨 WE UPDATE THE VARIABLE HERE INSTEAD OF USING 'const'
-      currentTxid = await connection.sendRawTransaction(rawTransaction, { skipPreflight: true, maxRetries: 2 });
-      console.log(`🚨 TRACK TX HERE: https://solscan.io/tx/${currentTxid}`);
-
-      // 8. WAIT FOR CONFIRMATION
-      setTxStatus(prev => ({ ...prev, message: "Confirming on-chain..." })); // Optional clean UI update during the wait
-      
-      const latestBlockHash = await connection.getLatestBlockhash();
-      const confirmation = await connection.confirmTransaction({
-        blockhash: latestBlockHash.blockhash,
-        lastValidBlockHeight: latestBlockHash.lastValidBlockHeight,
-        signature: currentTxid
-      }, 'confirmed');
-      
-      if (confirmation.value.err) {
-        throw new Error(`Transaction failed on-chain!`);
-      }
-
-      // 9. CLEANUP & SUCCESS (Standard)
-      setTxStatus({ show: true, loading: false, message: `Transaction confirmed`, success: true, txid: currentTxid });
+      setTxStatus({
+        show: true,
+        loading: false,
+        message: 'Transaction confirmed',
+        success: true,
+        txid: currentTxid,
+      });
       setSwapFromAmount('');
       setSwapToAmount('');
-      
+
       setTimeout(() => {
-          setTxStatus(prev => ({ ...prev, show: false }));
-      }, 3500); 
+        setTxStatus((prev) => ({ ...prev, show: false }));
+      }, 3500);
 
-      setTimeout(async () => { 
+      setTimeout(async () => {
         try {
-            if (typeof syncPlayer === 'function') {
-                console.log("Fetching fresh balances from blockchain...");
-                await syncPlayer(); 
-                console.log("Sync complete!");
-            }
-
-            // 🚨 SECOND: Sync their actual Web3 money directly from the blockchain!
-            if (playerKeypair) {
-                await syncBlockchainBalances(playerKeypair.publicKey.toString());
-            }
-
+          if (typeof syncPlayer === 'function') await syncPlayer();
+          if (publicKey) await syncBlockchainBalances(publicKey);
         } catch (syncError) {
-            console.error("Player sync failed after swap:", syncError);
+          console.error('Player sync failed after swap:', syncError);
         }
-      }, 3500); 
-
+      }, 3500);
     } catch (error) {
-      console.error("Swap Error:", error);
-      
-      let errorMessage = "Transaction failed";
+      console.error('Swap Error:', error);
+      const msg = String(error?.message || error || '');
+      let errorMessage = msg || 'Transaction failed';
       let isSuccessVisual = false;
 
-      if (error.message.includes("6025") || error.message.includes("6024")) {
-          errorMessage = "Slippage tolerance exceeded";
+      if (msg.includes('6025') || msg.includes('6024')) {
+        errorMessage = 'Slippage tolerance exceeded';
       }
-      
-      // 🚨 10. THE PHANTOM CATCH
-      // If the RPC times out, but we actually got a txid in Step 7, it's a success!
-      if (error.message.includes("expired") || error.message.includes("timeout") || error.message.includes("block height exceeded")) {
-          errorMessage = "Swap succeeded!";
-          isSuccessVisual = true; // Forces the UI to turn green
+      if (
+        msg.includes('expired') ||
+        msg.includes('timeout') ||
+        msg.includes('block height exceeded')
+      ) {
+        errorMessage = currentTxid ? 'Swap succeeded!' : errorMessage;
+        isSuccessVisual = !!currentTxid;
       }
 
-      // We pass `currentTxid` so even if it falls to the catch block, the Solscan link still appears
-      setTxStatus({ 
-          show: true, 
-          loading: false, 
-          message: errorMessage, 
-          success: isSuccessVisual, 
-          txid: currentTxid 
+      setTxStatus({
+        show: true,
+        loading: false,
+        message: errorMessage,
+        success: isSuccessVisual,
+        txid: currentTxid,
       });
 
       setTimeout(() => {
-          setTxStatus(prev => ({ ...prev, show: false }));
-      }, 5000); 
+        setTxStatus((prev) => ({ ...prev, show: false }));
+      }, 5000);
     }
   };
 

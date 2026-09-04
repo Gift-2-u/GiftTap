@@ -199,14 +199,21 @@ export async function swapFromGameWallet({ fromToken, toToken, amount, password,
   const amountIn = toAtomicAmount(amt, fromToken);
   if (!amountIn) throw new Error('Enter an amount to swap.');
 
+  // Do NOT pass platformFeeBps until Jupiter referral fee ATAs exist for every
+  // output mint (treasury currently has no $G2U ATA → SOL→G2U always 400).
   const quoteRes = await fetch(
-    `https://lite-api.jup.ag/swap/v1/quote?inputMint=${inputMint}&outputMint=${outputMint}&amount=${amountIn}&slippageBps=500&platformFeeBps=100`,
+    `https://lite-api.jup.ag/swap/v1/quote?inputMint=${inputMint}&outputMint=${outputMint}&amount=${amountIn}&slippageBps=500`,
   );
   const quoteResponse = await quoteRes.json();
-  if (quoteResponse.error) throw new Error(quoteResponse.error);
+  if (quoteResponse.error || quoteResponse.errorMessage) {
+    throw new Error(
+      quoteResponse.error ||
+        quoteResponse.errorMessage ||
+        'Jupiter quote failed',
+    );
+  }
   if (!quoteResponse.outAmount) throw new Error('No swap route available.');
 
-  const feeAccount = TREASURY_TOKEN_ACCOUNTS[toToken];
   const swapBody = {
     quoteResponse,
     userPublicKey: keypair.publicKey.toString(),
@@ -214,17 +221,22 @@ export async function swapFromGameWallet({ fromToken, toToken, amount, password,
     dynamicComputeUnitLimit: true,
     prioritizationFeeLamports: { autoMultiplier: 2 },
   };
-  if (feeAccount && !String(feeAccount).includes('Paste')) {
-    swapBody.feeAccount = feeAccount;
-  }
 
   const swapRes = await fetch('https://lite-api.jup.ag/swap/v1/swap', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(swapBody),
   });
-  const { swapTransaction } = await swapRes.json();
-  if (!swapTransaction) throw new Error('Failed to build swap transaction.');
+  const swapJson = await swapRes.json().catch(() => ({}));
+  if (!swapRes.ok || !swapJson?.swapTransaction) {
+    throw new Error(
+      swapJson?.error ||
+        swapJson?.errorMessage ||
+        swapJson?.message ||
+        `Failed to build swap transaction (${swapRes.status})`,
+    );
+  }
+  const { swapTransaction } = swapJson;
 
   const tx = VersionedTransaction.deserialize(Buffer.from(swapTransaction, 'base64'));
   tx.sign([keypair]);
@@ -256,7 +268,7 @@ export async function quoteJupiter({ fromToken, toToken, amount }) {
   const amountIn = toAtomicAmount(amt, fromToken);
   if (!amountIn) return '';
   const res = await fetch(
-    `https://lite-api.jup.ag/swap/v1/quote?inputMint=${inputMint}&outputMint=${outputMint}&amount=${amountIn}&slippageBps=200&platformFeeBps=100`,
+    `https://lite-api.jup.ag/swap/v1/quote?inputMint=${inputMint}&outputMint=${outputMint}&amount=${amountIn}&slippageBps=200`,
   );
   const quote = await res.json();
   if (!quote?.outAmount) return '';
