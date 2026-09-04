@@ -7,9 +7,11 @@
 
 export const BATTLE = {
   DURATION_MS: 20_000,
-  ENTRY_SHARDS: 50,
-  /** Winner gets 2× entry minus rake */
-  RAKE_BPS: 1000, // 10%
+  /** Entry: spend this much battery energy AND consume the same from today's daily tap room */
+  ENTRY_ENERGY: 50,
+  /** Winner backpack reward (same weekly badge items) */
+  WIN_BADGE: 'badge_bronze',
+  WIN_BADGE_QTY: 1,
   MAX_DAILY_MATCHES: 20,
   ARENA_WIDTH: 320,
   ARENA_HEIGHT: 480,
@@ -82,10 +84,9 @@ export function maxPossibleScore(drops) {
   return (drops || []).reduce((s, d) => s + (Number(d.points) || 0), 0);
 }
 
-export function potShards(entry = BATTLE.ENTRY_SHARDS) {
-  const gross = entry * 2;
-  const rake = Math.floor((gross * BATTLE.RAKE_BPS) / 10000);
-  return { gross, rake, winner: gross - rake };
+/** @deprecated shards pot removed — Battle stakes energy, pays badges */
+export function potShards() {
+  return { gross: 0, rake: 0, winner: 0 };
 }
 
 export function validateBattleScore({ score, catches, seed, durationMs }) {

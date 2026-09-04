@@ -84,8 +84,7 @@ serve(async (req) => {
     if (!row) throw new Error("Player not found");
 
     const inv = invObj(row.inventory);
-    const have = Math.max(0, Math.floor(Number(inv[itemId]) || 0));
-    if (have <= 0) throw new Error(`No ${itemId} in backpack`);
+    let have = Math.max(0, Math.floor(Number(inv[itemId]) || 0));
 
     // daily_usage: column and/or inventory.daily_usage
     let dailyUsage: Record<string, string> = {};
@@ -104,10 +103,29 @@ serve(async (req) => {
     // Free Battery Refill: 1× / UTC day after launch. Extra Battery Refill: no day lock.
     const refillOncePerDay = itemId === "refill" && afterLaunch;
     const isExtraRefill = itemId === "refill_extra";
+
+    // Repair: paid for +1000 Max Daily today but boost never stuck on tap (old path).
+    // Allow one free re-apply without a backpack charge if bought today and not yet on ad_energy.
+    let repairDailyPlus = false;
+    if (itemId === "daily_plus_1000" && have <= 0) {
+      const boughtToday = dailyUsage.daily_plus_1000_bought === today;
+      const adOk =
+        row.ad_energy_expires &&
+        new Date(String(row.ad_energy_expires)).getTime() > Date.now();
+      const adAmt = adOk ? Math.max(0, Number(row.ad_energy_boost) || 0) : 0;
+      if (boughtToday && adAmt < 1000) {
+        repairDailyPlus = true;
+      }
+    }
+
+    if (have <= 0 && !repairDailyPlus) {
+      throw new Error(`No ${itemId} in backpack`);
+    }
     if (
       dailyUsage[itemId] === today &&
       itemId !== "crate" &&
       !isExtraRefill &&
+      !repairDailyPlus &&
       (itemId !== "refill" || refillOncePerDay)
     ) {
       if (refillOncePerDay) {
@@ -119,11 +137,13 @@ serve(async (req) => {
     }
 
     // Deduct charge — set 0 then delete so clients never re-merge a ghost qty
-    if (have <= 1) {
-      inv[itemId] = 0;
-      delete inv[itemId];
-    } else {
-      inv[itemId] = have - 1;
+    if (!repairDailyPlus) {
+      if (have <= 1) {
+        inv[itemId] = 0;
+        delete inv[itemId];
+      } else {
+        inv[itemId] = have - 1;
+      }
     }
 
     if (
@@ -164,15 +184,19 @@ serve(async (req) => {
         new Date(),
       );
     } else if (itemId === "daily_plus_1000") {
-      // Premium +1000 max daily taps until UTC midnight (NOT battery pool)
-      inv.premium_daily_boost = {
-        amount: 1000,
-        expires: endOfUtcDay(0),
-      };
-      updates.inventory = inv;
+      // Same mechanism as free +500 Daily (energy_boost) / ads: column boost until UTC midnight.
+      // NOT the battery energy pool — only max daily taps.
+      const adOk =
+        row.ad_energy_expires &&
+        new Date(String(row.ad_energy_expires)).getTime() > now;
+      const prevAd = adOk ? Math.max(0, Number(row.ad_energy_boost) || 0) : 0;
+      updates.ad_energy_boost = prevAd + 1000;
+      updates.ad_energy_expires = endOfUtcDay(0);
       updates.max_daily_limit = effectiveDailyLimit(
         {
           ...row,
+          ad_energy_boost: updates.ad_energy_boost,
+          ad_energy_expires: updates.ad_energy_expires,
           inventory: inv,
         },
         new Date(),
