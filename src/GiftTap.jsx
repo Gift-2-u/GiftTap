@@ -278,6 +278,12 @@ import {
 import { echoMultiplier } from './echo';
 import { getElfLevel } from './elfLevelUp';
 import { rushDailyLimit } from './rush';
+import {
+  nextNftDurabilityWarning,
+  markNftDurabilityWarned,
+  NFT_DURABILITY_WARN_HALF,
+  NFT_DURABILITY_WARN_CRITICAL,
+} from './nftDurability';
 
 // TOKEN_MINTS / TREASURY_TOKEN_ACCOUNTS — canonical G2U mint from config via gameWalletActions
 
@@ -3496,6 +3502,19 @@ const GiftTapGame = () => {
     );
   }, [isDataLoaded, currentLevel, stats?.inventory, ownedElfTick, playerWallet]);
 
+  // Echo / Fate / Rush / Shadow: one-shot notices at 50% (low) and 10% (urgent)
+  useEffect(() => {
+    if (!isDataLoaded || !playerId) return;
+    const inv = inventoryRef.current || stats?.inventory || {};
+    const warn = nextNftDurabilityWarning(inv, playerId);
+    if (!warn) return;
+    markNftDurabilityWarned(playerId, warn.assetId, warn.level);
+    // Jumping straight into critical also covers the half notice
+    if (warn.level === NFT_DURABILITY_WARN_CRITICAL) {
+      markNftDurabilityWarned(playerId, warn.assetId, NFT_DURABILITY_WARN_HALF);
+    }
+    notify(warn.message, { title: warn.title, success: warn.success });
+  }, [isDataLoaded, playerId, stats?.inventory, notify]);
 
   // Schedule local streak device notice (if permission already granted)
   useEffect(() => {

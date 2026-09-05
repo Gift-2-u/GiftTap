@@ -16,6 +16,15 @@ import {
   g2uPerSol,
   g2uShopEnabled,
 } from "../_shared/economy.ts";
+import {
+  PREMIUM_DURATION_CHOICE_IDS,
+  PREMIUM_PROJECT_FEE_SOL,
+  parsePremiumDurationDays,
+  premiumPriceG2uForDays,
+  premiumPriceSolForDays,
+  pushPremiumDuration,
+  type PremiumDurationDays,
+} from "../_shared/premiumDuration.ts";
 
 /** LP rate: 20 SOL / 100M G2U → 5_000_000 G2U per SOL */
 const G2U_PER_SOL = g2uPerSol();
@@ -25,31 +34,36 @@ const PREMIUM: Record<
   { name: string; priceSol: number; priceG2u: number }
 > = {
   bot: { name: "Weekend Bot", priceSol: 0.01, priceG2u: 0.01 * G2U_PER_SOL },
+  /** Duration prices live in premiumDuration.ts (1/3/7 day picker) */
   grinder: {
     name: "+2K Daily Energy",
-    priceSol: 0.01,
-    priceG2u: 0.01 * G2U_PER_SOL},
+    priceSol: premiumPriceSolForDays("grinder", 7, G2U_PER_SOL),
+    priceG2u: premiumPriceG2uForDays("grinder", 7),
+  },
   whale: {
     name: "+5K Daily Energy",
-    priceSol: 0.03,
-    priceG2u: 0.03 * G2U_PER_SOL},
+    priceSol: premiumPriceSolForDays("whale", 7, G2U_PER_SOL),
+    priceG2u: premiumPriceG2uForDays("whale", 7),
+  },
   crate: {
     name: "The Vault Drop",
     priceSol: 0.05,
-    priceG2u: 0.05 * G2U_PER_SOL},
+    priceG2u: 0.05 * G2U_PER_SOL,
+  },
   x2_boost: {
     name: "Double Power",
-    priceSol: 0.02,
-    priceG2u: 0.02 * G2U_PER_SOL},
+    priceSol: premiumPriceSolForDays("x2_boost", 7, G2U_PER_SOL),
+    priceG2u: premiumPriceG2uForDays("x2_boost", 7),
+  },
   x3_boost: {
     name: "Triple Power",
-    priceSol: 0.035,
-    priceG2u: 0.035 * G2U_PER_SOL},
-  /** Battery bar 500→1000 for 7 days — 0.01 SOL or fixed 10_000 G2U (was 50_000) */
+    priceSol: premiumPriceSolForDays("x3_boost", 7, G2U_PER_SOL),
+    priceG2u: premiumPriceG2uForDays("x3_boost", 7),
+  },
   expanded_energy: {
     name: "Expanded Energy",
-    priceSol: 0.01,
-    priceG2u: 10_000,
+    priceSol: premiumPriceSolForDays("expanded_energy", 7, G2U_PER_SOL),
+    priceG2u: premiumPriceG2uForDays("expanded_energy", 7),
   },
   /** Extra Battery Refill ($G2U) — separate stack from free Battery Refill; no day lock */
   refill_extra: {
@@ -72,7 +86,39 @@ const PREMIUM: Record<
   shard_badge: {
     name: "Star Badge",
     priceSol: 0.02,
-    priceG2u: 0.02 * G2U_PER_SOL}};
+    priceG2u: 0.02 * G2U_PER_SOL,
+  },
+};
+
+function resolvePremiumPrice(
+  itemId: string,
+  catalog: { priceSol: number; priceG2u: number },
+  durationRaw: unknown,
+): { days: PremiumDurationDays | null; priceSol: number; priceG2u: number } {
+  if (PREMIUM_DURATION_CHOICE_IDS.has(itemId)) {
+    const days = parsePremiumDurationDays(durationRaw, 7);
+    return {
+      days,
+      priceG2u: premiumPriceG2uForDays(itemId, days),
+      priceSol: premiumPriceSolForDays(itemId, days, G2U_PER_SOL),
+    };
+  }
+  return {
+    days: null,
+    priceG2u: Math.round(Number(catalog.priceG2u) || 0),
+    priceSol: Number(catalog.priceSol) || 0,
+  };
+}
+
+function appendPurchaseLog(
+  existing: unknown,
+  entry: Record<string, unknown>,
+): Record<string, unknown>[] {
+  const log = Array.isArray(existing) ? [...existing] : [];
+  log.push(entry);
+  while (log.length > 100) log.shift();
+  return log as Record<string, unknown>[];
+}
 
 const MASTER = "D4GufPTvp6tnzkaYGfombFLs48UjDANsxjMFJnSYz4Gh";
 
@@ -150,14 +196,18 @@ serve(async (req) => {
     const catalog = PREMIUM[itemId];
     if (!catalog) throw new Error("Unknown premium item");
 
+    const priced = resolvePremiumPrice(itemId, catalog, body.duration_days ?? body.days);
+    const durationDays = priced.days;
+    const priceG2u = priced.priceG2u;
+    const priceSol = priced.priceSol;
+
     const sb = adminClient();
 
-    // —— $G2U path (post-launch): always on-chain $G2U → master (tx_signature) ——
+    // —— $G2U path (post-launch): on-chain $G2U → master (+ 0.0005 SOL fee in same client tx) ——
     if (currency === "g2u") {
       if (!g2uPremiumEnabled()) {
         throw new Error("Premium $G2U shop opens after launch (G2U_PREMIUM_ENABLED)");
       }
-      const priceG2u = Math.round(Number(catalog.priceG2u) || 0);
       if (priceG2u <= 0) throw new Error("Invalid G2U price");
 
       if (!txSignature || txSignature.length < 32) {
@@ -220,7 +270,7 @@ serve(async (req) => {
 
       const { data: row, error: selErr } = await sb
         .from("players")
-        .select("inventory, has_made_purchase, daily_usage")
+        .select("inventory, has_made_purchase, daily_usage, premium_purchase_log")
         .eq("telegram_id", playerId)
         .maybeSingle();
       if (selErr) throw selErr;
@@ -229,6 +279,9 @@ serve(async (req) => {
       const inv = invObj(row.inventory);
       assertOncePerDayOk(itemId, inv, row.daily_usage);
       inv[itemId] = (Number(inv[itemId]) || 0) + 1;
+      if (durationDays != null) {
+        pushPremiumDuration(inv, itemId, durationDays);
+      }
       let daily_usage =
         row.daily_usage && typeof row.daily_usage === "object"
           ? { ...(row.daily_usage as Record<string, string>) }
@@ -243,11 +296,23 @@ serve(async (req) => {
       }
       bumpWeeklyBoost(inv);
 
+      const purchaseLog = appendPurchaseLog(row.premium_purchase_log, {
+        at: new Date().toISOString(),
+        item_id: itemId,
+        days: durationDays,
+        price_g2u: priceG2u,
+        price_sol: priceSol,
+        fee_sol: PREMIUM_PROJECT_FEE_SOL,
+        currency: "g2u",
+        tx: txSignature,
+      });
+
       const { error: upErr } = await sb
         .from("players")
         .update({
           inventory: inv,
           daily_usage,
+          premium_purchase_log: purchaseLog,
           has_made_purchase: true,
           last_updated: new Date().toISOString(),
         })
@@ -263,6 +328,8 @@ serve(async (req) => {
           item_id: itemId,
           currency: "g2u_onchain",
           priceG2u,
+          days: durationDays,
+          fee_sol: PREMIUM_PROJECT_FEE_SOL,
           master: MASTER,
         },
       });
@@ -273,6 +340,7 @@ serve(async (req) => {
         item_id: itemId,
         currency: "g2u",
         price_g2u: priceG2u,
+        days: durationDays,
         inventory: inv,
       });
     }
@@ -333,7 +401,7 @@ serve(async (req) => {
 
     const { data: row, error: selErr } = await sb
       .from("players")
-      .select("inventory, has_made_purchase, daily_usage")
+      .select("inventory, has_made_purchase, daily_usage, premium_purchase_log")
       .eq("telegram_id", playerId)
       .maybeSingle();
     if (selErr) throw selErr;
@@ -342,6 +410,9 @@ serve(async (req) => {
     const inv = invObj(row.inventory);
     assertOncePerDayOk(itemId, inv, row.daily_usage);
     inv[itemId] = (Number(inv[itemId]) || 0) + 1;
+    if (durationDays != null) {
+      pushPremiumDuration(inv, itemId, durationDays);
+    }
     let daily_usage =
       row.daily_usage && typeof row.daily_usage === "object"
         ? { ...(row.daily_usage as Record<string, string>) }
@@ -355,11 +426,23 @@ serve(async (req) => {
     }
     bumpWeeklyBoost(inv);
 
+    const purchaseLog = appendPurchaseLog(row.premium_purchase_log, {
+      at: new Date().toISOString(),
+      item_id: itemId,
+      days: durationDays,
+      price_g2u: priceG2u,
+      price_sol: priceSol,
+      fee_sol: PREMIUM_PROJECT_FEE_SOL,
+      currency: "sol",
+      tx: txSignature,
+    });
+
     const { error: upErr } = await sb
       .from("players")
       .update({
         inventory: inv,
         daily_usage,
+        premium_purchase_log: purchaseLog,
         has_made_purchase: true,
         last_updated: new Date().toISOString(),
       })
@@ -373,15 +456,21 @@ serve(async (req) => {
       meta: {
         item_id: itemId,
         currency: "sol",
-        priceSol: catalog.priceSol,
-        master: MASTER}});
+        priceSol,
+        days: durationDays,
+        fee_sol: PREMIUM_PROJECT_FEE_SOL,
+        master: MASTER,
+      },
+    });
 
     return jsonResponse({
       success: true,
       already: false,
       item_id: itemId,
       currency: "sol",
-      inventory: inv});
+      days: durationDays,
+      inventory: inv,
+    });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     const status = /authenticated|expired|signature|Invalid session|Not authenticated/i

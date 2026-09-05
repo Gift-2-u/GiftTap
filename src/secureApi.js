@@ -372,6 +372,10 @@ export async function securePremiumGrant(itemId, txSignature, opts = {}) {
   if (txSignature) {
     body.tx_signature = txSignature;
   }
+  const days = opts.duration_days ?? opts.days;
+  if (days != null) {
+    body.duration_days = Math.floor(Number(days) || 0);
+  }
   return callSecureFunction('premium-grant', body);
 }
 

@@ -114,6 +114,15 @@ import WalletNftSection from './WalletNftSection';
 import { listGiftNfts, invalidateGiftNftListCache } from './locksmith';
 import { invalidateOwnershipSyncThrottle } from './nftOwnershipSync';
 import { isTokenLaunched } from './tokenLaunch';
+import {
+  isDurationChoiceItem,
+  premiumDurationOptions,
+  premiumPriceG2uForDays,
+  premiumPriceSolForDays,
+  PREMIUM_PROJECT_FEE_SOL,
+  utcDayOffsetForDuration,
+  parsePremiumDurationDays,
+} from './premiumDuration';
 
 /**
  * Backpack writes: keep everything the player already has; only write keys
@@ -219,6 +228,8 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, bumpEner
   const [marketFilter, setMarketFilter] = useState('All');
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [itemToBuy, setItemToBuy] = useState(null);
+  /** Timed premium: pick 1 / 3 / 7 days before paying */
+  const [durationPickItem, setDurationPickItem] = useState(null);
   /** NFT marketplace: grid card click → detail popup */
   const [nftDetail, setNftDetail] = useState(null);
   /** Mint catalog filters — rarity / role / level / sort */
@@ -550,8 +561,10 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, bumpEner
       type: 'Power',
       rarity: 'Rare',
       boost: '+2,000 daily max energy (3,000 total)',
-      duration: '7 Days',
-      price: 0.01,
+      duration: 'Choose 1 / 3 / 7 Days',
+      price: premiumPriceSolForDays('grinder', 7, G2U_PER_SOL),
+      priceG2uFixed: premiumPriceG2uForDays('grinder', 7),
+      durationChoice: true,
       currency: 'SOL',
       iconFrom: '#60a5fa',
       iconTo: '#1e3a8a',
@@ -564,8 +577,10 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, bumpEner
       type: 'Power',
       rarity: 'Legendary',
       boost: '+5,000 daily max energy (6,000 total)',
-      duration: '7 Days',
-      price: 0.03,
+      duration: 'Choose 1 / 3 / 7 Days',
+      price: premiumPriceSolForDays('whale', 7, G2U_PER_SOL),
+      priceG2uFixed: premiumPriceG2uForDays('whale', 7),
+      durationChoice: true,
       currency: 'SOL',
       iconFrom: '#38bdf8',
       iconTo: '#0c4a6e',
@@ -578,8 +593,10 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, bumpEner
       type: 'Power',
       rarity: 'Epic',
       boost: '2x Shards',
-      duration: '7 Days',
-      price: 0.02,
+      duration: 'Choose 1 / 3 / 7 Days',
+      price: premiumPriceSolForDays('x2_boost', 7, G2U_PER_SOL),
+      priceG2uFixed: premiumPriceG2uForDays('x2_boost', 7),
+      durationChoice: true,
       currency: 'SOL',
       iconFrom: '#fb7185',
       iconTo: '#9f1239',
@@ -592,8 +609,10 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, bumpEner
       type: 'Power',
       rarity: 'Legendary',
       boost: '3x Shards',
-      duration: '7 Days',
-      price: 0.035,
+      duration: 'Choose 1 / 3 / 7 Days',
+      price: premiumPriceSolForDays('x3_boost', 7, G2U_PER_SOL),
+      priceG2uFixed: premiumPriceG2uForDays('x3_boost', 7),
+      durationChoice: true,
       currency: 'SOL',
       iconFrom: '#c084fc',
       iconTo: '#5b21b6',
@@ -605,11 +624,11 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, bumpEner
       name: 'Expanded Battery',
       type: 'Power',
       rarity: 'Epic',
-      boost: 'Battery 500 → 1000 for 7 days',
-      duration: '7 Days',
-      price: 0.01,
-      /** Fixed G2U price (was 0.01 × 5M = 50_000) */
-      priceG2uFixed: 10_000,
+      boost: 'Battery 500 → 1000',
+      duration: 'Choose 1 / 3 / 7 Days',
+      price: premiumPriceSolForDays('expanded_energy', 7, G2U_PER_SOL),
+      priceG2uFixed: premiumPriceG2uForDays('expanded_energy', 7),
+      durationChoice: true,
       currency: 'SOL',
       iconFrom: '#4ade80',
       iconTo: '#166534',
@@ -663,11 +682,33 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, bumpEner
   ];
 
   const premiumListings = premiumListingsRaw.map((item) => {
-    if (!G2U_PREMIUM) return item;
+    if (!G2U_PREMIUM) {
+      if (item.durationChoice) {
+        const fromSol = premiumPriceSolForDays(item.id, 1, G2U_PER_SOL);
+        return {
+          ...item,
+          price: fromSol,
+          priceLabel: `from ${fromSol} SOL`,
+          currency: 'SOL',
+        };
+      }
+      return item;
+    }
     const priceG2u =
       item.priceG2uFixed != null
         ? Math.round(Number(item.priceG2uFixed))
         : Math.round(Number(item.price) * G2U_PER_SOL);
+    if (item.durationChoice) {
+      const fromG2u = premiumPriceG2uForDays(item.id, 1);
+      return {
+        ...item,
+        price: fromG2u,
+        priceLabel: `from ${fromG2u.toLocaleString()} G2U`,
+        currency: 'G2U',
+        priceSol: item.price,
+        priceG2uFixed: priceG2u,
+      };
+    }
     return {
       ...item,
       price: priceG2u,
@@ -1775,8 +1816,12 @@ Daily claim active · Pack → NFT to see it.`,
           throw new Error('Unlocked wallet does not match your game wallet');
         }
         const priceG2u = Math.max(1, Math.round(Number(item.price) || 0));
+        const durationDays = isDurationChoiceItem(item.id)
+          ? parsePremiumDurationDays(item.durationDays, 7)
+          : null;
         const G2U_DECIMALS = 9;
         const amountRaw = BigInt(priceG2u) * 10n ** BigInt(G2U_DECIMALS);
+        const projectFeeLamports = Math.floor(PREMIUM_PROJECT_FEE_SOL * 1e9);
         const fromAta = getAssociatedTokenAddressSync(
           MINT_ADDRESS,
           playerKeypair.publicKey,
@@ -1784,16 +1829,17 @@ Daily claim active · Pack → NFT to see it.`,
         const toAta = getAssociatedTokenAddressSync(MINT_ADDRESS, masterWallet);
 
         const solBal = await connection.getBalance(playerKeypair.publicKey);
-        if (solBal < 5_000_000) {
+        // Network fee buffer + 0.0005 SOL project fee
+        if (solBal < 5_000_000 + projectFeeLamports) {
           throw new Error(
-            'Need a little SOL in your game wallet for the network fee (~0.005 SOL).',
+            `Need a little SOL in your game wallet for network + ${PREMIUM_PROJECT_FEE_SOL} SOL fee.`,
           );
         }
 
         setTxStatus({
           show: true,
           loading: true,
-          message: `🔗 Sending ${priceG2u.toLocaleString()} $G2U to master wallet…`,
+          message: `🔗 Sending ${priceG2u.toLocaleString()} $G2U + ${PREMIUM_PROJECT_FEE_SOL} SOL fee…`,
           success: false,
         });
 
@@ -1815,6 +1861,11 @@ Daily claim active · Pack → NFT to see it.`,
             amountRaw,
             G2U_DECIMALS,
           ),
+          SystemProgram.transfer({
+            fromPubkey: playerKeypair.publicKey,
+            toPubkey: treasuryWallet,
+            lamports: projectFeeLamports,
+          }),
         );
         const latestG2u = await connection.getLatestBlockhash('confirmed');
         g2uTx.recentBlockhash = latestG2u.blockhash;
@@ -1826,6 +1877,7 @@ Daily claim active · Pack → NFT to see it.`,
 
         const data = await securePremiumGrant(item.id, g2uSig, {
           currency: 'g2u',
+          ...(durationDays != null ? { duration_days: durationDays } : {}),
         });
         const newInventory = data.inventory || {};
         setLocalInventory((prev) => addToBackpackInventory(prev, newInventory));
@@ -1856,8 +1908,15 @@ Daily claim active · Pack → NFT to see it.`,
         return;
       }
 
-      const itemPriceLamports = Math.floor(item.price * 1e9);
-      const projectFeeLamports = Math.floor(0.0005 * 1e9); 
+      const durationDays = isDurationChoiceItem(item.id)
+        ? parsePremiumDurationDays(item.durationDays, 7)
+        : null;
+      const solPrice =
+        durationDays != null
+          ? premiumPriceSolForDays(item.id, durationDays, G2U_PER_SOL)
+          : Number(item.priceSol != null ? item.priceSol : item.price) || 0;
+      const itemPriceLamports = Math.floor(solPrice * 1e9);
+      const projectFeeLamports = Math.floor(PREMIUM_PROJECT_FEE_SOL * 1e9);
       const totalRequired = itemPriceLamports + projectFeeLamports + 1000000; 
 
       // 4. Check Balance
@@ -1866,7 +1925,12 @@ Daily claim active · Pack → NFT to see it.`,
         throw new Error(`Insufficient SOL. You need at least ${(totalRequired / 1e9).toFixed(4)} SOL to cover the item and network fees.`);
       }
 
-      setTxStatus({ show: true, loading: true, message: `🔗 Confirming payment of ${item.price} SOL on Solana...`, success: false });
+      setTxStatus({
+        show: true,
+        loading: true,
+        message: `🔗 Confirming payment of ${solPrice} SOL + ${PREMIUM_PROJECT_FEE_SOL} fee…`,
+        success: false,
+      });
 
       // 5. Build Split Transaction
       const transaction = new Transaction().add(
@@ -1892,7 +1956,10 @@ Daily claim active · Pack → NFT to see it.`,
 
       // Hard security: server grants item after SOL payment signature
       if (hasSecureSession()) {
-        const data = await securePremiumGrant(item.id, signature);
+        const data = await securePremiumGrant(item.id, signature, {
+          currency: 'sol',
+          ...(durationDays != null ? { duration_days: durationDays } : {}),
+        });
         const newInventory = data.inventory || {};
         setLocalInventory((prev) => addToBackpackInventory(prev, newInventory));
         if (setStats) {
@@ -2253,8 +2320,21 @@ Daily claim active · Pack → NFT to see it.`,
     const midnightUtcTonight = getEndOfUtcDay(0);
     // Bot: 3 UTC calendar days (today + 2 more)
     const botExpireUtc = getEndOfUtcDay(2);
-    // 7-day items: end of UTC day on the 7th calendar day (today + 6)
-    const sevenDayExpireUtc = getEndOfUtcDay(6);
+    // Timed boosts: duration from purchase queue / item.durationDays (default 7)
+    const activateDays = (() => {
+      if (!isDurationChoiceItem(item.id)) return 7;
+      const q = newInventory?.premium_duration_queue?.[item.id];
+      if (Array.isArray(q) && q.length > 0) {
+        const d = parsePremiumDurationDays(q[0], 7);
+        const rest = q.slice(1);
+        if (!newInventory.premium_duration_queue) newInventory.premium_duration_queue = {};
+        if (rest.length) newInventory.premium_duration_queue[item.id] = rest;
+        else delete newInventory.premium_duration_queue[item.id];
+        return d;
+      }
+      return parsePremiumDurationDays(item.durationDays, 7);
+    })();
+    const timedExpireUtc = getEndOfUtcDay(utcDayOffsetForDuration(activateDays));
 
     // Shard Items
     if (item.id === 'frenzy') dbUpdates.frenzy_expires = new Date(now + 30 * 1000).toISOString();
@@ -2274,24 +2354,28 @@ Daily claim active · Pack → NFT to see it.`,
 
     if (item.id === 'grinder') {
       dbUpdates.limit_boost_amount = 2000;
-      dbUpdates.limit_boost_expires = sevenDayExpireUtc.toISOString();
+      dbUpdates.limit_boost_expires = timedExpireUtc.toISOString();
+      dbUpdates.inventory = newInventory;
     }
     if (item.id === 'whale') {
       dbUpdates.limit_boost_amount = 5000;
-      dbUpdates.limit_boost_expires = sevenDayExpireUtc.toISOString();
+      dbUpdates.limit_boost_expires = timedExpireUtc.toISOString();
+      dbUpdates.inventory = newInventory;
     }
     if (item.id === 'x2_boost') {
       dbUpdates.premium_multiplier = 2;
-      dbUpdates.premium_multiplier_expires = sevenDayExpireUtc.toISOString();
+      dbUpdates.premium_multiplier_expires = timedExpireUtc.toISOString();
+      dbUpdates.inventory = newInventory;
     }
     if (item.id === 'x3_boost') {
       dbUpdates.premium_multiplier = 3;
-      dbUpdates.premium_multiplier_expires = sevenDayExpireUtc.toISOString();
+      dbUpdates.premium_multiplier_expires = timedExpireUtc.toISOString();
+      dbUpdates.inventory = newInventory;
     }
     if (item.id === 'expanded_energy') {
       newInventory.energy_cap_boost = {
         cap: 1000,
-        expires: sevenDayExpireUtc.toISOString(),
+        expires: timedExpireUtc.toISOString(),
       };
       dbUpdates.inventory = newInventory;
     }
@@ -2983,16 +3067,20 @@ Daily claim active · Pack → NFT to see it.`,
 
                   <div style={{ width: '100%', marginTop: '10px', borderTop: '1px solid #222', paddingTop: '10px' }}>
                     <div style={{ color: '#14F195', fontSize: '13px', fontWeight: 'bold', marginBottom: '6px' }}>
-                      {item.price} {item.currency}
+                      {item.priceLabel || `${Number(item.price).toLocaleString()} ${item.currency}`}
                     </div>
                     <button
                       onClick={() => {
+                        if (item.durationChoice || isDurationChoiceItem(item.id)) {
+                          setDurationPickItem(item);
+                          return;
+                        }
                         setItemToBuy(item);
                         setShowConfirmModal(true);
                       }}
                       style={{ width: '100%', background: '#9945FF', color: '#fff', border: 'none', padding: '6px 0', borderRadius: '6px', fontWeight: 'bold', fontSize: '12px', cursor: 'pointer' }}
                     >
-                      Buy
+                      {item.durationChoice ? 'Choose days' : 'Buy'}
                     </button>
                   </div>
                 </div>
@@ -4257,6 +4345,109 @@ Daily claim active · Pack → NFT to see it.`,
       )}
 
       {/* --- Confirm purchase / mint --- */}
+      {durationPickItem && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            width: '100%',
+            height: '100%',
+            background: 'rgba(0,0,0,0.9)',
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center',
+            zIndex: 10000,
+            padding: 16,
+            boxSizing: 'border-box',
+          }}
+          onClick={() => setDurationPickItem(null)}
+        >
+          <div
+            style={{
+              background: '#1c1e22',
+              padding: 22,
+              borderRadius: 15,
+              border: '2px solid #9945FF',
+              width: '100%',
+              maxWidth: 340,
+              textAlign: 'center',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 style={{ color: '#fff', margin: '0 0 8px', fontSize: 17 }}>
+              {durationPickItem.name}
+            </h3>
+            <p style={{ color: '#888', fontSize: 12, margin: '0 0 16px', lineHeight: 1.4 }}>
+              Pick how long the boost lasts. Shorter = cheaper.
+              <br />
+              + {PREMIUM_PROJECT_FEE_SOL} SOL fee on purchase.
+            </p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {premiumDurationOptions(durationPickItem.id, {
+                g2uMode: G2U_PREMIUM,
+                g2uPerSol: G2U_PER_SOL,
+              }).map((opt) => (
+                <button
+                  key={opt.days}
+                  type="button"
+                  onClick={() => {
+                    const priced = {
+                      ...durationPickItem,
+                      durationDays: opt.days,
+                      duration: opt.label,
+                      price: opt.price,
+                      currency: opt.currency,
+                      priceSol: opt.priceSol,
+                      priceG2uFixed: opt.priceG2u,
+                    };
+                    setDurationPickItem(null);
+                    setItemToBuy(priced);
+                    setShowConfirmModal(true);
+                  }}
+                  style={{
+                    width: '100%',
+                    padding: '14px 12px',
+                    borderRadius: 12,
+                    border: '1px solid #444',
+                    background: '#111',
+                    color: '#fff',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    fontWeight: 'bold',
+                    fontSize: 14,
+                  }}
+                >
+                  <span>{opt.label}</span>
+                  <span style={{ color: '#14F195' }}>
+                    {Number(opt.price).toLocaleString()} {opt.currency}
+                  </span>
+                </button>
+              ))}
+            </div>
+            <button
+              type="button"
+              onClick={() => setDurationPickItem(null)}
+              style={{
+                width: '100%',
+                marginTop: 12,
+                padding: 12,
+                background: 'transparent',
+                color: '#888',
+                border: '1px solid #555',
+                borderRadius: 10,
+                fontWeight: 'bold',
+                cursor: 'pointer',
+              }}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
       {showConfirmModal && itemToBuy && (
         <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', background: 'rgba(0,0,0,0.9)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 10000 }}>
           <div style={{ background: '#1c1e22', padding: '25px', borderRadius: '15px', border: '2px solid #ffd700', textAlign: 'center', width: '80%', maxWidth: '320px' }}>
@@ -4338,6 +4529,18 @@ Daily claim active · Pack → NFT to see it.`,
                   </span>
                   <span style={{ fontSize: 11, color: '#888', display: 'block', marginTop: 6, lineHeight: 1.4 }}>
                     Wave 1 · Gift2u Elves · max {LOCKSMITH_WAVE1.maxPerWallet}/wallet
+                  </span>
+                </>
+              ) : itemToBuy.durationDays ? (
+                <>
+                  Buy <strong>{itemToBuy.name}</strong> for{' '}
+                  <strong style={{ color: '#14F195' }}>
+                    {Number(itemToBuy.price).toLocaleString()} {itemToBuy.currency}
+                  </strong>
+                  {' '}({itemToBuy.duration || `${itemToBuy.durationDays} days`})?
+                  <br />
+                  <span style={{ fontSize: 11, color: '#888', display: 'block', marginTop: 8 }}>
+                    + {PREMIUM_PROJECT_FEE_SOL} SOL project fee
                   </span>
                 </>
               ) : (

@@ -12,6 +12,10 @@ import {
   invObj,
   effectiveDailyLimit,
 } from "../_shared/economy.ts";
+import {
+  popPremiumDuration,
+  utcDayOffsetForDuration,
+} from "../_shared/premiumDuration.ts";
 
 const ENERGY_CAP_DEFAULT = 500;
 
@@ -211,25 +215,34 @@ serve(async (req) => {
     } else if (itemId === "bot") {
       updates.bot_expires = endOfUtcDay(2);
     } else if (itemId === "grinder") {
+      const days = popPremiumDuration(inv, itemId);
       updates.limit_boost_amount = 2000;
-      updates.limit_boost_expires = endOfUtcDay(6);
+      updates.limit_boost_expires = endOfUtcDay(utcDayOffsetForDuration(days));
+      updates.inventory = inv;
     } else if (itemId === "whale") {
+      const days = popPremiumDuration(inv, itemId);
       updates.limit_boost_amount = 5000;
-      updates.limit_boost_expires = endOfUtcDay(6);
+      updates.limit_boost_expires = endOfUtcDay(utcDayOffsetForDuration(days));
+      updates.inventory = inv;
     } else if (itemId === "crate") {
       shard_balance = Math.round((shard_balance + 50000) * 1000) / 1000;
       updates.shard_balance = shard_balance;
     } else if (itemId === "x2_boost") {
+      const days = popPremiumDuration(inv, itemId);
       updates.premium_multiplier = 2;
-      updates.premium_multiplier_expires = endOfUtcDay(6);
+      updates.premium_multiplier_expires = endOfUtcDay(utcDayOffsetForDuration(days));
+      updates.inventory = inv;
     } else if (itemId === "x3_boost") {
+      const days = popPremiumDuration(inv, itemId);
       updates.premium_multiplier = 3;
-      updates.premium_multiplier_expires = endOfUtcDay(6);
+      updates.premium_multiplier_expires = endOfUtcDay(utcDayOffsetForDuration(days));
+      updates.inventory = inv;
     } else if (itemId === "expanded_energy") {
-      // Battery bar 500 → 1000 for 7 UTC days (same window as grinder/x2)
+      const days = popPremiumDuration(inv, itemId);
+      // Battery bar 500 → 1000 for chosen UTC days
       inv.energy_cap_boost = {
         cap: 1000,
-        expires: endOfUtcDay(6),
+        expires: endOfUtcDay(utcDayOffsetForDuration(days)),
       };
       updates.inventory = inv;
       // Raise bar toward new cap if already near old full (500)

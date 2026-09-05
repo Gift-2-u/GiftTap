@@ -80,3 +80,119 @@ export function topUpCostG2u(percent) {
   const p = Math.max(1, Math.floor(Number(percent) || 0));
   return p * NFT_DURABILITY_G2U_PER_PERCENT;
 }
+
+/** Warning thresholds — show once per asset until topped back above. */
+export const NFT_DURABILITY_WARN_HALF = 50;
+export const NFT_DURABILITY_WARN_CRITICAL = 10;
+
+export const NFT_KIND_LABEL = {
+  echo: 'Echo',
+  fate: 'Fate',
+  rush: 'Rush',
+  shadow: 'Shadow',
+};
+
+function durWarnStorageKey(playerId, assetId, level) {
+  return `gift2u_nft_dur_warn_${playerId}_${assetId}_${level}`;
+}
+
+export function wasNftDurabilityWarned(playerId, assetId, level) {
+  if (!playerId || !assetId) return false;
+  try {
+    return localStorage.getItem(durWarnStorageKey(playerId, assetId, level)) === '1';
+  } catch {
+    return false;
+  }
+}
+
+export function markNftDurabilityWarned(playerId, assetId, level) {
+  if (!playerId || !assetId) return;
+  try {
+    localStorage.setItem(durWarnStorageKey(playerId, assetId, level), '1');
+  } catch {
+    /* ignore */
+  }
+}
+
+export function clearNftDurabilityWarn(playerId, assetId, level) {
+  if (!playerId || !assetId) return;
+  try {
+    localStorage.removeItem(durWarnStorageKey(playerId, assetId, level));
+  } catch {
+    /* ignore */
+  }
+}
+
+/**
+ * Sync warn flags with current % (clear after refill) and return the next
+ * notice to show, if any. Prefers critical (≤10%) over half (≤50%).
+ */
+export function nextNftDurabilityWarning(inventory, playerId) {
+  if (!playerId || !inventory || typeof inventory !== 'object') return null;
+
+  let critical = null;
+  let half = null;
+
+  for (const kind of Object.keys(NFT_ACTIVE_KEY)) {
+    const row = getActiveRow(inventory, kind);
+    if (!row) continue;
+    const d = getNftDurability(row);
+    const assetId = String(row.asset_id || row.assetId || kind);
+    if (!assetId) continue;
+
+    // Refilled past thresholds → allow future notices again
+    if (d > NFT_DURABILITY_WARN_HALF) {
+      clearNftDurabilityWarn(playerId, assetId, NFT_DURABILITY_WARN_HALF);
+      clearNftDurabilityWarn(playerId, assetId, NFT_DURABILITY_WARN_CRITICAL);
+    } else if (d > NFT_DURABILITY_WARN_CRITICAL) {
+      clearNftDurabilityWarn(playerId, assetId, NFT_DURABILITY_WARN_CRITICAL);
+    }
+
+    // Already dead — perk is off; skip nag (they already lost the buff)
+    if (d <= 0) continue;
+
+    const label = NFT_KIND_LABEL[kind] || kind;
+    const pct = Math.max(1, Math.round(d));
+
+    if (
+      d <= NFT_DURABILITY_WARN_CRITICAL &&
+      !wasNftDurabilityWarned(playerId, assetId, NFT_DURABILITY_WARN_CRITICAL)
+    ) {
+      const cand = {
+        kind,
+        label,
+        assetId,
+        durability: d,
+        pct,
+        level: NFT_DURABILITY_WARN_CRITICAL,
+        title: 'Durability critical',
+        message:
+          `${label} is at ${pct}% durability — refill now with $G2U in Wallet → NFTs before the perk shuts off at 0%.`,
+        success: false,
+      };
+      if (!critical || d < critical.durability) critical = cand;
+      continue;
+    }
+
+    if (
+      d <= NFT_DURABILITY_WARN_HALF &&
+      !wasNftDurabilityWarned(playerId, assetId, NFT_DURABILITY_WARN_HALF)
+    ) {
+      const cand = {
+        kind,
+        label,
+        assetId,
+        durability: d,
+        pct,
+        level: NFT_DURABILITY_WARN_HALF,
+        title: 'NFT durability low',
+        message:
+          `${label} is at ${pct}% durability. Top up with $G2U in Wallet → NFTs so you don’t lose the perk.`,
+        success: null,
+      };
+      if (!half || d < half.durability) half = cand;
+    }
+  }
+
+  return critical || half;
+}
