@@ -45,11 +45,12 @@ const PREMIUM: Record<
     name: "Triple Power",
     priceSol: 0.035,
     priceG2u: 0.035 * G2U_PER_SOL},
-  /** Battery bar 500→1000 for 7 days — 0.01 SOL (or G2U equiv after launch) */
+  /** Battery bar 500→1000 for 7 days — 0.01 SOL or fixed 10_000 G2U (was 50_000) */
   expanded_energy: {
     name: "Expanded Energy",
     priceSol: 0.01,
-    priceG2u: 0.01 * G2U_PER_SOL},
+    priceG2u: 10_000,
+  },
   /** Extra Battery Refill ($G2U) — separate stack from free Battery Refill; no day lock */
   refill_extra: {
     name: "Extra Battery Refill",

@@ -608,6 +608,8 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, bumpEner
       boost: 'Battery 500 → 1000 for 7 days',
       duration: '7 Days',
       price: 0.01,
+      /** Fixed G2U price (was 0.01 × 5M = 50_000) */
+      priceG2uFixed: 10_000,
       currency: 'SOL',
       iconFrom: '#4ade80',
       iconTo: '#166534',

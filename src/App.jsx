@@ -38,6 +38,7 @@ import {
 } from './tokenLaunch';
 import { PROGRAM_ID, MINT_ADDRESS } from './config';
 import idl from "../target/idl/gift_staking.json";
+import UpdatePrompt from './UpdatePrompt';
 import '@solana/wallet-adapter-react-ui/styles.css';
 
 // Lazy-load game so homepage can load without pulling the full game first
@@ -90,6 +91,7 @@ export default function App() {
         <WalletModalProvider>
           <Router>
             <Toaster position="bottom-right" /> {/* Added this */}
+            <UpdatePrompt />
             <div className="min-h-screen w-full bg-slate-900 text-white font-sans flex flex-col">
               <Navigation />
               <Routes>

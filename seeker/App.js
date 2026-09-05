@@ -10,9 +10,11 @@ import {
   BackHandler,
   Linking,
   Platform,
+  Pressable,
   SafeAreaView,
   StatusBar,
   StyleSheet,
+  Text,
   View,
 } from 'react-native';
 import { WebView } from 'react-native-webview';
@@ -87,18 +89,32 @@ export default function App() {
   const webRef = useRef(null);
   const [loading, setLoading] = useState(true);
   const [canGoBack, setCanGoBack] = useState(false);
+  const [webUri, setWebUri] = useState(null);
   const adBusyRef = useRef(false);
   const adsReadyRef = useRef(false);
   /** Preloaded rewarded instance (null = none ready). */
   const preloadedRef = useRef(null);
   const preloadUnsubsRef = useRef([]);
 
-  const uri = useMemo(() => {
+  const baseUri = useMemo(() => {
     const extra = Constants.expoConfig?.extra || Constants.manifest?.extra || {};
     const base = extra.webUrl || DEFAULT_URL;
     const join = base.includes('?') ? '&' : '?';
     return `${base}${join}seeker=1`;
   }, []);
+
+  // Initial load (and after refresh) — cache-bust so deploys show without killing the app
+  React.useEffect(() => {
+    if (!webUri) {
+      setWebUri(`${baseUri}&_r=${Date.now()}`);
+    }
+  }, [baseUri, webUri]);
+
+  const refreshWeb = useCallback(() => {
+    setLoading(true);
+    // New query param forces a fresh document (WebView cache often ignores reload())
+    setWebUri(`${baseUri}&_r=${Date.now()}`);
+  }, [baseUri]);
 
   const rewardedUnitId = useMemo(() => {
     if (useTestAds()) return TestIds.REWARDED;
@@ -528,56 +544,73 @@ export default function App() {
     <SafeAreaView style={styles.root}>
       <StatusBar barStyle="light-content" backgroundColor="#0f172a" />
       <View style={styles.flex}>
-        <WebView
-          ref={webRef}
-          source={{ uri }}
-          style={styles.flex}
-          onLoadStart={() => setLoading(true)}
-          onLoadEnd={() => {
-            setLoading(false);
-            // Re-stamp shell flag after every navigation (SPA can drop ?seeker=1)
-            try {
-              webRef.current?.injectJavaScript(SEEKER_SHELL_INJECT);
-            } catch (e) {
-              /* ignore */
-            }
-          }}
-          onNavigationStateChange={(nav) => {
-            setCanGoBack(nav.canGoBack);
-            if (nav?.url) handleWalletUrl(nav.url);
-          }}
-          onShouldStartLoadWithRequest={(req) => {
-            const u = String(req?.url || '');
-            if (handleWalletUrl(u)) return false;
-            // Mail / phone — must leave WebView for the OS app
-            if (u.startsWith('mailto:') || u.startsWith('tel:') || u.startsWith('sms:')) {
-              Linking.openURL(u).catch((e) =>
-                console.warn('[Gift2U Seeker] mailto/tel failed', e?.message || e),
-              );
-              return false;
-            }
-            return true;
-          }}
-          onMessage={onWebMessage}
-          injectedJavaScriptBeforeContentLoaded={SEEKER_SHELL_INJECT}
-          injectedJavaScript={SEEKER_SHELL_INJECT}
-          applicationNameForUserAgent="Gift2USeeker"
-          javaScriptEnabled
-          domStorageEnabled
-          allowsInlineMediaPlayback
-          mediaPlaybackRequiresUserAction={false}
-          // Ads use native AdMob only — never allow Monetag popups in this shell
-          setSupportMultipleWindows={false}
-          originWhitelist={['*']}
-          mixedContentMode="compatibility"
-          thirdPartyCookiesEnabled
-          sharedCookiesEnabled
-        />
+        {webUri ? (
+          <WebView
+            ref={webRef}
+            source={{ uri: webUri }}
+            style={styles.flex}
+            onLoadStart={() => setLoading(true)}
+            onLoadEnd={() => {
+              setLoading(false);
+              // Re-stamp shell flag after every navigation (SPA can drop ?seeker=1)
+              try {
+                webRef.current?.injectJavaScript(SEEKER_SHELL_INJECT);
+              } catch (e) {
+                /* ignore */
+              }
+            }}
+            onNavigationStateChange={(nav) => {
+              setCanGoBack(nav.canGoBack);
+              if (nav?.url) handleWalletUrl(nav.url);
+            }}
+            onShouldStartLoadWithRequest={(req) => {
+              const u = String(req?.url || '');
+              if (handleWalletUrl(u)) return false;
+              // Mail / phone — must leave WebView for the OS app
+              if (u.startsWith('mailto:') || u.startsWith('tel:') || u.startsWith('sms:')) {
+                Linking.openURL(u).catch((e) =>
+                  console.warn('[Gift2U Seeker] mailto/tel failed', e?.message || e),
+                );
+                return false;
+              }
+              return true;
+            }}
+            onMessage={onWebMessage}
+            injectedJavaScriptBeforeContentLoaded={SEEKER_SHELL_INJECT}
+            injectedJavaScript={SEEKER_SHELL_INJECT}
+            applicationNameForUserAgent="Gift2USeeker"
+            javaScriptEnabled
+            domStorageEnabled
+            allowsInlineMediaPlayback
+            mediaPlaybackRequiresUserAction={false}
+            // Ads use native AdMob only — never allow Monetag popups in this shell
+            setSupportMultipleWindows={false}
+            originWhitelist={['*']}
+            mixedContentMode="compatibility"
+            thirdPartyCookiesEnabled
+            sharedCookiesEnabled
+            // Pull down to reload after a web deploy (no force-close)
+            pullToRefreshEnabled
+            cacheEnabled={false}
+            {...(Platform.OS === 'android'
+              ? { cacheMode: 'LOAD_NO_CACHE' }
+              : {})}
+          />
+        ) : null}
         {loading ? (
           <View style={styles.loader} pointerEvents="none">
             <ActivityIndicator size="large" color="#fbef43" />
           </View>
         ) : null}
+        {/* Always-available refresh — pull-to-refresh can fight in-game scroll */}
+        <Pressable
+          onPress={refreshWeb}
+          style={styles.refreshBtn}
+          accessibilityRole="button"
+          accessibilityLabel="Refresh game"
+        >
+          <Text style={styles.refreshText}>↻</Text>
+        </Pressable>
       </View>
     </SafeAreaView>
   );
@@ -591,5 +624,27 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: 'rgba(15,23,42,0.35)',
+  },
+  refreshBtn: {
+    position: 'absolute',
+    right: 14,
+    bottom: 28,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(251,239,67,0.92)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOpacity: 0.35,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+  },
+  refreshText: {
+    color: '#0f172a',
+    fontSize: 22,
+    fontWeight: '700',
+    marginTop: -1,
   },
 });
