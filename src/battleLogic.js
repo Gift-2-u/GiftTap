@@ -10,7 +10,7 @@ export const BATTLE = {
   /** Entry: spend this much battery energy AND consume the same from today's daily tap room */
   ENTRY_ENERGY: 50,
   /** Winner backpack reward (same weekly badge items) */
-  WIN_BADGE: 'badge_bronze',
+  WIN_BADGE: 'badges',
   WIN_BADGE_QTY: 1,
   MAX_DAILY_MATCHES: 20,
   ARENA_WIDTH: 320,
