@@ -56,17 +56,17 @@ const PREMIUM: Record<
     priceSol: 0.0002,
     priceG2u: 0.0002 * G2U_PER_SOL,
   },
-  /** Premium: 60s Frenzy — fixed 1000 $G2U, 1× / UTC day */
+  /** Premium: 60s Frenzy — fixed 3500 $G2U, 1× / UTC day */
   frenzy_60: {
     name: "60-Second Frenzy",
-    priceSol: 1000 / G2U_PER_SOL,
-    priceG2u: 1000,
+    priceSol: 3500 / G2U_PER_SOL,
+    priceG2u: 3500,
   },
-  /** Premium: +1000 max daily taps until UTC midnight — fixed 1000 $G2U, 1× / UTC day */
+  /** Premium: +1000 max daily taps until UTC midnight — fixed 3500 $G2U, 1× / UTC day */
   daily_plus_1000: {
     name: "+1000 Max Daily",
-    priceSol: 1000 / G2U_PER_SOL,
-    priceG2u: 1000,
+    priceSol: 3500 / G2U_PER_SOL,
+    priceG2u: 3500,
   },
   shard_badge: {
     name: "Star Badge",
