@@ -6272,8 +6272,8 @@ const GiftTapGame = () => {
           swapFromToken,
         );
 
-        // 3. Ask Jupiter for the quote (no platformFeeBps — needs referral fee ATAs)
-        const res = await fetch(`https://lite-api.jup.ag/swap/v1/quote?inputMint=${inputMint}&outputMint=${outputMint}&amount=${amountInSmallestUnits}&slippageBps=200`);
+        // 3. Ask Jupiter for the quote (1% platform fee — same as swap execute)
+        const res = await fetch(`https://lite-api.jup.ag/swap/v1/quote?inputMint=${inputMint}&outputMint=${outputMint}&amount=${amountInSmallestUnits}&slippageBps=200&platformFeeBps=100`);
         const quoteResponse = await res.json();
         
         // 🚨 DEBUGGER: Prints the math to your F12 console
@@ -6504,7 +6504,7 @@ const GiftTapGame = () => {
     }
   };
 
-  // --- Jupiter swap (shared path with gameWalletActions; no broken platformFee) ---
+  // --- Jupiter swap (shared path with gameWalletActions; 1% platformFee → treasury) ---
   const executeJupiterSwap = async () => {
     if (!swapFromAmount || parseFloat(swapFromAmount) <= 0) return;
     if (swapFromToken === swapToToken) {

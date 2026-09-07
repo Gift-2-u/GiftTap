@@ -114,16 +114,18 @@ BEGIN
 
   DELETE FROM public.weekly_leaderboard_snapshots WHERE week_id = p_week_id;
 
-  -- Count eligible first (for %-based tier cuts)
+  -- Count eligible first (for %-based tier cuts). Banned players excluded.
   SELECT COUNT(*)::int INTO v_total
   FROM (
     SELECT l.telegram_id
     FROM public.weekly_score_ledger l
+    LEFT JOIN public.players pb ON pb.telegram_id::text = l.telegram_id
     WHERE l.week_id = p_week_id
       AND COALESCE(l.score, 0) >= v_floor
       AND l.telegram_id IS NOT NULL
       AND btrim(l.telegram_id) <> ''
       AND l.username IS NOT NULL AND btrim(l.username) <> ''
+      AND COALESCE(pb.is_banned, false) = false
     UNION
     SELECT p.telegram_id
     FROM public.players p
@@ -132,6 +134,7 @@ BEGIN
       AND p.telegram_id IS NOT NULL
       AND btrim(p.telegram_id) <> ''
       AND p.username IS NOT NULL AND btrim(p.username) <> ''
+      AND COALESCE(p.is_banned, false) = false
       AND NOT EXISTS (
         SELECT 1 FROM public.weekly_score_ledger l2
         WHERE l2.week_id = p_week_id AND l2.telegram_id = p.telegram_id
@@ -161,10 +164,12 @@ BEGIN
         l.username,
         COALESCE(l.score, 0) AS score
       FROM public.weekly_score_ledger l
+      LEFT JOIN public.players pb ON pb.telegram_id::text = l.telegram_id
       WHERE l.week_id = p_week_id
         AND COALESCE(l.score, 0) >= v_floor
         AND l.telegram_id IS NOT NULL
         AND btrim(l.telegram_id) <> ''
+        AND COALESCE(pb.is_banned, false) = false
       UNION ALL
       SELECT
         p.telegram_id,
@@ -175,6 +180,7 @@ BEGIN
         AND COALESCE(p.weekly_shards, 0) >= v_floor
         AND p.telegram_id IS NOT NULL
         AND btrim(p.telegram_id) <> ''
+        AND COALESCE(p.is_banned, false) = false
         AND NOT EXISTS (
           SELECT 1 FROM public.weekly_score_ledger l2
           WHERE l2.week_id = p_week_id AND l2.telegram_id = p.telegram_id
@@ -196,7 +202,7 @@ BEGIN
     inserted,
     now(),
     format(
-      'snapshot floor>=%s eligible=%s cuts=10/15/25/rest from %s',
+      'snapshot floor>=%s eligible=%s banned_excluded=true cuts_from=%s',
       v_floor,
       v_total,
       public.weekly_percent_badges_from_week()

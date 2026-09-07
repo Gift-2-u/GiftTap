@@ -197,7 +197,7 @@ async function buildL5() {
 /**
  * Same sources as Gift Tap weekly board: MERGE ledger + players for the week
  * (max score per id), then apply floor. Default floor = LIVE board floor
- * (matches Ranks UI). End-of-week official lock: --floor 1050.
+ * (matches Ranks UI). End-of-week official lock: --floor 1400 (excludes banned).
  */
 async function buildWeekly() {
   const liveFloor = weeklyBoardFloorLive(utcIsoWeekDayNumber());
@@ -210,7 +210,7 @@ async function buildWeekly() {
   console.log(
     `Weekly floor (eligible if score ≥): ${floor}` +
       (floorArg == null
-        ? ` (live board floor; end-of-week use --floor ${WEEKLY_BADGE_FLOOR_END})`
+        ? ` (live board floor; end-of-week official: --floor ${WEEKLY_BADGE_FLOOR_END})`
         : ''),
   );
 
@@ -245,12 +245,37 @@ async function buildWeekly() {
   // Always merge players column for same week (game board does this too)
   const { data: pl, error: pErr } = await sb
     .from('players')
-    .select('telegram_id, username, weekly_shards, weekly_week_id')
+    .select('telegram_id, username, weekly_shards, weekly_week_id, is_banned')
     .eq('weekly_week_id', period)
     .gt('weekly_shards', 0);
   if (pErr) throw pErr;
   for (const p of pl || []) {
+    if (p.is_banned) continue;
     absorb(p.telegram_id, p.username, p.weekly_shards);
+  }
+
+  // Drop banned (ledger-only rows need a players lookup)
+  const ids = [...byId.keys()];
+  const banned = new Set();
+  const chunk = 200;
+  for (let i = 0; i < ids.length; i += chunk) {
+    const slice = ids.slice(i, i + chunk);
+    const { data: banRows, error: bErr } = await sb
+      .from('players')
+      .select('telegram_id, is_banned')
+      .in('telegram_id', slice)
+      .eq('is_banned', true);
+    if (bErr) {
+      console.warn('ban filter', bErr.message);
+      break;
+    }
+    for (const row of banRows || []) {
+      banned.add(String(row.telegram_id));
+    }
+  }
+  if (banned.size) {
+    console.log(`Excluding ${banned.size} banned player(s) from weekly airdrop`);
+    for (const id of banned) byId.delete(id);
   }
 
   const eligible = [...byId.values()]
@@ -270,7 +295,7 @@ async function buildWeekly() {
 function allocationsFromWeekly(sortedEligible, poolAmt, weekId) {
   const n = sortedEligible.length;
   const paidN = Math.min(WEEKLY_G2U_TOP_N, n);
-  const seats = weeklyPaidTierCounts(paidN);
+  const seats = weeklyPaidTierCounts(paidN, weekId);
   console.log(
     `Eligible ${n} · G2U seats among top ${paidN}: D${seats.diamond} G${seats.gold} S${seats.silver} B${seats.bronze}`,
   );

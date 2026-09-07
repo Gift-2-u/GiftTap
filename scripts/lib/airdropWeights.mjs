@@ -116,8 +116,10 @@ export function l5AmountFromBonus(baseG2u, bonusPct) {
 
 export const WEEKLY_G2U_TOP_N = 100;
 export const WEEKLY_PERCENT_FROM_WEEK = '2026-W35';
-/** End-of-week badge floor = 15% × 1000 × 7 */
-export const WEEKLY_BADGE_FLOOR_END = 1050;
+/** W36+: tighter cuts 5% / 10% / 15% (W35 keeps 10/15/25). */
+export const WEEKLY_TIGHTER_CUTS_FROM_WEEK = '2026-W36';
+/** End-of-week badge floor = 20% × 1000 × 7 (from 2026-09) */
+export const WEEKLY_BADGE_FLOOR_END = 1400;
 export const WEEKLY_DAILY_REFERENCE = 1000;
 export const WEEKLY_FLOOR_PCT = 0.15;
 
@@ -138,13 +140,20 @@ export function weekUsesPercentBadges(weekId) {
   return w >= WEEKLY_PERCENT_FROM_WEEK;
 }
 
-export function weeklyPaidTierCounts(paidN) {
+/** W35 = 10/15/25 · W36+ = 5/10/15 (match SQL weekly_badge_tier_for_rank). */
+export function weeklyPaidTierCounts(paidN, weekId = WEEKLY_TIGHTER_CUTS_FROM_WEEK) {
   const n = Math.max(0, Math.floor(Number(paidN) || 0));
   if (n < 1) return { diamond: 0, gold: 0, silver: 0, bronze: 0 };
 
-  let diamond = Math.max(n >= 1 ? 1 : 0, Math.round(n * 0.1));
-  let gold = Math.max(n >= 2 ? 1 : 0, Math.round(n * 0.15));
-  let silver = Math.max(n >= 3 ? 1 : 0, Math.round(n * 0.25));
+  const w = String(weekId || '');
+  const tight = !w || w >= WEEKLY_TIGHTER_CUTS_FROM_WEEK;
+  const dPct = tight ? 0.05 : 0.1;
+  const gPct = tight ? 0.1 : 0.15;
+  const sPct = tight ? 0.15 : 0.25;
+
+  let diamond = Math.max(n >= 1 ? 1 : 0, Math.round(n * dPct));
+  let gold = Math.max(n >= 2 ? 1 : 0, Math.round(n * gPct));
+  let silver = Math.max(n >= 3 ? 1 : 0, Math.round(n * sPct));
 
   let over = diamond + gold + silver - n;
   if (over > 0) {
@@ -184,7 +193,7 @@ export function weeklyBadgeTierForRank(rank, totalEligible, weekId) {
   if (r > WEEKLY_G2U_TOP_N) return 'bronze';
 
   const paidN = Math.min(WEEKLY_G2U_TOP_N, n);
-  const { diamond, gold, silver } = weeklyPaidTierCounts(paidN);
+  const { diamond, gold, silver } = weeklyPaidTierCounts(paidN, weekId);
   if (r <= diamond) return 'diamond';
   if (r <= diamond + gold) return 'gold';
   if (r <= diamond + gold + silver) return 'silver';

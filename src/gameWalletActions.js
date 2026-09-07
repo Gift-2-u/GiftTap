@@ -199,10 +199,15 @@ export async function swapFromGameWallet({ fromToken, toToken, amount, password,
   const amountIn = toAtomicAmount(amt, fromToken);
   if (!amountIn) throw new Error('Enter an amount to swap.');
 
-  // Do NOT pass platformFeeBps until Jupiter referral fee ATAs exist for every
-  // output mint (treasury currently has no $G2U ATA → SOL→G2U always 400).
+  // Integrator fee: 100 bps = 1% → treasury ATA for the output mint
+  // (same setup that was live before jupswap commit removed it).
+  const feeAccount = TREASURY_TOKEN_ACCOUNTS[toToken];
+  if (!feeAccount) {
+    throw new Error(`No treasury fee account for ${toToken}.`);
+  }
+
   const quoteRes = await fetch(
-    `https://lite-api.jup.ag/swap/v1/quote?inputMint=${inputMint}&outputMint=${outputMint}&amount=${amountIn}&slippageBps=500`,
+    `https://lite-api.jup.ag/swap/v1/quote?inputMint=${inputMint}&outputMint=${outputMint}&amount=${amountIn}&slippageBps=500&platformFeeBps=100`,
   );
   const quoteResponse = await quoteRes.json();
   if (quoteResponse.error || quoteResponse.errorMessage) {
@@ -218,6 +223,7 @@ export async function swapFromGameWallet({ fromToken, toToken, amount, password,
     quoteResponse,
     userPublicKey: keypair.publicKey.toString(),
     wrapAndUnwrapSol: true,
+    feeAccount,
     dynamicComputeUnitLimit: true,
     prioritizationFeeLamports: { autoMultiplier: 2 },
   };
@@ -268,7 +274,7 @@ export async function quoteJupiter({ fromToken, toToken, amount }) {
   const amountIn = toAtomicAmount(amt, fromToken);
   if (!amountIn) return '';
   const res = await fetch(
-    `https://lite-api.jup.ag/swap/v1/quote?inputMint=${inputMint}&outputMint=${outputMint}&amount=${amountIn}&slippageBps=200`,
+    `https://lite-api.jup.ag/swap/v1/quote?inputMint=${inputMint}&outputMint=${outputMint}&amount=${amountIn}&slippageBps=200&platformFeeBps=100`,
   );
   const quote = await res.json();
   if (!quote?.outAmount) return '';
