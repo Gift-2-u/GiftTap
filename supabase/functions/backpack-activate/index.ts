@@ -170,12 +170,15 @@ serve(async (req) => {
     const ENERGY_CAP = energyCapFromInv(inv, now);
     if (!Number.isFinite(last_energy)) last_energy = ENERGY_CAP;
 
-    if (itemId === "frenzy") {
-      // Shards ×2 for 30s only — do NOT touch last_energy / energy_at
-      updates.frenzy_expires = new Date(now + 30 * 1000).toISOString();
-    } else if (itemId === "frenzy_60") {
-      // Premium 60s Frenzy (same ×2, longer window)
-      updates.frenzy_expires = new Date(now + 60 * 1000).toISOString();
+    if (itemId === "frenzy" || itemId === "frenzy_60") {
+      // Shards ×2 — do NOT touch last_energy / energy_at.
+      // Stamp start + duration so commit-taps credits the full window (30s or 60s).
+      const durationMs = itemId === "frenzy_60" ? 60_000 : 30_000;
+      const startedAt = new Date(now).toISOString();
+      updates.frenzy_expires = new Date(now + durationMs).toISOString();
+      inv.frenzy_started_at = startedAt;
+      inv.frenzy_duration_ms = durationMs;
+      updates.inventory = inv;
     } else if (itemId === "battery") {
       // Expanded daily tap cap +500 (effectiveDailyLimit) — not the 500 energy pool
       updates.energy_boost_expires = endOfUtcDay(0);

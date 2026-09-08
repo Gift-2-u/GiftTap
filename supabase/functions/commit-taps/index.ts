@@ -338,8 +338,9 @@ serve(async (req) => {
     }
 
     // Frenzy taps credited by client count (taps during active buff), not "frenzy still
-    // on at flush time" — otherwise a delayed flush after the 30s window pays 1× for
+    // on at flush time" — otherwise a delayed flush after the buff ends pays 1× for
     // taps that were actually during Frenzy. Cap + grace keep it honest.
+    // Duration MUST match activate: free frenzy = 30s, frenzy_60 = 60s (never hardcode 30).
     const claimedFrenzy = Math.max(
       0,
       Math.floor(Number(body?.frenzy_taps ?? body?.frenzyTaps) || 0),
@@ -348,15 +349,26 @@ serve(async (req) => {
       ? Date.parse(String(row.frenzy_expires))
       : NaN;
     const nowMs = now.getTime();
-    const FRENZY_FLUSH_GRACE_MS = 12_000; // allow commit shortly after 30s ends
+    const FRENZY_FLUSH_GRACE_MS = 12_000; // allow commit shortly after buff ends
     let frenzyTapsAllowed = 0;
     if (Number.isFinite(frenzyEndMs) && nowMs <= frenzyEndMs + FRENZY_FLUSH_GRACE_MS) {
-      // Max ~1 tap / 40ms over window; also cap by claimed + validTaps
-      const frenzyStartMs = frenzyEndMs - 30_000;
+      const stampedDuration = Math.floor(Number(inv.frenzy_duration_ms) || 0);
+      const durationMs =
+        stampedDuration === 30_000 || stampedDuration === 60_000
+          ? stampedDuration
+          : 60_000; // default 60s so frenzy_60 is never short-changed if stamp missing
+      const stampedStart = inv.frenzy_started_at
+        ? Date.parse(String(inv.frenzy_started_at))
+        : NaN;
+      const frenzyStartMs = Number.isFinite(stampedStart)
+        ? stampedStart
+        : frenzyEndMs - durationMs;
+      // From buff start through now (or end), plus flush grace — full 30s or 60s
       const windowMs = Math.max(
         0,
         Math.min(nowMs, frenzyEndMs) - frenzyStartMs + FRENZY_FLUSH_GRACE_MS,
       );
+      // Max ~1 tap / 40ms over the real window; also cap by claimed + validTaps
       const maxByWindow = Math.min(validTaps, Math.ceil(windowMs / 40) + 5);
       if (claimedFrenzy > 0) {
         frenzyTapsAllowed = Math.min(claimedFrenzy, validTaps, maxByWindow);
