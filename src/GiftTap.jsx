@@ -248,6 +248,7 @@ import {
   secureAdReward,
   fetchWeeklyBoard,
   fetchAirdropBoard,
+  secureAirdropClaimStatus,
 } from './secureApi';
 import { isTokenLaunched } from './tokenLaunch';
 import { syncAllGiftNftOwnership } from './nftOwnershipSync';
@@ -855,8 +856,9 @@ const GiftTapGame = () => {
     title: undefined,
     confirm: null,
   });
-  /** Daily UTC airdrop how-to until “Don’t show again” */
+  /** Popup when new unclaimed airdrop allocation(s) appear */
   const [showAirdropTip, setShowAirdropTip] = useState(false);
+  const [airdropTipPending, setAirdropTipPending] = useState([]);
   const notify = useCallback((message, opts = {}) => {
     // Accept notify(msg, true|false) from older callers, or notify(msg, { success, … })
     const o =
@@ -3342,34 +3344,80 @@ const GiftTapGame = () => {
     }
   }, [maxUnlockedLevel]);
 
-  // Airdrop how-to: once per UTC day until “Don’t show again” (skip while wall climb is up)
+  // Airdrop claim popup: reappear whenever NEW unclaimed allocation id(s) exist
   useEffect(() => {
     if (!isDataLoaded || !playerId || showAscensionModal) return undefined;
-    const today = new Date().toISOString().slice(0, 10);
-    const key = `gift2u_airdrop_tip_v1_${playerId}`;
-    let tip = { dismissed: false, lastShown: '' };
-    try {
-      tip = JSON.parse(localStorage.getItem(key) || '{}') || tip;
-    } catch {
-      /* ignore */
-    }
-    if (tip.dismissed) return undefined;
-    if (String(tip.lastShown || '') === today) return undefined;
+    if (!hasSecureSession()) return undefined;
 
-    const t = setTimeout(() => {
-      if (showAscensionModal) return;
-      setShowAirdropTip(true);
+    const seenKey = `gift2u_airdrop_claim_seen_${playerId}`;
+    const readSeen = () => {
       try {
-        localStorage.setItem(
-          key,
-          JSON.stringify({ ...tip, lastShown: today }),
-        );
+        const raw = JSON.parse(localStorage.getItem(seenKey) || '[]');
+        return Array.isArray(raw) ? raw.map(String) : [];
+      } catch {
+        return [];
+      }
+    };
+    let cancelled = false;
+    const check = async () => {
+      if (cancelled || showAscensionModal) return;
+      try {
+        await ensureSecureSession();
+        const data = await secureAirdropClaimStatus();
+        if (cancelled) return;
+        const rows = Array.isArray(data?.rows) ? data.rows : [];
+        const pending = rows.filter((r) => r?.id && !r.claimed_at);
+        setAirdropTipPending(pending);
+        if (!pending.length) return;
+        const seen = new Set(readSeen());
+        const fresh = pending.filter((r) => !seen.has(String(r.id)));
+        if (fresh.length > 0) {
+          setShowAirdropTip(true);
+        }
+      } catch {
+        /* offline / session — ignore */
+      }
+    };
+
+    const t = setTimeout(check, 2000);
+    const interval = setInterval(check, 120_000);
+    const onVis = () => {
+      if (document.visibilityState === 'visible') check();
+    };
+    document.addEventListener('visibilitychange', onVis);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', onVis);
+    };
+  }, [isDataLoaded, playerId, showAscensionModal]);
+
+  const dismissAirdropTip = useCallback(
+    (openWallet = false) => {
+      const seenKey = `gift2u_airdrop_claim_seen_${playerId}`;
+      try {
+        const prev = (() => {
+          try {
+            const raw = JSON.parse(localStorage.getItem(seenKey) || '[]');
+            return Array.isArray(raw) ? raw.map(String) : [];
+          } catch {
+            return [];
+          }
+        })();
+        const next = new Set(prev);
+        (airdropTipPending || []).forEach((r) => {
+          if (r?.id) next.add(String(r.id));
+        });
+        localStorage.setItem(seenKey, JSON.stringify([...next].slice(-50)));
       } catch {
         /* ignore */
       }
-    }, 1800);
-    return () => clearTimeout(t);
-  }, [isDataLoaded, playerId, showAscensionModal]);
+      setShowAirdropTip(false);
+      if (openWallet) setIsModalOpen(true);
+    },
+    [playerId, airdropTipPending],
+  );
 
   // All Gift2u NFTs (5 elves + Star equip): prove ownership before clear; activate when owned.
   useEffect(() => {
@@ -6756,7 +6804,7 @@ const GiftTapGame = () => {
           }}
           role="dialog"
           aria-modal="true"
-          aria-label="Airdrop how-to"
+          aria-label="Airdrop ready to claim"
         >
           <div
             style={{
@@ -6778,42 +6826,52 @@ const GiftTapGame = () => {
                 textAlign: 'center',
               }}
             >
-              🎁 How to get your $G2U airdrop
+              🎁 $G2U airdrop ready
             </h3>
-            <ul
+            <p
               style={{
                 color: '#ccc',
                 fontSize: 13,
                 lineHeight: 1.5,
+                margin: '0 0 12px',
+              }}
+            >
+              You have{' '}
+              <strong style={{ color: '#fff' }}>
+                {(airdropTipPending || [])
+                  .reduce((s, r) => s + (Number(r.amount) || 0), 0)
+                  .toLocaleString()}{' '}
+                $G2U
+              </strong>{' '}
+              waiting to claim
+              {(airdropTipPending || []).length > 1
+                ? ` (${airdropTipPending.length} allocations)`
+                : ''}
+              .
+            </p>
+            <ul
+              style={{
+                color: '#aaa',
+                fontSize: 12,
+                lineHeight: 1.45,
                 margin: '0 0 16px',
                 paddingLeft: 18,
               }}
             >
-              <li style={{ marginBottom: 8 }}>
-                <strong style={{ color: '#fff' }}>Earn</strong> — play weekly
-                (top 100 / badges), grind season shards, clear Level 5 for the L5
-                board.
-              </li>
-              <li style={{ marginBottom: 8 }}>
-                <strong style={{ color: '#fff' }}>Claim</strong> — open{' '}
-                <strong style={{ color: '#fbef43' }}>Wallet → Claim $G2U</strong>{' '}
-                when your allocation is ready.
-              </li>
-              <li style={{ marginBottom: 8 }}>
-                Keep a little <strong style={{ color: '#fff' }}>SOL</strong> in
-                your game wallet — you pay the Solana network fee; $G2U comes from
-                the vault.
-              </li>
-              <li>
-                Full rules: Menu → Game Guide → Airdrop &amp; Claim $G2U.
+              {(airdropTipPending || []).slice(0, 4).map((r) => (
+                <li key={String(r.id)} style={{ marginBottom: 4 }}>
+                  {r.label || r.source || 'Airdrop'} —{' '}
+                  {Number(r.amount || 0).toLocaleString()} $G2U
+                </li>
+              ))}
+              <li style={{ marginTop: 8 }}>
+                Open <strong style={{ color: '#fbef43' }}>Wallet → Claim $G2U</strong>.
+                Keep a little SOL for the network fee.
               </li>
             </ul>
             <button
               type="button"
-              onClick={() => {
-                setShowAirdropTip(false);
-                setIsModalOpen(true);
-              }}
+              onClick={() => dismissAirdropTip(true)}
               style={{
                 width: '100%',
                 background: 'linear-gradient(90deg,#fbef43,#fbbf24)',
@@ -6830,7 +6888,7 @@ const GiftTapGame = () => {
             </button>
             <button
               type="button"
-              onClick={() => setShowAirdropTip(false)}
+              onClick={() => dismissAirdropTip(false)}
               style={{
                 width: '100%',
                 background: '#333',
@@ -6840,40 +6898,9 @@ const GiftTapGame = () => {
                 borderRadius: 10,
                 fontWeight: 'bold',
                 cursor: 'pointer',
-                marginBottom: 10,
               }}
             >
               Got it
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                try {
-                  const key = `gift2u_airdrop_tip_v1_${playerId}`;
-                  localStorage.setItem(
-                    key,
-                    JSON.stringify({
-                      dismissed: true,
-                      lastShown: new Date().toISOString().slice(0, 10),
-                    }),
-                  );
-                } catch {
-                  /* ignore */
-                }
-                setShowAirdropTip(false);
-              }}
-              style={{
-                width: '100%',
-                background: 'transparent',
-                color: '#888',
-                border: '1px solid #444',
-                padding: '10px',
-                borderRadius: 8,
-                fontSize: 12,
-                cursor: 'pointer',
-              }}
-            >
-              Don&apos;t show this again
             </button>
           </div>
         </div>
