@@ -859,6 +859,9 @@ const GiftTapGame = () => {
   /** Popup when new unclaimed airdrop allocation(s) appear */
   const [showAirdropTip, setShowAirdropTip] = useState(false);
   const [airdropTipPending, setAirdropTipPending] = useState([]);
+  /** One-time notice: game rewrite / reward rules changing */
+  const [showRulesNotice, setShowRulesNotice] = useState(false);
+  const RULES_NOTICE_KEY = 'gift2u_game_change_notice_v1';
   const notify = useCallback((message, opts = {}) => {
     // Accept notify(msg, true|false) from older callers, or notify(msg, { success, … })
     const o =
@@ -3344,9 +3347,37 @@ const GiftTapGame = () => {
     }
   }, [maxUnlockedLevel]);
 
-  // Airdrop claim popup: reappear whenever NEW unclaimed allocation id(s) exist
+  // Game change notice — once per account until Got it (bump RULES_NOTICE_KEY to show again)
   useEffect(() => {
     if (!isDataLoaded || !playerId || showAscensionModal) return undefined;
+    const key = `${RULES_NOTICE_KEY}_${playerId}`;
+    try {
+      if (localStorage.getItem(key) === '1') return undefined;
+    } catch {
+      /* ignore */
+    }
+    const t = setTimeout(() => {
+      if (!showAscensionModal) setShowRulesNotice(true);
+    }, 1200);
+    return () => clearTimeout(t);
+  }, [isDataLoaded, playerId, showAscensionModal]);
+
+  const dismissRulesNotice = useCallback(
+    (openGuide = false) => {
+      try {
+        localStorage.setItem(`${RULES_NOTICE_KEY}_${playerId}`, '1');
+      } catch {
+        /* ignore */
+      }
+      setShowRulesNotice(false);
+      if (openGuide) setIsWhitepaperOpen(true);
+    },
+    [playerId],
+  );
+
+  // Airdrop claim popup: reappear whenever NEW unclaimed allocation id(s) exist
+  useEffect(() => {
+    if (!isDataLoaded || !playerId || showAscensionModal || showRulesNotice) return undefined;
     if (!hasSecureSession()) return undefined;
 
     const seenKey = `gift2u_airdrop_claim_seen_${playerId}`;
@@ -6803,7 +6834,119 @@ const GiftTapGame = () => {
         }}
       />
 
-      {showAirdropTip && !showAscensionModal && !appNotice.show && (
+      {showRulesNotice && !showAscensionModal && !appNotice.show && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,0.88)',
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center',
+            zIndex: 195000,
+            padding: 16,
+            boxSizing: 'border-box',
+          }}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="gift2u-rules-notice-title"
+        >
+          <div
+            style={{
+              background: '#1c1e22',
+              padding: 22,
+              borderRadius: 16,
+              border: '2px solid #fbef43',
+              width: '100%',
+              maxWidth: 360,
+              boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
+              textAlign: 'left',
+            }}
+          >
+            <h3
+              id="gift2u-rules-notice-title"
+              style={{
+                color: '#fbef43',
+                margin: '0 0 10px',
+                fontSize: 18,
+                textAlign: 'center',
+              }}
+            >
+              🚧 Gift Tap is updating
+            </h3>
+            <p style={{ color: '#ccc', fontSize: 13, lineHeight: 1.45, margin: '0 0 12px' }}>
+              Big reward changes are <strong style={{ color: '#fff' }}>in progress</strong>. Your
+              progress, wallet, and NFTs stay — we are rewriting how rewards work.
+            </p>
+            <ul
+              style={{
+                color: '#aaa',
+                fontSize: 12,
+                lineHeight: 1.5,
+                margin: '0 0 16px',
+                paddingLeft: 18,
+              }}
+            >
+              <li style={{ marginBottom: 6 }}>
+                <strong style={{ color: '#fff' }}>$G2U</strong> stays an in-game utility token
+                (boosts, durability, upgrades).
+              </li>
+              <li style={{ marginBottom: 6 }}>
+                Future airdrops move to{' '}
+                <strong style={{ color: '#fff' }}>personal milestones</strong> — same goal, same
+                reward for everyone.
+              </li>
+              <li style={{ marginBottom: 6 }}>
+                Weekly / season boards: keep competing for{' '}
+                <strong style={{ color: '#fff' }}>badges, boosts, and in-game utility</strong>.
+              </li>
+              <li>
+                NFTs are <strong style={{ color: '#fff' }}>time savers</strong> — more energy and
+                faster progress toward your goals.
+              </li>
+            </ul>
+            <p style={{ color: '#888', fontSize: 11, margin: '0 0 14px', lineHeight: 1.4 }}>
+              Full details in <strong style={{ color: '#fbef43' }}>Menu → Game Guide</strong> as each
+              piece goes live. Thanks for playing while we rebuild.
+            </p>
+            <button
+              type="button"
+              onClick={() => dismissRulesNotice(true)}
+              style={{
+                width: '100%',
+                background: 'linear-gradient(90deg,#fbef43,#fbbf24)',
+                color: '#000',
+                border: 'none',
+                padding: 12,
+                borderRadius: 10,
+                fontWeight: 'bold',
+                cursor: 'pointer',
+                marginBottom: 8,
+              }}
+            >
+              Open Game Guide
+            </button>
+            <button
+              type="button"
+              onClick={() => dismissRulesNotice(false)}
+              style={{
+                width: '100%',
+                background: '#333',
+                color: '#fff',
+                border: '1px solid #555',
+                padding: 12,
+                borderRadius: 10,
+                fontWeight: 'bold',
+                cursor: 'pointer',
+              }}
+            >
+              Got it
+            </button>
+          </div>
+        </div>
+      )}
+
+      {showAirdropTip && !showRulesNotice && !showAscensionModal && !appNotice.show && (
         <div
           style={{
             position: 'fixed',
