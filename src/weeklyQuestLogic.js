@@ -12,10 +12,10 @@ export const WEEKLY_PRIZE = {
   id: 'wq_week_prize',
   title: 'Weekly prize — Free Instant Refill',
   description:
-    'Claim 7 of 10 weekly quests this UTC week, then claim this free boost (goes to Pack / Backpack).',
+    'Claim 4 of 6 weekly quests this UTC week, then claim this free boost (goes to Pack / Backpack).',
   icon: '🎁',
-  /** How many of the energy quests must be claimed first (10 quests total) */
-  needClaims: 7,
+  /** How many board quests must be claimed first (6 quests total) */
+  needClaims: 4,
   /** Shop item id added to inventory */
   rewardItemId: 'refill',
   rewardLabel: 'Instant Refill',
@@ -153,14 +153,6 @@ export function applyWeeklyBoostBuy(state, weekId, count = 1) {
 
 export const WEEKLY_QUEST_LIST = [
   {
-    id: 'wq_tap500_1',
-    title: 'Tap 500 in a day',
-    description: 'Reach 500 daily taps on any UTC day this week',
-    icon: '👆',
-    kind: 'daysTap500',
-    need: 1,
-  },
-  {
     id: 'wq_tap500_3',
     title: 'Tap 500 on 3 different days',
     description: '3 separate UTC days with 500+ taps each',
@@ -175,14 +167,6 @@ export const WEEKLY_QUEST_LIST = [
     icon: '👆',
     kind: 'daysTap500',
     need: 5,
-  },
-  {
-    id: 'wq_full_1',
-    title: 'Drain daily limit once',
-    description: 'Reach 1,000 raw taps in one UTC day (not the 500 energy bar)',
-    icon: '📊',
-    kind: 'daysFull',
-    need: 1,
   },
   {
     id: 'wq_full_3',
@@ -201,14 +185,6 @@ export const WEEKLY_QUEST_LIST = [
     need: 5,
   },
   {
-    id: 'wq_boost_1',
-    title: 'Buy 1 boost',
-    description: 'Any shop boost this week (shards or SOL)',
-    icon: '🛍️',
-    kind: 'boostBuys',
-    need: 1,
-  },
-  {
     id: 'wq_boost_3',
     title: 'Buy 3 boosts',
     description: '3 shop boost purchases this week',
@@ -223,14 +199,6 @@ export const WEEKLY_QUEST_LIST = [
     icon: '🛍️',
     kind: 'boostBuys',
     need: 5,
-  },
-  {
-    id: 'wq_friend_1k',
-    title: '1 real friend (1,000 taps)',
-    description: 'A referral reaches 1,000 lifetime taps (this week board)',
-    icon: '🤝',
-    kind: 'friend1k',
-    need: 1,
   },
 ];
 
@@ -251,10 +219,6 @@ export function questProgress(quest, state, extras = {}) {
   if (quest.kind === 'boostBuys') {
     const n = Number(s.boostBuys) || 0;
     return { current: n, need: quest.need, ready: n >= quest.need };
-  }
-  if (quest.kind === 'friend1k') {
-    const n = Math.min(1, Math.max(0, Number(extras.friends1k) || 0));
-    return { current: n, need: 1, ready: n >= 1 };
   }
   return { current: 0, need: quest.need, ready: false };
 }

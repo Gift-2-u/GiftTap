@@ -6646,21 +6646,35 @@ const GiftTapGame = () => {
     now.getTime(),
   );
 
-  const handleCopyPhrase = async () => {
-    // Pure state-only retrieval. Zero browser storage.
-    const phraseToCopy = decryptedPhrase || generatedSecret;
-    
-    if (!phraseToCopy) {
-      notify("Error: No secret phrase found to copy.");
-      return;
-    }
-
+  const handleRevealPhrase = async () => {
     try {
+      await ensureWalletSecret(
+        'Enter your account password to reveal your 12-word phrase:',
+      );
+      setIsRevealed(true);
+    } catch (e) {
+      notify(e?.message || 'Could not unlock vault. Check password or Restore with 12 words.', false);
+    }
+  };
+
+  const handleCopyPhrase = async () => {
+    try {
+      const phraseToCopy = await ensureWalletSecret(
+        'Enter your account password to copy your 12-word phrase:',
+      );
+      if (!phraseToCopy) {
+        notify('Error: No secret phrase found to copy.', false);
+        return;
+      }
       await navigator.clipboard.writeText(phraseToCopy);
-      notify("✅ 12-Word Phrase Copied to clipboard!");
+      notify('✅ 12-Word Phrase Copied to clipboard!');
     } catch (err) {
-      console.error("Failed to copy text: ", err);
-      notify("❌ Clipboard access denied. Please write it down manually.");
+      console.error('Failed to copy phrase: ', err);
+      notify(
+        err?.message ||
+          '❌ Could not unlock vault or clipboard denied. Try Restore with your 12 words if you backed them up.',
+        false,
+      );
     }
   };
 
@@ -8472,11 +8486,15 @@ const GiftTapGame = () => {
                       {!isRevealed ? (
                         <div style={{ background: '#111', padding: '15px', borderRadius: '10px', border: '1px solid #333', textAlign: 'center' }}>
                           <button
-                            onClick={() => setIsRevealed(true)}
+                            type="button"
+                            onClick={handleRevealPhrase}
                             style={{ width: '100%', background: '#ffd700', color: '#000', padding: '12px', borderRadius: '8px', fontWeight: 'bold', border: 'none', cursor: 'pointer' }}
                           >
                             👁️ REVEAL SECRET PHRASE
                           </button>
+                          <p style={{ color: '#666', fontSize: 11, margin: '10px 0 0' }}>
+                            Requires your account password (unlocks vault securely).
+                          </p>
                         </div>
                       ) : (
                         <div style={{ background: '#000', padding: '15px', borderRadius: '10px', border: '1px solid #ffd700', marginTop: '15px' }}>
