@@ -135,17 +135,30 @@ serve(async (req) => {
     if (!ok) throw new Error("Wrong password.");
 
     // last_updated = this player logged in (NOT taps — those use last_tap_date)
+    // IP is required (assertAuthAllowed); always stamp it.
     const loginAt = new Date().toISOString();
     const loginIp = clientIpHint(req);
+    if (!loginIp) {
+      throw new Error(
+        "Could not verify your network. Disable VPN/proxy/adblock and try again.",
+      );
+    }
     try {
-      const loginPatch: Record<string, unknown> = { last_updated: loginAt };
-      if (loginIp) {
-        loginPatch.ip = loginIp;
-        loginPatch.last_login_ip = loginIp;
-      }
+      const { data: cur } = await supabase
+        .from("players")
+        .select("signup_ip")
+        .eq("telegram_id", String(row.telegram_id))
+        .maybeSingle();
+      const signupMissing =
+        !cur?.signup_ip || !String(cur.signup_ip).trim();
       await supabase
         .from("players")
-        .update(loginPatch)
+        .update({
+          last_updated: loginAt,
+          ip: loginIp,
+          last_login_ip: loginIp,
+          ...(signupMissing ? { signup_ip: loginIp } : {}),
+        })
         .eq("telegram_id", String(row.telegram_id));
     } catch (luErr) {
       console.warn("login last_updated", luErr);

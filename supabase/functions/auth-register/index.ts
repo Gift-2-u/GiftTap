@@ -99,10 +99,15 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
     );
 
-    // Block banned IPs / usernames before creating any row
+    // Block banned IPs / usernames before creating any row (requires IP)
     await assertAuthAllowed(req, cleanName, supabase);
     // Hard cap: max N accounts per IP (stops 14-account farms)
     const signupIp = await assertSignupIpCap(req, supabase);
+    if (!signupIp || !String(signupIp).trim()) {
+      throw new Error(
+        "Could not verify your network. Disable VPN/proxy/adblock and try again.",
+      );
+    }
 
     const { data: existing } = await supabase
       .from("players")

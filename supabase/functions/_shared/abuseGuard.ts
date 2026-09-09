@@ -6,16 +6,33 @@
 import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.39.7";
 
 export function clientIpHint(req: Request): string | null {
-  const cf = req.headers.get("cf-connecting-ip")?.trim();
-  if (cf) return cf.slice(0, 64);
-  const xff = req.headers.get("x-forwarded-for");
-  if (xff) {
-    const first = xff.split(",")[0]?.trim();
-    if (first) return first.slice(0, 64);
+  const candidates = [
+    req.headers.get("cf-connecting-ip"),
+    req.headers.get("true-client-ip"),
+    req.headers.get("x-real-ip"),
+    req.headers.get("x-vercel-forwarded-for"),
+    req.headers.get("fly-client-ip"),
+    req.headers.get("x-forwarded-for")?.split(",")[0],
+  ];
+  for (const raw of candidates) {
+    const ip = String(raw || "").trim();
+    if (!ip) continue;
+    // Skip obvious placeholders
+    if (/^(unknown|null|undefined|::1|0\.0\.0\.0)$/i.test(ip)) continue;
+    return ip.slice(0, 64);
   }
-  const real = req.headers.get("x-real-ip")?.trim();
-  if (real) return real.slice(0, 64);
   return null;
+}
+
+/** Require a real client IP — no anonymous register/login. */
+export function requireClientIp(req: Request): string {
+  const ip = clientIpHint(req);
+  if (!ip) {
+    throw new Error(
+      "Could not verify your network. Disable VPN/proxy/adblock and try again.",
+    );
+  }
+  return ip;
 }
 
 function admin(): SupabaseClient {
@@ -27,13 +44,12 @@ function admin(): SupabaseClient {
 
 const BLOCKED_MSG = "Account suspended.";
 
-/** Throw if IP is on abuse_blocks. */
+/** Throw if IP missing or on abuse_blocks. */
 export async function assertIpAllowed(
   req: Request,
   sb?: SupabaseClient,
-): Promise<void> {
-  const ip = clientIpHint(req);
-  if (!ip) return;
+): Promise<string> {
+  const ip = requireClientIp(req);
   const client = sb || admin();
   const { data, error } = await client
     .from("abuse_blocks")
@@ -43,6 +59,7 @@ export async function assertIpAllowed(
     .maybeSingle();
   if (error) throw error;
   if (data) throw new Error(BLOCKED_MSG);
+  return ip;
 }
 
 /** Throw if username is blocked (case-insensitive). */
@@ -92,15 +109,16 @@ export async function assertPlayerAllowed(
   }
 }
 
-/** Login/register gate: IP + username. */
+/** Login/register gate: require IP + username. */
 export async function assertAuthAllowed(
   req: Request,
   username: string,
   sb?: SupabaseClient,
-): Promise<void> {
+): Promise<string> {
   const client = sb || admin();
-  await assertIpAllowed(req, client);
+  const ip = await assertIpAllowed(req, client);
   await assertUsernameAllowed(username, client);
+  return ip;
 }
 
 /** Default max accounts that may be created from one IP (override: MAX_ACCOUNTS_PER_IP). */
@@ -121,12 +139,7 @@ export async function assertSignupIpCap(
   req: Request,
   sb?: SupabaseClient,
 ): Promise<string> {
-  const ip = clientIpHint(req);
-  if (!ip) {
-    throw new Error(
-      "Could not verify your network. Disable VPN/proxy and try again.",
-    );
-  }
+  const ip = requireClientIp(req);
   const client = sb || admin();
   const max = maxAccountsPerIp();
 
