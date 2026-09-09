@@ -114,9 +114,10 @@ export const HELP_TIPS = {
     body:
       'Burn weekly badges in Shop → Pack → Badges.\n\n' +
       'Cost: 2 Diamond / 3 Gold / 4 Silver / 5 Bronze per open.\n\n' +
-      'Higher-tier badges have better odds (Diamond open: ~2% Exclusive NFT, 55% Bonus G2U).\n' +
-      'Bonus G2U: D 50k · G 25k · S 15k · B 5k. G2Ushards (balance): G 15k · S 10k · B 5k.\n' +
-      'Bonus G2U and NFT mints are paid from the Mystery vault (10% allocation).\n\n' +
+      'Prizes: Premium Boost, Free Boost, or G2Ushards (no $G2U, no NFT).\n' +
+      'Higher-tier badges → better Premium odds (Diamond: 75% Premium / 20% Free / 5% shards).\n' +
+      'Premium sub-roll includes 1/3/7-day timed boosts, Frenzy, +1000 Max Daily, Refill.\n' +
+      'G2Ushards bulk: D 30k · G 20k · S 10k · B 5k → mining balance.\n\n' +
       'Full drop table: Menu → Game Guide → Mystery Gift.',
   },
   nft_durability: {

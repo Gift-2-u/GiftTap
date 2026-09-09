@@ -75,3 +75,21 @@ export function premiumDurationOptions(itemId, { g2uMode = true, g2uPerSol = 5_0
     };
   });
 }
+
+const QUEUE_KEY = 'premium_duration_queue';
+
+/** Queue duration charge for backpack activate (Mystery Gift / shop). */
+export function pushPremiumDuration(inv, itemId, days) {
+  if (!inv || typeof inv !== 'object') return;
+  const id = String(itemId || '').toLowerCase();
+  if (!PREMIUM_DURATION_CHOICE_IDS.has(id)) return;
+  const d = parsePremiumDurationDays(days, 7);
+  const root =
+    inv[QUEUE_KEY] && typeof inv[QUEUE_KEY] === 'object' && !Array.isArray(inv[QUEUE_KEY])
+      ? { ...inv[QUEUE_KEY] }
+      : {};
+  const prev = Array.isArray(root[id]) ? [...root[id]] : [];
+  prev.push(d);
+  root[id] = prev;
+  inv[QUEUE_KEY] = root;
+}

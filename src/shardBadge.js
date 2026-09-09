@@ -5,7 +5,7 @@
  * Equip map: inventory.fate_equip[assetId] = { itemId: 'shard_badge', equipped_at }
  *
  * Tradeable on the in-game Badge market (tier: "shard").
- * Obtain via Mystery Gift / prize / Badge market. Not a Premium Boost.
+ * Obtain via prize / Badge market. Not a Premium Boost / Mystery Gift.
  */
 
 export const SHARD_BADGE = {

@@ -10,6 +10,7 @@
 
 import { getUtcWeekId } from './weeklyQuestLogic';
 import { claimKey } from './claimOnce';
+import { pushPremiumDuration } from './premiumDuration';
 
 /** Public PNG art for weekly season prizes (Shop → Pack → Badges). */
 export const BADGE_IMAGE_BASE = '/shop/weekly-badges';
@@ -476,24 +477,13 @@ export function canOpenMysteryWith(inv, tier) {
 /**
  * Mystery Gift drop rates by badge tier burned (each column sums to 100%).
  * Keep in sync with supabase/functions/_shared/economy.ts MYSTERY_ODDS.
- *
- * Exclusive NFT is scarce (Diamond ~2% ≈ 1 in 50 opens).
+ * Prizes: premium boost / free boost / G2Ushards only (no $G2U, no NFT).
  */
 const MYSTERY_PRIZE_META = {
-  exclusive_nft: {
-    id: 'exclusive_nft',
-    label: 'Exclusive NFT',
-    type: 'nft_voucher',
-  },
-  bonus_g2u: {
-    id: 'bonus_g2u',
-    label: 'Bonus G2U Tokens',
-    type: 'g2u_tokens',
-    dest: 'wallet',
-  },
   premium_boost: {
     id: 'premium_boost',
-    label: 'Premium Boost (Bot / +2K / Expanded Energy / x2 / +5K / x3)',
+    label:
+      'Premium Boost (Bot / timed +2K·+5K·x2·x3·Expanded Energy / Frenzy / +1K / Refill)',
     type: 'item',
     dest: 'backpack',
   },
@@ -518,61 +508,59 @@ export const MYSTERY_FREE_ITEMS = [
   { itemId: 'refill', label: 'Instant Refill', weight: 1 },
 ];
 
-/** Premium Boost sub-roll (weights = %). Includes Expanded Energy. */
+/**
+ * Premium Boost sub-roll (weights = %, sum 100).
+ * Timed items include days (1/3/7) — keep in sync with economy.ts.
+ */
 export const MYSTERY_PREMIUM_ITEMS = [
-  { itemId: 'bot', label: 'Weekend Bot', weight: 20 },
-  { itemId: 'grinder', label: '+2K Daily Energy', weight: 20 },
-  { itemId: 'expanded_energy', label: 'Expanded Energy', weight: 20 },
-  { itemId: 'x2_boost', label: 'Double Power', weight: 15 },
-  { itemId: 'whale', label: '+5K Daily Energy', weight: 13 },
-  { itemId: 'x3_boost', label: 'Triple Power', weight: 12 },
-];
-
-/** NFT sub-roll */
-export const MYSTERY_NFT_ROLL = [
-  { kind: 'fate', rarity: 'common', label: 'Fate Common', weight: 20 },
-  { kind: 'echo', rarity: 'common', label: 'Echo Common', weight: 20 },
-  { kind: 'rush', rarity: 'common', label: 'Rush Common', weight: 20 },
-  { kind: 'shadow', rarity: 'common', label: 'Shadow Common', weight: 20 },
-  { kind: 'locksmith', rarity: 'rare', label: 'GiftLocksmith', weight: 10 },
-  { kind: 'star', rarity: 'shard', label: 'Star Badge', weight: 10 },
+  { itemId: 'bot', label: 'Weekend Bot', weight: 2.5 },
+  { itemId: 'grinder', label: '+2K Daily Energy', weight: 6, days: 1 },
+  { itemId: 'grinder', label: '+2K Daily Energy', weight: 4, days: 3 },
+  { itemId: 'grinder', label: '+2K Daily Energy', weight: 2.5, days: 7 },
+  { itemId: 'whale', label: '+5K Daily Energy', weight: 4, days: 1 },
+  { itemId: 'whale', label: '+5K Daily Energy', weight: 2, days: 3 },
+  { itemId: 'whale', label: '+5K Daily Energy', weight: 0.5, days: 7 },
+  { itemId: 'x2_boost', label: 'Double Power', weight: 5.5, days: 1 },
+  { itemId: 'x2_boost', label: 'Double Power', weight: 3, days: 3 },
+  { itemId: 'x2_boost', label: 'Double Power', weight: 1, days: 7 },
+  { itemId: 'x3_boost', label: 'Triple Power', weight: 4, days: 1 },
+  { itemId: 'x3_boost', label: 'Triple Power', weight: 1.5, days: 3 },
+  { itemId: 'x3_boost', label: 'Triple Power', weight: 0.5, days: 7 },
+  { itemId: 'expanded_energy', label: 'Expanded Energy', weight: 15, days: 1 },
+  { itemId: 'expanded_energy', label: 'Expanded Energy', weight: 9, days: 3 },
+  { itemId: 'expanded_energy', label: 'Expanded Energy', weight: 6, days: 7 },
+  { itemId: 'frenzy', label: 'Frenzy Mode', weight: 9 },
+  { itemId: 'daily_plus_1000', label: '+1000 Max Daily', weight: 9 },
+  { itemId: 'refill', label: 'Instant Refill', weight: 15 },
 ];
 
 const MYSTERY_SHARD_AMOUNTS = {
-  bronze: { bonus_g2u: 5000, shards_bulk: 5000 },
-  silver: { bonus_g2u: 15000, shards_bulk: 10000 },
-  gold: { bonus_g2u: 25000, shards_bulk: 15000 },
-  diamond: { bonus_g2u: 50000, shards_bulk: 0 },
+  bronze: { shards_bulk: 5000 },
+  silver: { shards_bulk: 10000 },
+  gold: { shards_bulk: 20000 },
+  diamond: { shards_bulk: 30000 },
 };
 
 export const MYSTERY_ODDS_BY_TIER = {
   bronze: {
-    exclusive_nft: 0.2,
-    bonus_g2u: 10,
-    premium_boost: 14,
+    premium_boost: 20,
     free_boost: 35,
-    shards_bulk: 40.8,
+    shards_bulk: 45,
   },
   silver: {
-    exclusive_nft: 0.5,
-    bonus_g2u: 17,
-    premium_boost: 23,
-    free_boost: 31,
-    shards_bulk: 28.5,
+    premium_boost: 25,
+    free_boost: 35,
+    shards_bulk: 40,
   },
   gold: {
-    exclusive_nft: 1,
-    bonus_g2u: 35,
-    premium_boost: 30,
-    free_boost: 20,
-    shards_bulk: 14,
+    premium_boost: 45,
+    free_boost: 35,
+    shards_bulk: 20,
   },
   diamond: {
-    exclusive_nft: 2,
-    bonus_g2u: 55,
-    premium_boost: 28,
-    free_boost: 15,
-    shards_bulk: 0,
+    premium_boost: 75,
+    free_boost: 20,
+    shards_bulk: 5,
   },
 };
 
@@ -593,26 +581,18 @@ export function mysteryRewardTableForTier(tier) {
       type: meta.type,
       itemId: meta.itemId,
     };
-    if (meta.type === 'shards' || meta.type === 'g2u_tokens') {
+    if (meta.type === 'shards') {
       const amt = Number(amounts[prizeId]) || 0;
       row.amount = amt;
-      row.dest = meta.dest || (meta.type === 'g2u_tokens' ? 'wallet' : 'balance');
-      row.label =
-        prizeId === 'bonus_g2u'
-          ? `Bonus G2U Tokens (+${amt.toLocaleString()} G2U) → Wallet`
-          : `G2Ushards (Bulk) (+${amt.toLocaleString()}) → Balance`;
+      row.dest = meta.dest || 'balance';
+      row.label = `G2Ushards (Bulk) (+${amt.toLocaleString()}) → Balance`;
     }
     if (meta.type === 'item' && meta.itemId) {
       row.dest = 'backpack';
       row.label =
         prizeId === 'premium_boost'
-          ? 'Premium Boost (+1 Frenzy) → Backpack'
-          : 'Free Boost (+1 Instant Refill) → Backpack';
-    }
-    if (meta.type === 'nft_voucher') {
-      row.dest = 'backpack';
-      row.label =
-        'Exclusive NFT voucher → Backpack (redeem when Exclusive mint opens)';
+          ? 'Premium Boost → Backpack'
+          : 'Free Boost → Backpack';
     }
     rows.push(row);
   }
@@ -652,19 +632,53 @@ export function openMysteryGift(inv, tier, balance = 0, rng = Math.random) {
   base[itemId] = have - need;
   if (base[itemId] <= 0) delete base[itemId];
 
-  const reward = rollMysteryReward(rng, tier);
+  // Top roll, then premium/free sub-roll (mirrors economy.ts rollMystery)
+  let reward = rollMysteryReward(rng, tier);
+  if (reward.prizeId === 'premium_boost') {
+    const total = MYSTERY_PREMIUM_ITEMS.reduce((s, r) => s + r.weight, 0) || 1;
+    let x = rng() * total;
+    let pick = MYSTERY_PREMIUM_ITEMS[0];
+    for (const row of MYSTERY_PREMIUM_ITEMS) {
+      x -= row.weight;
+      if (x <= 0) {
+        pick = row;
+        break;
+      }
+    }
+    const dayBit = pick.days ? ` (${pick.days}d)` : '';
+    reward = {
+      ...reward,
+      type: 'item',
+      itemId: pick.itemId,
+      days: pick.days || null,
+      label: `Premium Boost: ${pick.label}${dayBit} → Backpack`,
+    };
+  } else if (reward.prizeId === 'free_boost') {
+    const total = MYSTERY_FREE_ITEMS.reduce((s, r) => s + r.weight, 0) || 1;
+    let x = rng() * total;
+    let pick = MYSTERY_FREE_ITEMS[0];
+    for (const row of MYSTERY_FREE_ITEMS) {
+      x -= row.weight;
+      if (x <= 0) {
+        pick = row;
+        break;
+      }
+    }
+    reward = {
+      ...reward,
+      type: 'item',
+      itemId: pick.itemId,
+      label: `Free Boost: ${pick.label} → Backpack`,
+    };
+  }
+
   let balanceDelta = 0;
 
-  let g2uDelta = 0;
   if (reward.type === 'shards') {
     balanceDelta = Number(reward.amount) || 0;
-  } else if (reward.type === 'g2u_tokens') {
-    g2uDelta = Number(reward.amount) || 0;
   } else if (reward.type === 'item' && reward.itemId) {
     base[reward.itemId] = (Number(base[reward.itemId]) || 0) + 1;
-  } else if (reward.type === 'nft_voucher') {
-    base.exclusive_nft_voucher =
-      (Number(base.exclusive_nft_voucher) || 0) + 1;
+    if (reward.days) pushPremiumDuration(base, reward.itemId, reward.days);
   } else if (reward.type === 'task_limit') {
     // Applied by caller via applyTaskLimitBoostToInventory for stack correctness
   }
@@ -680,7 +694,7 @@ export function openMysteryGift(inv, tier, balance = 0, rng = Math.random) {
   // keep last 30
   base.mystery_opens = opens.slice(-30);
 
-  return { inv: base, balanceDelta, g2uDelta, reward, error: null };
+  return { inv: base, balanceDelta, g2uDelta: 0, reward, error: null };
 }
 
 /** Odds copy for UI — pass badge tier burned */
@@ -696,16 +710,8 @@ export function mysteryOddsLines(tier = 'bronze') {
 
 /** Compact rate table for Game Guide / Pack UI */
 export function mysteryOddsTableForGuide() {
-  const prizes = [
-    'exclusive_nft',
-    'bonus_g2u',
-    'premium_boost',
-    'free_boost',
-    'shards_bulk',
-  ];
+  const prizes = ['premium_boost', 'free_boost', 'shards_bulk'];
   const labels = {
-    exclusive_nft: 'Exclusive NFT',
-    bonus_g2u: 'Bonus G2U Tokens',
     premium_boost: 'Premium Boost',
     free_boost: 'Free Boost',
     shards_bulk: 'G2Ushards (Bulk)',

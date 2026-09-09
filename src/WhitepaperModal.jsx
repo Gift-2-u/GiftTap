@@ -187,20 +187,22 @@ const WhitepaperModal = ({ isWhitepaperOpen, setIsWhitepaperOpen, onClose }) => 
         "• Diamond = top 10% · Gold = next 15% · Silver = next 25% · Bronze = rest eligible\n\n" +
         "DROP RATES by badge tier burned (each column = 100%):\n\n" +
         "Prize                  Bronze         Silver      Gold       Diamond\n" +
-        "Exclusive NFT            0.2%           0.5%        1%          2%\n" +
-        "Bonus G2U               10%            20%        35%         55%\n" +
-        "Premium Boost           14%            23%        30%         28%\n" +
-        "Free Boost              35%            30%        20%         15%\n" +
-        "G2Ushards (Bulk)        40.8%          26.5%      14%          0%\n\n" +
-        "Exclusive NFT is scarce (~2% on Diamond ≈ 1 in 50 opens).\n" +
-        "If Exclusive hits: Fate/Echo/Rush/Shadow Common 20% each · Locksmith 10% · Star 10%.\n" +
-        "Free Boost splits: Frenzy / Battery / Refill (~⅓ each).\n" +
-        "Premium Boost splits: Bot / +2K / +5K / x2 / x3 (20% each).\n" +
-        "Prize amounts by burn tier:\n" +
-        "• Bonus G2U: Diamond 50,000 · Gold 25,000 · Silver 15,000 · Bronze 5,000\n" +
-        "• G2Ushards → shard_balance: Gold 15,000 · Silver 10,000 · Bronze 5,000 · Diamond none\n\n" +
-        "G2Ushards bulk credits mining balance immediately.\n" +
-        "Bonus G2U + Exclusive NFT mints are paid from the Mystery vault (10% of max $G2U supply) to your game wallet when payouts are live.\n\n" +
+        "Premium Boost           20%            25%        45%         75%\n" +
+        "Free Boost              35%            35%        35%         20%\n" +
+        "G2Ushards (Bulk)        45%            40%        20%          5%\n\n" +
+        "No $G2U token and no NFT from Mystery Gift.\n" +
+        "Free Boost splits: Frenzy / Expanded Battery / Instant Refill (~⅓ each).\n" +
+        "Premium Boost splits (sum 100%):\n" +
+        "• Weekend Bot 2.5%\n" +
+        "• +2K: 1d 6% · 3d 4% · 7d 2.5%\n" +
+        "• +5K: 1d 4% · 3d 2% · 7d 0.5%\n" +
+        "• x2: 1d 5.5% · 3d 3% · 7d 1%\n" +
+        "• x3: 1d 4% · 3d 1.5% · 7d 0.5%\n" +
+        "• Expanded Energy: 1d 15% · 3d 9% · 7d 6%\n" +
+        "• Frenzy 9% · +1000 Max Daily 9% · Instant Refill 15%\n" +
+        "Timed premiums queue the rolled 1/3/7 days for activate.\n" +
+        "G2Ushards → shard_balance: Diamond 30,000 · Gold 20,000 · Silver 10,000 · Bronze 5,000\n\n" +
+        "G2Ushards bulk credits mining balance immediately.\n\n" +
         "Independent roll per open. Not financial advice; prizes can change for balance/fair play.",
     },
     {

@@ -2612,8 +2612,7 @@ Daily claim active · Pack → NFT to see it.`,
                 if (
                   mysteryReveal.dest === 'backpack' ||
                   mysteryReveal.prizeId === 'premium_boost' ||
-                  mysteryReveal.prizeId === 'free_boost' ||
-                  mysteryReveal.prizeId === 'exclusive_nft'
+                  mysteryReveal.prizeId === 'free_boost'
                 ) {
                   setActiveTab('backpack');
                   setBackpackCat('boost');
@@ -3498,8 +3497,6 @@ Daily claim active · Pack → NFT to see it.`,
                         </thead>
                         <tbody>
                           {[
-                            ['exclusive_nft', 'Exclusive NFT → Backpack'],
-                            ['bonus_g2u', 'Bonus G2U → Wallet'],
                             ['premium_boost', 'Premium Boost → Backpack'],
                             ['free_boost', 'Free Boost → Backpack'],
                             ['shards_bulk', 'G2Ushards bulk → Balance'],
@@ -3523,7 +3520,7 @@ Daily claim active · Pack → NFT to see it.`,
                   Star Badge
                 </div>
                 <p style={{ color: '#666', fontSize: 11, margin: '0 0 8px', lineHeight: 1.35 }}>
-                  Equip → NFT. Win in Mystery Gift or trade below.
+                  Equip → NFT. Trade below or earn from other rewards.
                 </p>
                 {getShardBadgeCount(localInventory) > 0 ? (
                   <div
@@ -3680,6 +3677,7 @@ Daily claim active · Pack → NFT to see it.`,
 
                 <div style={{ marginTop: 8 }}>
                   <BadgeMarket
+                    marketClosed
                     inventory={localInventory}
                     balance={balance}
                     setBalance={setBalance}

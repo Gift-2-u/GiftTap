@@ -49,8 +49,10 @@ export default function BadgeMarket({
   decryptedPhrase,
   playerWallet,
   onStatus,
+  /** When true: no browse/list/buy — cancel open listings only */
+  marketClosed = false,
 }) {
-  const [tab, setTab] = useState('market'); // market | sell | mine
+  const [tab, setTab] = useState(marketClosed ? 'mine' : 'market'); // market | sell | mine
   const [listings, setListings] = useState([]);
   const [mine, setMine] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -110,24 +112,38 @@ export default function BadgeMarket({
     setLoading(true);
     try {
       await ensureSecureSession();
-      const [b, m] = await Promise.all([
-        secureBadgeMarketBrowse({}),
-        secureBadgeMarketMyListings().catch(() => ({ listings: [] })),
-      ]);
-      setListings(b.listings || []);
-      setMine(m.listings || []);
+      if (marketClosed) {
+        const m = await secureBadgeMarketMyListings().catch(() => ({ listings: [] }));
+        setListings([]);
+        setMine(m.listings || []);
+      } else {
+        const [b, m] = await Promise.all([
+          secureBadgeMarketBrowse({}),
+          secureBadgeMarketMyListings().catch(() => ({ listings: [] })),
+        ]);
+        setListings(b.listings || []);
+        setMine(m.listings || []);
+      }
     } catch (e) {
       console.warn('badge market refresh', e?.message || e);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [marketClosed]);
 
   useEffect(() => {
     refresh();
   }, [refresh]);
 
+  useEffect(() => {
+    if (marketClosed) setTab('mine');
+  }, [marketClosed]);
+
   const handleList = async () => {
+    if (marketClosed) {
+      notify('❌ Badge market temporarily closed', false);
+      return;
+    }
     if (!hasSecureSession()) {
       notify('❌ Login / session required to sell', false);
       return;
@@ -236,6 +252,10 @@ export default function BadgeMarket({
   };
 
   const handleBuy = async (listing) => {
+    if (marketClosed) {
+      notify('❌ Badge market temporarily closed', false);
+      return;
+    }
     if (!hasSecureSession()) {
       notify('❌ Login required to buy', false);
       return;
@@ -283,23 +303,36 @@ export default function BadgeMarket({
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       <div
         style={{
-          background: 'linear-gradient(145deg, rgba(255,215,0,0.1), #0f172a)',
-          border: '1px solid #ffd70055',
+          background: marketClosed
+            ? 'linear-gradient(145deg, rgba(251,239,67,0.12), #0f172a)'
+            : 'linear-gradient(145deg, rgba(255,215,0,0.1), #0f172a)',
+          border: marketClosed ? '1px solid #fbef4355' : '1px solid #ffd70055',
           borderRadius: 14,
           padding: 12,
         }}
       >
-        <div style={{ color: '#ffd700', fontWeight: 'bold', fontSize: 14 }}>
-          Badge market (in-game)
+        <div style={{ color: '#fbef43', fontWeight: 'bold', fontSize: 14 }}>
+          {marketClosed ? 'Badge market — temporarily closed' : 'Badge market (in-game)'}
         </div>
         <p style={{ color: '#888', fontSize: 11, margin: '6px 0 0', lineHeight: 1.4 }}>
-          Trade weekly badges in-game. List = escrow from backpack.
-          Pay with <strong style={{ color: '#67e8f9' }}>SOL</strong> now.
-          <strong style={{ color: '#4ade80' }}> G2U</strong> token after launch. Fee:{' '}
-          <strong style={{ color: '#fbbf24' }}>5% treasury</strong> .
+          {marketClosed ? (
+            <>
+              Buying and selling are paused while we update reward rules. Your badges stay in Pack.
+              If you listed badges, open <strong style={{ color: '#67e8f9' }}>My listings</strong> and
+              cancel to get them back from escrow.
+            </>
+          ) : (
+            <>
+              Trade weekly badges in-game. List = escrow from backpack.
+              Pay with <strong style={{ color: '#67e8f9' }}>SOL</strong> now.
+              <strong style={{ color: '#4ade80' }}> G2U</strong> token after launch. Fee:{' '}
+              <strong style={{ color: '#fbbf24' }}>5% treasury</strong> .
+            </>
+          )}
         </p>
       </div>
 
+      {!marketClosed && (
       <div style={{ display: 'flex', gap: 6 }}>
         {[
           { id: 'market', label: 'Market', color: '#ffd700' },
@@ -326,8 +359,9 @@ export default function BadgeMarket({
           </button>
         ))}
       </div>
+      )}
 
-      {tab === 'market' && (
+      {!marketClosed && tab === 'market' && (
         <>
           <button
             type="button"

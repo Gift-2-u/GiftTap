@@ -72,6 +72,9 @@ function freeQtyForTier(inv: Record<string, unknown>, tier: string, itemId: stri
   return owned;
 }
 
+/** Pause list/buy while reward rules are rewritten (NFT → board → sell was P2E). */
+const BADGE_MARKET_CLOSED = true;
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -84,6 +87,24 @@ serve(async (req) => {
     const body = await req.json().catch(() => ({}));
     const action = String(body.action || body.op || "browse").toLowerCase();
     const sb = adminClient();
+
+    // Closed: block new trade; still allow cancel so sellers recover escrowed badges
+    if (BADGE_MARKET_CLOSED) {
+      if (action === "browse" || action === "list_active") {
+        return jsonResponse({
+          success: true,
+          closed: true,
+          listings: [],
+          message: "Badge market temporarily closed.",
+        });
+      }
+      if (action === "list" || action === "buy" || action === "purchase") {
+        throw new Error(
+          "Badge market temporarily closed while we update reward rules.",
+        );
+      }
+      // action === cancel | my_listings → fall through
+    }
 
     // ---------- BROWSE ----------
     if (action === "browse" || action === "list_active") {
