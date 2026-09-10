@@ -246,7 +246,6 @@ import {
   secureSetVaultIfEmpty,
   secureVaultStatus,
   secureAdReward,
-  fetchWeeklyBoard,
   fetchAirdropBoard,
   secureAirdropClaimStatus,
   secureMilestoneClaimG2u,
@@ -1720,7 +1719,7 @@ const GiftTapGame = () => {
       return;
     }
 
-    // --- WEEKLY: fast DB paint (like Season), Edge reconcile in background ---
+    // --- WEEKLY: one source = players.weekly_shards for current week ---
     if (targetType === 'Weekly') {
       const weekId = getUtcWeekId();
       const liveW = Number(optimisticWeekly.current) || 0;
@@ -1733,65 +1732,53 @@ const GiftTapGame = () => {
       setSeasonYouRank(null);
       setSeasonEligibleCount(0);
 
-      const byId = new Map();
-      const absorb = (list) => {
-        for (const r of list || []) {
-          const id = String(r.telegram_id || r[DB_PLAYER_ID] || r.id || '').trim();
-          if (!id) continue;
-          const rowWeek = String(r.weekly_week_id || r.week_id || '').trim();
-          if (rowWeek && rowWeek !== weekId) continue;
-          if (
-            !rowWeek &&
-            r.weekly_shards == null &&
-            r.score == null &&
-            r.weekly_score == null
-          ) {
-            continue;
-          }
-          let score = Math.max(
-            0,
-            Number(r.weekly_shards ?? r.score ?? r.weekly_score) || 0,
-          );
-          const daily = Math.max(0, Number(r.daily_taps) || 0);
-          if (daily > score) score = daily;
-          if (score <= 0) continue;
-          const effectiveWeek = rowWeek || weekId;
-          if (effectiveWeek !== weekId) continue;
-          const prev = byId.get(id);
-          if (prev && score <= (Number(prev.weekly_score) || 0)) {
-            if ((!prev.username || prev.username === 'Player') && r.username) {
-              byId.set(id, { ...prev, username: r.username });
-            }
-            continue;
-          }
-          const ltt =
-            Number(r.lifetime_taps) ||
-            Number(prev?.lifetime_taps) ||
-            0;
-          const mul = migrateMaxUnlockedLevel(
-            r.max_unlocked_level ?? prev?.max_unlocked_level ?? 4,
-          );
-          byId.set(id, {
-            ...prev,
-            ...r,
-            telegram_id: id,
-            [DB_PLAYER_ID]: id,
-            username: r.username || prev?.username || 'Player',
-            weekly_shards: score,
-            weekly_score: score,
-            score,
-            weekly_week_id: weekId,
-            lifetime_taps: ltt,
-            max_unlocked_level: mul,
-            level: effectiveLevel(ltt, mul),
-          });
+      try {
+        try {
+          await flushPendingTaps();
+        } catch {
+          /* ignore */
         }
-      };
+        try {
+          await ensureWeeklySeasonRollover();
+        } catch {
+          /* ignore */
+        }
 
-      const paintWeeklyFromMap = () => {
-        let rows = [...byId.values()].sort(
-          (a, b) => (Number(b.weekly_score) || 0) - (Number(a.weekly_score) || 0),
-        );
+        const { data, error } = await supabase
+          .from('players')
+          .select(
+            'telegram_id, username, weekly_shards, weekly_week_id, lifetime_taps, max_unlocked_level, is_banned',
+          )
+          .eq('weekly_week_id', weekId)
+          .gt('weekly_shards', 0)
+          .order('weekly_shards', { ascending: false })
+          .limit(500);
+        if (error) console.warn('Weekly board:', error.message || error);
+        if (!stillThisTab()) return;
+
+        let rows = (data || [])
+          .filter((r) => r.is_banned !== true)
+          .map((r) => {
+            const id = String(r.telegram_id || '').trim();
+            const score = Math.max(0, Number(r.weekly_shards) || 0);
+            const ltt = Number(r.lifetime_taps) || 0;
+            const mul = migrateMaxUnlockedLevel(r.max_unlocked_level ?? 4);
+            return {
+              telegram_id: id,
+              [DB_PLAYER_ID]: id,
+              username: r.username || 'Player',
+              weekly_shards: score,
+              weekly_score: score,
+              score,
+              weekly_week_id: weekId,
+              lifetime_taps: ltt,
+              max_unlocked_level: mul,
+              level: effectiveLevel(ltt, mul),
+            };
+          })
+          .filter((r) => r.telegram_id && r.weekly_score > 0);
+
+        // You only: local weekly_shards if DB row has not caught up yet
         if (playerId && liveW > 0) {
           const ix = rows.findIndex(
             (r) =>
@@ -1810,9 +1797,6 @@ const GiftTapGame = () => {
                 rows[ix].max_unlocked_level ?? maxUnlockedLevel,
               level: currentLevel,
             };
-            rows.sort(
-              (a, b) => (Number(b.weekly_score) || 0) - (Number(a.weekly_score) || 0),
-            );
           } else {
             rows = [
               {
@@ -1828,19 +1812,20 @@ const GiftTapGame = () => {
                 level: currentLevel,
               },
               ...rows,
-            ].sort(
-              (a, b) => (Number(b.weekly_score) || 0) - (Number(a.weekly_score) || 0),
-            );
+            ];
           }
+          rows.sort(
+            (a, b) =>
+              (Number(b.weekly_score) || 0) - (Number(a.weekly_score) || 0),
+          );
         }
-        // Eligible = floor-qualified. Display list = top 100; you-tag = full rank/score.
-        const eligibleAll = (rows || []).filter((r) =>
+
+        const eligibleAll = rows.filter((r) =>
           isWeeklyFloorEligible(r.weekly_score ?? r.score ?? 0, floor),
         );
         const eligibleCount = eligibleAll.length;
         const mainRows = filterWeeklyMainBoard(rows, floor, 100);
         let you = null;
-        // Pass weekId so %-era rules apply (rest of eligible → Bronze), not legacy top-10-only
         const me = rankOnWeeklyBoard(
           rows,
           playerId,
@@ -1853,7 +1838,6 @@ const GiftTapGame = () => {
             (r) =>
               String(r[DB_PLAYER_ID] || r.telegram_id || '') === String(playerId),
           );
-          // Guaranteed Bronze when on main but tier missing
           let tier = me.tier;
           if (me.onMain && !tier && me.rank) {
             tier =
@@ -1880,7 +1864,7 @@ const GiftTapGame = () => {
             inList: false,
           };
         }
-        if (!stillThisTab()) return;
+
         setWeeklyEligibleCount(eligibleCount);
         setLeaderboard(mainRows);
         setWeeklyYouRank(you);
@@ -1892,80 +1876,11 @@ const GiftTapGame = () => {
           day,
           weekId,
         };
-        setLeaderboardLoading(false);
-      };
-
-      try {
-        // FAST PATH: load up to 500 for ranks; UI shows top 100; you-tag from full set
-        const [led, viewRes, rpc] = await Promise.all([
-          supabase
-            .from('weekly_score_ledger')
-            .select('telegram_id, username, score, week_id, updated_at')
-            .eq('week_id', weekId)
-            .gt('score', 0)
-            .order('score', { ascending: false })
-            .limit(500),
-          supabase
-            .from('leaderboard_weekly')
-            .select('*')
-            .eq('weekly_week_id', weekId)
-            .gt('weekly_shards', 0)
-            .order('weekly_shards', { ascending: false })
-            .limit(500),
-          supabase.rpc('get_weekly_leaderboard_live', { p_limit: 500 }).then(
-            (r) => r,
-            () => ({ data: null, error: true }),
-          ),
-        ]);
-        if (!led.error) {
-          absorb(
-            (led.data || []).map((r) => ({
-              telegram_id: r.telegram_id,
-              username: r.username,
-              weekly_shards: Number(r.score) || 0,
-              weekly_week_id: r.week_id,
-            })),
-          );
-        }
-        if (!viewRes.error) absorb(viewRes.data);
-        if (!rpc.error && rpc.data?.length) absorb(rpc.data);
-        paintWeeklyFromMap();
       } catch (e) {
-        console.warn('weekly fast path', e?.message || e);
+        console.warn('weekly board', e?.message || e);
+      } finally {
         if (stillThisTab()) setLeaderboardLoading(false);
       }
-
-      // BACKGROUND: flush + rollover + Edge reconcile (limit=return size only)
-      (async () => {
-        try {
-          try {
-            await flushPendingTaps();
-          } catch {
-            /* ignore */
-          }
-          try {
-            await ensureWeeklySeasonRollover();
-          } catch {
-            /* ignore */
-          }
-          const board = await fetchWeeklyBoard(500);
-          if (!stillThisTab()) return;
-          if (board?.rows?.length) {
-            absorb(
-              board.rows.map((r) => ({
-                ...r,
-                weekly_week_id: board.week_id || weekId,
-                week_id: board.week_id || weekId,
-              })),
-            );
-            paintWeeklyFromMap();
-          } else if (board?.error) {
-            console.warn('weekly-board:', board.error);
-          }
-        } catch (e) {
-          console.warn('weekly-board', e?.message || e);
-        }
-      })();
       return;
     }
 

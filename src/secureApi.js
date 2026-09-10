@@ -437,8 +437,7 @@ export async function secureNftMarket(action, payload = {}) {
 
 
 /**
- * Live weekly board (service_role reconcile for ALL players this week).
- * Energy units; heals weekly lagging daily/batches for everyone on each call.
+ * Live weekly board — players.weekly_shards for current UTC week only.
  */
 export async function fetchWeeklyBoard(limit = 200) {
   return callSecureFunction('weekly-board', { limit });
@@ -467,7 +466,7 @@ export async function fetchAirdropBoard({
   return callSecureFunction('airdrop-board', body);
 }
 
-/** Force reconcile all weekly scores (same logic as weekly-board). */
+/** Admin/heal path — not used for the live Ranks → Weekly board. */
 export async function reconcileWeeklyScores(limit = 500) {
   return callSecureFunction('reconcile-weekly', { limit });
 }

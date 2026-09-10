@@ -8,13 +8,21 @@ export const MILESTONE_G2U_PER_1000_SHARDS = 250;
 /** Extra $G2U at lifetime tap thresholds (on top of per-level rewards). */
 export const LIFETIME_G2U_MILESTONES: Array<{ taps: number; g2u: number }> = [
   { taps: 50000, g2u: 2500 },
-  { taps: 100000, g2u: 5000 },
-  { taps: 150000, g2u: 7500 },
+  { taps: 100000, g2u: 2500 },
+  { taps: 150000, g2u: 5000 },
   { taps: 200000, g2u: 10000 },
-  { taps: 250000, g2u: 10000 },
   { taps: 300000, g2u: 15000 },
-  { taps: 350000, g2u: 15000 },
   { taps: 400000, g2u: 20000 },
+  { taps: 500000, g2u: 25000 },
+  { taps: 600000, g2u: 30000 },
+  { taps: 700000, g2u: 35000 },
+  { taps: 800000, g2u: 40000 },
+  { taps: 900000, g2u: 50000 },
+  { taps: 1000000, g2u: 65000 },
+  { taps: 1250000, g2u: 80000 },
+  { taps: 1500000, g2u: 95000 },
+  { taps: 1750000, g2u: 110000 },
+  { taps: 2000000, g2u: 125000 },
 ];
 
 export function xpForLevel(level: number): number {

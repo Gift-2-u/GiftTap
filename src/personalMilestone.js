@@ -10,13 +10,21 @@ export const MILESTONE_G2U_PER_1000_SHARDS = 250;
 /** Extra $G2U at lifetime tap thresholds (on top of per-level rewards). */
 export const LIFETIME_G2U_MILESTONES = [
   { taps: 50000, g2u: 2500, label: '50K lifetime' },
-  { taps: 100000, g2u: 5000, label: '100K lifetime' },
-  { taps: 150000, g2u: 7500, label: '150K lifetime' },
+  { taps: 100000, g2u: 2500, label: '100K lifetime' },
+  { taps: 150000, g2u: 5000, label: '150K lifetime' },
   { taps: 200000, g2u: 10000, label: '200K lifetime' },
-  { taps: 250000, g2u: 10000, label: '250K lifetime' },
   { taps: 300000, g2u: 15000, label: '300K lifetime' },
-  { taps: 350000, g2u: 15000, label: '350K lifetime' },
   { taps: 400000, g2u: 20000, label: '400K lifetime' },
+  { taps: 500000, g2u: 25000, label: '500K lifetime' },
+  { taps: 600000, g2u: 30000, label: '600K lifetime' },
+  { taps: 700000, g2u: 35000, label: '700K lifetime' },
+  { taps: 800000, g2u: 40000, label: '800K lifetime' },
+  { taps: 900000, g2u: 50000, label: '900K lifetime' },
+  { taps: 1000000, g2u: 65000, label: '1M lifetime' },
+  { taps: 1250000, g2u: 80000, label: '1.25M lifetime' },
+  { taps: 1500000, g2u: 95000, label: '1.5M lifetime' },
+  { taps: 1750000, g2u: 110000, label: '1.75M lifetime' },
+  { taps: 2000000, g2u: 125000, label: '2M lifetime' },
 ];
 
 /** XP needed to go from `level` → level+1 (mirrors calculateLevel bands). */
