@@ -6,6 +6,7 @@ import {
   applyWeeklyQuestDayProgress,
   invObj,
 } from "../_shared/weeklyScore.ts";
+import { accruePersonalMilestones } from "../_shared/personalMilestone.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -122,6 +123,7 @@ const PLAYER_SELECT = [
   "weekly_week_id",
   "lifetime_taps",
   "daily_taps",
+  "daily_shards",
   "last_tap_date",
   "last_energy",
   "energy_at",
@@ -172,6 +174,34 @@ serve(async (req) => {
 
     if (error) throw error;
     if (!player) throw new Error("Player not found");
+
+    // Personal milestone: seed watermark + queue newly reached levels into stacked allocation
+    try {
+      const inv = invObj(
+        (player as Record<string, unknown>).inventory as Record<
+          string,
+          unknown
+        >,
+      );
+      const accrued = await accruePersonalMilestones(supabase, {
+        playerId,
+        lifetimeTaps:
+          Number((player as Record<string, unknown>).lifetime_taps) || 0,
+        inv,
+        username: String((player as Record<string, unknown>).username || "") ||
+          null,
+      });
+      const { data: msRow } = await supabase
+        .from("players")
+        .update({ inventory: accrued.inv })
+        .eq("telegram_id", playerId)
+        .select(PLAYER_SELECT)
+        .maybeSingle();
+      if (msRow) player = msRow;
+      else (player as Record<string, unknown>).inventory = accrued.inv;
+    } catch (e) {
+      console.warn("milestone accrue", e);
+    }
 
     // On every player-state load after launch: keep gft_token_balance = on-chain $G2U
     // (fixes stale DB after Jupiter sells / external transfers).

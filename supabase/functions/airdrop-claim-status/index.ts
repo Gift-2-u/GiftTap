@@ -27,7 +27,11 @@ serve(async (req) => {
     if (error) throw error;
 
     const rows = (data || []).map((r) => {
-      const source = String(r.source || "") as "l5" | "weekly" | "monthly";
+      const source = String(r.source || "") as
+        | "l5"
+        | "weekly"
+        | "monthly"
+        | "milestone";
       const vault = getAirdropVaultConfig(source);
       return {
         id: r.id,
@@ -39,13 +43,17 @@ serve(async (req) => {
             ? "G2U Airdrop (L5+)"
             : source === "weekly"
               ? `Weekly · ${r.period_id}`
-              : `Monthly · ${r.period_id}`,
+              : source === "milestone"
+                ? "Personal milestone"
+                : `Monthly · ${r.period_id}`,
         detail:
           source === "l5"
             ? "Community L5+ allocation"
             : source === "weekly"
               ? "Weekly board share"
-              : "Monthly / season board share",
+              : source === "milestone"
+                ? "Stacked level milestones (one claim)"
+                : "Monthly / season board share",
         vault_ready: vault.ready,
       };
     });

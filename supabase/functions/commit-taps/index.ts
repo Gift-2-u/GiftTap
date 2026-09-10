@@ -24,6 +24,7 @@ import {
   drainActiveNfts,
   durabilitySnapshot,
 } from "../_shared/nftDurability.ts";
+import { accruePersonalMilestones } from "../_shared/personalMilestone.ts";
 
 const ENERGY_CAP_DEFAULT = 500;
 const ENERGY_SECONDS_PER_POINT = 1.5;
@@ -340,7 +341,9 @@ serve(async (req) => {
     // Frenzy taps credited by client count (taps during active buff), not "frenzy still
     // on at flush time" — otherwise a delayed flush after the buff ends pays 1× for
     // taps that were actually during Frenzy. Cap + grace keep it honest.
-    // Duration MUST match activate: free frenzy = 30s, frenzy_60 = 60s (never hardcode 30).
+    // Duration: free 15s/30s or frenzy_60 = 60s (from inv.frenzy_duration_ms).
+    // Hard cap 300 ×2 taps per Frenzy activation (blocks auto-clicker abuse).
+    const FRENZY_TAP_CAP = 300;
     const claimedFrenzy = Math.max(
       0,
       Math.floor(Number(body?.frenzy_taps ?? body?.frenzyTaps) || 0),
@@ -351,30 +354,45 @@ serve(async (req) => {
     const nowMs = now.getTime();
     const FRENZY_FLUSH_GRACE_MS = 12_000; // allow commit shortly after buff ends
     let frenzyTapsAllowed = 0;
-    if (Number.isFinite(frenzyEndMs) && nowMs <= frenzyEndMs + FRENZY_FLUSH_GRACE_MS) {
+    const alreadyCredited = Math.max(
+      0,
+      Math.floor(Number(inv.frenzy_taps_credited) || 0),
+    );
+    const frenzyRoom = Math.max(0, FRENZY_TAP_CAP - alreadyCredited);
+    if (
+      Number.isFinite(frenzyEndMs) &&
+      nowMs <= frenzyEndMs + FRENZY_FLUSH_GRACE_MS &&
+      frenzyRoom > 0
+    ) {
       const stampedDuration = Math.floor(Number(inv.frenzy_duration_ms) || 0);
       const durationMs =
-        stampedDuration === 30_000 || stampedDuration === 60_000
+        stampedDuration === 15_000 ||
+        stampedDuration === 30_000 ||
+        stampedDuration === 60_000
           ? stampedDuration
-          : 60_000; // default 60s so frenzy_60 is never short-changed if stamp missing
+          : 15_000; // default free-path length (never invent 60s for free frenzy)
       const stampedStart = inv.frenzy_started_at
         ? Date.parse(String(inv.frenzy_started_at))
         : NaN;
       const frenzyStartMs = Number.isFinite(stampedStart)
         ? stampedStart
         : frenzyEndMs - durationMs;
-      // From buff start through now (or end), plus flush grace — full 30s or 60s
       const windowMs = Math.max(
         0,
         Math.min(nowMs, frenzyEndMs) - frenzyStartMs + FRENZY_FLUSH_GRACE_MS,
       );
-      // Max ~1 tap / 40ms over the real window; also cap by claimed + validTaps
+      // Max ~1 tap / 40ms over the real window; also cap by claimed + validTaps + 300/session
       const maxByWindow = Math.min(validTaps, Math.ceil(windowMs / 40) + 5);
       if (claimedFrenzy > 0) {
-        frenzyTapsAllowed = Math.min(claimedFrenzy, validTaps, maxByWindow);
+        frenzyTapsAllowed = Math.min(
+          claimedFrenzy,
+          validTaps,
+          maxByWindow,
+          frenzyRoom,
+        );
       } else if (frenzyOn) {
-        // Legacy clients: no frenzy_taps field — if buff still active, all taps ×2
-        frenzyTapsAllowed = validTaps;
+        // Legacy clients: no frenzy_taps field — if buff still active, cap room left
+        frenzyTapsAllowed = Math.min(validTaps, frenzyRoom);
       }
     }
 
@@ -409,6 +427,10 @@ serve(async (req) => {
     scoreCredit = Math.round(scoreCredit * 1000) / 1000;
     if (validTaps > 0) {
       payoutMultiplier = Math.round((scoreCredit / validTaps) * 1000) / 1000;
+    }
+    // Persist Frenzy ×2 taps used this buff (session cap 300)
+    if (frenzyTapsAllowed > 0) {
+      inv.frenzy_taps_credited = alreadyCredited + frenzyTapsAllowed;
     }
     const energySpent = costMultiplier * validTaps;
     const nextEnergy = Math.max(0, Math.min(ENERGY_CAP, energy - energySpent));
@@ -489,6 +511,27 @@ serve(async (req) => {
         .eq("telegram_id", playerId));
     }
     if (upErr) throw upErr;
+
+    // Personal milestones → stack into airdrop_allocations (season vault; claim like weekly/season)
+    try {
+      const accrued = await accruePersonalMilestones(sb, {
+        playerId,
+        lifetimeTaps: nextLife,
+        inv,
+        username: String((row as Record<string, unknown>).username || "") || null,
+      });
+      if (accrued.granted > 0) {
+        inv = accrued.inv;
+        updates.inventory = inv;
+        const { error: msErr } = await sb
+          .from("players")
+          .update({ inventory: inv })
+          .eq("telegram_id", playerId);
+        if (msErr) console.warn("milestone inventory", msErr);
+      }
+    } catch (e) {
+      console.warn("milestone accrue after taps", e);
+    }
 
     // Referral payouts (service_role) — client save path no longer reaches tryPay*
     try {

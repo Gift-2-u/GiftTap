@@ -8,6 +8,7 @@ import {
   secureMysteryClaimG2u,
   secureAirdropClaimStatus,
   secureAirdropClaimG2u,
+  secureMilestoneClaimG2u,
 } from './secureApi';
 import {
   TOKEN_LAUNCH_AT,
@@ -50,6 +51,7 @@ const panel = {
  */
 export default function ClaimG2uPanel({
   inventory = {},
+  lifetimeTaps = 0,
   walletAddress = '',
   decryptedPhrase = '',
   onInventoryChange,
@@ -79,6 +81,15 @@ export default function ClaimG2uPanel({
     setStatusLoading(true);
     try {
       await ensureSecureSession();
+      // Queue any newly reached level milestones into stacked allocation (season vault)
+      try {
+        const ms = await secureMilestoneClaimG2u();
+        if (ms?.inventory && typeof onInventoryChange === 'function') {
+          onInventoryChange(ms.inventory);
+        }
+      } catch {
+        /* accrue optional — status still loads */
+      }
       const data = await secureAirdropClaimStatus();
       setAirdropRows(Array.isArray(data?.rows) ? data.rows : []);
     } catch {
@@ -86,11 +97,11 @@ export default function ClaimG2uPanel({
     } finally {
       setStatusLoading(false);
     }
-  }, []);
+  }, [onInventoryChange]);
 
   useEffect(() => {
     refreshAirdrop();
-  }, [refreshAirdrop, inventory?.mystery_g2u_pending]);
+  }, [refreshAirdrop, inventory?.mystery_g2u_pending, lifetimeTaps]);
 
   useEffect(() => {
     const id = setInterval(() => setTick(formatLaunchCountdown()), 1000);

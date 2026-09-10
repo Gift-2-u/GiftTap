@@ -471,9 +471,16 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, bumpEner
   const shardListings = [
     {
       id: 'frenzy',
-      name: '30-Second Frenzy',
-      desc: '2x Payout per energy',
-      duration: '30 Seconds',
+      // FREE_BOOST_V2_AT = 2026-09-11 UTC — until then show 30s; after 15s
+      name:
+        Date.now() >= Date.parse('2026-09-11T00:00:00.000Z')
+          ? '15-Second Frenzy'
+          : '30-Second Frenzy',
+      desc: '2x Payout per energy · max 300 taps ×2',
+      duration:
+        Date.now() >= Date.parse('2026-09-11T00:00:00.000Z')
+          ? '15 Seconds'
+          : '30 Seconds',
       cost: 500,
       iconFrom: '#ff6b35',
       iconTo: '#7c1d12',
@@ -482,10 +489,17 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, bumpEner
     },
     {
       id: 'battery',
-      name: '+500 Daily Energy ',
-      desc: 'Update your Max Daily limit by 500',
+      name:
+        Date.now() >= Date.parse('2026-09-11T00:00:00.000Z')
+          ? '+250 Daily Energy '
+          : '+500 Daily Energy ',
+      desc:
+        Date.now() >= Date.parse('2026-09-11T00:00:00.000Z')
+          ? 'Update your Max Daily limit by 250'
+          : 'Update your Max Daily limit by 500',
       duration: 'Until UTC midnight',
-      cost: 400,
+      cost:
+        Date.now() >= Date.parse('2026-09-11T00:00:00.000Z') ? 200 : 400,
       iconFrom: '#60a5fa',
       iconTo: '#1e3a8a',
       iconRing: 'rgba(96,165,250,0.45)',
@@ -2337,7 +2351,13 @@ Daily claim active · Pack → NFT to see it.`,
     const timedExpireUtc = getEndOfUtcDay(utcDayOffsetForDuration(activateDays));
 
     // Shard Items
-    if (item.id === 'frenzy') dbUpdates.frenzy_expires = new Date(now + 30 * 1000).toISOString();
+    if (item.id === 'frenzy') {
+      const frenzyMs =
+        Date.now() >= Date.parse('2026-09-11T00:00:00.000Z')
+          ? 15 * 1000
+          : 30 * 1000;
+      dbUpdates.frenzy_expires = new Date(now + frenzyMs).toISOString();
+    }
    
     // Battery and Heavy Hands expire at end of current UTC day
     if (item.id === 'battery') dbUpdates.energy_boost_expires = midnightUtcTonight.toISOString();

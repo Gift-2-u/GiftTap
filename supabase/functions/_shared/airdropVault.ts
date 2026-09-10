@@ -12,7 +12,7 @@
 import { Keypair } from "npm:@solana/web3.js@1.98.4";
 import bs58 from "npm:bs58";
 
-export type AirdropSource = "l5" | "weekly" | "monthly";
+export type AirdropSource = "l5" | "weekly" | "monthly" | "milestone";
 
 function env(name: string): string {
   try {
@@ -63,6 +63,12 @@ const SOURCE_ENV: Record<
     pub: "AIRDROP_MONTHLY_VAULT_PUBKEY",
     secret: "AIRDROP_MONTHLY_VAULT_SECRET",
     label: "Monthly airdrop",
+  },
+  /** Personal level milestones — pay from season (monthly) vault */
+  milestone: {
+    pub: "AIRDROP_MONTHLY_VAULT_PUBKEY",
+    secret: "AIRDROP_MONTHLY_VAULT_SECRET",
+    label: "Personal milestone",
   },
 };
 

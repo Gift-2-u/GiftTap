@@ -5,7 +5,7 @@ import {
   corsHeaders,
   jsonResponse,
   logEconomy,
-  SHARD_SHOP,
+  shardShopCatalog,
   invObj,
   utcIsoWeekId,
   effectiveDailyLimit,
@@ -125,7 +125,7 @@ serve(async (req) => {
       });
     }
 
-    const catalog = SHARD_SHOP[itemId];
+    const catalog = shardShopCatalog(Date.now())[itemId];
     if (!catalog) {
       throw new Error(
         "Unknown shard shop item (frenzy|battery|refill|badge_bronze|badge_silver)",

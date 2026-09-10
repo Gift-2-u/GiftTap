@@ -249,7 +249,15 @@ import {
   fetchWeeklyBoard,
   fetchAirdropBoard,
   secureAirdropClaimStatus,
+  secureMilestoneClaimG2u,
 } from './secureApi';
+import {
+  needsMilestoneSeed,
+  needsLifetimeMilestoneSeed,
+  milestoneLevelFromTaps,
+  getClaimedLifetimeMilestones,
+  listAllMilestones,
+} from './personalMilestone';
 import { isTokenLaunched } from './tokenLaunch';
 import { syncAllGiftNftOwnership } from './nftOwnershipSync';
 import {
@@ -799,6 +807,9 @@ const GiftTapGame = () => {
   const sessionWarnShownRef = useRef(false);
   const [hasAccess, setHasAccess] = useState(false);
   const [dailyTaps, setDailyTaps] = useState(0);
+  const [showMilestoneTip, setShowMilestoneTip] = useState(false);
+  const [milestoneTipInfo, setMilestoneTipInfo] = useState(null);
+  const [showMilestoneModal, setShowMilestoneModal] = useState(false);
   const [streak, setStreak] = useState(0);
 
   const [lastTapDate, setLastTapDate] = useState(''); // '' until DB load — never default to today
@@ -2572,6 +2583,19 @@ const GiftTapGame = () => {
               });
           }
         }
+        const _lt = Number(playerRow.lifetime_taps) || 0;
+        // Personal milestone: if unset, start at current level / lifetime (no backfill pay)
+        if (needsMilestoneSeed(inv)) {
+          inv.personal_milestone_claimed_level = milestoneLevelFromTaps(_lt);
+          playerRow.inventory = inv;
+        }
+        if (needsLifetimeMilestoneSeed(inv)) {
+          inv.personal_lifetime_milestones_claimed = getClaimedLifetimeMilestones(
+            inv,
+            _lt,
+          );
+          playerRow.inventory = inv;
+        }
         inventoryRef.current = inv;
         setStats({
           inventory: inv,
@@ -2583,8 +2607,7 @@ const GiftTapGame = () => {
           limit_boost_amount: playerRow.limit_boost_amount || 0,
           limit_boost_expires: playerRow.limit_boost_expires || null
         });
-        
-        const _lt = Number(playerRow.lifetime_taps) || 0;
+
         setLifetimeTaps(_lt);
         optimisticTaps.current = _lt;
         // Baseline for wall-threshold crossing (50k, 125k, …)
@@ -3448,6 +3471,87 @@ const GiftTapGame = () => {
       if (openWallet) setIsModalOpen(true);
     },
     [playerId, airdropTipPending],
+  );
+
+  // Personal milestone queued in airdrop_allocations → tip (claim in Wallet like weekly/season)
+  useEffect(() => {
+    if (!isDataLoaded || !playerId) return;
+    if (showAscensionModal || showRulesNotice || showAirdropTip) return;
+    if (!hasSecureSession()) return undefined;
+    let cancelled = false;
+    const check = async () => {
+      try {
+        await ensureSecureSession();
+        const accrued = await secureMilestoneClaimG2u();
+        if (cancelled) return;
+        if (accrued?.inventory) {
+          inventoryRef.current = {
+            ...(inventoryRef.current || {}),
+            ...accrued.inventory,
+          };
+          setStats((prev) => ({
+            ...prev,
+            inventory: inventoryRef.current,
+          }));
+        }
+        const pending = Math.max(0, Number(accrued?.pending) || 0);
+        if (pending <= 0) {
+          setShowMilestoneTip(false);
+          return;
+        }
+        const seenKey = `gift2u_milestone_claim_seen_${playerId}`;
+        let seen = [];
+        try {
+          const raw = JSON.parse(localStorage.getItem(seenKey) || '[]');
+          seen = Array.isArray(raw) ? raw.map(String) : [];
+        } catch {
+          seen = [];
+        }
+        const id = String(accrued?.allocation_id || `amt_${pending}`);
+        if (seen.includes(id)) return;
+        setMilestoneTipInfo({
+          amount: pending,
+          nextLevel: (accrued?.levels || []).slice(-1)[0] || null,
+          allocationId: id,
+        });
+        setShowMilestoneTip(true);
+      } catch {
+        /* ignore */
+      }
+    };
+    const t = setTimeout(check, 2500);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
+  }, [
+    isDataLoaded,
+    playerId,
+    lifetimeTaps,
+    showAscensionModal,
+    showRulesNotice,
+    showAirdropTip,
+  ]);
+
+  const dismissMilestoneTip = useCallback(
+    (openWallet = false) => {
+      const id = milestoneTipInfo?.allocationId;
+      if (id && playerId) {
+        const seenKey = `gift2u_milestone_claim_seen_${playerId}`;
+        try {
+          const raw = JSON.parse(localStorage.getItem(seenKey) || '[]');
+          const prev = Array.isArray(raw) ? raw.map(String) : [];
+          const next = new Set(prev);
+          next.add(String(id));
+          localStorage.setItem(seenKey, JSON.stringify([...next].slice(-80)));
+        } catch {
+          /* ignore */
+        }
+      }
+      setShowMilestoneTip(false);
+      if (openWallet) setIsModalOpen(true);
+    },
+    [playerId, milestoneTipInfo],
   );
 
   // All Gift2u NFTs (5 elves + Star equip): prove ownership before clear; activate when owned.
@@ -6946,6 +7050,275 @@ const GiftTapGame = () => {
         </div>
       )}
 
+      {showMilestoneModal && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,0.85)',
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center',
+            zIndex: 190000,
+            padding: 16,
+            boxSizing: 'border-box',
+          }}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Milestones"
+          onClick={() => setShowMilestoneModal(false)}
+        >
+          <div
+            style={{
+              background: '#1c1e22',
+              padding: 20,
+              borderRadius: 16,
+              border: '2px solid #67e8f9',
+              width: '100%',
+              maxWidth: 360,
+              maxHeight: '80vh',
+              overflowY: 'auto',
+              boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                marginBottom: 12,
+              }}
+            >
+              <h3 style={{ color: '#fbef43', margin: 0, fontSize: 18 }}>
+                Milestones
+              </h3>
+              <button
+                type="button"
+                onClick={() => setShowMilestoneModal(false)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: '#888',
+                  fontSize: 22,
+                  cursor: 'pointer',
+                }}
+              >
+                ✕
+              </button>
+            </div>
+            <p style={{ color: '#888', fontSize: 12, margin: '0 0 12px', lineHeight: 1.4 }}>
+              Level goals (e.g. 10k → 2.5k $G2U) plus lifetime bonuses. Rewards stack into one
+              Wallet → Claim $G2U (season vault).
+            </p>
+            {(() => {
+              const { levelRow, lifeRows, taps } = listAllMilestones(
+                lifetimeTaps,
+                stats?.inventory || inventoryRef.current,
+              );
+              const rows = [levelRow, ...lifeRows];
+              const statusColor = {
+                ready: '#fbef43',
+                claimed: '#4ade80',
+                progress: '#8eb4ff',
+                done: '#666',
+              };
+              return (
+                <>
+                  <p style={{ color: '#aaa', fontSize: 11, margin: '0 0 10px' }}>
+                    Lifetime: {Math.floor(taps).toLocaleString()}
+                  </p>
+                  {rows.map((r) => (
+                    <div
+                      key={r.id}
+                      style={{
+                        background: '#131517',
+                        border: '1px solid #333',
+                        borderRadius: 12,
+                        padding: 12,
+                        marginBottom: 8,
+                      }}
+                    >
+                      <div
+                        style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          gap: 8,
+                          marginBottom: 4,
+                        }}
+                      >
+                        <span style={{ color: '#fff', fontWeight: 700, fontSize: 13 }}>
+                          {r.label}
+                        </span>
+                        <span
+                          style={{
+                            color: statusColor[r.status] || '#aaa',
+                            fontSize: 11,
+                            fontWeight: 700,
+                            textTransform: 'uppercase',
+                          }}
+                        >
+                          {r.status === 'ready'
+                            ? 'Ready'
+                            : r.status === 'claimed'
+                              ? 'Done'
+                              : r.status === 'done'
+                                ? 'Max'
+                                : `${Math.floor((r.progress || 0) * 100)}%`}
+                        </span>
+                      </div>
+                      <div style={{ color: '#888', fontSize: 11, marginBottom: 8 }}>
+                        {r.detail}
+                      </div>
+                      <div
+                        style={{
+                          height: 4,
+                          borderRadius: 4,
+                          background: '#222',
+                          overflow: 'hidden',
+                        }}
+                      >
+                        <div
+                          style={{
+                            height: '100%',
+                            width: `${Math.min(100, Math.floor((r.progress || 0) * 100))}%`,
+                            background:
+                              r.status === 'claimed' || r.status === 'ready'
+                                ? 'linear-gradient(90deg,#fbef43,#fbbf24)'
+                                : 'linear-gradient(90deg,#3b82f6,#67e8f9)',
+                          }}
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </>
+              );
+            })()}
+            <button
+              type="button"
+              onClick={() => {
+                setShowMilestoneModal(false);
+                setIsModalOpen(true);
+              }}
+              style={{
+                width: '100%',
+                marginTop: 8,
+                background: 'linear-gradient(90deg,#fbef43,#fbbf24)',
+                color: '#000',
+                border: 'none',
+                padding: 12,
+                borderRadius: 10,
+                fontWeight: 'bold',
+                cursor: 'pointer',
+              }}
+            >
+              Open Wallet / Claim $G2U
+            </button>
+          </div>
+        </div>
+      )}
+
+      {showMilestoneTip &&
+        milestoneTipInfo &&
+        !showAirdropTip &&
+        !showRulesNotice &&
+        !showAscensionModal &&
+        !appNotice.show &&
+        !showMilestoneModal && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,0.85)',
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center',
+            zIndex: 190000,
+            padding: 16,
+            boxSizing: 'border-box',
+          }}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Milestone ready to claim"
+        >
+          <div
+            style={{
+              background: '#1c1e22',
+              padding: 22,
+              borderRadius: 16,
+              border: '2px solid #fbef43',
+              width: '100%',
+              maxWidth: 340,
+              boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
+              textAlign: 'left',
+            }}
+          >
+            <h3
+              style={{
+                color: '#fbef43',
+                margin: '0 0 12px',
+                fontSize: 18,
+                textAlign: 'center',
+              }}
+            >
+              🎯 Milestone ready
+            </h3>
+            <p
+              style={{
+                color: '#ccc',
+                fontSize: 13,
+                lineHeight: 1.5,
+                margin: '0 0 16px',
+              }}
+            >
+              You have{' '}
+              <strong style={{ color: '#fbef43' }}>
+                {Number(milestoneTipInfo.amount || 0).toLocaleString()} $G2U
+              </strong>
+              {milestoneTipInfo.nextLevel != null
+                ? ` from level milestones (through L${milestoneTipInfo.nextLevel})`
+                : ' from personal milestones'}
+              . Claim in{' '}
+              <strong style={{ color: '#fff' }}>Wallet → Claim $G2U</strong>
+              {' '}(same as weekly / season — stacked into one claim).
+            </p>
+            <button
+              type="button"
+              onClick={() => dismissMilestoneTip(true)}
+              style={{
+                width: '100%',
+                background: 'linear-gradient(90deg,#fbef43,#fbbf24)',
+                color: '#000',
+                border: 'none',
+                padding: '12px',
+                borderRadius: 10,
+                fontWeight: 'bold',
+                cursor: 'pointer',
+                marginBottom: 8,
+              }}
+            >
+              Open Wallet / Claim $G2U
+            </button>
+            <button
+              type="button"
+              onClick={() => dismissMilestoneTip(false)}
+              style={{
+                width: '100%',
+                background: '#333',
+                color: '#fff',
+                border: '1px solid #555',
+                padding: '12px',
+                borderRadius: 10,
+                fontWeight: 'bold',
+                cursor: 'pointer',
+              }}
+            >
+              Got it
+            </button>
+          </div>
+        </div>
+      )}
+
       {showAirdropTip && !showRulesNotice && !showAscensionModal && !appNotice.show && (
         <div
           style={{
@@ -7552,7 +7925,7 @@ const GiftTapGame = () => {
                     <HelpTip tipKey="how_to_play" size={18} onOpenPlaybook={() => setIsWhitepaperOpen(true)} />
                   </div>
 
-                  {/* Left side: G2U Airdrop card + Weekly quest */}
+                  {/* Left side: Milestone + Weekly quest */}
                   <div
                     style={{
                       position: 'absolute',
@@ -7563,101 +7936,38 @@ const GiftTapGame = () => {
                       flexDirection: 'column',
                       alignItems: 'flex-start',
                       gap: 8,
-                      maxWidth: 118,
                     }}
                   >
                     <button
                       type="button"
                       onClick={(e) => {
                         e.stopPropagation();
-                        openAirdropBoard();
+                        setShowMilestoneModal(true);
                       }}
                       style={{
-                        width: '100%',
                         display: 'flex',
-                        flexDirection: 'column',
-                        alignItems: 'stretch',
-                        gap: 6,
-                        background:
-                          'linear-gradient(160deg, rgba(88,28,135,0.92) 0%, rgba(30,64,175,0.88) 55%, rgba(15,23,42,0.95) 100%)',
-                        border: '1.5px solid rgba(192,132,252,0.7)',
-                        borderRadius: 14,
-                        padding: '10px 10px 9px',
+                        alignItems: 'center',
+                        background: 'rgba(50, 100, 255, 0.22)',
+                        border: '1px solid rgba(50, 100, 255, 0.55)',
+                        borderRadius: 20,
+                        padding: '6px 12px',
                         cursor: 'pointer',
                         outline: 'none',
                         WebkitTapHighlightColor: 'transparent',
-                        boxShadow:
-                          '0 0 18px rgba(168,85,247,0.4), 0 4px 14px rgba(0,0,0,0.35)',
-                        textAlign: 'left',
+                        boxShadow: '0 0 12px rgba(50, 100, 255, 0.25)',
                       }}
                     >
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <img
-                          src="/g2u-airdrop-gift.png"
-                          alt=""
-                          width={28}
-                          height={28}
-                          style={{
-                            width: 28,
-                            height: 28,
-                            objectFit: 'contain',
-                            flexShrink: 0,
-                            filter: 'drop-shadow(0 2px 6px rgba(0,0,0,0.45))',
-                          }}
-                        />
-                        <span
-                          style={{
-                            color: '#f0abfc',
-                            fontSize: 9,
-                            fontWeight: 800,
-                            letterSpacing: '0.06em',
-                            textTransform: 'uppercase',
-                          }}
-                        >
-                          {AIRDROP_META.season || 'Q4'}
-                        </span>
-                      </div>
-                      <div
+                      <span
                         style={{
-                          color: '#fff',
-                          fontSize: 13,
-                          fontWeight: 900,
-                          lineHeight: 1.15,
-                          letterSpacing: '-0.01em',
+                          color: '#8eb4ff',
+                          fontSize: 11,
+                          fontWeight: 'bold',
+                          whiteSpace: 'nowrap',
+                          letterSpacing: '0.02em',
                         }}
                       >
-                        G2U
-                        <br />
-                        Airdrop
-                      </div>
-                      <div style={{ color: '#c4b5fd', fontSize: 9, lineHeight: 1.3, fontWeight: 600 }}>
-                        {airdropProgress?.qualified
-                          ? `✓ +${Number(airdropProgress.totalBonus) || 0}%`
-                          : 'Tap to open'}
-                      </div>
-                      {airdropProgress && Number(airdropProgress.l5TapsProgress) >= 0 ? (
-                        <div
-                          style={{
-                            height: 4,
-                            borderRadius: 4,
-                            background: 'rgba(0,0,0,0.4)',
-                            overflow: 'hidden',
-                          }}
-                        >
-                          <div
-                            style={{
-                              height: '100%',
-                              width: `${Math.min(
-                                100,
-                                Math.floor((Number(airdropProgress.l5TapsProgress) || 0) * 100),
-                              )}%`,
-                              background: airdropProgress.qualified
-                                ? 'linear-gradient(90deg,#4ade80,#fbef43)'
-                                : 'linear-gradient(90deg,#a855f7,#67e8f9)',
-                            }}
-                          />
-                        </div>
-                      ) : null}
+                        Milestone
+                      </span>
                     </button>
                     <button
                       type="button"
@@ -8773,6 +9083,7 @@ const GiftTapGame = () => {
                         <ClaimG2uPanel
                           variant="button"
                           inventory={stats?.inventory || inventoryRef.current || {}}
+                          lifetimeTaps={lifetimeTaps}
                           walletAddress={playerWallet || ''}
                           decryptedPhrase={decryptedPhrase || generatedSecret || ''}
                           onInventoryChange={(inv) => {
@@ -8785,20 +9096,29 @@ const GiftTapGame = () => {
                               inventory: inventoryRef.current,
                             }));
                           }}
-                          onBalancesRefresh={async ({ amount } = {}) => {
-                            const add = Math.max(0, Number(amount) || 0);
-                            if (add > 0) {
-                              setBalances((prev) => ({
-                                ...prev,
-                                G2U: Math.max(0, (Number(prev.G2U) || 0) + add),
-                              }));
+                          onBalancesRefresh={async ({ amount, absoluteG2u } = {}) => {
+                            if (absoluteG2u != null && Number.isFinite(Number(absoluteG2u))) {
+                              const g2u = Math.max(0, Number(absoluteG2u) || 0);
+                              setBalances((prev) => ({ ...prev, G2U: g2u }));
                               setStats((prev) => ({
                                 ...prev,
-                                gft_token_balance: Math.max(
-                                  0,
-                                  (Number(prev?.gft_token_balance) || 0) + add,
-                                ),
+                                gft_token_balance: g2u,
                               }));
+                            } else {
+                              const add = Math.max(0, Number(amount) || 0);
+                              if (add > 0) {
+                                setBalances((prev) => ({
+                                  ...prev,
+                                  G2U: Math.max(0, (Number(prev.G2U) || 0) + add),
+                                }));
+                                setStats((prev) => ({
+                                  ...prev,
+                                  gft_token_balance: Math.max(
+                                    0,
+                                    (Number(prev?.gft_token_balance) || 0) + add,
+                                  ),
+                                }));
+                              }
                             }
                             try {
                               await fetchBalances();

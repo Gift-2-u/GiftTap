@@ -215,6 +215,11 @@ export async function secureMysteryOpen(tier) {
   return callSecureFunction('mystery-open', { tier });
 }
 
+/** Claim personal daily-shard milestone $G2U (off-chain credit). */
+export async function secureMilestoneClaimG2u() {
+  return callSecureFunction('milestone-claim-g2u', {});
+}
+
 /**
  * Claim queued Mystery Bonus $G2U → game wallet SPL (captcha required).
  * Opens at token launch when MYSTERY_PAYOUTS_LIVE + vault are ready.

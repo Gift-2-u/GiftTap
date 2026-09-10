@@ -89,7 +89,7 @@ serve(async (req) => {
     }
 
     const source = String(row.source || "") as AirdropSource;
-    if (!["l5", "weekly", "monthly"].includes(source)) {
+    if (!["l5", "weekly", "monthly", "milestone"].includes(source)) {
       throw new Error("Invalid allocation source");
     }
     const vault = getAirdropVaultConfig(source);
@@ -117,12 +117,17 @@ serve(async (req) => {
         throw new Error(verified.error || "Claim tx verification failed");
       }
 
+      // Milestone uses period_id=open while pending; rename on claim so a new open row can stack again
+      const claimPatch: Record<string, unknown> = {
+        claimed_at: new Date().toISOString(),
+        claim_tx: txSignature,
+      };
+      if (source === "milestone" && String(row.period_id) === "open") {
+        claimPatch.period_id = `claimed_${String(allocationId).slice(0, 8)}`;
+      }
       const { error: upErr } = await sb
         .from("airdrop_allocations")
-        .update({
-          claimed_at: new Date().toISOString(),
-          claim_tx: txSignature,
-        })
+        .update(claimPatch)
         .eq("id", allocationId)
         .eq("telegram_id", playerId)
         .is("claimed_at", null);

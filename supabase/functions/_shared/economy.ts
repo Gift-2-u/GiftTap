@@ -444,16 +444,50 @@ export function rollMystery(
   };
 }
 
+/**
+ * Free-boost rebalance (fair cutover): starts next UTC day after 2026-09-10.
+ * Before: 30s Frenzy, Battery +500 (old prices).
+ * After: 15s Frenzy, Battery +250 for 200 shards.
+ */
+export const FREE_BOOST_V2_AT_MS = Date.parse("2026-09-11T00:00:00.000Z");
+
+export function freeBoostV2Active(nowMs: number = Date.now()): boolean {
+  return nowMs >= FREE_BOOST_V2_AT_MS;
+}
+
+/** Free Frenzy duration ms (UTC-day free path / shard shop frenzy). */
+export function freeFrenzyDurationMs(nowMs: number = Date.now()): number {
+  return freeBoostV2Active(nowMs) ? 15_000 : 30_000;
+}
+
+/** Expanded Battery daily-tap bonus while energy_boost_expires is active. */
+export function batteryDailyTapBonus(nowMs: number = Date.now()): number {
+  return freeBoostV2Active(nowMs) ? 250 : 500;
+}
+
 /** Shard shop catalog (server source of truth for costs) */
-export const SHARD_SHOP: Record<string, { name: string; cost: number }> = {
-  frenzy: { name: "30-Second Frenzy", cost: 700 },
-  battery: { name: "Expanded Battery", cost: 750 },
-  // heavy retired from catalog — replace later
-  refill: { name: "Instant Refill", cost: 300 },
-  /** Weekly badges for Mystery (in-game shards only; stop-buy in shop-buy) */
-  badge_bronze: { name: "Bronze Badge", cost: 10000 },
-  badge_silver: { name: "Silver Badge", cost: 30000 },
-};
+export function shardShopCatalog(
+  nowMs: number = Date.now(),
+): Record<string, { name: string; cost: number }> {
+  const v2 = freeBoostV2Active(nowMs);
+  return {
+    frenzy: {
+      name: v2 ? "15-Second Frenzy" : "30-Second Frenzy",
+      cost: v2 ? 700 : 700,
+    },
+    battery: {
+      name: v2 ? "+250 Daily Energy" : "Expanded Battery",
+      cost: v2 ? 200 : 750,
+    },
+    refill: { name: "Instant Refill", cost: 300 },
+    badge_bronze: { name: "Bronze Badge", cost: 10000 },
+    badge_silver: { name: "Silver Badge", cost: 30000 },
+  };
+}
+
+/** @deprecated use shardShopCatalog() — kept for any leftover imports */
+export const SHARD_SHOP: Record<string, { name: string; cost: number }> =
+  shardShopCatalog();
 
 /** Shared stop-buy for badge_bronze / badge_silver shop purchases */
 export const BADGE_SHOP_DAY_CAP = 1;
@@ -501,8 +535,8 @@ export function effectiveDailyLimit(
     row.energy_boost_expires &&
     now < new Date(String(row.energy_boost_expires))
   ) {
-    // Expanded Battery (shard shop) — +500 max daily taps (was +1000)
-    n += 500;
+    // Expanded Battery — +500 until FREE_BOOST_V2_AT, then +250
+    n += batteryDailyTapBonus(now.getTime());
   }
   if (
     row.limit_boost_expires &&

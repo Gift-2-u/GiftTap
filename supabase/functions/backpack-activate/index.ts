@@ -11,6 +11,7 @@ import {
   logEconomy,
   invObj,
   effectiveDailyLimit,
+  freeFrenzyDurationMs,
 } from "../_shared/economy.ts";
 import {
   popPremiumDuration,
@@ -172,15 +173,18 @@ serve(async (req) => {
 
     if (itemId === "frenzy" || itemId === "frenzy_60") {
       // Shards ×2 — do NOT touch last_energy / energy_at.
-      // Stamp start + duration so commit-taps credits the full window (30s or 60s).
-      const durationMs = itemId === "frenzy_60" ? 60_000 : 30_000;
+      // Stamp start + duration so commit-taps credits the full window.
+      // Free frenzy: 30s until FREE_BOOST_V2_AT, then 15s. Premium frenzy_60 = 60s.
+      const durationMs =
+        itemId === "frenzy_60" ? 60_000 : freeFrenzyDurationMs(now);
       const startedAt = new Date(now).toISOString();
       updates.frenzy_expires = new Date(now + durationMs).toISOString();
       inv.frenzy_started_at = startedAt;
       inv.frenzy_duration_ms = durationMs;
+      inv.frenzy_taps_credited = 0; // anti auto-clicker: max 300 ×2 taps per buff
       updates.inventory = inv;
     } else if (itemId === "battery") {
-      // Expanded daily tap cap +500 (effectiveDailyLimit) — not the 500 energy pool
+      // Expanded daily tap cap (+500 → +250 after FREE_BOOST_V2_AT)
       updates.energy_boost_expires = endOfUtcDay(0);
       updates.max_daily_limit = effectiveDailyLimit(
         {
