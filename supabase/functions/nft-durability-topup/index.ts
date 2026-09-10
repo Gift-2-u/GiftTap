@@ -6,7 +6,7 @@
  *   asset_id?: string,
  *   tx_signature: string  // required — $G2U → master (+ 0.0005 SOL fee on client)
  * }
- * Cost: 1000 $G2U per +1% (capped at 100%). No DB gft_token_balance debit.
+ * Cost: 50 $G2U per +1% (capped at 100%). No DB gft_token_balance debit.
  */
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { requirePlayerFromRequest } from "../_shared/sessionJwt.ts";

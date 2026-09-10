@@ -436,10 +436,11 @@ export function stackPayoutMultis(...multis) {
 }
 
 export const ASCENSION_WALLS = {
-  // L5: after launch = shards + $G2U (solCost kept as pricing base → × G2U_PER_SOL)
+  // Shard costs unchanged. Fixed $G2U costs (payWithG2u). solCost = legacy only.
   4: {
     targetLevel: 5,
     shardCost: 15000,
+    g2uCost: 10000,
     solCost: 0.02,
     requiresBoth: true,
     payWithG2u: true,
@@ -448,50 +449,64 @@ export const ASCENSION_WALLS = {
   9: {
     targetLevel: 10,
     shardCost: 30000,
+    g2uCost: 25000,
     solCost: 0.03,
     requiresBoth: true,
+    payWithG2u: true,
     newCap: 19,
   },
-  // Mid–late: MUST pay BOTH shards AND SOL
   19: {
     targetLevel: 20,
     shardCost: 50000,
+    g2uCost: 75000,
     solCost: 0.05,
     requiresBoth: true,
+    payWithG2u: true,
     newCap: 29,
   },
   29: {
     targetLevel: 30,
     shardCost: 100000,
+    g2uCost: 300000,
     solCost: 0.1,
     requiresBoth: true,
+    payWithG2u: true,
     newCap: 49,
   },
   49: {
     targetLevel: 50,
     shardCost: 300000,
+    g2uCost: 1000000,
     solCost: 0.35,
     requiresBoth: true,
+    payWithG2u: true,
     newCap: 74,
   },
   74: {
     targetLevel: 75,
     shardCost: 800000,
+    g2uCost: 2500000,
     solCost: 0.75,
     requiresBoth: true,
+    payWithG2u: true,
     newCap: 99,
   },
   99: {
     targetLevel: 100,
     shardCost: 2500000,
+    g2uCost: 5000000,
     solCost: 1.5,
     requiresBoth: true,
+    payWithG2u: true,
     newCap: 100,
   },
 };
 
-/** $G2U amount for a wall when payWithG2u (from solCost × rate). */
+/** Fixed $G2U for wall climb (g2uCost), else legacy solCost × rate. */
 export function wallG2uCost(wall) {
+  if (wall?.g2uCost != null && Number(wall.g2uCost) > 0) {
+    return Math.round(Number(wall.g2uCost) || 0);
+  }
   const sol = Number(wall?.solCost) || 0;
   const rate = Number(import.meta.env.VITE_G2U_PER_SOL) || 5_000_000;
   return Math.round(sol * rate);
@@ -5368,11 +5383,11 @@ const GiftTapGame = () => {
       return;
     }
 
-    // L5 after launch: shards + $G2U only (not shards-alone / SOL-alone)
-    const l5G2u = wallKey === 4 && !!wallData.payWithG2u && isTokenLaunched();
-    if (l5G2u && method !== 'both') {
+    // All payWithG2u walls: shards + fixed $G2U (token already live)
+    const wallG2u = !!wallData.payWithG2u;
+    if (wallG2u && method !== 'both') {
       notify(
-        `Level 5 needs BOTH ${wallData.shardCost.toLocaleString()} shards AND ${wallG2uCost(wallData).toLocaleString()} $G2U.`,
+        `This wall needs BOTH ${wallData.shardCost.toLocaleString()} shards AND ${wallG2uCost(wallData).toLocaleString()} $G2U.`,
       );
       return;
     }
@@ -5380,7 +5395,7 @@ const GiftTapGame = () => {
     // Mid/late walls: only the combined path unlocks
     if (needsBoth && method !== 'both') {
       notify(
-        l5G2u || wallData.payWithG2u
+        wallG2u
           ? `This wall needs BOTH ${wallData.shardCost.toLocaleString()} shards AND ${wallG2uCost(wallData).toLocaleString()} $G2U.`
           : `This wall needs BOTH ${wallData.shardCost.toLocaleString()} shards AND ${wallData.solCost} SOL.`,
       );
@@ -5392,9 +5407,9 @@ const GiftTapGame = () => {
     }
 
     if (method === 'shards') {
-      if (l5G2u) {
+      if (wallG2u) {
         notify(
-          `Level 5 needs shards + $G2U (not shards alone).`,
+          `This wall needs shards + $G2U (not shards alone).`,
         );
         return;
       }
@@ -5414,7 +5429,7 @@ const GiftTapGame = () => {
     if (method === 'sol' || method === 'both') {
       try {
         const useG2u =
-          !!wallData.payWithG2u && isTokenLaunched() && method === 'both';
+          !!wallData.payWithG2u && method === 'both';
         const g2uCost = useG2u ? wallG2uCost(wallData) : 0;
         if (method === 'both' && Number(balance) < wallData.shardCost) {
           notify(
@@ -7480,7 +7495,7 @@ const GiftTapGame = () => {
                     <strong style={{ color: '#ffd700' }}>
                       {need.toLocaleString()} shards
                       {wall.requiresBoth
-                        ? wall.payWithG2u && isTokenLaunched()
+                        ? wall.payWithG2u
                           ? ` + ${wallG2uCost(wall).toLocaleString()} $G2U`
                           : ` + ${wall.solCost} SOL`
                         : ''}
@@ -7543,7 +7558,7 @@ const GiftTapGame = () => {
                       <div>
                         {need.toLocaleString()} shards{' '}
                         <strong style={{ color: '#ffd700' }}>+</strong>{' '}
-                        {wall.payWithG2u && isTokenLaunched()
+                        {wall.payWithG2u
                           ? `${wallG2uCost(wall).toLocaleString()} $G2U`
                           : `${wall.solCost} SOL`}
                       </div>
@@ -7567,7 +7582,7 @@ const GiftTapGame = () => {
                       }}
                     >
                       {ready
-                        ? wall.payWithG2u && isTokenLaunched()
+                        ? wall.payWithG2u
                           ? `Climb to L${wall.targetLevel} (${need.toLocaleString()} shards + ${wallG2uCost(wall).toLocaleString()} $G2U)`
                           : `Climb to L${wall.targetLevel} (${need.toLocaleString()} shards + ${wall.solCost} SOL)`
                         : `Mine ${missing.toLocaleString()} more shards first`}
@@ -8190,6 +8205,7 @@ const GiftTapGame = () => {
                 playerWallet={playerWallet}
                 decryptedPhrase={decryptedPhrase || generatedSecret || ''}
                 maxUnlockedLevel={maxUnlockedLevel}
+                lifetimeTaps={lifetimeTaps}
                 initialTab={shopFocusTab || undefined}
                 onInitialTabConsumed={() => setShopFocusTab(null)}
                 onChainBalanceChange={(info) => {

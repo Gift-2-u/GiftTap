@@ -16,49 +16,97 @@ import {
   runReferralCredit,
 } from "../_shared/economy.ts";
 
-const TOKEN_LAUNCH_AT_MS = Date.parse("2026-09-01T00:00:00Z");
-
 const WALLS: Record<
   number,
   {
     targetLevel: number;
     shardCost: number;
     solCost: number;
+    g2uCost: number;
     requiresBoth: boolean;
     payWithG2u?: boolean;
     newCap: number;
   }
 > = {
-  // L5: shards + $G2U after launch (solCost = G2U pricing base)
+  // Shard costs unchanged. Fixed $G2U (payWithG2u). solCost = legacy only.
   4: {
     targetLevel: 5,
     shardCost: 15000,
+    g2uCost: 10000,
     solCost: 0.02,
     requiresBoth: true,
     payWithG2u: true,
     newCap: 9,
   },
-  9: { targetLevel: 10, shardCost: 30000, solCost: 0.03, requiresBoth: true, newCap: 19 },
-  19: { targetLevel: 20, shardCost: 50000, solCost: 0.05, requiresBoth: true, newCap: 29 },
-  29: { targetLevel: 30, shardCost: 100000, solCost: 0.1, requiresBoth: true, newCap: 49 },
-  49: { targetLevel: 50, shardCost: 300000, solCost: 0.35, requiresBoth: true, newCap: 74 },
-  74: { targetLevel: 75, shardCost: 800000, solCost: 0.75, requiresBoth: true, newCap: 99 },
-  99: { targetLevel: 100, shardCost: 2500000, solCost: 1.5, requiresBoth: true, newCap: 100 },
+  9: {
+    targetLevel: 10,
+    shardCost: 30000,
+    g2uCost: 25000,
+    solCost: 0.03,
+    requiresBoth: true,
+    payWithG2u: true,
+    newCap: 19,
+  },
+  19: {
+    targetLevel: 20,
+    shardCost: 50000,
+    g2uCost: 75000,
+    solCost: 0.05,
+    requiresBoth: true,
+    payWithG2u: true,
+    newCap: 29,
+  },
+  29: {
+    targetLevel: 30,
+    shardCost: 100000,
+    g2uCost: 300000,
+    solCost: 0.1,
+    requiresBoth: true,
+    payWithG2u: true,
+    newCap: 49,
+  },
+  49: {
+    targetLevel: 50,
+    shardCost: 300000,
+    g2uCost: 1000000,
+    solCost: 0.35,
+    requiresBoth: true,
+    payWithG2u: true,
+    newCap: 74,
+  },
+  74: {
+    targetLevel: 75,
+    shardCost: 800000,
+    g2uCost: 2500000,
+    solCost: 0.75,
+    requiresBoth: true,
+    payWithG2u: true,
+    newCap: 99,
+  },
+  99: {
+    targetLevel: 100,
+    shardCost: 2500000,
+    g2uCost: 5000000,
+    solCost: 1.5,
+    requiresBoth: true,
+    payWithG2u: true,
+    newCap: 100,
+  },
 };
 
-/** Locksmith level required for free climb (+ shoe on early walls) */
+/** Locksmith level required for free climb (L1 covers walls 5/10/20) */
 const LOCKSMITH_LEVEL_FOR_WALL: Record<number, number> = {
   4: 1,
-  9: 2,
-  19: 3,
-  29: 4,
-  49: 5,
-  74: 6,
-  99: 7,
+  9: 1,
+  19: 1,
+  29: 2,
+  49: 3,
+  74: 4,
+  99: 5,
 };
 
-/** Common Shoe L1 only on these wall keys, and ONLY via Locksmith climb */
-const WALLS_GRANT_COMMON_SHOE = new Set([4, 9, 19]);
+/** Shoe on Locksmith climb: wall 5, wall 30, wall 50 only */
+const WALLS_GRANT_COMMON_SHOE = new Set([4, 29, 49]);
 
 const SHOE_KEY = "walk2u_shoe_common";
 
@@ -81,7 +129,6 @@ serve(async (req) => {
     const method = String(body.method || "shards").toLowerCase();
     const txSignature = body.tx_signature ? String(body.tx_signature) : null;
     const currency = String(body.currency || "").toLowerCase().trim();
-    const launched = Date.now() >= TOKEN_LAUNCH_AT_MS;
 
     const sb = adminClient();
     const { data: row, error: selErr } = await sb
@@ -102,7 +149,8 @@ serve(async (req) => {
     const lsLevel = locksmithLevel(inv);
     const needLs = LOCKSMITH_LEVEL_FOR_WALL[wallKey] || 99;
     const locksmithFree = method === "locksmith";
-    const payG2u = !!(wall.payWithG2u && launched);
+    // Token already live — payWithG2u walls always use fixed $G2U (no launch gate)
+    const payG2u = !!wall.payWithG2u;
 
     if (locksmithFree) {
       if (lsLevel < needLs) {
@@ -116,14 +164,14 @@ serve(async (req) => {
       if (payG2u) {
         if (method !== "both") {
           throw new Error(
-            `Level 5 needs BOTH ${wall.shardCost.toLocaleString()} shards AND $G2U`,
+            `This wall needs BOTH ${wall.shardCost.toLocaleString()} shards AND ${(wall.g2uCost || 0).toLocaleString()} $G2U`,
           );
         }
         if (!txSignature || txSignature.length < 32) {
           throw new Error("tx_signature required after $G2U payment");
         }
         if (currency && currency !== "g2u") {
-          throw new Error("Level 5 paid climb uses $G2U after launch");
+          throw new Error("Paid wall climb uses $G2U");
         }
       } else {
         if (wall.requiresBoth && method !== "both") {
@@ -155,7 +203,7 @@ serve(async (req) => {
     delete inv.wall_fee_progress;
     delete inv.wall_fee_wall;
 
-    // Shoe ONLY for Locksmith climbs on mapped walls (not for paid climbs)
+    // Shoe ONLY for Locksmith climbs on walls 5 / 30 / 50 (not paid climbs)
     let shoeGranted = false;
     if (locksmithFree && WALLS_GRANT_COMMON_SHOE.has(wallKey)) {
       const prevShoes = Math.max(0, Math.floor(Number(inv[SHOE_KEY]) || 0));
@@ -200,7 +248,7 @@ serve(async (req) => {
         solCost: locksmithFree || payG2u ? 0 : wall.solCost,
         g2uCost:
           payG2u && !locksmithFree
-            ? Math.round(wall.solCost * 5_000_000)
+            ? Math.round(Number(wall.g2uCost) || 0)
             : undefined,
         locksmith_level: lsLevel,
         shoe_granted: shoeGranted,

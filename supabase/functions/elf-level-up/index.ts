@@ -27,8 +27,10 @@ const ELF_LEVEL_UP_SOL: Record<string, number[]> = {
   rare: [0.05, 0.1, 0.2, 0.25],
   epic: [0.15, 0.25, 0.35, 0.5],
   legendary: [0.5, 0.8, 1.2, 2.0]};
-/** Locksmith L1→2 … L4→5 (mint = first wall ×4; not Rare ladder) */
+/** Locksmith L1→2 … L4→5 (legacy SOL; payment uses fixed $G2U) */
 const LOCKSMITH_LEVEL_UP_SOL = [0.2, 0.35, 0.6, 1.5];
+/** Locksmith L1→2 … L4→5 fixed $G2U */
+const LOCKSMITH_LEVEL_UP_G2U = [250_000, 750_000, 1_500_000, 2_500_000];
 const MAX_LEVEL = 5;
 const KINDS = new Set([
   "fate",
@@ -247,7 +249,13 @@ serve(async (req) => {
       kind === "locksmith" ? LOCKSMITH_LEVEL_UP_SOL : ELF_LEVEL_UP_SOL[rarity];
     const costSol = ladder[fromLevel - 1];
     if (!Number.isFinite(costSol)) throw new Error("No level-up cost for this step");
-    const costG2u = solToG2u(costSol);
+    const costG2u =
+      kind === "locksmith"
+        ? LOCKSMITH_LEVEL_UP_G2U[fromLevel - 1]
+        : solToG2u(costSol);
+    if (kind === "locksmith" && !Number.isFinite(costG2u)) {
+      throw new Error("No Locksmith $G2U level-up cost for this step");
+    }
 
     const toLevel = fromLevel + 1;
     const levels =

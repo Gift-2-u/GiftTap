@@ -340,10 +340,9 @@ serve(async (req) => {
 
     // Frenzy taps credited by client count (taps during active buff), not "frenzy still
     // on at flush time" — otherwise a delayed flush after the buff ends pays 1× for
-    // taps that were actually during Frenzy. Cap + grace keep it honest.
+    // taps that were actually during Frenzy. Window + grace keep it honest.
     // Duration: free 15s/30s or frenzy_60 = 60s (from inv.frenzy_duration_ms).
-    // Hard cap 300 ×2 taps per Frenzy activation (blocks auto-clicker abuse).
-    const FRENZY_TAP_CAP = 300;
+    // No hard tap count lock — x2 premium + Frenzy ×2 can legitimately exceed 300 taps.
     const claimedFrenzy = Math.max(
       0,
       Math.floor(Number(body?.frenzy_taps ?? body?.frenzyTaps) || 0),
@@ -354,16 +353,7 @@ serve(async (req) => {
     const nowMs = now.getTime();
     const FRENZY_FLUSH_GRACE_MS = 12_000; // allow commit shortly after buff ends
     let frenzyTapsAllowed = 0;
-    const alreadyCredited = Math.max(
-      0,
-      Math.floor(Number(inv.frenzy_taps_credited) || 0),
-    );
-    const frenzyRoom = Math.max(0, FRENZY_TAP_CAP - alreadyCredited);
-    if (
-      Number.isFinite(frenzyEndMs) &&
-      nowMs <= frenzyEndMs + FRENZY_FLUSH_GRACE_MS &&
-      frenzyRoom > 0
-    ) {
+    if (Number.isFinite(frenzyEndMs) && nowMs <= frenzyEndMs + FRENZY_FLUSH_GRACE_MS) {
       const stampedDuration = Math.floor(Number(inv.frenzy_duration_ms) || 0);
       const durationMs =
         stampedDuration === 15_000 ||
@@ -381,18 +371,13 @@ serve(async (req) => {
         0,
         Math.min(nowMs, frenzyEndMs) - frenzyStartMs + FRENZY_FLUSH_GRACE_MS,
       );
-      // Max ~1 tap / 40ms over the real window; also cap by claimed + validTaps + 300/session
+      // Max ~1 tap / 40ms over the real window; also cap by claimed + validTaps
       const maxByWindow = Math.min(validTaps, Math.ceil(windowMs / 40) + 5);
       if (claimedFrenzy > 0) {
-        frenzyTapsAllowed = Math.min(
-          claimedFrenzy,
-          validTaps,
-          maxByWindow,
-          frenzyRoom,
-        );
+        frenzyTapsAllowed = Math.min(claimedFrenzy, validTaps, maxByWindow);
       } else if (frenzyOn) {
-        // Legacy clients: no frenzy_taps field — if buff still active, cap room left
-        frenzyTapsAllowed = Math.min(validTaps, frenzyRoom);
+        // Legacy clients: no frenzy_taps field — if buff still active, all taps ×2
+        frenzyTapsAllowed = validTaps;
       }
     }
 
@@ -428,10 +413,6 @@ serve(async (req) => {
     if (validTaps > 0) {
       payoutMultiplier = Math.round((scoreCredit / validTaps) * 1000) / 1000;
     }
-    // Persist Frenzy ×2 taps used this buff (session cap 300)
-    if (frenzyTapsAllowed > 0) {
-      inv.frenzy_taps_credited = alreadyCredited + frenzyTapsAllowed;
-    }
     const energySpent = costMultiplier * validTaps;
     const nextEnergy = Math.max(0, Math.min(ENERGY_CAP, energy - energySpent));
     // daily_taps = raw clicks (HUD bar). daily_shards = weighted mining today.
@@ -459,8 +440,8 @@ serve(async (req) => {
     // Weekly quest Tap-500 / Drain-1000 — persist here (client inventory writes are frozen)
     inv = applyWeeklyQuestDayProgress(inv, today, nextDaily, weekId);
 
-    // Mining NFT durability: 1% per 1,000 raw taps (Echo/Fate/Rush/Shadow)
-    drainActiveNfts(inv, validTaps);
+    // Mining NFT durability: 1% per 2,000 mining shards (Echo/Fate/Rush/Shadow)
+    drainActiveNfts(inv, shardsEarned);
 
     // Energy: tap spend only here. No level-up refill (UTC day fill is in energyFromAnchor).
     const finalEnergy = nextEnergy;

@@ -4,8 +4,11 @@
  */
 
 export const NFT_DURABILITY_MAX = 100;
-export const NFT_DURABILITY_DRAIN_PER_1K_TAPS = 1;
-export const NFT_DURABILITY_G2U_PER_PERCENT = 1000;
+/** 1% per 2,000 mining shards */
+export const NFT_DURABILITY_DRAIN_PER_2K_SHARDS = 1;
+export const NFT_DURABILITY_DRAIN_PER_1K_TAPS = NFT_DURABILITY_DRAIN_PER_2K_SHARDS;
+/** 50 $G2U per +1% repair */
+export const NFT_DURABILITY_G2U_PER_PERCENT = 50;
 
 export const NFT_ACTIVE_KEY = {
   echo: 'echo_active',

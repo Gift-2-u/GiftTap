@@ -210,8 +210,8 @@ const WhitepaperModal = ({ isWhitepaperOpen, setIsWhitepaperOpen, onClose }) => 
       title: "12. NFT durability & premium $G2U",
       content:
         "Echo, Fate, Rush, and Shadow start at 100% durability when equipped.\n\n" +
-        "Drain: 1% per 1,000 raw taps. At 0% the perk is fully off (no weak floor).\n\n" +
-        "Reload: 1,000 $G2U per 1% in Wallet / Backpack → NFT (same card everywhere).\n\n" +
+        "Drain: 1% per 2,000 mining shards. At 0% the perk is fully off (no weak floor).\n\n" +
+        "Reload: 50 $G2U per 1% in Wallet / Backpack → NFT (same card everywhere).\n\n" +
         "After launch, all premium boosts (bot, grinder, whale, x2, x3, crate) are bought with $G2U.\n" +
         "Shard shop items (frenzy, battery, refill) stay on G2Ushards.",
     },

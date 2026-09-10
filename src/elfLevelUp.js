@@ -15,8 +15,11 @@ export const ELF_LEVEL_UP_SOL = {
   legendary: [0.5, 0.8, 1.2, 2.0],
 };
 
-/** Locksmith L1→2 … L4→5 (mint already buys L1 / first wall ×4) */
+/** Locksmith L1→2 … L4→5 (legacy SOL; payment uses fixed $G2U) */
 export const LOCKSMITH_LEVEL_UP_SOL = [0.2, 0.35, 0.6, 1.5];
+
+/** Locksmith L1→2 … L4→5 fixed $G2U (mint = L1) */
+export const LOCKSMITH_LEVEL_UP_G2U = [250_000, 750_000, 1_500_000, 2_500_000];
 
 export const ELF_MAX_LEVEL = 5;
 
@@ -83,6 +86,12 @@ export function g2uPerSolClient() {
 }
 
 export function elfLevelUpCostG2u(rarity, currentLevel, kind) {
+  const lvl = Math.floor(Number(currentLevel) || 1);
+  if (lvl < 1 || lvl >= ELF_MAX_LEVEL) return null;
+  if (String(kind || '').toLowerCase() === 'locksmith') {
+    const g2u = LOCKSMITH_LEVEL_UP_G2U[lvl - 1];
+    return Number.isFinite(g2u) ? g2u : null;
+  }
   const sol = elfLevelUpCostSol(rarity, currentLevel, kind);
   if (sol == null) return null;
   return Math.round(sol * g2uPerSolClient());

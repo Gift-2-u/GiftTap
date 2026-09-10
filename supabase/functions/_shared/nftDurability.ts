@@ -2,16 +2,18 @@
  * Mining NFT durability (Echo / Fate / Rush / Shadow).
  *
  * - Starts at 100% on first activate
- * - Drains 1% per 1,000 raw taps (commit-taps validTaps)
+ * - Drains 1% per 2,000 mining shards (commit-taps shardsEarned)
  * - At 0% perk is fully off
- * - Reload: 1,000 $G2U (gft_token_balance) per 1%
+ * - Reload: 50 $G2U (gft_token_balance) per 1%
  */
 
 export const NFT_DURABILITY_MAX = 100;
-/** Percent points lost per 1,000 raw taps */
-export const NFT_DURABILITY_DRAIN_PER_1K_TAPS = 1;
+/** Percent points lost per 2,000 mining shards */
+export const NFT_DURABILITY_DRAIN_PER_2K_SHARDS = 1;
+/** @deprecated alias — drain now uses shards, not taps */
+export const NFT_DURABILITY_DRAIN_PER_1K_TAPS = NFT_DURABILITY_DRAIN_PER_2K_SHARDS;
 /** $G2U per +1% reload */
-export const NFT_DURABILITY_G2U_PER_PERCENT = 1000;
+export const NFT_DURABILITY_G2U_PER_PERCENT = 50;
 
 export const NFT_DURABILITY_KINDS = [
   "echo",
@@ -105,8 +107,9 @@ export function drainActiveNfts(
 ): boolean {
   const taps = Math.max(0, Math.floor(Number(rawTaps) || 0));
   if (taps <= 0) return false;
+  // `taps` arg is mining shards earned this flush (name kept for call-site compat)
   const drainPct =
-    (taps / 1000) * NFT_DURABILITY_DRAIN_PER_1K_TAPS;
+    (taps / 2000) * NFT_DURABILITY_DRAIN_PER_2K_SHARDS;
   if (drainPct <= 0) return false;
 
   let changed = false;

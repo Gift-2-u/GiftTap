@@ -214,7 +214,41 @@ function ShopItemIcon({ item, size = 52, variant = 'row' }) {
   );
 }
 
-const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, bumpEnergyEpoch, flushPendingTaps, player, tgUser, playerWallet, decryptedPhrase, initialTab, onInitialTabConsumed, maxUnlockedLevel = 4, onChainBalanceChange = null }) => {
+/** Play level from lifetime taps (same bands as GiftTap.calculateLevel). */
+function playLevelFromLifetimeTaps(taps) {
+  const t = Math.max(0, Number(taps) || 0);
+  if (t < 50000) return Math.floor(t / 10000);
+  if (t < 125000) return 5 + Math.floor((t - 50000) / 15000);
+  if (t < 625000) return 10 + Math.floor((t - 125000) / 50000);
+  if (t < 2125000) return 20 + Math.floor((t - 625000) / 150000);
+  if (t < 9125000) return 30 + Math.floor((t - 2125000) / 350000);
+  if (t < 34125000) return 50 + Math.floor((t - 9125000) / 1000000);
+  if (t < 109125000) return 75 + Math.floor((t - 34125000) / 3000000);
+  return 100;
+}
+
+/** Rare ≥ L5, Epic/Legendary ≥ L10. Common + Locksmith + Star always open. */
+function nftMintBlockedByPlayLevel(playLevel, rarityKey, kindKey = '') {
+  const kind = String(kindKey || '')
+    .toLowerCase()
+    .replace(/\s+/g, '');
+  if (kind.includes('locksmith') || kind.includes('star') || kind === 'shard_badge') {
+    return null;
+  }
+  const r = String(rarityKey || '')
+    .toLowerCase()
+    .replace(/\s+/g, '');
+  const lvl = Math.max(0, Math.floor(Number(playLevel) || 0));
+  if (r.startsWith('rare') && lvl < 5) {
+    return `Reach Level 5 to mint Rare (you are L${lvl}).`;
+  }
+  if ((r.startsWith('epic') || r.startsWith('legend')) && lvl < 10) {
+    return `Reach Level 10 to mint ${r.startsWith('legend') ? 'Legendary' : 'Epic'} (you are L${lvl}).`;
+  }
+  return null;
+}
+
+const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, bumpEnergyEpoch, flushPendingTaps, player, tgUser, playerWallet, decryptedPhrase, initialTab, onInitialTabConsumed, maxUnlockedLevel = 4, lifetimeTaps = null, onChainBalanceChange = null }) => {
   const user = player || tgUser;
   // Shop hub first — show ALL options (Free / Premium / NFT / Backpack) before any list
   const [activeTab, setActiveTab] = useState(initialTab || 'home');
@@ -273,6 +307,11 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, bumpEner
     walletSol != null &&
     Number.isFinite(walletSol) &&
     walletSol >= minMintSol;
+
+  // Play level from lifetime taps (not wall) — gates Rare / Epic / Legendary mints
+  const playLevel = playLevelFromLifetimeTaps(
+    lifetimeTaps ?? stats?.lifetime_taps ?? player?.lifetime_taps,
+  );
 
   const canAffordFate = (rarityKey) => {
     if (!walletUnlocked || walletSol == null || !Number.isFinite(walletSol)) return false;
@@ -476,7 +515,7 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, bumpEner
         Date.now() >= Date.parse('2026-09-11T00:00:00.000Z')
           ? '15-Second Frenzy'
           : '30-Second Frenzy',
-      desc: '2x Payout per energy · max 300 taps ×2',
+      desc: '2x Payout per energy',
       duration:
         Date.now() >= Date.parse('2026-09-11T00:00:00.000Z')
           ? '15 Seconds'
@@ -1339,6 +1378,13 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, bumpEner
       });
       return;
     }
+    {
+      const blocked = nftMintBlockedByPlayLevel(playLevel, rarityKey, 'fate');
+      if (blocked) {
+        setTxStatus({ show: true, loading: false, message: `❌ ${blocked}`, success: false });
+        return;
+      }
+    }
     if (!isFateMintLive(rarityKey)) {
       setTxStatus({
         show: true,
@@ -1456,6 +1502,13 @@ Luck jackpot active · Pack → NFT to see it.`,
       });
       return;
     }
+    {
+      const blocked = nftMintBlockedByPlayLevel(playLevel, rarityKey, 'echo');
+      if (blocked) {
+        setTxStatus({ show: true, loading: false, message: `❌ ${blocked}`, success: false });
+        return;
+      }
+    }
     if (!isEchoMintLive(rarityKey)) {
       setTxStatus({
         show: true,
@@ -1567,6 +1620,13 @@ Tap multi active · Pack → NFT to see it.`,
       });
       return;
     }
+    {
+      const blocked = nftMintBlockedByPlayLevel(playLevel, rarityKey, 'rush');
+      if (blocked) {
+        setTxStatus({ show: true, loading: false, message: `❌ ${blocked}`, success: false });
+        return;
+      }
+    }
     if (!isRushMintLive(rarityKey)) {
       setTxStatus({
         show: true,
@@ -1666,6 +1726,13 @@ Daily cap active · Pack → NFT to see it.`,
         success: false,
       });
       return;
+    }
+    {
+      const blocked = nftMintBlockedByPlayLevel(playLevel, rarityKey, 'shadow');
+      if (blocked) {
+        setTxStatus({ show: true, loading: false, message: `❌ ${blocked}`, success: false });
+        return;
+      }
     }
     if (!isShadowMintLive(rarityKey)) {
       setTxStatus({
@@ -4177,8 +4244,8 @@ Daily claim active · Pack → NFT to see it.`,
                       />
                     </div>
                     <div style={{ color: '#666', fontSize: 10, lineHeight: 1.35 }}>
-                      Starts at 100% when owned · drains 1% / 1,000 taps · off at 0% ·
-                      reload with $G2U in Wallet / Backpack (1,000 G2U = 1%)
+                      Starts at 100% when owned · drains 1% / 2,000 shards · off at 0% ·
+                      reload with $G2U in Wallet / Backpack (50 G2U = 1%)
                     </div>
                   </div>
                 ) : null}
@@ -4243,6 +4310,27 @@ Daily claim active · Pack → NFT to see it.`,
                       !nftDetail.mintLive
                     )
                       return true;
+                    const rarityKey =
+                      nftDetail.shadowRarity ||
+                      nftDetail.rushRarity ||
+                      nftDetail.echoRarity ||
+                      nftDetail.fateRarity ||
+                      nftDetail.rarity ||
+                      'common';
+                    const kindKey = nftDetail.isShadowMint
+                      ? 'shadow'
+                      : nftDetail.isRushMint
+                        ? 'rush'
+                        : nftDetail.isEchoMint
+                          ? 'echo'
+                          : nftDetail.isFateMint
+                            ? 'fate'
+                            : nftDetail.isStarMint || nftDetail.id === 'star_badge'
+                              ? 'star'
+                              : nftDetail.id === 'locksmith'
+                                ? 'locksmith'
+                                : '';
+                    if (nftMintBlockedByPlayLevel(playLevel, rarityKey, kindKey)) return true;
                     return false;
                   })()}
                   onClick={() => {
@@ -4269,6 +4357,42 @@ Daily claim active · Pack → NFT to see it.`,
                           success: false,
                         });
                         return;
+                      }
+                      {
+                        const rarityKey =
+                          nftDetail.shadowRarity ||
+                          nftDetail.rushRarity ||
+                          nftDetail.echoRarity ||
+                          nftDetail.fateRarity ||
+                          nftDetail.rarity ||
+                          'common';
+                        const kindKey = nftDetail.isShadowMint
+                          ? 'shadow'
+                          : nftDetail.isRushMint
+                            ? 'rush'
+                            : nftDetail.isEchoMint
+                              ? 'echo'
+                              : nftDetail.isFateMint
+                                ? 'fate'
+                                : nftDetail.isStarMint || nftDetail.id === 'star_badge'
+                                  ? 'star'
+                                  : nftDetail.id === 'locksmith'
+                                    ? 'locksmith'
+                                    : '';
+                        const blocked = nftMintBlockedByPlayLevel(
+                          playLevel,
+                          rarityKey,
+                          kindKey,
+                        );
+                        if (blocked) {
+                          setTxStatus({
+                            show: true,
+                            loading: false,
+                            message: `❌ ${blocked}`,
+                            success: false,
+                          });
+                          return;
+                        }
                       }
                       const afford = nftDetail.isShadowMint
                         ? canAffordShadow(nftDetail.shadowRarity || 'common')

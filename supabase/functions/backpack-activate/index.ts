@@ -181,7 +181,6 @@ serve(async (req) => {
       updates.frenzy_expires = new Date(now + durationMs).toISOString();
       inv.frenzy_started_at = startedAt;
       inv.frenzy_duration_ms = durationMs;
-      inv.frenzy_taps_credited = 0; // anti auto-clicker: max 300 ×2 taps per buff
       updates.inventory = inv;
     } else if (itemId === "battery") {
       // Expanded daily tap cap (+500 → +250 after FREE_BOOST_V2_AT)
