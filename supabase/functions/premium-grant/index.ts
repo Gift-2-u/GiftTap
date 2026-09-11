@@ -33,7 +33,11 @@ const PREMIUM: Record<
   string,
   { name: string; priceSol: number; priceG2u: number }
 > = {
-  bot: { name: "Weekend Bot", priceSol: 0.01, priceG2u: 0.01 * G2U_PER_SOL },
+  bot: {
+    name: "Weekend Bot",
+    priceSol: 7000 / G2U_PER_SOL,
+    priceG2u: 7000,
+  },
   /** Duration prices live in premiumDuration.ts (1/3/7 day picker) */
   grinder: {
     name: "+2K Daily Energy",
@@ -44,11 +48,6 @@ const PREMIUM: Record<
     name: "+5K Daily Energy",
     priceSol: premiumPriceSolForDays("whale", 7, G2U_PER_SOL),
     priceG2u: premiumPriceG2uForDays("whale", 7),
-  },
-  crate: {
-    name: "The Vault Drop",
-    priceSol: 0.05,
-    priceG2u: 0.05 * G2U_PER_SOL,
   },
   x2_boost: {
     name: "Double Power",
@@ -68,8 +67,8 @@ const PREMIUM: Record<
   /** Extra Battery Refill ($G2U) — separate stack from free Battery Refill; no day lock */
   refill_extra: {
     name: "Extra Battery Refill",
-    priceSol: 0.0002,
-    priceG2u: 0.0002 * G2U_PER_SOL,
+    priceSol: 500 / G2U_PER_SOL,
+    priceG2u: 500,
   },
   /** Premium: 30s Frenzy — fixed 500 $G2U, 1× / UTC day (id frenzy_60 kept) */
   frenzy_60: {
