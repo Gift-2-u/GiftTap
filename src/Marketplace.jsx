@@ -263,7 +263,7 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, bumpEner
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [itemToBuy, setItemToBuy] = useState(null);
   /** Timed premium: pick 1 / 3 / 7 days before paying */
-  const [durationPickItem, setDurationPickItem] = useState(null);
+
   /** NFT marketplace: grid card click → detail popup */
   const [nftDetail, setNftDetail] = useState(null);
   /** Mint catalog filters — rarity / role / level / sort */
@@ -615,7 +615,7 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, bumpEner
       type: 'Power',
       rarity: 'Rare',
       boost: '+2,000 daily max energy (3,000 total)',
-      duration: 'Choose 1 / 3 / 7 Days',
+      duration: '1 / 3 / 7 Days',
       price: premiumPriceSolForDays('grinder', 7, G2U_PER_SOL),
       priceG2uFixed: premiumPriceG2uForDays('grinder', 7),
       durationChoice: true,
@@ -631,7 +631,7 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, bumpEner
       type: 'Power',
       rarity: 'Legendary',
       boost: '+5,000 daily max energy (6,000 total)',
-      duration: 'Choose 1 / 3 / 7 Days',
+      duration: '1 / 3 / 7 Days',
       price: premiumPriceSolForDays('whale', 7, G2U_PER_SOL),
       priceG2uFixed: premiumPriceG2uForDays('whale', 7),
       durationChoice: true,
@@ -647,7 +647,7 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, bumpEner
       type: 'Power',
       rarity: 'Epic',
       boost: '2x Shards',
-      duration: 'Choose 1 / 3 / 7 Days',
+      duration: '1 / 3 / 7 Days',
       price: premiumPriceSolForDays('x2_boost', 7, G2U_PER_SOL),
       priceG2uFixed: premiumPriceG2uForDays('x2_boost', 7),
       durationChoice: true,
@@ -663,7 +663,7 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, bumpEner
       type: 'Power',
       rarity: 'Legendary',
       boost: '3x Shards',
-      duration: 'Choose 1 / 3 / 7 Days',
+      duration: '1 / 3 / 7 Days',
       price: premiumPriceSolForDays('x3_boost', 7, G2U_PER_SOL),
       priceG2uFixed: premiumPriceG2uForDays('x3_boost', 7),
       durationChoice: true,
@@ -679,7 +679,7 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, bumpEner
       type: 'Power',
       rarity: 'Epic',
       boost: 'Battery 500 → 1000',
-      duration: 'Choose 1 / 3 / 7 Days',
+      duration: '1 / 3 / 7 Days',
       price: premiumPriceSolForDays('expanded_energy', 7, G2U_PER_SOL),
       priceG2uFixed: premiumPriceG2uForDays('expanded_energy', 7),
       durationChoice: true,
@@ -3155,22 +3155,75 @@ Daily claim active · Pack → NFT to see it.`,
                   </div>
 
                   <div style={{ width: '100%', marginTop: '10px', borderTop: '1px solid #222', paddingTop: '10px' }}>
-                    <div style={{ color: '#14F195', fontSize: '13px', fontWeight: 'bold', marginBottom: '6px' }}>
-                      {item.priceLabel || `${Number(item.price).toLocaleString()} ${item.currency}`}
-                    </div>
-                    <button
-                      onClick={() => {
-                        if (item.durationChoice || isDurationChoiceItem(item.id)) {
-                          setDurationPickItem(item);
-                          return;
-                        }
-                        setItemToBuy(item);
-                        setShowConfirmModal(true);
-                      }}
-                      style={{ width: '100%', background: '#9945FF', color: '#fff', border: 'none', padding: '6px 0', borderRadius: '6px', fontWeight: 'bold', fontSize: '12px', cursor: 'pointer' }}
-                    >
-                      {item.durationChoice ? 'Choose days' : 'Buy'}
-                    </button>
+                    {item.durationChoice || isDurationChoiceItem(item.id) ? (
+                      <div
+                        style={{
+                          display: 'grid',
+                          gridTemplateColumns: 'repeat(3, 1fr)',
+                          gap: 5,
+                        }}
+                      >
+                        {premiumDurationOptions(item.id, {
+                          g2uMode: G2U_PREMIUM,
+                          g2uPerSol: G2U_PER_SOL,
+                        }).map((opt) => (
+                          <button
+                            key={opt.days}
+                            type="button"
+                            onClick={() => {
+                              setItemToBuy({
+                                ...item,
+                                durationDays: opt.days,
+                                duration: opt.label,
+                                price: opt.price,
+                                currency: opt.currency,
+                                priceSol: opt.priceSol,
+                                priceG2uFixed: opt.priceG2u,
+                              });
+                              setShowConfirmModal(true);
+                            }}
+                            style={{
+                              width: '100%',
+                              background: '#9945FF',
+                              color: '#fff',
+                              border: 'none',
+                              padding: '6px 2px',
+                              borderRadius: 6,
+                              fontWeight: 'bold',
+                              fontSize: 10,
+                              cursor: 'pointer',
+                              display: 'flex',
+                              flexDirection: 'column',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              gap: 2,
+                              lineHeight: 1.2,
+                              minHeight: 40,
+                            }}
+                          >
+                            <span>{opt.days === 1 ? '1d' : `${opt.days}d`}</span>
+                            <span style={{ color: '#14F195', fontSize: 9 }}>
+                              {Number(opt.price).toLocaleString()}
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    ) : (
+                      <>
+                        <div style={{ color: '#14F195', fontSize: '13px', fontWeight: 'bold', marginBottom: '6px' }}>
+                          {item.priceLabel || `${Number(item.price).toLocaleString()} ${item.currency}`}
+                        </div>
+                        <button
+                          onClick={() => {
+                            setItemToBuy(item);
+                            setShowConfirmModal(true);
+                          }}
+                          style={{ width: '100%', background: '#9945FF', color: '#fff', border: 'none', padding: '6px 0', borderRadius: '6px', fontWeight: 'bold', fontSize: '12px', cursor: 'pointer' }}
+                        >
+                          Buy
+                        </button>
+                      </>
+                    )}
                   </div>
                 </div>
               ))}
@@ -4489,109 +4542,6 @@ Daily claim active · Pack → NFT to see it.`,
         </div>
       )}
 
-      {/* --- Confirm purchase / mint --- */}
-      {durationPickItem && (
-        <div
-          style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            width: '100%',
-            height: '100%',
-            background: 'rgba(0,0,0,0.9)',
-            display: 'flex',
-            justifyContent: 'center',
-            alignItems: 'center',
-            zIndex: 10000,
-            padding: 16,
-            boxSizing: 'border-box',
-          }}
-          onClick={() => setDurationPickItem(null)}
-        >
-          <div
-            style={{
-              background: '#1c1e22',
-              padding: 22,
-              borderRadius: 15,
-              border: '2px solid #9945FF',
-              width: '100%',
-              maxWidth: 340,
-              textAlign: 'center',
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h3 style={{ color: '#fff', margin: '0 0 8px', fontSize: 17 }}>
-              {durationPickItem.name}
-            </h3>
-            <p style={{ color: '#888', fontSize: 12, margin: '0 0 16px', lineHeight: 1.4 }}>
-              Pick how long the boost lasts. Shorter = cheaper.
-              <br />
-              + {PREMIUM_PROJECT_FEE_SOL} SOL fee on purchase.
-            </p>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {premiumDurationOptions(durationPickItem.id, {
-                g2uMode: G2U_PREMIUM,
-                g2uPerSol: G2U_PER_SOL,
-              }).map((opt) => (
-                <button
-                  key={opt.days}
-                  type="button"
-                  onClick={() => {
-                    const priced = {
-                      ...durationPickItem,
-                      durationDays: opt.days,
-                      duration: opt.label,
-                      price: opt.price,
-                      currency: opt.currency,
-                      priceSol: opt.priceSol,
-                      priceG2uFixed: opt.priceG2u,
-                    };
-                    setDurationPickItem(null);
-                    setItemToBuy(priced);
-                    setShowConfirmModal(true);
-                  }}
-                  style={{
-                    width: '100%',
-                    padding: '14px 12px',
-                    borderRadius: 12,
-                    border: '1px solid #444',
-                    background: '#111',
-                    color: '#fff',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    fontWeight: 'bold',
-                    fontSize: 14,
-                  }}
-                >
-                  <span>{opt.label}</span>
-                  <span style={{ color: '#14F195' }}>
-                    {Number(opt.price).toLocaleString()} {opt.currency}
-                  </span>
-                </button>
-              ))}
-            </div>
-            <button
-              type="button"
-              onClick={() => setDurationPickItem(null)}
-              style={{
-                width: '100%',
-                marginTop: 12,
-                padding: 12,
-                background: 'transparent',
-                color: '#888',
-                border: '1px solid #555',
-                borderRadius: 10,
-                fontWeight: 'bold',
-                cursor: 'pointer',
-              }}
-            >
-              Cancel
-            </button>
-          </div>
-        </div>
-      )}
 
       {showConfirmModal && itemToBuy && (
         <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', background: 'rgba(0,0,0,0.9)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 10000 }}>
