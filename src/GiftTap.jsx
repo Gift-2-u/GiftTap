@@ -3366,11 +3366,9 @@ const GiftTapGame = () => {
     }
   }, [feeConsentBusy, notify]);
 
-  // Airdrop claim popup: reappear whenever NEW unclaimed allocation id(s) exist
-  useEffect(() => {
-    if (!isDataLoaded || !playerId || showAscensionModal || showRulesNotice) return undefined;
-    if (!hasSecureSession()) return undefined;
-
+  // Claim tip: only when Wallet opens — no idle 2-min poll (Disk IO)
+  const checkAirdropTip = useCallback(async () => {
+    if (!playerId || !hasSecureSession() || showAscensionModal) return;
     const seenKey = `gift2u_airdrop_claim_seen_${playerId}`;
     const readSeen = () => {
       try {
@@ -3380,40 +3378,33 @@ const GiftTapGame = () => {
         return [];
       }
     };
-    let cancelled = false;
-    const check = async () => {
-      if (cancelled || showAscensionModal) return;
-      try {
-        await ensureSecureSession();
-        const data = await secureAirdropClaimStatus();
-        if (cancelled) return;
-        const rows = Array.isArray(data?.rows) ? data.rows : [];
-        const pending = rows.filter((r) => r?.id && !r.claimed_at);
-        setAirdropTipPending(pending);
-        if (!pending.length) return;
-        const seen = new Set(readSeen());
-        const fresh = pending.filter((r) => !seen.has(String(r.id)));
-        if (fresh.length > 0) {
-          setShowAirdropTip(true);
-        }
-      } catch {
-        /* offline / session — ignore */
-      }
-    };
+    try {
+      await ensureSecureSession();
+      const data = await secureAirdropClaimStatus();
+      const rows = Array.isArray(data?.rows) ? data.rows : [];
+      const pending = rows.filter((r) => r?.id && !r.claimed_at);
+      setAirdropTipPending(pending);
+      if (!pending.length) return;
+      const seen = new Set(readSeen());
+      const fresh = pending.filter((r) => !seen.has(String(r.id)));
+      if (fresh.length > 0) setShowAirdropTip(true);
+    } catch {
+      /* offline / session — ignore */
+    }
+  }, [playerId, showAscensionModal]);
 
-    const t = setTimeout(check, 2000);
-    const interval = setInterval(check, 120_000);
-    const onVis = () => {
-      if (document.visibilityState === 'visible') check();
-    };
-    document.addEventListener('visibilitychange', onVis);
-    return () => {
-      cancelled = true;
-      clearTimeout(t);
-      clearInterval(interval);
-      document.removeEventListener('visibilitychange', onVis);
-    };
-  }, [isDataLoaded, playerId, showAscensionModal]);
+  useEffect(() => {
+    if (!isDataLoaded || !isModalOpen || !playerId) return;
+    if (showAscensionModal || showRulesNotice) return;
+    void checkAirdropTip();
+  }, [
+    isDataLoaded,
+    isModalOpen,
+    playerId,
+    showAscensionModal,
+    showRulesNotice,
+    checkAirdropTip,
+  ]);
 
   const dismissAirdropTip = useCallback(
     (openWallet = false) => {

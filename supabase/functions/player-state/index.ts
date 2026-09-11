@@ -6,7 +6,10 @@ import {
   applyWeeklyQuestDayProgress,
   invObj,
 } from "../_shared/weeklyScore.ts";
-import { accruePersonalMilestones } from "../_shared/personalMilestone.ts";
+import {
+  accruePersonalMilestones,
+  needsMilestoneSeed,
+} from "../_shared/personalMilestone.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -216,7 +219,7 @@ serve(async (req) => {
       );
     }
 
-    // Personal milestone: seed watermark + queue newly reached levels into stacked allocation
+    // Personal milestone: only WRITE inventory if seed or new $G2U granted (no idle rewrites)
     try {
       const inv = invObj(
         (player as Record<string, unknown>).inventory as Record<
@@ -224,6 +227,7 @@ serve(async (req) => {
           unknown
         >,
       );
+      const needsSeed = needsMilestoneSeed(inv);
       const accrued = await accruePersonalMilestones(supabase, {
         playerId,
         lifetimeTaps:
@@ -232,14 +236,16 @@ serve(async (req) => {
         username: String((player as Record<string, unknown>).username || "") ||
           null,
       });
-      const { data: msRow } = await supabase
-        .from("players")
-        .update({ inventory: accrued.inv })
-        .eq("telegram_id", playerId)
-        .select(PLAYER_SELECT)
-        .maybeSingle();
-      if (msRow) player = msRow;
-      else (player as Record<string, unknown>).inventory = accrued.inv;
+      if (accrued.granted > 0 || needsSeed) {
+        const { data: msRow } = await supabase
+          .from("players")
+          .update({ inventory: accrued.inv })
+          .eq("telegram_id", playerId)
+          .select(PLAYER_SELECT)
+          .maybeSingle();
+        if (msRow) player = msRow;
+        else (player as Record<string, unknown>).inventory = accrued.inv;
+      }
     } catch (e) {
       console.warn("milestone accrue", e);
     }

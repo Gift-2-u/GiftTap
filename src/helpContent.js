@@ -152,10 +152,9 @@ export const HELP_TIPS = {
     body:
       'You need a little SOL in your game wallet to claim (you pay the Solana network fee).\n\n' +
       'Claim $G2U in your game wallet (Wallet → Claim $G2U). Unlock the wallet first.\n\n' +
-      'WEEKLY airdrop: pool (e.g. 300k $G2U) is split into 4 equal pots. Top 100 share by tier (equal split inside each pot). Outside top 100: weekly badges / eligibility — not that G2U pot.\n\n' +
-      'SEASON (monthly) airdrop: pool (e.g. 1M $G2U) is shared by season board weight — your $G2U ≈ pool × (your season shards ÷ sum of all season shards). More season shards → larger share.\n\n' +
+      'PERSONAL MILESTONES: main $G2U path — level clears (250 $G2U per 1,000 taps of that level’s goal) plus lifetime bonuses (50K…2M). Stacked into one claim. Same for everyone.\n\n' +
+      'No weekly $G2U pool and no season $G2U pool. Weekly still gives badges; Season is ranks only.\n\n' +
       'L5 airdrop (Ranks → Airdrop): separate allocation when you clear Level 5; bonus % from progress / Elves can raise weight.\n\n' +
-      'Claims open at token launch. Not financial advice; pools and rules can change for fair play.\n\n' +
-      'Full guide: Menu → Game Guide → Airdrop & Claim $G2U.',
+      'Not financial advice. Full guide: Menu → Game Guide → Airdrop & Claim $G2U.',
   },
 };

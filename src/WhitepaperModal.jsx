@@ -169,8 +169,8 @@ const WhitepaperModal = ({ isWhitepaperOpen, setIsWhitepaperOpen, onClose }) => 
         "AIRDROP (Ranks → Airdrop)\n" +
         "• Shows players who cleared Level 5 (name · level · bonus %).\n" +
         "• Bonus % from levels, lifetime taps, streak, IAP, Elves NFTs, and referrals.\n" +
-        "• Community allocation weight — not financial advice and not a promise of $.\n" +
-        "• How to claim weekly / season / L5 $G2U: see § 10 Airdrop & Claim $G2U.\n\n" +
+        "• Community weight board — not a weekly/season $G2U pool.\n" +
+        "• How to claim personal milestone / L5 $G2U: see § 10 Airdrop & Claim $G2U.\n\n" +
         "Fair play: multi-accounts and bots can be disqualified. See Code of Conduct.",
     },
     {
@@ -179,18 +179,20 @@ const WhitepaperModal = ({ isWhitepaperOpen, setIsWhitepaperOpen, onClose }) => 
       content:
         "You need a little SOL in your game wallet to claim (you pay the Solana network fee).\n\n" +
         "Claim $G2U in your game wallet — Wallet → Claim $G2U (unlock wallet first).\n\n" +
-        "WEEKLY airdrop\n" +
-        "• Pool (e.g. 300k $G2U) is split into 4 equal pots.\n" +
-        "• Top 100 share by tier (equal split inside each pot).\n" +
-        "• Outside top 100: weekly badges / eligibility — not that G2U pot.\n\n" +
-        "SEASON (monthly) airdrop\n" +
-        "• Pool (e.g. 1M $G2U) is shared by season board weight.\n" +
-        "• Your $G2U ≈ pool × (your season shards ÷ sum of all season shards).\n" +
-        "• More season shards → larger share.\n\n" +
+        "PERSONAL MILESTONES (main $G2U path)\n" +
+        "• Same goal, same reward for everyone — stacked into one Claim $G2U row.\n" +
+        "• Level rewards: 250 $G2U per 1,000 taps of that level’s XP goal\n" +
+        "  (e.g. L0–4: 10,000 taps → 2,500 $G2U per level cleared).\n" +
+        "• Extra lifetime bonuses (on top of level rewards), e.g.:\n" +
+        "  50K / 100K → 2,500 each · 150K → 5,000 · 200K → 10,000 · … ·\n" +
+        "  1M → 65,000 · 1.25M → 80,000 · 1.5M → 95,000 · 1.75M → 110,000 · 2M → 125,000.\n" +
+        "• Open the home Milestones list to see every tier and your progress.\n" +
+        "• No weekly board pool and no season board pool for $G2U.\n\n" +
         "L5 airdrop (Ranks → Airdrop)\n" +
         "• Separate allocation when you clear Level 5.\n" +
         "• Bonus % from progress / Elves can raise your weight on that board.\n\n" +
-        "Claims open at token launch. Pools and rules can change for fair play. Not financial advice.",
+        "Weekly board still awards badges (not a $G2U pool). Season board is ranks only.\n" +
+        "Not financial advice; amounts and rules can change for fair play.",
     },
     {
       id: 11,
