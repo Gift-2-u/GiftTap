@@ -1,18 +1,11 @@
 /**
- * List unclaimed airdrop allocations for the logged-in player.
- * Accrues reached personal milestones into airdrop_allocations first, then lists
- * pending rows only (claimed rows are omitted → Claim button stays off).
+ * List unclaimed airdrop allocations (read-only).
+ * Milestones are queued in commit-taps when a level is crossed.
  */
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { requirePlayerFromRequest } from "../_shared/sessionJwt.ts";
-import {
-  adminClient,
-  corsHeaders,
-  jsonResponse,
-  invObj,
-} from "../_shared/economy.ts";
+import { adminClient, corsHeaders, jsonResponse } from "../_shared/economy.ts";
 import { getAirdropVaultConfig } from "../_shared/airdropVault.ts";
-import { accruePersonalMilestones } from "../_shared/personalMilestone.ts";
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -22,35 +15,6 @@ serve(async (req) => {
     const claims = await requirePlayerFromRequest(req);
     const playerId = String(claims.sub);
     const sb = adminClient();
-
-    // Milestone achieved → stack into pending allocation (same vault path as weekly/season)
-    try {
-      const { data: prow } = await sb
-        .from("players")
-        .select("inventory, lifetime_taps, username")
-        .eq("telegram_id", playerId)
-        .maybeSingle();
-      if (prow) {
-        const accrued = await accruePersonalMilestones(sb, {
-          playerId,
-          lifetimeTaps: Number(prow.lifetime_taps) || 0,
-          inv: invObj(prow.inventory),
-          username: prow.username || null,
-        });
-        if (accrued.granted > 0) {
-          const { error: upErr } = await sb
-            .from("players")
-            .update({ inventory: accrued.inv })
-            .eq("telegram_id", playerId);
-          if (upErr) console.warn("milestone accrue inventory", upErr.message);
-        }
-      }
-    } catch (e) {
-      console.warn(
-        "milestone accrue on status",
-        e instanceof Error ? e.message : e,
-      );
-    }
 
     const { data, error } = await sb
       .from("airdrop_allocations")

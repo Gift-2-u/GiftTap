@@ -493,7 +493,9 @@ serve(async (req) => {
     }
     if (upErr) throw upErr;
 
-    // Personal milestones → stack into airdrop_allocations (season vault; claim like weekly/season)
+    // Personal milestones — same moment as level progress: only when this flush crosses a level
+    let milestoneGranted = 0;
+    let milestoneLevels: number[] = [];
     try {
       const accrued = await accruePersonalMilestones(sb, {
         playerId,
@@ -501,7 +503,9 @@ serve(async (req) => {
         inv,
         username: String((row as Record<string, unknown>).username || "") || null,
       });
-      if (accrued.granted > 0) {
+      milestoneGranted = Math.max(0, Number(accrued.granted) || 0);
+      milestoneLevels = Array.isArray(accrued.levels) ? accrued.levels : [];
+      if (milestoneGranted > 0) {
         inv = accrued.inv;
         updates.inventory = inv;
         const { error: msErr } = await sb
@@ -627,6 +631,8 @@ serve(async (req) => {
       jackpot_hits: jackpotHits,
       jackpot_best_multi: jackpotBestMulti,
       nft_durability: durabilitySnapshot(inv),
+      milestone_granted: milestoneGranted,
+      milestone_levels: milestoneLevels,
       player: {
         ...updates,
         max_unlocked_level: maxU,

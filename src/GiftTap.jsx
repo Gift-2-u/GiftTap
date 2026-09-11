@@ -248,7 +248,6 @@ import {
   secureAdReward,
   fetchAirdropBoard,
   secureAirdropClaimStatus,
-  secureMilestoneClaimG2u,
   secureAcceptFeeConsent,
 } from './secureApi';
 import {
@@ -3432,66 +3431,7 @@ const GiftTapGame = () => {
     [playerId, airdropTipPending],
   );
 
-  // Personal milestone queued in airdrop_allocations → tip (claim in Wallet like weekly/season)
-  useEffect(() => {
-    if (!isDataLoaded || !playerId) return;
-    if (showAscensionModal || showRulesNotice || showAirdropTip) return;
-    if (!hasSecureSession()) return undefined;
-    let cancelled = false;
-    const check = async () => {
-      try {
-        await ensureSecureSession();
-        const accrued = await secureMilestoneClaimG2u();
-        if (cancelled) return;
-        if (accrued?.inventory) {
-          inventoryRef.current = {
-            ...(inventoryRef.current || {}),
-            ...accrued.inventory,
-          };
-          setStats((prev) => ({
-            ...prev,
-            inventory: inventoryRef.current,
-          }));
-        }
-        const pending = Math.max(0, Number(accrued?.pending) || 0);
-        if (pending <= 0) {
-          setShowMilestoneTip(false);
-          return;
-        }
-        const seenKey = `gift2u_milestone_claim_seen_${playerId}`;
-        let seen = [];
-        try {
-          const raw = JSON.parse(localStorage.getItem(seenKey) || '[]');
-          seen = Array.isArray(raw) ? raw.map(String) : [];
-        } catch {
-          seen = [];
-        }
-        const id = String(accrued?.allocation_id || `amt_${pending}`);
-        if (seen.includes(id)) return;
-        setMilestoneTipInfo({
-          amount: pending,
-          nextLevel: (accrued?.levels || []).slice(-1)[0] || null,
-          allocationId: id,
-        });
-        setShowMilestoneTip(true);
-      } catch {
-        /* ignore */
-      }
-    };
-    const t = setTimeout(check, 2500);
-    return () => {
-      cancelled = true;
-      clearTimeout(t);
-    };
-  }, [
-    isDataLoaded,
-    playerId,
-    lifetimeTaps,
-    showAscensionModal,
-    showRulesNotice,
-    showAirdropTip,
-  ]);
-
+  // Milestone tip only after commit-taps queues a grant (not a background accrue call)
   const dismissMilestoneTip = useCallback(
     (openWallet = false) => {
       const id = milestoneTipInfo?.allocationId;
@@ -4154,6 +4094,40 @@ const GiftTapGame = () => {
                 : `🍀 Fate jackpot ×${jp}! Best ${best}×`,
               true,
             );
+          }
+          // Milestone tip when this flush crossed a level (queued in commit-taps)
+          const msGranted = Math.max(0, Number(data?.milestone_granted) || 0);
+          if (msGranted > 0 && playerId) {
+            const levels = Array.isArray(data?.milestone_levels)
+              ? data.milestone_levels
+              : [];
+            const id = `ms_${levels.join('-') || 'grant'}_${msGranted}`;
+            const seenKey = `gift2u_milestone_claim_seen_${playerId}`;
+            let seen = [];
+            try {
+              const raw = JSON.parse(localStorage.getItem(seenKey) || '[]');
+              seen = Array.isArray(raw) ? raw.map(String) : [];
+            } catch {
+              seen = [];
+            }
+            if (!seen.includes(id)) {
+              setMilestoneTipInfo({
+                amount: msGranted,
+                nextLevel: levels.slice(-1)[0] || null,
+                allocationId: id,
+              });
+              setShowMilestoneTip(true);
+            }
+            if (data?.player?.inventory && typeof data.player.inventory === 'object') {
+              inventoryRef.current = {
+                ...(inventoryRef.current || {}),
+                ...data.player.inventory,
+              };
+              setStats((prev) => ({
+                ...prev,
+                inventory: inventoryRef.current,
+              }));
+            }
           }
           flushErrorNotifiedRef.current = false;
           lastLocalSaveAtRef.current = Date.now();

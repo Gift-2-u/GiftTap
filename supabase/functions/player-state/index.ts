@@ -6,11 +6,6 @@ import {
   applyWeeklyQuestDayProgress,
   invObj,
 } from "../_shared/weeklyScore.ts";
-import {
-  accruePersonalMilestones,
-  needsMilestoneSeed,
-} from "../_shared/personalMilestone.ts";
-
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
@@ -219,36 +214,7 @@ serve(async (req) => {
       );
     }
 
-    // Personal milestone: only WRITE inventory if seed or new $G2U granted (no idle rewrites)
-    try {
-      const inv = invObj(
-        (player as Record<string, unknown>).inventory as Record<
-          string,
-          unknown
-        >,
-      );
-      const needsSeed = needsMilestoneSeed(inv);
-      const accrued = await accruePersonalMilestones(supabase, {
-        playerId,
-        lifetimeTaps:
-          Number((player as Record<string, unknown>).lifetime_taps) || 0,
-        inv,
-        username: String((player as Record<string, unknown>).username || "") ||
-          null,
-      });
-      if (accrued.granted > 0 || needsSeed) {
-        const { data: msRow } = await supabase
-          .from("players")
-          .update({ inventory: accrued.inv })
-          .eq("telegram_id", playerId)
-          .select(PLAYER_SELECT)
-          .maybeSingle();
-        if (msRow) player = msRow;
-        else (player as Record<string, unknown>).inventory = accrued.inv;
-      }
-    } catch (e) {
-      console.warn("milestone accrue", e);
-    }
+    // Milestones: accrue only in commit-taps when a level is crossed (same as level-up).
 
     // On every player-state load after launch: keep gft_token_balance = on-chain $G2U
     // (fixes stale DB after Jupiter sells / external transfers).
