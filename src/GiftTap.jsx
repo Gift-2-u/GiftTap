@@ -3753,67 +3753,8 @@ const GiftTapGame = () => {
       optimisticEnergy.current = ENERGY_CAP;
       setEnergy(ENERGY_CAP);
       energyEpochRef.current = (energyEpochRef.current || 0) + 1;
-      // Persist day-roll + apply fresh max_daily_limit (no manual refresh)
-      void (async () => {
-        try {
-          await ensureSecureSession();
-          const state = await fetchPlayerState();
-          const p = state?.player;
-          if (!p) return;
-          if (p.max_daily_limit != null) {
-            setMaxDailyLimit(Math.max(1000, Number(p.max_daily_limit) || 1000));
-          }
-          if (p.daily_taps != null) {
-            const dt = Number(p.daily_taps) || 0;
-            optimisticDaily.current = dt;
-            setDailyTaps(dt);
-            serverProgressRef.current = {
-              ...(serverProgressRef.current || {}),
-              dt,
-            };
-          }
-          if (p.last_energy != null) {
-            const en = Math.max(
-              0,
-              Math.min(ENERGY_CAP, Number(p.last_energy) || 0),
-            );
-            energyAnchorRef.current = { value: en, at: Date.now() };
-            optimisticEnergy.current = en;
-            setEnergy(en);
-          }
-          setStats((prev) => ({
-            ...prev,
-            energy_boost_expires:
-              p.energy_boost_expires !== undefined
-                ? p.energy_boost_expires
-                : prev.energy_boost_expires,
-            limit_boost_amount:
-              p.limit_boost_amount !== undefined
-                ? p.limit_boost_amount
-                : prev.limit_boost_amount,
-            limit_boost_expires:
-              p.limit_boost_expires !== undefined
-                ? p.limit_boost_expires
-                : prev.limit_boost_expires,
-            ad_energy_boost:
-              p.ad_energy_boost !== undefined
-                ? p.ad_energy_boost
-                : prev.ad_energy_boost,
-            ad_energy_expires:
-              p.ad_energy_expires !== undefined
-                ? p.ad_energy_expires
-                : prev.ad_energy_expires,
-            inventory:
-              p.inventory &&
-              typeof p.inventory === 'object' &&
-              Object.keys(p.inventory).length > 0
-                ? p.inventory
-                : prev.inventory,
-          }));
-        } catch (e) {
-          console.warn('UTC day-roll player-state', e?.message || e);
-        }
-      })();
+      // Local UI day-roll only — DB/inventory refresh on next login or real action
+      // (commit-taps / player-state), not an idle player-state pull.
       return true;
     };
 
@@ -6140,38 +6081,10 @@ const GiftTapGame = () => {
     };
   }, [isReceiveOpen, playerWallet, fetchBalances]);
 
-  // Background: keep HUD + Supabase SOL fresh without needing a full page refresh
+  // One balance read when game is ready — no idle 12s poll / focus spam (player-state IO)
   useEffect(() => {
     if (!playerWallet || !isDataLoaded) return;
     fetchBalances();
-    const id = setInterval(() => {
-      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
-        return;
-      }
-      fetchBalances();
-    }, 12000);
-    return () => clearInterval(id);
-  }, [playerWallet, isDataLoaded, fetchBalances]);
-
-  // When app tab becomes visible again (after external deposit), re-read chain SOL
-  useEffect(() => {
-    if (!playerWallet || !isDataLoaded) return;
-    const onVis = () => {
-      if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
-        chainDbSyncAtRef.current = 0;
-        fetchBalances();
-      }
-    };
-    const onFocus = () => {
-      chainDbSyncAtRef.current = 0;
-      fetchBalances();
-    };
-    document.addEventListener('visibilitychange', onVis);
-    window.addEventListener('focus', onFocus);
-    return () => {
-      document.removeEventListener('visibilitychange', onVis);
-      window.removeEventListener('focus', onFocus);
-    };
   }, [playerWallet, isDataLoaded, fetchBalances]);
 
   /** Phrase in RAM, or password → Edge unlock (JWT alone never drains). */
