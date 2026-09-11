@@ -52,7 +52,7 @@ export const RUSH_WAVE1 = {
   epic: {
     key: 'epic',
     label: 'Epic',
-    priceSol: 1.0,
+    priceSol: 0.75,
     itemsAvailable: 525,
     maxSupply: 1750,
     border: '#A855F7',
@@ -64,7 +64,7 @@ export const RUSH_WAVE1 = {
   legendary: {
     key: 'legendary',
     label: 'Legendary',
-    priceSol: 2.5,
+    priceSol: 1.5,
     itemsAvailable: 150,
     maxSupply: 500,
     border: '#EAB308',

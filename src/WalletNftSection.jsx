@@ -427,12 +427,16 @@ export default function WalletNftSection({
     const costSol = isStar
       ? starLevelUpCostSol(selectedLevel)
       : elfLevelUpCostSol(selected.rarity, selectedLevel, kind);
-    if (costSol == null) {
+    const payG2u = isTokenLaunched();
+    const costG2u = isStar
+      ? costSol == null
+        ? null
+        : Math.round(costSol * g2uPerSolClient())
+      : elfLevelUpCostG2u(selected.rarity, selectedLevel, kind);
+    if (payG2u ? costG2u == null : costSol == null) {
       toast('Already max level (L5)', false);
       return;
     }
-    const payG2u = isTokenLaunched();
-    const costG2u = Math.round(costSol * g2uPerSolClient());
     setLevelBusy(true);
     try {
       let data;

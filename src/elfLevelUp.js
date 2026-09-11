@@ -1,19 +1,19 @@
 /**
- * Elf NFT level-up costs (SOL) — from Fate/Echo design sheets.
- * L1→2 … L4→5 by rarity.
- *
- * GiftLocksmith is separate: wall-tied (mint = first wall ×4 = 0.10).
- * L1→5 ladder set explicitly (not the Rare elf table).
+ * Elf NFT level-up.
+ * Fate · Echo · Rush · Shadow: same fixed $G2U for all rarities.
+ * GiftLocksmith: separate fixed $G2U ladder (mint = L1).
  */
 
 export const ELF_LEVEL_UP_SOL = {
-  // Totals: Common 0.20 · Rare 0.60 · Epic 1.25 · Legendary 4.50
-  // So mint+L5 stays under next rarity W1 mint (budget path vs ceiling).
+  // Legacy SOL ladders — prefer ELF_LEVEL_UP_G2U for payment.
   common: [0.02, 0.04, 0.06, 0.08],
   rare: [0.05, 0.1, 0.2, 0.25],
   epic: [0.15, 0.25, 0.35, 0.5],
   legendary: [0.5, 0.8, 1.2, 2.0],
 };
+
+/** Fate · Echo · Rush · Shadow — L1→2 … L4→5 fixed $G2U (all rarities) */
+export const ELF_LEVEL_UP_G2U = [75_000, 150_000, 225_000, 300_000];
 
 /** Locksmith L1→2 … L4→5 (legacy SOL; payment uses fixed $G2U) */
 export const LOCKSMITH_LEVEL_UP_SOL = [0.2, 0.35, 0.6, 1.5];
@@ -92,7 +92,7 @@ export function elfLevelUpCostG2u(rarity, currentLevel, kind) {
     const g2u = LOCKSMITH_LEVEL_UP_G2U[lvl - 1];
     return Number.isFinite(g2u) ? g2u : null;
   }
-  const sol = elfLevelUpCostSol(rarity, currentLevel, kind);
-  if (sol == null) return null;
-  return Math.round(sol * g2uPerSolClient());
+  // Fate · Echo · Rush · Shadow — same $G2U for every rarity
+  const g2u = ELF_LEVEL_UP_G2U[lvl - 1];
+  return Number.isFinite(g2u) ? g2u : null;
 }

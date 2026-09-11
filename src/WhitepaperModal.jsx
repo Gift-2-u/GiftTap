@@ -21,7 +21,26 @@ const WhitepaperModal = ({ isWhitepaperOpen, setIsWhitepaperOpen, onClose }) => 
     {
       id: 3,
       title: "3. Levels & Ascension Walls",
-      content: "Level rises with lifetime taps. Higher tiers raise permanent tap multipliers:\n\n• L0–4: 1.00x (10,000 taps/level)\n• L5–9: 1.15x (15,000 taps/level)\n• L10–19: 1.20x (50,000 taps/level)\n• L20–29: 1.30x (150,000 taps/level)\n• L30–49: 1.40x (350,000 taps/level)\n• L50–74: 1.50x (1,000,000 taps/level)\n• L75–99: 1.75x (3,000,000 taps/level)\n• L100: 2.00x\n\nAscension walls (optional — keep mining forever without climbing):\n• L4→5: 15,000 shards OR 0.025 SOL\n• L9→10: 30,000 shards OR 0.05 SOL\n• L19→20: 50,000 shards AND 0.05 SOL\n• L29→30: 100,000 shards AND 0.10 SOL\n• L49→50: 300,000 shards AND 0.35 SOL\n• L74→75: 800,000 shards AND 0.75 SOL\n• L99→100: 2,500,000 shards AND 1.50 SOL\n\nEarly walls: pay shards or SOL. Mid/late walls require both. Climbing unlocks higher multipliers and the next tier."
+      content:
+        "Level rises with lifetime taps. Higher tiers raise permanent tap multipliers:\n\n" +
+        "• L0–4: 1.00x (10,000 taps/level)\n" +
+        "• L5–9: 1.15x (15,000 taps/level)\n" +
+        "• L10–19: 1.20x (50,000 taps/level)\n" +
+        "• L20–29: 1.30x (150,000 taps/level)\n" +
+        "• L30–49: 1.40x (350,000 taps/level)\n" +
+        "• L50–74: 1.50x (1,000,000 taps/level)\n" +
+        "• L75–99: 1.75x (3,000,000 taps/level)\n" +
+        "• L100: 2.00x\n\n" +
+        "Ascension walls (optional — keep mining forever without climbing).\n" +
+        "Every wall needs BOTH G2Ushards AND fixed $G2U:\n\n" +
+        "• L4→5: 15,000 shards + 10,000 $G2U\n" +
+        "• L9→10: 30,000 shards + 25,000 $G2U\n" +
+        "• L19→20: 50,000 shards + 75,000 $G2U\n" +
+        "• L29→30: 100,000 shards + 300,000 $G2U\n" +
+        "• L49→50: 300,000 shards + 1,000,000 $G2U\n" +
+        "• L74→75: 800,000 shards + 2,500,000 $G2U\n" +
+        "• L99→100: 2,500,000 shards + 5,000,000 $G2U\n\n" +
+        "GiftLocksmith can climb free by Locksmith level (see §4). Paying the wall fee = higher mult only (no Walk2u shoe). Climbing unlocks higher multipliers and the next tier.",
     },
     {
       id: 4,
@@ -32,18 +51,18 @@ const WhitepaperModal = ({ isWhitepaperOpen, setIsWhitepaperOpen, onClose }) => 
         "━━━━━━━━━━━━━━━━━━━━\n" +
         "LOCKSMITH · Walls / Walk2u\n" +
         "━━━━━━━━━━━━━━━━━━━━\n" +
-        "Role: free ascension wall climbs + Walk2u shoes.\n" +
-        "Wave 1: 0.10 SOL · Rare ·\n" +
-        "You get:\n" +
-        "• L1: free climb → Level 5 + Common Walk2u Shoe\n" +
-        "• L2 / L3: free → Level 10 / 20 + Common Shoe\n" +
-        "• Higher levels unlock later walls as they open\n" +
-        "• Opens the path to Walk2u\n\n" +
+        "Role: free ascension wall climbs + Walk2u shoes (on select walls).\n" +
+        "Wave 1: 0.10 SOL · Rare · mint = L1.\n" +
+        "Free climbs by Locksmith level:\n" +
+        "• L1 → walls 5 / 10 / 20\n" +
+        "• L2 → wall 30 · L3 → 50 · L4 → 75 · L5 → 100\n" +
+        "Common Walk2u Shoe: only on Locksmith free climbs of walls 5 / 30 / 50\n" +
+        "(not when you pay the shard+$G2U fee). Opens the path to Walk2u.\n\n" +
         "━━━━━━━━━━━━━━━━━━━━\n" +
         "FATE · Luck\n" +
         "━━━━━━━━━━━━━━━━━━━━\n" +
         "Role: jackpot chance on tap G2Ushards.\n" +
-        "Wave 1 prices: Common 0.05 · Rare 0.30 · Epic 1.00 · Legendary 2.50 SOL.\n" +
+        "Wave 1 prices: Common 0.05 · Rare 0.30 · Epic 0.75 · Legendary 1.50 SOL.\n" +
         "You get:\n" +
         "• Fate in wallet — each tap can hit one jackpot (replaces Frenzy on that tap; Echo still stacks)\n" +
         "• Level N unlocks luck rungs 1→N (higher rung checked first)\n" +
@@ -65,7 +84,7 @@ const WhitepaperModal = ({ isWhitepaperOpen, setIsWhitepaperOpen, onClose }) => 
         "ECHO · Power\n" +
         "━━━━━━━━━━━━━━━━━━━━\n" +
         "Role: always-on tap multiplier.\n" +
-        "Wave 1 prices: Common 0.05 · Rare 0.30 · Epic 1.00 · Legendary 2.50 SOL.\n" +
+        "Wave 1 prices: Common 0.05 · Rare 0.30 · Epic 0.75 · Legendary 1.50 SOL.\n" +
         "You get (tap multi by rarity × level 1→5):\n" +
         "• Common      1.10× → 1.50×\n" +
         "• Rare        1.60× → 2.00×\n" +
@@ -76,7 +95,7 @@ const WhitepaperModal = ({ isWhitepaperOpen, setIsWhitepaperOpen, onClose }) => 
         "RUSH · Energy (daily cap)\n" +
         "━━━━━━━━━━━━━━━━━━━━\n" +
         "Role: raises max daily taps (replaces base 1,000).\n" +
-        "Wave 1 prices: Common 0.05 · Rare 0.30 · Epic 1.00 · Legendary 2.50 SOL.\n" +
+        "Wave 1 prices: Common 0.05 · Rare 0.30 · Epic 0.75 · Legendary 1.50 SOL.\n" +
         "You get (max daily taps by rarity × level 1→5):\n" +
         "• Common      1,100 → 1,500\n" +
         "• Rare        1,600 → 2,000\n" +
@@ -88,7 +107,7 @@ const WhitepaperModal = ({ isWhitepaperOpen, setIsWhitepaperOpen, onClose }) => 
         "SHADOW · Night (daily claim)\n" +
         "━━━━━━━━━━━━━━━━━━━━\n" +
         "Role: claim shards once per UTC day without tapping.\n" +
-        "Wave 1 prices: Common 0.05 · Rare 0.30 · Epic 1.00 · Legendary 2.50 SOL.\n" +
+        "Wave 1 prices: Common 0.05 · Rare 0.30 · Epic 0.75 · Legendary 1.50 SOL.\n" +
         "You get (claim hours ÷ 24 of base daily cap — Rush or 1,000; boosts not included):\n" +
         "• Common      2h → 6h\n" +
         "• Rare        8h → 12h\n" +
@@ -98,17 +117,15 @@ const WhitepaperModal = ({ isWhitepaperOpen, setIsWhitepaperOpen, onClose }) => 
         "━━━━━━━━━━━━━━━━━━━━\n" +
         "LEVEL UP (Backpack → NFT)\n" +
         "━━━━━━━━━━━━━━━━━━━━\n" +
-        "Pay SOL in Backpack → NFT to raise elf level (max L5).\n" +
-        "Mint + full L1→5 stays under the next rarity Wave 1 mint.\n\n" +
-        "Fate · Echo · Rush · Shadow (L1→2 / L2→3 / L3→4 / L4→5 · total):\n" +
-        "• Common      0.02 / 0.04 / 0.06 / 0.08  · total 0.20\n" +
-        "• Rare        0.05 / 0.10 / 0.20 / 0.25  · total 0.60\n" +
-        "• Epic        0.15 / 0.25 / 0.35 / 0.50  · total 1.25\n" +
-        "• Legendary   0.50 / 0.80 / 1.20 / 2.00  · total 4.50\n\n" +
-        "GiftLocksmith (mint 0.10 = L1; separate ladder):\n" +
-        "• L1→2 0.20 · L2→3 0.35 · L3→4 0.60 · L4→5 1.50  · total 2.65\n\n" +
+        "Raise elf level in Backpack → NFT (max L5) with $G2U.\n\n" +
+        "Fate · Echo · Rush · Shadow — same $G2U for every rarity:\n" +
+        "• L1→2 75,000 · L2→3 150,000 · L3→4 225,000 · L4→5 300,000 $G2U\n" +
+        "  (total 750,000 $G2U L1→5)\n\n" +
+        "GiftLocksmith (mint 0.10 = L1) — fixed $G2U ladder:\n" +
+        "• L1→2 250,000 · L2→3 750,000 · L3→4 1,500,000 · L4→5 2,500,000 $G2U\n\n" +
         "Star Badge (one Star · all rarities; mint 0.10):\n" +
-        "• L1→2 0.10 · L2→3 0.15 · L3→4 0.25 · L4→5 0.40  · total 0.90\n\n" +
+        "• L1→2 0.10 · L2→3 0.15 · L3→4 0.25 · L4→5 0.40  · total 0.90 SOL\n\n" +
+        "Durability (Echo · Fate · Rush · Shadow): 1% per 2,000 mining shards; reload 50 $G2U per 1%. At 0% the perk is off.\n\n" +
         "Airdrop tip: Locksmith +25% weight; each other elf adds by rarity (Common +5% · Rare +10% · Epic +20% · Legendary +30%). Clear Level 5 to appear on Ranks → Airdrop.\n\n" +
         "NFTs are optional gameplay items. No return is promised.",
     },
@@ -125,12 +142,12 @@ const WhitepaperModal = ({ isWhitepaperOpen, setIsWhitepaperOpen, onClose }) => 
     {
       id: 7,
       title: "7. Wallet & Disclaimers",
-      content: "A Solana wallet is created for you in Gift Tap. You own the keys. Save your 12-word phrase in Menu — we cannot restore lost keys.\n\nPurchases (boosts, NFTs, ascension SOL) use your game wallet on mainnet. Network fees apply.\n\nIMPORTANT — NOT AN INVESTMENT:\n• G2Ushards and $G2U are not investment products. No promise of profit, yield, or price.\n• Crypto is volatile. Gift2u is not responsible for price changes of $G2U, SOL, NFTs, or any asset.\n• This is not financial advice. See Terms of Use in the Menu.\n\nComing from Telegram? Use Restore with your 12-word phrase."
+      content: "A Solana wallet is created for you in Gift Tap. You own the keys. Save your 12-word phrase in Menu — we cannot restore lost keys.\n\nPurchases (boosts, NFTs, wall climbs with shards+$G2U) use your game wallet on mainnet. Network fees apply.\n\nIMPORTANT — NOT AN INVESTMENT:\n• G2Ushards and $G2U are not investment products. No promise of profit, yield, or price.\n• Crypto is volatile. Gift2u is not responsible for price changes of $G2U, SOL, NFTs, or any asset.\n• This is not financial advice. See Terms of Use in the Menu.\n\nComing from Telegram? Use Restore with your 12-word phrase."
     },
     {
       id: 8,
       title: "8. Referrals (Invite Friends)",
-      content: "Grow the Gift Tap community with invite links from the Friends tab.\n\nJoiner bonus:\n• New players who join with your link receive +500 G2Ushards when they start.\n\nReferrer bonuses (you earn these — not paid on mere join):\n• +1,000 G2Ushards when your friend reaches Level 1 (10,000 lifetime taps).\n• +3,000 G2Ushards when your friend clears the first Ascension Wall (Level 4 → Level 5), by paying the wall fee in Shards or SOL.\n\nEach milestone is paid once per invited friend. Mining fake accounts is banned under the Code of Conduct."
+      content: "Grow the Gift Tap community with invite links from the Friends tab.\n\nJoiner bonus:\n• New players who join with your link receive +500 G2Ushards when they start.\n\nReferrer bonuses (you earn these — not paid on mere join):\n• +1,000 G2Ushards when your friend reaches Level 1 (10,000 lifetime taps).\n• +3,000 G2Ushards when your friend clears the first Ascension Wall (Level 4 → Level 5) — paid climb (shards+$G2U) or Locksmith free climb.\n\nEach milestone is paid once per invited friend. Mining fake accounts is banned under the Code of Conduct."
     },
     {
       id: 9,
@@ -145,9 +162,8 @@ const WhitepaperModal = ({ isWhitepaperOpen, setIsWhitepaperOpen, onClose }) => 
         "• Burn badges in Pack for Mystery Gift (costs & full odds: § 11 Mystery Gift).\n\n" +
         "SEASON (monthly)\n" +
         "• Ordered by season mining score for the current season period shown in-app.\n" +
-        "• At month end a snapshot can select winners / giveaways as announced.\n" +
-        "• Main board uses a rising activity floor (~20% of 1,000 taps/day × day of season). Under the floor you still see your rank on the last line.\n" +
-        "• Some promotions count only main-board players.\n\n" +
+        "• Ranks / prestige only for now (no season badges).\n" +
+        "• Main board uses a rising activity floor (~20% of 1,000 taps/day × day of season). Under the floor you still see your rank on the last line.\n\n" +
         "ALL-TIME\n" +
         "• Ordered by lifetime taps. Always on — long-term prestige, no monthly reset.\n\n" +
         "AIRDROP (Ranks → Airdrop)\n" +
@@ -212,7 +228,7 @@ const WhitepaperModal = ({ isWhitepaperOpen, setIsWhitepaperOpen, onClose }) => 
         "Echo, Fate, Rush, and Shadow start at 100% durability when equipped.\n\n" +
         "Drain: 1% per 2,000 mining shards. At 0% the perk is fully off (no weak floor).\n\n" +
         "Reload: 50 $G2U per 1% in Wallet / Backpack → NFT (same card everywhere).\n\n" +
-        "After launch, all premium boosts (bot, grinder, whale, x2, x3, crate) are bought with $G2U.\n" +
+        "Premium boosts (bot, grinder, whale, x2, x3, crate) are bought with $G2U.\n" +
         "Shard shop items (frenzy, battery, refill) stay on G2Ushards.",
     },
     {

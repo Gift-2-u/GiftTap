@@ -1,7 +1,7 @@
 /**
  * elf-level-up — bump inventory.elf_levels[asset_id].
  * Body: { asset_id, kind, rarity, currency?: 'sol'|'g2u', tx_signature? }
- * Post-launch: currency=g2u debits gft_token_balance (SOL price × G2U_PER_SOL).
+ * Fate/Echo/Rush/Shadow: fixed $G2U ladder (all rarities). Locksmith: own $G2U ladder.
  */
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { requirePlayerFromRequest } from "../_shared/sessionJwt.ts";
@@ -17,16 +17,18 @@ import {
   PLAYER_ECONOMY_SELECT,
   instantEconomyPatch,
   g2uShopEnabled,
-  solToG2u,
 } from "../_shared/economy.ts";
 import { ensureNftDurabilityOnActivate } from "../_shared/nftDurability.ts";
 
 const ELF_LEVEL_UP_SOL: Record<string, number[]> = {
-  // Totals: Common 0.20 · Rare 0.60 · Epic 1.25 · Legendary 4.50
+  // Legacy SOL — Fate/Echo/Rush/Shadow pay fixed ELF_LEVEL_UP_G2U
   common: [0.02, 0.04, 0.06, 0.08],
   rare: [0.05, 0.1, 0.2, 0.25],
   epic: [0.15, 0.25, 0.35, 0.5],
-  legendary: [0.5, 0.8, 1.2, 2.0]};
+  legendary: [0.5, 0.8, 1.2, 2.0],
+};
+/** Fate · Echo · Rush · Shadow — L1→2 … L4→5 fixed $G2U (all rarities) */
+const ELF_LEVEL_UP_G2U = [75_000, 150_000, 225_000, 300_000];
 /** Locksmith L1→2 … L4→5 (legacy SOL; payment uses fixed $G2U) */
 const LOCKSMITH_LEVEL_UP_SOL = [0.2, 0.35, 0.6, 1.5];
 /** Locksmith L1→2 … L4→5 fixed $G2U */
@@ -248,13 +250,15 @@ serve(async (req) => {
     const ladder =
       kind === "locksmith" ? LOCKSMITH_LEVEL_UP_SOL : ELF_LEVEL_UP_SOL[rarity];
     const costSol = ladder[fromLevel - 1];
-    if (!Number.isFinite(costSol)) throw new Error("No level-up cost for this step");
     const costG2u =
       kind === "locksmith"
         ? LOCKSMITH_LEVEL_UP_G2U[fromLevel - 1]
-        : solToG2u(costSol);
-    if (kind === "locksmith" && !Number.isFinite(costG2u)) {
-      throw new Error("No Locksmith $G2U level-up cost for this step");
+        : ELF_LEVEL_UP_G2U[fromLevel - 1];
+    if (!Number.isFinite(costG2u) || costG2u <= 0) {
+      throw new Error("No $G2U level-up cost for this step");
+    }
+    if (currency !== "g2u" && !Number.isFinite(costSol)) {
+      throw new Error("No level-up cost for this step");
     }
 
     const toLevel = fromLevel + 1;

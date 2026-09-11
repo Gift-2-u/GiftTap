@@ -16,7 +16,7 @@ export const HELP_TIPS = {
     title: 'Level & G2Ushards',
     body:
       'Level comes from lifetime taps and can raise permanent mining power (more shards per tap).\n\n' +
-      'G2Ushards are what you mine by tapping. Spend them in the Shop and on climb fees.\n\n' +
+      'G2Ushards are what you mine by tapping. Spend them in the Shop and on climb fees (walls also need $G2U).\n\n' +
       'Optional Climb walls unlock higher levels and multipliers — you can stay and keep mining without climbing.\n\n' +
       'G2Ushards are not money and not a promise of profit. Full details: Menu → Game Guide.',
   },
@@ -41,16 +41,17 @@ export const HELP_TIPS = {
     body:
       'Optional walls at levels 4, 9, 19, 29, 49, 74, and 99.\n\n' +
       '• Stay & mine: keep earning G2Ushards forever at your current level.\n' +
-      '• Early walls (4, 9): pay shards OR SOL.\n' +
-      '• Mid/late walls (19+): pay shards AND SOL.\n' +
+      '• Every wall: pay G2Ushards AND fixed $G2U (both required).\n' +
+      '• Costs (shards + $G2U): 15k+10k · 30k+25k · 50k+75k · 100k+300k · 300k+1M · 800k+2.5M · 2.5M+5M.\n' +
+      '• GiftLocksmith can climb for free (by Locksmith level). Paying the fee = mult only (no shoe).\n' +
       '• Climb unlocks higher levels and a better permanent multiplier.\n\n' +
-      'Full costs and mult table: Menu → Game Guide. Climb is never required to keep mining.',
+      'Full table: Menu → Game Guide. Climb is never required to keep mining.',
   },
   shards: {
     title: 'G2Ushards',
     body:
       'G2Ushards are the in-game mining currency you earn by tapping the gift.\n\n' +
-      'Use them in the Shop, for climb fees, and for tasks.\n\n' +
+      'Use them in the Shop, for climb fees (with $G2U), and for tasks.\n\n' +
       'They are not money and not a promise of profit. See Terms of Use.',
   },
   energy: {
@@ -90,24 +91,30 @@ export const HELP_TIPS = {
   locksmith: {
     title: 'GiftLocksmith NFT',
     body:
-      'Optional on-chain NFT in Shop → NFTs (Wave 1 live).\n\n' +
-      'Unlocks free ascension wall climbs and Walk2u Common Shoes on walls 5 / 10 / 20 (L1–L3). Higher Locksmith levels unlock later walls.\n\n' +
-      'See all Elves (Fate · Echo · Rush · Shadow): Menu → Game Guide → Gift2u Elves.\n\n' +
-      'You can still play and mine without it.',
+      'Optional on-chain NFT in Shop → NFTs (Wave 1 live · mint 0.10 SOL = L1).\n\n' +
+      'Free wall climbs by Locksmith level:\n' +
+      '• L1 → walls 5 / 10 / 20\n' +
+      '• L2 → wall 30 · L3 → 50 · L4 → 75 · L5 → 100\n\n' +
+      'Common Walk2u Shoe only on Locksmith free climbs of walls 5 / 30 / 50 (not on paid climbs).\n\n' +
+      'Level up Locksmith in Backpack → NFT with fixed $G2U: L1→2 250k · L2→3 750k · L3→4 1.5M · L4→5 2.5M.\n\n' +
+      'Full boards: Menu → Game Guide → Gift2u Elves. You can play without it.',
   },
   elves_nfts: {
     title: 'Gift2u Elves',
     body:
       'Wave 1 LIVE in Shop → NFTs.\n\n' +
-      'Mint W1: Common 0.05 · Rare 0.30 · Epic 1.00 · Legendary 2.50 SOL ' +
+      'Mint W1: Common 0.05 · Rare 0.30 · Epic 0.75 · Legendary 1.50 SOL ' +
       '(Locksmith 0.10).\n\n' +
-      '• Locksmith — free walls · Walk2u shoe\n' +
+      '• Locksmith — free walls by level · shoe on walls 5 / 30 / 50\n' +
       '• Fate — luck jackpots on taps\n' +
       '• Echo — always-on tap multi (up to 3.00×)\n' +
       '• Rush — higher max daily taps (up to 3,000)\n' +
       '• Shadow — daily claim without tapping\n\n' +
-      'Level up in Backpack → NFT ($G2U after launch). Full boards + level-up prices: ' +
-      'Menu → Game Guide → Gift2u Elves NFTs.',
+      'Level up in Backpack → NFT ($G2U):\n' +
+      '• Fate/Echo/Rush/Shadow (all rarities): L2 75k · L3 150k · L4 225k · L5 300k\n' +
+      '• Locksmith: L2 250k · L3 750k · L4 1.5M · L5 2.5M\n' +
+      'Durability (Echo/Fate/Rush/Shadow): 1% / 2,000 mining shards · reload 50 $G2U per 1%.\n\n' +
+      'Full boards + prices: Menu → Game Guide → Gift2u Elves NFTs.',
   },
   mystery_gift: {
     title: 'Mystery Gift',
@@ -126,7 +133,7 @@ export const HELP_TIPS = {
       'Echo, Fate, Rush, and Shadow start at 100% durability when owned in wallet/backpack. Attributes apply automatically (highest of each kind) — no equip step.\n\n' +
       'Drains 1% per 2,000 mining shards. At 0% the perk is fully off.\n\n' +
       'Reload with $G2U in Wallet / Backpack → NFT (50 G2U per 1%).\n\n' +
-      'After launch, premium boosts are also bought with $G2U.',
+      'Premium boosts are bought with $G2U. Shard shop (Frenzy, Battery, refill) stays on G2Ushards.',
   },
   weekly_badges: {
     title: 'Weekly badges',
