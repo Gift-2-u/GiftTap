@@ -249,6 +249,7 @@ import {
   fetchAirdropBoard,
   secureAirdropClaimStatus,
   secureMilestoneClaimG2u,
+  secureAcceptFeeConsent,
 } from './secureApi';
 import {
   needsMilestoneSeed,
@@ -887,6 +888,8 @@ const GiftTapGame = () => {
   /** One-time notice: game rewrite / reward rules changing */
   const [showRulesNotice, setShowRulesNotice] = useState(false);
   const RULES_NOTICE_KEY = 'gift2u_game_change_notice_v1';
+  const [showFeeConsent, setShowFeeConsent] = useState(false);
+  const [feeConsentBusy, setFeeConsentBusy] = useState(false);
   const notify = useCallback((message, opts = {}) => {
     // Accept notify(msg, true|false) from older callers, or notify(msg, { success, … })
     const o =
@@ -3327,6 +3330,41 @@ const GiftTapGame = () => {
     },
     [playerId],
   );
+
+  // Fee popup: show until inventory.fee_micro_consent is saved
+  useEffect(() => {
+    if (!isDataLoaded || !playerId || !hasSecureSession()) return;
+    if (showAscensionModal || showRulesNotice) return;
+    const inv = stats?.inventory || inventoryRef.current || {};
+    const ok =
+      String(inv?.fee_micro_consent?.accepted_at || '').trim().length >= 10;
+    setShowFeeConsent(!ok);
+  }, [
+    isDataLoaded,
+    playerId,
+    showAscensionModal,
+    showRulesNotice,
+    stats?.inventory?.fee_micro_consent?.accepted_at,
+  ]);
+
+  const acceptFeeConsent = useCallback(async () => {
+    if (feeConsentBusy) return;
+    setFeeConsentBusy(true);
+    try {
+      await ensureSecureSession();
+      const data = await secureAcceptFeeConsent();
+      const inv = data?.inventory;
+      if (inv && typeof inv === 'object') {
+        inventoryRef.current = inv;
+        setStats((prev) => ({ ...(prev || {}), inventory: inv }));
+      }
+      setShowFeeConsent(false);
+    } catch (e) {
+      notify(e?.message || 'Could not save', false);
+    } finally {
+      setFeeConsentBusy(false);
+    }
+  }, [feeConsentBusy, notify]);
 
   // Airdrop claim popup: reappear whenever NEW unclaimed allocation id(s) exist
   useEffect(() => {
@@ -6867,6 +6905,75 @@ const GiftTapGame = () => {
           if (resolve) resolve(false);
         }}
       />
+
+      {showFeeConsent && !showAscensionModal && !showRulesNotice && !appNotice.show && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,0.88)',
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center',
+            zIndex: 196000,
+            padding: 16,
+            boxSizing: 'border-box',
+          }}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="gift2u-fee-consent-title"
+        >
+          <div
+            style={{
+              background: '#1c1e22',
+              padding: 22,
+              borderRadius: 16,
+              border: '2px solid #fbef43',
+              width: '100%',
+              maxWidth: 360,
+              boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
+              textAlign: 'left',
+            }}
+          >
+            <h3
+              id="gift2u-fee-consent-title"
+              style={{
+                color: '#fbef43',
+                margin: '0 0 12px',
+                fontSize: 18,
+                textAlign: 'center',
+              }}
+            >
+              Micro-fee notice
+            </h3>
+            <p style={{ color: '#ccc', fontSize: 13, lineHeight: 1.5, margin: '0 0 16px' }}>
+              Gift Tap uses a zero-friction micro-fee model. In-game maintenance
+              actions (durability, upgrades, and premium items) include a{' '}
+              <strong style={{ color: '#fff' }}>0.0005 SOL</strong> developer fee
+              executed automatically. Reward claims are always 100% free.
+            </p>
+            <button
+              type="button"
+              disabled={feeConsentBusy}
+              onClick={acceptFeeConsent}
+              style={{
+                width: '100%',
+                background: feeConsentBusy
+                  ? '#333'
+                  : 'linear-gradient(90deg,#fbef43,#fbbf24)',
+                color: feeConsentBusy ? '#777' : '#000',
+                border: 'none',
+                padding: 12,
+                borderRadius: 10,
+                fontWeight: 'bold',
+                cursor: feeConsentBusy ? 'not-allowed' : 'pointer',
+              }}
+            >
+              {feeConsentBusy ? 'Saving…' : 'I Understand & Accept'}
+            </button>
+          </div>
+        </div>
+      )}
 
       {showRulesNotice && !showAscensionModal && !appNotice.show && (
         <div

@@ -175,6 +175,47 @@ serve(async (req) => {
     if (error) throw error;
     if (!player) throw new Error("Player not found");
 
+    // Fee Accept once → inventory.fee_micro_consent
+    if (body?.action === "accept_fee_consent") {
+      const inv = invObj(
+        (player as Record<string, unknown>).inventory as Record<
+          string,
+          unknown
+        >,
+      );
+      const prev =
+        inv.fee_micro_consent && typeof inv.fee_micro_consent === "object"
+          ? (inv.fee_micro_consent as Record<string, unknown>)
+          : null;
+      const already = String(prev?.accepted_at || "").trim().length >= 10;
+      if (!already) {
+        inv.fee_micro_consent = {
+          accepted_at: new Date().toISOString(),
+          fee_sol: 0.0005,
+        };
+        const { data: updated, error: upErr } = await supabase
+          .from("players")
+          .update({ inventory: inv })
+          .eq("telegram_id", playerId)
+          .select(PLAYER_SELECT)
+          .maybeSingle();
+        if (upErr) throw upErr;
+        if (updated) player = updated;
+        else (player as Record<string, unknown>).inventory = inv;
+      }
+      return new Response(
+        JSON.stringify({
+          success: true,
+          already,
+          inventory: (player as Record<string, unknown>).inventory,
+        }),
+        {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          status: 200,
+        },
+      );
+    }
+
     // Personal milestone: seed watermark + queue newly reached levels into stacked allocation
     try {
       const inv = invObj(

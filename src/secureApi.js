@@ -87,6 +87,11 @@ export async function secureSyncChainBalances() {
   });
 }
 
+/** Fee consent Accept → inventory.fee_micro_consent */
+export async function secureAcceptFeeConsent() {
+  return callSecureFunction('player-state', { action: 'accept_fee_consent' });
+}
+
 export function hasSecureSession() {
   return !!getSessionToken() && !!getPlayerId();
 }
