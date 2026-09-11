@@ -710,7 +710,7 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, bumpEner
       type: 'Power',
       rarity: 'Epic',
       boost: '2× shards per energy for 30 seconds',
-      duration: '30 Seconds · 1× / UTC day',
+      duration: '30 Seconds · activate 1× / UTC day',
       price: 500 / G2U_PER_SOL,
       priceG2uFixed: 500,
       currency: 'SOL',
@@ -725,7 +725,7 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, bumpEner
       type: 'Power',
       rarity: 'Epic',
       boost: '+1,000 max daily taps (not battery) until UTC midnight',
-      duration: 'Until UTC midnight · 1× / UTC day',
+      duration: 'Until UTC midnight · activate 1× / UTC day',
       price: 500 / G2U_PER_SOL,
       priceG2uFixed: 500,
       currency: 'SOL',
@@ -2141,7 +2141,7 @@ Daily claim active · Pack → NFT to see it.`,
         loading: false,
         message: blockRefill
           ? '❌ Battery Refill already used today (UTC). Use Extra Battery Refill from Premium, or wait until midnight UTC.'
-          : `❌ You have already used a ${item.name} today. Wait until UTC midnight.`,
+          : `❌ ${item.name} is already active today. Wait until UTC midnight.`,
         success: false,
       });
       setTimeout(() => setTxStatus((prev) => ({ ...prev, show: false })), 3000);
@@ -3442,7 +3442,8 @@ Daily claim active · Pack → NFT to see it.`,
                 ) : (
                   backpackItems.map((item) => {
                     // Free Battery Refill: 1×/day. Extra Battery Refill: never day-locked.
-                    const isUsedToday =
+                    // Buy unlimited; activate once per UTC day (server + UI).
+                    const isActiveToday =
                       item.id === 'refill_extra'
                         ? false
                         : item.id === 'refill'
@@ -3470,27 +3471,27 @@ Daily claim active · Pack → NFT to see it.`,
                           <span style={{ color: '#888', fontSize: 11, fontWeight: 'bold' }}>
                             Owned: {localInventory[item.id]}
                           </span>
-                          {isUsedToday && (
-                            <div style={{ color: '#ff4444', fontSize: 10, marginTop: 4 }}>
-                              Used today (UTC)
+                          {isActiveToday && (
+                            <div style={{ color: '#fbef43', fontSize: 10, marginTop: 4 }}>
+                              Active today (UTC)
                             </div>
                           )}
                         </div>
                         <button
                           type="button"
-                          disabled={isUsedToday}
+                          disabled={isActiveToday}
                           style={{
-                            background: isUsedToday ? '#444' : '#4ade80',
-                            color: isUsedToday ? '#888' : '#000',
-                            border: 'none',
+                            background: isActiveToday ? '#333' : '#4ade80',
+                            color: isActiveToday ? '#fbef43' : '#000',
+                            border: isActiveToday ? '1px solid #555' : 'none',
                             padding: '10px 16px',
                             borderRadius: 10,
                             fontWeight: 'bold',
-                            cursor: isUsedToday ? 'not-allowed' : 'pointer',
+                            cursor: isActiveToday ? 'not-allowed' : 'pointer',
                           }}
                           onClick={() => handleUseItem(item)}
                         >
-                          {isUsedToday ? 'LIMIT' : 'USE'}
+                          {isActiveToday ? 'ACTIVE' : 'USE'}
                         </button>
                       </div>
                     );

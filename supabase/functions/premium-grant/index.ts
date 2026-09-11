@@ -125,35 +125,7 @@ function g2uPremiumEnabled(): boolean {
   return g2uShopEnabled();
 }
 
-const ONCE_PER_UTC_DAY = new Set(["frenzy_60", "daily_plus_1000"]);
-
-function utcToday(): string {
-  return new Date().toISOString().slice(0, 10);
-}
-
-/** Block buy if already bought/used this UTC day, or still holding an unused charge. */
-function assertOncePerDayOk(
-  itemId: string,
-  inv: Record<string, unknown>,
-  dailyUsageCol: unknown,
-) {
-  if (!ONCE_PER_UTC_DAY.has(itemId)) return;
-  const today = utcToday();
-  let usage: Record<string, string> = {};
-  if (dailyUsageCol && typeof dailyUsageCol === "object") {
-    usage = { ...(dailyUsageCol as Record<string, string>) };
-  }
-  if (inv.daily_usage && typeof inv.daily_usage === "object") {
-    usage = { ...usage, ...(inv.daily_usage as Record<string, string>) };
-  }
-  if (usage[itemId] === today || usage[`${itemId}_bought`] === today) {
-    throw new Error(`Already bought today (UTC). Wait until midnight.`);
-  }
-  if ((Number(inv[itemId]) || 0) >= 1) {
-    throw new Error(`Use your boost from Backpack first (1 charge max).`);
-  }
-}
-
+/** Buy: unlimited. Activate: once per UTC day (backpack-activate + UI "Active"). */
 function bumpWeeklyBoost(inv: Record<string, unknown>) {
   const weekId = utcIsoWeekId();
   const wq =
@@ -276,23 +248,14 @@ serve(async (req) => {
       if (!row) throw new Error("Player not found");
 
       const inv = invObj(row.inventory);
-      assertOncePerDayOk(itemId, inv, row.daily_usage);
       inv[itemId] = (Number(inv[itemId]) || 0) + 1;
       if (durationDays != null) {
         pushPremiumDuration(inv, itemId, durationDays);
       }
-      let daily_usage =
+      const daily_usage =
         row.daily_usage && typeof row.daily_usage === "object"
           ? { ...(row.daily_usage as Record<string, string>) }
           : {};
-      // Stamp buy day so a second purchase today is blocked even before activate
-      if (ONCE_PER_UTC_DAY.has(itemId)) {
-        daily_usage[`${itemId}_bought`] = utcToday();
-        inv.daily_usage = {
-          ...((inv.daily_usage as Record<string, string>) || {}),
-          [`${itemId}_bought`]: utcToday(),
-        };
-      }
       bumpWeeklyBoost(inv);
 
       const purchaseLog = appendPurchaseLog(row.premium_purchase_log, {
@@ -407,22 +370,14 @@ serve(async (req) => {
     if (!row) throw new Error("Player not found");
 
     const inv = invObj(row.inventory);
-    assertOncePerDayOk(itemId, inv, row.daily_usage);
     inv[itemId] = (Number(inv[itemId]) || 0) + 1;
     if (durationDays != null) {
       pushPremiumDuration(inv, itemId, durationDays);
     }
-    let daily_usage =
+    const daily_usage =
       row.daily_usage && typeof row.daily_usage === "object"
         ? { ...(row.daily_usage as Record<string, string>) }
         : {};
-    if (ONCE_PER_UTC_DAY.has(itemId)) {
-      daily_usage[`${itemId}_bought`] = utcToday();
-      inv.daily_usage = {
-        ...((inv.daily_usage as Record<string, string>) || {}),
-        [`${itemId}_bought`]: utcToday(),
-      };
-    }
     bumpWeeklyBoost(inv);
 
     const purchaseLog = appendPurchaseLog(row.premium_purchase_log, {
