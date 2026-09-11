@@ -174,9 +174,9 @@ serve(async (req) => {
     if (itemId === "frenzy" || itemId === "frenzy_60") {
       // Shards ×2 — do NOT touch last_energy / energy_at.
       // Stamp start + duration so commit-taps credits the full window.
-      // Free frenzy: 30s until FREE_BOOST_V2_AT, then 15s. Premium frenzy_60 = 60s.
+      // Free frenzy: 30s until FREE_BOOST_V2_AT, then 15s. Premium frenzy_60 = 30s.
       const durationMs =
-        itemId === "frenzy_60" ? 60_000 : freeFrenzyDurationMs(now);
+        itemId === "frenzy_60" ? 30_000 : freeFrenzyDurationMs(now);
       const startedAt = new Date(now).toISOString();
       updates.frenzy_expires = new Date(now + durationMs).toISOString();
       inv.frenzy_started_at = startedAt;

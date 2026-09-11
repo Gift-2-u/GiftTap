@@ -341,7 +341,7 @@ serve(async (req) => {
     // Frenzy taps credited by client count (taps during active buff), not "frenzy still
     // on at flush time" — otherwise a delayed flush after the buff ends pays 1× for
     // taps that were actually during Frenzy. Window + grace keep it honest.
-    // Duration: free 15s/30s or frenzy_60 = 60s (from inv.frenzy_duration_ms).
+    // Duration: free 15s/30s or premium frenzy_60 = 30s (from inv.frenzy_duration_ms).
     // No hard tap count lock — x2 premium + Frenzy ×2 can legitimately exceed 300 taps.
     const claimedFrenzy = Math.max(
       0,
