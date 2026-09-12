@@ -43,6 +43,7 @@ import '@solana/wallet-adapter-react-ui/styles.css';
 
 // Lazy-load game so homepage can load without pulling the full game first
 const TapGame = lazy(() => import('./GiftTap'));
+const Walk2uApp = lazy(() => import('../walk2u/Walk2uApp'));
 
 const [vaultAuthority] = PublicKey.findProgramAddressSync(
   [Buffer.from("vault")],
@@ -106,6 +107,14 @@ export default function App() {
                     </Suspense>
                   }
                 />
+                <Route
+                  path="/walk2u"
+                  element={
+                    <Suspense fallback={<div className="min-h-screen bg-black text-white flex items-center justify-center">Loading Walk2u…</div>}>
+                      <Walk2uApp />
+                    </Suspense>
+                  }
+                />
                 {/* On-chain G2U staking (Solana Playground program) */}
                 <Route path="/stake" element={<StakingPage />} />
                 {/* Off-chain G2U credit vault — GiftLocksmith NFT holders */}
@@ -131,7 +140,9 @@ export default function App() {
 
 const SiteFooter = () => {
   const location = useLocation();
-  if (location.pathname.startsWith('/play')) return null;
+  if (location.pathname.startsWith('/play') || location.pathname.startsWith('/walk2u')) {
+    return null;
+  }
   return (
     <footer className="w-full border-t border-white/10 bg-slate-950/80 mt-auto">
       <div className="max-w-4xl mx-auto px-4 py-6 flex flex-col sm:flex-row flex-wrap items-center justify-center gap-x-6 gap-y-2 text-sm text-slate-400">
@@ -152,6 +163,9 @@ const SiteFooter = () => {
         </Link>
         <Link to="/play" className="hover:text-yellow-300 font-semibold">
           Play Gift Tap
+        </Link>
+        <Link to="/walk2u" className="hover:text-cyan-300 font-semibold">
+          Walk2u
         </Link>
         <a
           href="https://gift2u.fun"
@@ -193,8 +207,8 @@ const Navigation = () => {
   const [walletHubOpen, setWalletHubOpen] = useState(false);
   const gameLoggedIn = typeof window !== 'undefined' && isLoggedIn() && !!getPlayerId();
 
-  // Full-screen game: hide site chrome only on /play
-  if (location.pathname.startsWith('/play')) {
+  // Full-screen apps: hide site chrome on Gift Tap + Walk2u
+  if (location.pathname.startsWith('/play') || location.pathname.startsWith('/walk2u')) {
     return null;
   }
 
@@ -230,6 +244,9 @@ const Navigation = () => {
             <Link to="/play" className="hover:text-purple-400 font-bold text-yellow-400 whitespace-nowrap">
               <span className="sm:hidden">Play</span>
               <span className="hidden sm:inline">Play Game</span>
+            </Link>
+            <Link to="/walk2u" className="hover:text-cyan-300 font-bold text-cyan-400 whitespace-nowrap">
+              Walk2u
             </Link>
             <button
               type="button"

@@ -838,7 +838,7 @@ const GiftTapGame = () => {
   const [currentPage, setCurrentPage] = useState('home'); // 'home', 'shop', 'tasks', 'friends', 'leaderboard'
   /** Tasks tab: week | lifetime — set by HUD “Weekly quest” chip */
   const [tasksTab, setTasksTab] = useState('week');
-  /** When opening Shop from daily-limit CTA → Free upgrades (battery) */
+  /** When opening Shop from daily-limit CTA → Premium */
   const [shopFocusTab, setShopFocusTab] = useState(null);
   const [activeTab, setActiveTab] = useState('home'); // Use this for page switching
   const [isReceiveOpen, setIsReceiveOpen] = useState(false);
@@ -887,6 +887,9 @@ const GiftTapGame = () => {
   /** One-time notice: game rewrite / reward rules changing */
   const [showRulesNotice, setShowRulesNotice] = useState(false);
   const RULES_NOTICE_KEY = 'gift2u_game_change_notice_v1';
+  /** One-time: boosts use in-game $G2U */
+  const [showBoostTokenNotice, setShowBoostTokenNotice] = useState(false);
+  const BOOST_TOKEN_NOTICE_KEY = 'gift2u_boost_g2u_notice_v1';
   const [showFeeConsent, setShowFeeConsent] = useState(false);
   const [feeConsentBusy, setFeeConsentBusy] = useState(false);
   const notify = useCallback((message, opts = {}) => {
@@ -3330,10 +3333,36 @@ const GiftTapGame = () => {
     [playerId],
   );
 
+  // Boosts use $G2U — once per account until Got it
+  useEffect(() => {
+    if (!isDataLoaded || !playerId || showAscensionModal || showRulesNotice) {
+      return undefined;
+    }
+    const key = `${BOOST_TOKEN_NOTICE_KEY}_${playerId}`;
+    try {
+      if (localStorage.getItem(key) === '1') return undefined;
+    } catch {
+      /* ignore */
+    }
+    const t = setTimeout(() => {
+      if (!showAscensionModal && !showRulesNotice) setShowBoostTokenNotice(true);
+    }, 1400);
+    return () => clearTimeout(t);
+  }, [isDataLoaded, playerId, showAscensionModal, showRulesNotice]);
+
+  const dismissBoostTokenNotice = useCallback(() => {
+    try {
+      localStorage.setItem(`${BOOST_TOKEN_NOTICE_KEY}_${playerId}`, '1');
+    } catch {
+      /* ignore */
+    }
+    setShowBoostTokenNotice(false);
+  }, [playerId]);
+
   // Fee popup: show until inventory.fee_micro_consent is saved
   useEffect(() => {
     if (!isDataLoaded || !playerId || !hasSecureSession()) return;
-    if (showAscensionModal || showRulesNotice) return;
+    if (showAscensionModal || showRulesNotice || showBoostTokenNotice) return;
     const inv = stats?.inventory || inventoryRef.current || {};
     const ok =
       String(inv?.fee_micro_consent?.accepted_at || '').trim().length >= 10;
@@ -3343,6 +3372,7 @@ const GiftTapGame = () => {
     playerId,
     showAscensionModal,
     showRulesNotice,
+    showBoostTokenNotice,
     stats?.inventory?.fee_micro_consent?.accepted_at,
   ]);
 
@@ -3394,7 +3424,7 @@ const GiftTapGame = () => {
 
   useEffect(() => {
     if (!isDataLoaded || !isModalOpen || !playerId) return;
-    if (showAscensionModal || showRulesNotice) return;
+    if (showAscensionModal || showRulesNotice || showBoostTokenNotice) return;
     void checkAirdropTip();
   }, [
     isDataLoaded,
@@ -3402,6 +3432,7 @@ const GiftTapGame = () => {
     playerId,
     showAscensionModal,
     showRulesNotice,
+    showBoostTokenNotice,
     checkAirdropTip,
   ]);
 
@@ -4156,17 +4187,17 @@ const GiftTapGame = () => {
                   show: true,
                   message:
                     "Daily limit reached for this UTC day.\n\n" +
-                    "Want to keep playing? Expanded Battery adds +500 max taps until UTC midnight (Shop · Free).",
+                    "Want to keep playing? Watch a Free Energy ad, or go to Premium for boosts.",
                   loading: false,
                   success: false,
                   title: "Daily limit reached",
                   confirm: {
-                    confirmLabel: "Expanded Battery",
+                    confirmLabel: "Open Premium",
                     cancelLabel: "OK",
                     confirmDanger: false,
                     resolve: (ok) => {
                       if (ok) {
-                        setShopFocusTab("upgrades");
+                        setShopFocusTab("market");
                         setCurrentPage("shop");
                       }
                     },
@@ -4725,17 +4756,17 @@ const GiftTapGame = () => {
           show: true,
           message:
             "Daily limit reached for this UTC day.\n\n" +
-            "Want to keep playing? Expanded Battery adds +500 max taps until UTC midnight (Shop · Free).",
+            "Want to keep playing? Watch a Free Energy ad, or go to Premium for boosts.",
           loading: false,
           success: false,
           title: "Daily limit reached",
           confirm: {
-            confirmLabel: "Expanded Battery",
+            confirmLabel: "Open Premium",
             cancelLabel: "OK",
             confirmDanger: false,
             resolve: (ok) => {
               if (ok) {
-                setShopFocusTab("upgrades");
+                setShopFocusTab("market");
                 setCurrentPage("shop");
               }
             },
@@ -4814,17 +4845,17 @@ const GiftTapGame = () => {
             show: true,
             message:
               "Daily limit reached for this UTC day.\n\n" +
-              "Want to keep playing? Expanded Battery adds +500 max taps until UTC midnight (Shop · Free).",
+              "Want to keep playing? Watch a Free Energy ad, or go to Premium for boosts.",
             loading: false,
             success: false,
             title: "Daily limit reached",
             confirm: {
-              confirmLabel: "Expanded Battery",
+              confirmLabel: "Open Premium",
               cancelLabel: "OK",
               confirmDanger: false,
               resolve: (ok) => {
                 if (ok) {
-                  setShopFocusTab("upgrades");
+                  setShopFocusTab("market");
                   setCurrentPage("shop");
                 }
               },
@@ -6784,7 +6815,99 @@ const GiftTapGame = () => {
         }}
       />
 
-      {showFeeConsent && !showAscensionModal && !showRulesNotice && !appNotice.show && (
+      {showBoostTokenNotice &&
+        !showAscensionModal &&
+        !showRulesNotice &&
+        !appNotice.show && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,0.88)',
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center',
+            zIndex: 195000,
+            padding: 16,
+            boxSizing: 'border-box',
+          }}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="gift2u-boost-token-title"
+        >
+          <div
+            style={{
+              background: '#1c1e22',
+              padding: 22,
+              borderRadius: 16,
+              border: '2px solid #fbef43',
+              width: '100%',
+              maxWidth: 360,
+              boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
+              textAlign: 'left',
+            }}
+          >
+            <h3
+              id="gift2u-boost-token-title"
+              style={{
+                color: '#fbef43',
+                margin: '0 0 10px',
+                fontSize: 18,
+                textAlign: 'center',
+              }}
+            >
+              Boosts use $G2U
+            </h3>
+            <p style={{ color: '#ccc', fontSize: 13, lineHeight: 1.45, margin: '0 0 12px' }}>
+              Gift Tap now uses the <strong style={{ color: '#fff' }}>in-game token ($G2U)</strong>{' '}
+              for boosts.
+            </p>
+            <ul
+              style={{
+                color: '#aaa',
+                fontSize: 12,
+                lineHeight: 1.5,
+                margin: '0 0 16px',
+                paddingLeft: 18,
+              }}
+            >
+              <li style={{ marginBottom: 6 }}>
+                <strong style={{ color: '#fff' }}>Free Energy</strong> — watch ads on the tap
+                screen.
+              </li>
+              <li style={{ marginBottom: 6 }}>
+                <strong style={{ color: '#fff' }}>Premium boosts</strong> — buy with $G2U in Shop.
+              </li>
+              <li>
+                <strong style={{ color: '#fff' }}>Backpack</strong> — activate items you already
+                own.
+              </li>
+            </ul>
+            <button
+              type="button"
+              onClick={dismissBoostTokenNotice}
+              style={{
+                width: '100%',
+                background: 'linear-gradient(90deg,#fbef43,#fbbf24)',
+                color: '#000',
+                border: 'none',
+                padding: 12,
+                borderRadius: 10,
+                fontWeight: 'bold',
+                cursor: 'pointer',
+              }}
+            >
+              Got it
+            </button>
+          </div>
+        </div>
+      )}
+
+      {showFeeConsent &&
+        !showAscensionModal &&
+        !showRulesNotice &&
+        !showBoostTokenNotice &&
+        !appNotice.show && (
         <div
           style={{
             position: 'fixed',
@@ -7137,6 +7260,7 @@ const GiftTapGame = () => {
         milestoneTipInfo &&
         !showAirdropTip &&
         !showRulesNotice &&
+        !showBoostTokenNotice &&
         !showAscensionModal &&
         !appNotice.show &&
         !showMilestoneModal && (
@@ -7234,7 +7358,11 @@ const GiftTapGame = () => {
         </div>
       )}
 
-      {showAirdropTip && !showRulesNotice && !showAscensionModal && !appNotice.show && (
+      {showAirdropTip &&
+        !showRulesNotice &&
+        !showBoostTokenNotice &&
+        !showAscensionModal &&
+        !appNotice.show && (
         <div
           style={{
             position: 'fixed',

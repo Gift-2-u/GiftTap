@@ -455,6 +455,19 @@ export function freeBoostV2Active(nowMs: number = Date.now()): boolean {
   return nowMs >= FREE_BOOST_V2_AT_MS;
 }
 
+/**
+ * Free shard shop (boosts + badge buys) ends at this UTC instant.
+ * After: Premium / NFT / Backpack hub. Free Energy via ads.
+ * Backpack leftovers still activate. Weekly badges + Mystery Gift stay.
+ */
+export const FREE_BOOST_SHOP_REMOVED_AT_MS = Date.parse(
+  "2026-09-13T00:00:00.000Z",
+);
+
+export function freeBoostShopOpen(nowMs: number = Date.now()): boolean {
+  return nowMs < FREE_BOOST_SHOP_REMOVED_AT_MS;
+}
+
 /** Free Frenzy duration ms (UTC-day free path / shard shop frenzy). */
 export function freeFrenzyDurationMs(nowMs: number = Date.now()): number {
   return freeBoostV2Active(nowMs) ? 15_000 : 30_000;
@@ -465,10 +478,12 @@ export function batteryDailyTapBonus(nowMs: number = Date.now()): number {
   return freeBoostV2Active(nowMs) ? 250 : 500;
 }
 
-/** Shard shop catalog (server source of truth for costs) */
+/** Shard shop catalog (server source of truth for costs). Empty after Free shop cutover. */
 export function shardShopCatalog(
   nowMs: number = Date.now(),
 ): Record<string, { name: string; cost: number }> {
+  if (!freeBoostShopOpen(nowMs)) return {};
+
   const v2 = freeBoostV2Active(nowMs);
   return {
     frenzy: {

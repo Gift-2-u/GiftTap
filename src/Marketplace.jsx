@@ -250,13 +250,13 @@ function nftMintBlockedByPlayLevel(playLevel, rarityKey, kindKey = '') {
 
 const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, bumpEnergyEpoch, flushPendingTaps, player, tgUser, playerWallet, decryptedPhrase, initialTab, onInitialTabConsumed, maxUnlockedLevel = 4, lifetimeTaps = null, onChainBalanceChange = null }) => {
   const user = player || tgUser;
-  // Shop hub first — show ALL options (Free / Premium / NFT / Backpack) before any list
+  // Shop hub: Premium / NFT / Backpack
   const [activeTab, setActiveTab] = useState(initialTab || 'home');
 
-  // Deep-link from daily-limit CTA (Expanded Battery under Free / upgrades)
+  // Deep-link from daily-limit CTA → Premium
   useEffect(() => {
     if (!initialTab) return;
-    setActiveTab(initialTab);
+    setActiveTab(initialTab === 'upgrades' ? 'market' : initialTab);
     if (typeof onInitialTabConsumed === 'function') onInitialTabConsumed();
   }, [initialTab, onInitialTabConsumed]);
   const [marketFilter, setMarketFilter] = useState('All');
@@ -507,82 +507,9 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, bumpEner
   };
 
   // --- ITEM DEFINITIONS (icon + gradient for ShopItemIcon) ---
-  const shardListings = [
-    {
-      id: 'frenzy',
-      // FREE_BOOST_V2_AT = 2026-09-11 UTC — until then show 30s; after 15s
-      name:
-        Date.now() >= Date.parse('2026-09-11T00:00:00.000Z')
-          ? '15-Second Frenzy'
-          : '30-Second Frenzy',
-      desc: '2x Payout per energy',
-      duration:
-        Date.now() >= Date.parse('2026-09-11T00:00:00.000Z')
-          ? '15 Seconds'
-          : '30 Seconds',
-      cost: 500,
-      iconFrom: '#ff6b35',
-      iconTo: '#7c1d12',
-      iconRing: 'rgba(255,107,53,0.45)',
-      iconGlow: 'rgba(255,107,53,0.25)',
-    },
-    {
-      id: 'battery',
-      name:
-        Date.now() >= Date.parse('2026-09-11T00:00:00.000Z')
-          ? '+250 Daily Energy '
-          : '+500 Daily Energy ',
-      desc:
-        Date.now() >= Date.parse('2026-09-11T00:00:00.000Z')
-          ? 'Update your Max Daily limit by 250'
-          : 'Update your Max Daily limit by 500',
-      duration: 'Until UTC midnight',
-      cost:
-        Date.now() >= Date.parse('2026-09-11T00:00:00.000Z') ? 200 : 400,
-      iconFrom: '#60a5fa',
-      iconTo: '#1e3a8a',
-      iconRing: 'rgba(96,165,250,0.45)',
-      iconGlow: 'rgba(59,130,246,0.25)',
-    },
-    // Heavy Hands removed from shop (replace later). Leftover inventory charges stay inert.
-    {
-      id: 'refill',
-      name: 'Battery Refill',
-      desc: 'Fills 500 to your Battery · 1× free / UTC day after launch',
-      duration: 'Instant',
-      cost: 300,
-      iconFrom: '#4ade80',
-      iconTo: '#14532d',
-      iconRing: 'rgba(74,222,128,0.4)',
-      iconGlow: 'rgba(74,222,128,0.2)',
-    },
-    {
-      id: 'badge_bronze',
-      name: BADGE_SHARD_SHOP.badge_bronze.name,
-      desc: 'For Mystery Gift · 1/day · 3/week',
-      duration: 'Keep in Backpack',
-      cost: BADGE_SHARD_SHOP.badge_bronze.cost,
-      isBadgeShop: true,
-      iconUrl: BADGE_TIERS.bronze.image,
-      iconFrom: '#cd7f32',
-      iconTo: '#5c3a1a',
-      iconRing: 'rgba(205,127,50,0.5)',
-      iconGlow: 'rgba(205,127,50,0.25)',
-    },
-    {
-      id: 'badge_silver',
-      name: BADGE_SHARD_SHOP.badge_silver.name,
-      desc: 'For Mystery Gift · 1/day · 3/week',
-      duration: 'Keep in Backpack',
-      cost: BADGE_SHARD_SHOP.badge_silver.cost,
-      isBadgeShop: true,
-      iconUrl: BADGE_TIERS.silver.image,
-      iconFrom: '#c0c0c0',
-      iconTo: '#4a4a4a',
-      iconRing: 'rgba(192,192,192,0.5)',
-      iconGlow: 'rgba(192,192,192,0.25)',
-    },
-  ];
+  // Free shard shop removed — Premium / NFT / Backpack only. Ads for Free Energy.
+  // Leftover backpack charges still activate. Mystery / weekly badges stay elsewhere.
+  const shardListings = [];
 
   /** After launch (or VITE_G2U_PREMIUM=true): Premium priced in $G2U (on-chain to master). */
   const G2U_PREMIUM =
@@ -601,8 +528,8 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, bumpEner
       rarity: 'Epic',
       boost: 'Auto-tap max limits',
       duration: '3 Days',
-      price: 7000 / G2U_PER_SOL,
-      priceG2uFixed: 7000,
+      price: 14000 / G2U_PER_SOL,
+      priceG2uFixed: 14000,
       currency: 'SOL',
       iconFrom: '#a78bfa',
       iconTo: '#4c1d95',
@@ -696,8 +623,8 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, bumpEner
       rarity: 'Rare',
       boost: 'Fills 500 to your Battery · use anytime (no free-day lock)',
       duration: 'Instant',
-      price: 500 / G2U_PER_SOL,
-      priceG2uFixed: 500,
+      price: 1000 / G2U_PER_SOL,
+      priceG2uFixed: 1000,
       currency: 'SOL',
       iconFrom: '#4ade80',
       iconTo: '#14532d',
@@ -711,8 +638,8 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, bumpEner
       rarity: 'Epic',
       boost: '2× shards per energy for 30 seconds',
       duration: '30 Seconds · activate 1× / UTC day',
-      price: 500 / G2U_PER_SOL,
-      priceG2uFixed: 500,
+      price: 1000 / G2U_PER_SOL,
+      priceG2uFixed: 1000,
       currency: 'SOL',
       iconFrom: '#ff6b35',
       iconTo: '#7c1d12',
@@ -726,8 +653,8 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, bumpEner
       rarity: 'Epic',
       boost: '+1,000 max daily taps (not battery) until UTC midnight',
       duration: 'Until UTC midnight · activate 1× / UTC day',
-      price: 500 / G2U_PER_SOL,
-      priceG2uFixed: 500,
+      price: 1000 / G2U_PER_SOL,
+      priceG2uFixed: 1000,
       currency: 'SOL',
       iconFrom: '#60a5fa',
       iconTo: '#1e3a8a',
@@ -2782,25 +2709,20 @@ Daily claim active · Pack → NFT to see it.`,
 
       <div style={{ flex: 1, overflowY: 'auto' }}>
 
-        {/* --- HUB: Free / Premium / NFT / Backpack — same 2×2 squares as Premium --- */}
+        {/* --- HUB: Premium / NFT / Backpack on one row --- */}
         {activeTab === 'home' && (
           <>
             <p style={{ color: '#888', fontSize: 12, margin: '0 0 12px', textAlign: 'center', lineHeight: 1.45 }}>
-              Pick where you want to go — free boosts, SOL premium, NFTs, or your backpack.
+              Premium boosts, NFTs, or your backpack. Free Energy is on the tap screen (ads).
             </p>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '10px' }}>
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(3, 1fr)',
+                gap: '10px',
+              }}
+            >
               {[
-                {
-                  id: 'upgrades',
-                  title: 'Boost',
-                  desc: 'Battery, frenzy, refill…',
-                  badge: 'G2Ushards',
-                  word: 'FREE',
-                  border: '#4ade80',
-                  titleColor: '#4ade80',
-                  iconFrom: '#4ade80',
-                  iconTo: '#14532d',
-                },
                 {
                   id: 'market',
                   title: 'Boost',
@@ -2942,8 +2864,8 @@ Daily claim active · Pack → NFT to see it.`,
           </>
         )}
        
-        {/* --- Free: SHARD SHOP (same square grid as Premium) --- */}
-        {activeTab === 'upgrades' && (
+        {/* --- Free shard shop removed --- */}
+        {false && activeTab === 'upgrades' && (
           <>
             <p style={{ color: '#666', fontSize: 11, margin: '0 0 12px', textAlign: 'center' }}>
               Free · pay with G2Ushards · then use items from Backpack

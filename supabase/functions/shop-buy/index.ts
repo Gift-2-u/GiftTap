@@ -12,6 +12,7 @@ import {
   BADGE_SHOP_DAY_CAP,
   BADGE_SHOP_WEEK_CAP,
   BADGE_SHOP_ITEM_IDS,
+  freeBoostShopOpen,
 } from "../_shared/economy.ts";
 
 const AD_DAILY_MAX = 10;
@@ -125,7 +126,13 @@ serve(async (req) => {
       });
     }
 
-    const catalog = shardShopCatalog(Date.now())[itemId];
+    const nowMs = Date.now();
+    if (!freeBoostShopOpen(nowMs)) {
+      throw new Error(
+        "Boosts use $G2U in Premium. Free Energy is via ads. Activate owned items in Backpack.",
+      );
+    }
+    const catalog = shardShopCatalog(nowMs)[itemId];
     if (!catalog) {
       throw new Error(
         "Unknown shard shop item (frenzy|battery|refill|badge_bronze|badge_silver)",

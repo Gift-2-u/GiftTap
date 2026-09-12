@@ -59,14 +59,14 @@ export const HELP_TIPS = {
     body:
       'Every tap spends Energy (usually 1).\n\n' +
       'Your Energy pool recharges over time (about 1 every 1.5 seconds, up to the pool max).\n\n' +
-      'Shop items can refill or expand Energy. Free Energy ads can raise daily capacity.',
+      'Premium ($G2U) boosts can refill or expand Energy. Free Energy ads raise daily capacity.',
   },
   daily_limit: {
     title: 'Daily Limit',
     body:
       'This is how many taps you can do today before the limit resets (UTC day).\n\n' +
-      'Base limit can be raised with ads, shop boosts, or other bonuses.\n\n' +
-      'When you hit the max, wait for reset or use a boost if you have one.',
+      'Base limit can be raised with Free Energy ads, Premium ($G2U) boosts, or other bonuses.\n\n' +
+      'When you hit the max, wait for reset, watch an ad, or use a Premium / backpack boost if you have one.',
   },
   free_energy: {
     title: 'Free Energy',
@@ -133,7 +133,7 @@ export const HELP_TIPS = {
       'Echo, Fate, Rush, and Shadow start at 100% durability when owned in wallet/backpack. Attributes apply automatically (highest of each kind) — no equip step.\n\n' +
       'Drains 1% per 2,000 mining shards. At 0% the perk is fully off.\n\n' +
       'Reload with $G2U in Wallet / Backpack → NFT (50 G2U per 1%).\n\n' +
-      'Premium boosts are bought with $G2U. Shard shop (Frenzy, Battery, refill) stays on G2Ushards.',
+      'Premium boosts are bought with $G2U. Free Energy capacity comes from ads on the tap screen.',
   },
   weekly_badges: {
     title: 'Weekly badges',

@@ -35,8 +35,8 @@ const PREMIUM: Record<
 > = {
   bot: {
     name: "Weekend Bot",
-    priceSol: 7000 / G2U_PER_SOL,
-    priceG2u: 7000,
+    priceSol: 14000 / G2U_PER_SOL,
+    priceG2u: 14000,
   },
   /** Duration prices live in premiumDuration.ts (1/3/7 day picker) */
   grinder: {
@@ -67,20 +67,20 @@ const PREMIUM: Record<
   /** Extra Battery Refill ($G2U) — separate stack from free Battery Refill; no day lock */
   refill_extra: {
     name: "Extra Battery Refill",
-    priceSol: 500 / G2U_PER_SOL,
-    priceG2u: 500,
+    priceSol: 1000 / G2U_PER_SOL,
+    priceG2u: 1000,
   },
-  /** Premium: 30s Frenzy — fixed 500 $G2U, 1× / UTC day (id frenzy_60 kept) */
+  /** Premium: 30s Frenzy — fixed 1000 $G2U, 1× / UTC day (id frenzy_60 kept) */
   frenzy_60: {
     name: "30-Second Frenzy",
-    priceSol: 500 / G2U_PER_SOL,
-    priceG2u: 500,
+    priceSol: 1000 / G2U_PER_SOL,
+    priceG2u: 1000,
   },
-  /** Premium: +1000 max daily taps until UTC midnight — fixed 500 $G2U, 1× / UTC day */
+  /** Premium: +1000 max daily taps until UTC midnight — fixed 1000 $G2U, 1× / UTC day */
   daily_plus_1000: {
     name: "+1000 Max Daily",
-    priceSol: 500 / G2U_PER_SOL,
-    priceG2u: 500,
+    priceSol: 1000 / G2U_PER_SOL,
+    priceG2u: 1000,
   },
   shard_badge: {
     name: "Star Badge",

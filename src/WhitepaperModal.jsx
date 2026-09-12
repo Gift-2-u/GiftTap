@@ -16,7 +16,7 @@ const WhitepaperModal = ({ isWhitepaperOpen, setIsWhitepaperOpen, onClose }) => 
     {
       id: 2,
       title: "2. Energy",
-      content: "Every tap costs 1 Energy from your pool.\n\n• Free daily Energy: 1,000 base (plus ads for more).\n• Energy Battery / recharge holds 500 Energy, which regenerates automatically at a rate of 1 Energy every 1.5 seconds.\n• Shop: You can recharge your battery or Max Daily with free or Premium boost."
+      content: "Every tap costs 1 Energy from your pool.\n\n• Free daily Energy: 1,000 base (plus Free Energy ads for more daily capacity).\n• Energy Battery / recharge holds 500 Energy, which regenerates automatically at a rate of 1 Energy every 1.5 seconds.\n• Shop: Premium ($G2U) boosts can expand Max Daily or refill."
     },
     {
       id: 3,
@@ -132,7 +132,7 @@ const WhitepaperModal = ({ isWhitepaperOpen, setIsWhitepaperOpen, onClose }) => 
     {
       id: 5,
       title: "5. Shop: Shards, Boosts & NFTs",
-      content: "Gift Shop has four areas:\n\n• Free (Shards) — 30-Second Frenzy (2× shards), Expanded Battery (+500 max daily taps until UTC midnight), Instant Refill (fills energy pool). Frenzy & Battery: once per UTC day. After token launch: Instant Refill also once per UTC day on the free path; extra refills via Premium ($G2U) using the same Instant Refill activate.\n• Premium (Boosts) — SOL / $G2U temporary boosts (bots, contracts, power multipliers). These are NOT NFTs.\n• NFTs — on-chain Wave 1 mints LIVE: Locksmith · Fate · Echo · Rush · Shadow. Permanent utility.\n• Backpack — activate temporary items; Elves live in your game wallet. Level up Elves in Backpack → NFT.\n\nThe core game stays free-to-play. Purchases are optional."
+      content: "Gift Shop has three areas on one row:\n\n• Premium (Boosts) — $G2U temporary boosts (bots, energy, power multipliers). These are NOT NFTs.\n• NFTs — on-chain Wave 1 mints LIVE: Locksmith · Fate · Echo · Rush · Shadow. Permanent utility.\n• Backpack — activate temporary items; Elves live in your game wallet. Level up Elves in Backpack → NFT.\n\nFree Energy capacity comes from ads on the tap screen. Weekly badge ranks + Mystery Gift stay under Pack / ranks.\n\nThe core game stays free-to-play. Purchases are optional."
     },
     {
       id: 6,
@@ -230,8 +230,8 @@ const WhitepaperModal = ({ isWhitepaperOpen, setIsWhitepaperOpen, onClose }) => 
         "Echo, Fate, Rush, and Shadow start at 100% durability when equipped.\n\n" +
         "Drain: 1% per 2,000 mining shards. At 0% the perk is fully off (no weak floor).\n\n" +
         "Reload: 50 $G2U per 1% in Wallet / Backpack → NFT (same card everywhere).\n\n" +
-        "Premium boosts (bot, grinder, whale, x2, x3, crate) are bought with $G2U.\n" +
-        "Shard shop items (frenzy, battery, refill) stay on G2Ushards.",
+        "Premium boosts (bot, grinder, whale, x2, x3) are bought with $G2U.\n" +
+        "Free Energy capacity comes from ads on the tap screen.",
     },
     {
       id: 13,
