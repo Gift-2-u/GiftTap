@@ -5,7 +5,7 @@ if (typeof window !== 'undefined') {
   window.global = window;
 }
 import React, { useMemo, useState, useEffect, useCallback, Suspense, lazy } from 'react';
-import { BrowserRouter as Router, Routes, Route, Link, useLocation } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Link, Navigate, useLocation } from 'react-router-dom';
 import { ConnectionProvider, WalletProvider, useAnchorWallet, useConnection, useWallet } from '@solana/wallet-adapter-react';
 import { WalletModalProvider } from '@solana/wallet-adapter-react-ui';
 import {
@@ -43,7 +43,7 @@ import '@solana/wallet-adapter-react-ui/styles.css';
 
 // Lazy-load game so homepage can load without pulling the full game first
 const TapGame = lazy(() => import('./GiftTap'));
-const Walk2uApp = lazy(() => import('../walk2u/Walk2uApp'));
+// Walk2u stub kept in walk2u/ — route + nav blocked until ready
 
 const [vaultAuthority] = PublicKey.findProgramAddressSync(
   [Buffer.from("vault")],
@@ -107,14 +107,8 @@ export default function App() {
                     </Suspense>
                   }
                 />
-                <Route
-                  path="/walk2u"
-                  element={
-                    <Suspense fallback={<div className="min-h-screen bg-black text-white flex items-center justify-center">Loading Walk2u…</div>}>
-                      <Walk2uApp />
-                    </Suspense>
-                  }
-                />
+                {/* Walk2u stub exists but access blocked until ready */}
+                <Route path="/walk2u" element={<Navigate to="/" replace />} />
                 {/* On-chain G2U staking (Solana Playground program) */}
                 <Route path="/stake" element={<StakingPage />} />
                 {/* Off-chain G2U credit vault — GiftLocksmith NFT holders */}
@@ -164,9 +158,13 @@ const SiteFooter = () => {
         <Link to="/play" className="hover:text-yellow-300 font-semibold">
           Play Gift Tap
         </Link>
-        <Link to="/walk2u" className="hover:text-cyan-300 font-semibold">
+        <span
+          className="text-cyan-400/40 font-semibold cursor-not-allowed"
+          title="Walk2u coming soon"
+          aria-disabled="true"
+        >
           Walk2u
-        </Link>
+        </span>
         <a
           href="https://gift2u.fun"
           className="hover:text-slate-200"
@@ -245,9 +243,13 @@ const Navigation = () => {
               <span className="sm:hidden">Play</span>
               <span className="hidden sm:inline">Play Game</span>
             </Link>
-            <Link to="/walk2u" className="hover:text-cyan-300 font-bold text-cyan-400 whitespace-nowrap">
+            <span
+              className="font-bold text-cyan-400/40 whitespace-nowrap cursor-not-allowed"
+              title="Walk2u coming soon"
+              aria-disabled="true"
+            >
               Walk2u
-            </Link>
+            </span>
             <button
               type="button"
               onClick={() => setWalletHubOpen(true)}
