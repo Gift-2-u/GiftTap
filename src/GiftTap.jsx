@@ -3552,8 +3552,7 @@ const GiftTapGame = () => {
     };
   }, [playerWallet, isShardSwapOpen, isDataLoaded]);
 
-  // HUD tap power: additive stack base 1 + (level−1) + (echo−1) + (premium−1)
-  // e.g. L5 1.15 + Echo common L2 1.20 → 1.35. Echo level from elf_levels (authoritative).
+  // HUD tap power: level+Echo additive; premium x2/x3 multiplies that base (1.15×2=2.30).
   useEffect(() => {
     if (!isDataLoaded) return;
     const refInv = inventoryRef.current || {};
@@ -3610,11 +3609,21 @@ const GiftTapGame = () => {
         if (em > 1) echoMulti = em;
       }
     }
-    const next = stackPayoutMultis(levelMulti, premiumMulti, echoMulti);
+    const base = stackPayoutMultis(levelMulti, echoMulti);
+    const pm = premiumMulti > 1 ? premiumMulti : 1;
+    const next = Math.round(base * pm * 1000) / 1000;
     setTapPower((prev) =>
       Math.abs(next - Number(prev || 0)) > 0.0005 ? next : prev,
     );
-  }, [isDataLoaded, currentLevel, stats?.inventory, ownedElfTick, playerWallet]);
+  }, [
+    isDataLoaded,
+    currentLevel,
+    stats?.inventory,
+    stats?.premium_multiplier,
+    stats?.premium_multiplier_expires,
+    ownedElfTick,
+    playerWallet,
+  ]);
 
   // Echo / Fate / Rush / Shadow: one-shot notices at 50% (low) and 10% (urgent)
   useEffect(() => {

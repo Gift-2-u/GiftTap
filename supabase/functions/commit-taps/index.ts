@@ -275,11 +275,13 @@ serve(async (req) => {
     // After wall climb, pay at target level even if lifetime is still just under the XP gate
     const level = playLevel(lifetime, maxU);
     const levelMulti = getLevelMultiplier(level);
-    const tapPower = stackPayoutMultis(
+    // Level + Echo additive; premium x2/x3 multiplies that base (1.15 × 2 = 2.30).
+    const baseTapPower = stackPayoutMultis(
       levelMulti,
-      premiumMulti,
       echoMulti > 1 ? echoMulti : 1,
     );
+    const pm = premiumMulti > 1 ? premiumMulti : 1;
+    const tapPower = Math.round(baseTapPower * pm * 1000) / 1000;
     const basePayoutMulti = frenzyOn ? tapPower * 2 : tapPower;
 
     const byEnergy = Math.floor(energy / costMultiplier);
@@ -447,11 +449,13 @@ serve(async (req) => {
     const finalEnergy = nextEnergy;
     const newLevel = playLevel(nextLife, maxU);
     // Persist base tap power (no Frenzy) so HUD / DB show 1.25 not 2.5
-    const tapPowerAfter = stackPayoutMultis(
+    const baseTapAfter = stackPayoutMultis(
       getLevelMultiplier(newLevel),
-      premiumMulti,
       echoMulti > 1 ? echoMulti : 1,
     );
+    const tapPowerAfter =
+      Math.round(baseTapAfter * (premiumMulti > 1 ? premiumMulti : 1) * 1000) /
+      1000;
 
     const nowIso = now.toISOString();
     const updates: Record<string, unknown> = {

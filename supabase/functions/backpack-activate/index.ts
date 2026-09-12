@@ -12,6 +12,7 @@ import {
   invObj,
   effectiveDailyLimit,
   freeFrenzyDurationMs,
+  computeTapPowerForPlayer,
 } from "../_shared/economy.ts";
 import {
   popPremiumDuration,
@@ -81,7 +82,7 @@ serve(async (req) => {
     const { data: row, error: selErr } = await sb
       .from("players")
       .select(
-        "inventory, shard_balance, last_energy, daily_usage, frenzy_expires, efficiency_expires, energy_boost_expires, limit_boost_amount, limit_boost_expires, ad_energy_boost, ad_energy_expires, premium_multiplier, premium_multiplier_expires, bot_expires, max_daily_limit",
+        "inventory, shard_balance, last_energy, daily_usage, frenzy_expires, efficiency_expires, energy_boost_expires, limit_boost_amount, limit_boost_expires, ad_energy_boost, ad_energy_expires, premium_multiplier, premium_multiplier_expires, bot_expires, max_daily_limit, lifetime_taps, max_unlocked_level",
       )
       .eq("telegram_id", playerId)
       .maybeSingle();
@@ -238,11 +239,23 @@ serve(async (req) => {
       updates.premium_multiplier = 2;
       updates.premium_multiplier_expires = endOfUtcDay(utcDayOffsetForDuration(days));
       updates.inventory = inv;
+      updates.tap_power = computeTapPowerForPlayer({
+        ...row,
+        inventory: inv,
+        premium_multiplier: 2,
+        premium_multiplier_expires: updates.premium_multiplier_expires,
+      });
     } else if (itemId === "x3_boost") {
       const days = popPremiumDuration(inv, itemId);
       updates.premium_multiplier = 3;
       updates.premium_multiplier_expires = endOfUtcDay(utcDayOffsetForDuration(days));
       updates.inventory = inv;
+      updates.tap_power = computeTapPowerForPlayer({
+        ...row,
+        inventory: inv,
+        premium_multiplier: 3,
+        premium_multiplier_expires: updates.premium_multiplier_expires,
+      });
     } else if (itemId === "expanded_energy") {
       const days = popPremiumDuration(inv, itemId);
       // Battery bar 500 → 1000 for chosen UTC days

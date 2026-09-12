@@ -654,14 +654,16 @@ export function computeTapPowerForPlayer(row: {
       ? Number(row.premium_multiplier) || 1
       : 1;
   const echoMulti = echoMultiplierFromInv(inv);
-  return stackPayoutMultis(
+  // Level + Echo stay additive; premium x2/x3 multiplies that base (1.15 × 2 = 2.30).
+  const base = stackPayoutMultis(
     levelMultiplierFromProgress(
       Number(row.lifetime_taps) || 0,
       Number(row.max_unlocked_level) || 4,
     ),
-    premiumMulti,
     echoMulti > 1 ? echoMulti : 1,
   );
+  const pm = premiumMulti > 1 ? premiumMulti : 1;
+  return Math.round(base * pm * 1000) / 1000;
 }
 
 /** Columns needed to recompute tap_power + daily cap on any NFT activate/level-up. */
