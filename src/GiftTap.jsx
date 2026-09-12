@@ -3333,11 +3333,12 @@ const GiftTapGame = () => {
     [playerId],
   );
 
-  // Boosts use $G2U — once per account until Got it
+  // Boosts use $G2U — once per account after Free shop ends (2026-09-13 UTC)
   useEffect(() => {
     if (!isDataLoaded || !playerId || showAscensionModal || showRulesNotice) {
       return undefined;
     }
+    if (Date.now() < Date.parse('2026-09-13T00:00:00.000Z')) return undefined;
     const key = `${BOOST_TOKEN_NOTICE_KEY}_${playerId}`;
     try {
       if (localStorage.getItem(key) === '1') return undefined;
