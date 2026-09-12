@@ -226,11 +226,29 @@ serve(async (req) => {
       updates.limit_boost_amount = 2000;
       updates.limit_boost_expires = endOfUtcDay(utcDayOffsetForDuration(days));
       updates.inventory = inv;
+      updates.max_daily_limit = effectiveDailyLimit(
+        {
+          ...row,
+          limit_boost_amount: updates.limit_boost_amount,
+          limit_boost_expires: updates.limit_boost_expires,
+          inventory: inv,
+        },
+        new Date(),
+      );
     } else if (itemId === "whale") {
       const days = popPremiumDuration(inv, itemId);
       updates.limit_boost_amount = 5000;
       updates.limit_boost_expires = endOfUtcDay(utcDayOffsetForDuration(days));
       updates.inventory = inv;
+      updates.max_daily_limit = effectiveDailyLimit(
+        {
+          ...row,
+          limit_boost_amount: updates.limit_boost_amount,
+          limit_boost_expires: updates.limit_boost_expires,
+          inventory: inv,
+        },
+        new Date(),
+      );
     } else if (itemId === "crate") {
       shard_balance = Math.round((shard_balance + 50000) * 1000) / 1000;
       updates.shard_balance = shard_balance;

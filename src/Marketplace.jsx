@@ -248,7 +248,7 @@ function nftMintBlockedByPlayLevel(playLevel, rarityKey, kindKey = '') {
   return null;
 }
 
-const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, bumpEnergyEpoch, flushPendingTaps, player, tgUser, playerWallet, decryptedPhrase, initialTab, onInitialTabConsumed, maxUnlockedLevel = 4, lifetimeTaps = null, onChainBalanceChange = null }) => {
+const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, bumpEnergyEpoch, flushPendingTaps, player, tgUser, playerWallet, decryptedPhrase, initialTab, onInitialTabConsumed, maxUnlockedLevel = 4, lifetimeTaps = null, onChainBalanceChange = null, onMaxDailyLimitChange = null }) => {
   const user = player || tgUser;
   // Free shop (boosts + badge buys) until 2026-09-13 00:00 UTC — then Premium / NFT / Backpack only
   const showFreeShop = Date.now() < Date.parse('2026-09-13T00:00:00.000Z');
@@ -2262,8 +2262,8 @@ Daily claim active · Pack → NFT to see it.`,
             ) {
               merged.frenzy_expires = data.updates.frenzy_expires;
             }
+            // +2k / +5k / Battery / +1000 Max Daily — bump HUD without refresh
             if (
-              item.id === 'daily_plus_1000' &&
               data.updates?.max_daily_limit != null &&
               typeof onMaxDailyLimitChange === 'function'
             ) {
