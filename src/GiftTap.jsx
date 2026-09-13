@@ -143,7 +143,7 @@ import RoadmapModal from './RoadmapModal';
 import LegalModal from './LegalModal';
 import AppNotice from './AppNotice';
 import HelpTip from './HelpTip';
-import { showRewardedAdWaterfall, isSeekerShell } from './adService';
+import { showRewardedAdWaterfall, AD_MIN_WATCH_SECONDS, isSeekerShell } from './adService';
 import WalletHub from './WalletHub';
 import TokenBalanceList from './TokenBalanceList';
 import { fetchFiatRates, FIAT_CURRENCIES, formatTokenFiatLine } from './fiatPrices';
@@ -1449,12 +1449,13 @@ const GiftTapGame = () => {
     }
 
     setIsWatchingAd(true);
-    // Monetag SDK + Seeker AdMob own the watch timer — no local countdown for rewards.
-    setAdSecondsLeft(null);
+    // Web Monetag Direct Link: engagement countdown. Seeker AdMob: native UI only.
+    const onSeeker = isSeekerShell();
+    setAdSecondsLeft(onSeeker ? null : AD_MIN_WATCH_SECONDS);
 
     try {
-      // Reward ONLY if ad network confirms completion (valued Monetag / AdMob reward).
       const result = await showRewardedAdWaterfall({
+        onTick: onSeeker ? undefined : (secondsLeft) => setAdSecondsLeft(secondsLeft),
         ymid: playerId ? `player_${playerId}_${Date.now()}` : undefined,
       });
 
@@ -10307,30 +10308,56 @@ const GiftTapGame = () => {
                 
                 <h2 style={{ color: '#ffd700', marginTop: 0, marginBottom: '15px', fontSize: '24px' }}>⚡ Expand Capacity</h2>
                 
-                {isWatchingAd ? (
+                {isWatchingAd && isSeekerShell() ? (
                   <>
                     <p style={{ color: '#ccc', fontSize: '14px', marginBottom: '12px', lineHeight: '1.5' }}>
-                      {isSeekerShell()
-                        ? 'Full-screen AdMob on Seeker — use the ad’s own countdown.'
-                        : 'Monetag rewarded ad — their timer decides when the watch counts.'}
+                      Full-screen AdMob on Seeker — use the ad&apos;s own countdown.
                       <br />
                       <span style={{ fontSize: '12px', color: '#888' }}>
-                        Closing early = no Free Energy. Reward only after the ad network confirms.
+                        Closing early = no Free Energy. Reward only after the ad completes.
                       </span>
                     </p>
                     <p style={{ color: '#ffd700', fontSize: '16px', fontWeight: 'bold', margin: '20px 0 12px' }}>
                       Watching ad…
                     </p>
                     <p style={{ color: '#888', fontSize: '12px', marginBottom: '8px' }}>
-                      Wait for the ad to finish.
+                      Wait for the native ad to finish.
+                    </p>
+                  </>
+                ) : isWatchingAd && adSecondsLeft !== null ? (
+                  <>
+                    <p style={{ color: '#ccc', fontSize: '14px', marginBottom: '12px', lineHeight: '1.5' }}>
+                      Ad tab open — stay on it until this timer hits{' '}
+                      <strong style={{ color: '#ffd700' }}>0</strong>, then return here.
+                      <br />
+                      <span style={{ fontSize: '12px', color: '#888' }}>
+                        Closing early = no reward. Popups must be allowed.
+                      </span>
+                    </p>
+                    <div
+                      style={{
+                        fontSize: '56px',
+                        fontWeight: '900',
+                        color: adSecondsLeft === 0 ? '#4ade80' : '#ffd700',
+                        margin: '16px 0',
+                        fontVariantNumeric: 'tabular-nums',
+                        textShadow: '0 0 20px rgba(255, 215, 0, 0.35)',
+                      }}
+                    >
+                      {adSecondsLeft}
+                    </div>
+                    <p style={{ color: '#888', fontSize: '12px', marginBottom: '8px' }}>
+                      {adSecondsLeft > 0
+                        ? 'Stay on the ad tab…'
+                        : 'Return to Gift Tap to finish…'}
                     </p>
                   </>
                 ) : (
                   <p style={{ color: '#ccc', fontSize: '14px', marginBottom: '20px', lineHeight: '1.5' }}>
-                    Want to tap more? Watch a short rewarded ad to expand your Daily Energy Limit by +50 for today.
+                    Want to tap more? Watch a short ad to expand your Daily Energy Limit by +50 for today.
                     {isSeekerShell()
-                      ? ' On Seeker, ads run in-app (AdMob) — energy only after the ad finishes.'
-                      : ' On web, Monetag runs the watch timer — energy only after a paid completion.'}
+                      ? ' On Seeker, AdMob runs in-app — energy only after the ad finishes.'
+                      : ' On web, Monetag opens an ad tab — stay on it for the full timer.'}
                     <br /><br />
                     <span style={{ fontSize: '12px', color: '#888' }}>
                       (Max 10 ads per day. You have watched {dailyAdsWatched}/10)
@@ -10358,7 +10385,9 @@ const GiftTapGame = () => {
                   {dailyAdsWatched >= 10
                     ? 'Daily Limit Reached'
                     : isWatchingAd
-                      ? 'Watching ad…'
+                      ? (isSeekerShell()
+                        ? 'Watching ad…'
+                        : `⏱ ${adSecondsLeft ?? AD_MIN_WATCH_SECONDS}s…`)
                       : '▶ Watch Ad'}
                 </button>
                 
@@ -10379,7 +10408,9 @@ const GiftTapGame = () => {
                     cursor: isWatchingAd ? 'not-allowed' : 'pointer'
                   }}
                 >
-                  {isWatchingAd ? 'Wait for ad…' : 'Close'}
+                  {isWatchingAd
+                    ? (isSeekerShell() ? 'Wait for ad…' : 'Wait for timer…')
+                    : 'Close'}
                 </button>
 
               </div>

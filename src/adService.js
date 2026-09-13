@@ -1,26 +1,24 @@
 // ==========================================
 // AD NETWORKS — Gift Tap Free Energy
 //
-// WEB (browser): Monetag Rewarded Interstitial via monetag-tg-sdk.
-//   Their ad UI owns the watch timer. We only grant after the SDK Promise
-//   resolves with a valued (paid) event — not our own page-visibility clock.
+// WEB (browser): Monetag Direct Link (Positive tag).
+//   Monetag does not offer Rewarded SDK for normal websites — only Telegram Mini Apps.
+//   We use an engagement gate: ad tab must stay open; player must spend most of the
+//   timer off Gift Tap. Not as clean as AdMob, but it's what Monetag supports on web.
 //
 // SEEKER (native shell): Google AdMob Rewarded via ReactNativeWebView bridge.
 //   Real completion callback — energy only after reward earned.
 //   NEVER fall back to Monetag inside the Seeker shell.
 // ==========================================
 
-import createAdHandler from 'monetag-tg-sdk';
+/** UI countdown while Monetag Direct Link engagement runs (web only). */
+export const AD_MIN_WATCH_SECONDS = 20;
+/** Must spend this fraction of the timer on the ad tab (off Gift Tap). */
+const MONETAG_AWAY_RATIO = 0.85;
 
 /**
- * Kept for UI fallbacks only — Monetag SDK owns the real watch timer now.
- * @deprecated web path no longer uses a local countdown for rewards
- */
-export const AD_MIN_WATCH_SECONDS = 15;
-
-/**
- * Monetag Rewarded Interstitial main zone ID (dashboard → SDK / Rewarded).
- * Override with VITE_MONETAG_ZONE_ID if the Rewarded zone differs from Direct Link.
+ * Monetag Direct Link / Positive tag zone.
+ * Override URL with VITE_MONETAG_DIRECT_LINK if dashboard "Get tag" differs.
  */
 const MONETAG_ZONE_ID = Number(
   (typeof import.meta !== 'undefined' &&
@@ -28,19 +26,19 @@ const MONETAG_ZONE_ID = Number(
     import.meta.env.VITE_MONETAG_ZONE_ID) ||
     11270717,
 );
+const MONETAG_DIRECT_LINK =
+  (typeof import.meta !== 'undefined' &&
+    import.meta.env &&
+    import.meta.env.VITE_MONETAG_DIRECT_LINK) ||
+  `https://omg10.com/4/${MONETAG_ZONE_ID}`;
+
+const isPlaceholder = (url) =>
+  !url ||
+  url.includes('YOUR_') ||
+  url.includes('XXXX') ||
+  url.trim() === '';
 
 const SEEKER_STORAGE_KEY = 'gift2u_seeker';
-
-let monetagHandler = null;
-
-function getMonetagHandler() {
-  if (monetagHandler) return monetagHandler;
-  if (!Number.isFinite(MONETAG_ZONE_ID) || MONETAG_ZONE_ID <= 0) {
-    throw new Error('Monetag zone not configured');
-  }
-  monetagHandler = createAdHandler(MONETAG_ZONE_ID);
-  return monetagHandler;
-}
 
 function markSeekerShell() {
   try {
@@ -63,7 +61,7 @@ function markSeekerShell() {
 
 /**
  * True when running inside the Gift2U Seeker / Android WebView shell.
- * If this is false, Free Energy uses Monetag SDK — that must never happen in the APK.
+ * If this is false, Free Energy opens Monetag — that must never happen in the APK.
  */
 export function isSeekerShell() {
   if (typeof window === 'undefined') return false;
@@ -131,12 +129,53 @@ export function isSeekerShell() {
 }
 
 /**
- * Web: Monetag Rewarded Interstitial (SDK).
- * type:'end' → Promise resolves after their ad is shown AND closed.
- * Only treat as success when reward_event_type is valued (paid), when present.
+ * Open ad in a new tab during the user gesture (web only).
+ * Do NOT pass "noopener" as window features — browsers then return null from window.open.
  */
-const playMonetagSdkRewarded = (options = {}) => {
-  const { ymid } = options;
+const openAdTab = (url) => {
+  if (isSeekerShell()) {
+    console.warn('[Gift2U] Blocked Monetag tab open inside Seeker shell');
+    return null;
+  }
+
+  let win = null;
+  try {
+    win = window.open(url, '_blank');
+  } catch {
+    /* ignore */
+  }
+
+  if (win) {
+    try {
+      win.opener = null;
+    } catch {
+      /* ignore */
+    }
+    return win;
+  }
+
+  try {
+    const a = document.createElement('a');
+    a.href = url;
+    a.target = '_blank';
+    a.rel = 'noopener noreferrer';
+    a.style.display = 'none';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  } catch {
+    /* ignore */
+  }
+
+  return null;
+};
+
+/**
+ * Monetag Direct Link + engagement gate (WEB only).
+ * Requires: real popup, long off-page time, no early close, return to Gift Tap.
+ */
+const playEngagedLink = (url, networkName, options = {}) => {
+  const { onTick, ymid } = options;
 
   return new Promise((resolve, reject) => {
     if (typeof window === 'undefined') {
@@ -147,68 +186,147 @@ const playMonetagSdkRewarded = (options = {}) => {
       reject(new Error('Monetag is disabled on Seeker — use AdMob'));
       return;
     }
-
-    let show;
-    try {
-      show = getMonetagHandler();
-    } catch (e) {
-      reject(e instanceof Error ? e : new Error(String(e)));
+    if (isPlaceholder(url)) {
+      reject(new Error(`${networkName} not configured`));
       return;
     }
 
-    const opts = {
-      type: 'end',
-      catchIfNoFeed: true,
-      requestVar: 'free_energy',
+    let finalUrl = url;
+    if (ymid) {
+      try {
+        const u = new URL(url);
+        u.searchParams.set('ymid', String(ymid));
+        finalUrl = u.toString();
+      } catch {
+        finalUrl = `${url}${url.includes('?') ? '&' : '?'}ymid=${encodeURIComponent(String(ymid))}`;
+      }
+    }
+
+    const win = openAdTab(finalUrl);
+    if (!win) {
+      reject(
+        new Error(
+          `${networkName}: popup blocked. Allow popups for gift2u.fun, then try Free Energy again.`,
+        ),
+      );
+      return;
+    }
+
+    const minMs = AD_MIN_WATCH_SECONDS * 1000;
+    const needAwayMs = Math.floor(minMs * MONETAG_AWAY_RATIO);
+    const started = Date.now();
+    let settled = false;
+    let leftPageMs = 0;
+    let lastHiddenAt = null;
+    let lastReported = AD_MIN_WATCH_SECONDS + 1;
+    let pollId = null;
+    let safetyId = null;
+    let awayMet = false;
+
+    const cleanup = () => {
+      if (pollId != null) clearInterval(pollId);
+      if (safetyId != null) clearTimeout(safetyId);
+      document.removeEventListener('visibilitychange', onVis);
     };
-    if (ymid) opts.ymid = String(ymid);
 
-    console.log(`📺 Monetag SDK: show zone ${MONETAG_ZONE_ID} (rewarded end)`);
+    const finish = (ok, message) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      if (onTick) {
+        try {
+          onTick(
+            ok ? 0 : Math.max(0, Math.ceil((minMs - (Date.now() - started)) / 1000)),
+          );
+        } catch {
+          /* ignore */
+        }
+      }
+      if (ok) resolve({ network: networkName });
+      else reject(new Error(message || `${networkName} not completed`));
+    };
 
-    Promise.resolve()
-      .then(() => show(opts))
-      .then((result) => {
-        const eventType =
-          result && typeof result === 'object'
-            ? String(result.reward_event_type || '').toLowerCase()
-            : '';
+    const awayNow = () => {
+      let away = leftPageMs;
+      if (document.hidden && lastHiddenAt != null) {
+        away += Date.now() - lastHiddenAt;
+      }
+      return away;
+    };
 
-        // Prefer valued (Monetag paid). If field missing, still accept completed show
-        // (some zone configs omit reward_event_type on frontend callback).
-        if (eventType === 'non_valued') {
-          reject(
-            new Error(
-              'Ad shown but not monetized (blocked / unpaid). Free Energy was not granted.',
-            ),
+    const onVis = () => {
+      if (document.hidden) {
+        lastHiddenAt = Date.now();
+        return;
+      }
+      if (lastHiddenAt != null) {
+        leftPageMs += Date.now() - lastHiddenAt;
+        lastHiddenAt = null;
+      }
+      if (awayMet && Date.now() - started >= minMs && awayNow() >= needAwayMs) {
+        try {
+          if (win && !win.closed) win.close();
+        } catch {
+          /* ignore */
+        }
+        finish(true);
+      }
+    };
+    document.addEventListener('visibilitychange', onVis);
+    if (document.hidden) lastHiddenAt = Date.now();
+
+    pollId = setInterval(() => {
+      if (settled) return;
+      const elapsed = Date.now() - started;
+      const left = Math.max(0, Math.ceil((minMs - elapsed) / 1000));
+      if (onTick && left !== lastReported) {
+        lastReported = left;
+        try {
+          onTick(left);
+        } catch {
+          /* ignore */
+        }
+      }
+
+      try {
+        if (win.closed) {
+          finish(
+            false,
+            `${networkName}: ad tab closed early. Stay on the ad until the timer finishes.`,
           );
           return;
         }
-        if (eventType && eventType !== 'valued') {
-          reject(new Error(`Ad not rewarded (${eventType}). Free Energy was not granted.`));
-          return;
-        }
+      } catch {
+        /* ignore */
+      }
 
-        console.log('✅ Monetag SDK: rewarded complete', result || {});
-        resolve({
-          network: 'Monetag',
-          reward_event_type: eventType || 'valued',
-          estimated_price:
-            result && typeof result === 'object' ? result.estimated_price : undefined,
-        });
-      })
-      .catch((err) => {
-        const msg =
-          err?.message ||
-          (typeof err === 'string' ? err : 'Monetag ad did not complete');
-        console.warn('⚠️ Monetag SDK:', msg);
-        reject(new Error(msg));
-      });
+      const away = awayNow();
+      if (elapsed >= minMs && away >= needAwayMs) {
+        awayMet = true;
+        if (!document.hidden) {
+          try {
+            if (win && !win.closed) win.close();
+          } catch {
+            /* ignore */
+          }
+          finish(true);
+        }
+      }
+    }, 400);
+
+    safetyId = setTimeout(() => {
+      if (!settled) {
+        finish(
+          false,
+          `${networkName}: timed out. Stay on the ad tab until the countdown finishes, then return here.`,
+        );
+      }
+    }, minMs + 25000);
   });
 };
 
 /**
- * Seeker shell: ask native AdMob rewarded unit via WebView postMessage.
- * Native injects window.__gift2uOnAdResult({ requestId, success, error? }).
+ * Seeker shell: native AdMob rewarded via WebView postMessage.
  */
 const playSeekerRewardedAd = () => {
   return new Promise((resolve, reject) => {
@@ -307,8 +425,8 @@ const playSeekerRewardedAd = () => {
 
 /**
  * Free Energy waterfall:
- * - Seeker shell → native AdMob rewarded ONLY (never Monetag)
- * - Web browser → Monetag Rewarded SDK (their timer + completion callback)
+ * - Seeker → AdMob rewarded ONLY
+ * - Web → Monetag Direct Link + engagement gate
  *
  * @param {{ onTick?: (secondsLeft: number) => void, ymid?: string }} [options]
  */
@@ -336,23 +454,19 @@ export const showRewardedAdWaterfall = async (options = {}) => {
   }
 
   console.log(
-    `🌊 Free Energy: Web path → Monetag Rewarded SDK zone ${MONETAG_ZONE_ID}`,
+    `🌊 Free Energy: Web path → Monetag Direct Link zone ${MONETAG_ZONE_ID} (engaged)`,
   );
 
   try {
-    const result = await playMonetagSdkRewarded({ ymid: options.ymid });
-    return {
-      success: true,
-      network: result.network || 'Monetag',
-      reward_event_type: result.reward_event_type,
-      estimated_price: result.estimated_price,
-    };
+    if (options.onTick) options.onTick(AD_MIN_WATCH_SECONDS);
+    const result = await playEngagedLink(MONETAG_DIRECT_LINK, 'Monetag', {
+      onTick: options.onTick,
+      ymid: options.ymid,
+    });
+    return { success: true, network: result.network };
   } catch (err) {
     const lastError = err?.message || String(err);
     console.log('⚠️ Monetag failed:', lastError);
-    return {
-      success: false,
-      error: lastError,
-    };
+    return { success: false, error: lastError };
   }
 };
