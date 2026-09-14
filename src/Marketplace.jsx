@@ -510,82 +510,85 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, bumpEner
   };
 
   // --- ITEM DEFINITIONS (icon + gradient for ShopItemIcon) ---
-  // Free shop until 2026-09-13 UTC. After: Premium / NFT / Backpack. Ads stay. Leftovers still activate.
+  // Free boost defs ALWAYS kept for Backpack (Mystery / leftovers). Shop listings only if showFreeShop.
+  const freeBoostCatalog = [
+    {
+      id: 'frenzy',
+      name:
+        Date.now() >= Date.parse('2026-09-11T00:00:00.000Z')
+          ? '15-Second Frenzy'
+          : '30-Second Frenzy',
+      desc: '2x Payout per energy',
+      duration:
+        Date.now() >= Date.parse('2026-09-11T00:00:00.000Z')
+          ? '15 Seconds'
+          : '30 Seconds',
+      cost: 500,
+      iconFrom: '#ff6b35',
+      iconTo: '#7c1d12',
+      iconRing: 'rgba(255,107,53,0.45)',
+      iconGlow: 'rgba(255,107,53,0.25)',
+    },
+    {
+      id: 'battery',
+      name:
+        Date.now() >= Date.parse('2026-09-11T00:00:00.000Z')
+          ? '+250 Daily Energy '
+          : '+500 Daily Energy ',
+      desc:
+        Date.now() >= Date.parse('2026-09-11T00:00:00.000Z')
+          ? 'Update your Max Daily limit by 250'
+          : 'Update your Max Daily limit by 500',
+      duration: 'Until UTC midnight',
+      cost:
+        Date.now() >= Date.parse('2026-09-11T00:00:00.000Z') ? 200 : 400,
+      iconFrom: '#60a5fa',
+      iconTo: '#1e3a8a',
+      iconRing: 'rgba(96,165,250,0.45)',
+      iconGlow: 'rgba(59,130,246,0.25)',
+    },
+    {
+      id: 'refill',
+      name: 'Battery Refill',
+      desc: 'Fills 500 to your Battery · 1× free / UTC day after launch',
+      duration: 'Instant',
+      cost: 300,
+      iconFrom: '#4ade80',
+      iconTo: '#14532d',
+      iconRing: 'rgba(74,222,128,0.4)',
+      iconGlow: 'rgba(74,222,128,0.2)',
+    },
+  ];
+  const freeBadgeShopListings = [
+    {
+      id: 'badge_bronze',
+      name: BADGE_SHARD_SHOP.badge_bronze.name,
+      desc: 'For Mystery Gift · 1/day · 3/week',
+      duration: 'Keep in Backpack',
+      cost: BADGE_SHARD_SHOP.badge_bronze.cost,
+      isBadgeShop: true,
+      iconUrl: BADGE_TIERS.bronze.image,
+      iconFrom: '#cd7f32',
+      iconTo: '#5c3a1a',
+      iconRing: 'rgba(205,127,50,0.5)',
+      iconGlow: 'rgba(205,127,50,0.25)',
+    },
+    {
+      id: 'badge_silver',
+      name: BADGE_SHARD_SHOP.badge_silver.name,
+      desc: 'For Mystery Gift · 1/day · 3/week',
+      duration: 'Keep in Backpack',
+      cost: BADGE_SHARD_SHOP.badge_silver.cost,
+      isBadgeShop: true,
+      iconUrl: BADGE_TIERS.silver.image,
+      iconFrom: '#c0c0c0',
+      iconTo: '#4a4a4a',
+      iconRing: 'rgba(192,192,192,0.5)',
+      iconGlow: 'rgba(192,192,192,0.25)',
+    },
+  ];
   const shardListings = showFreeShop
-    ? [
-        {
-          id: 'frenzy',
-          name:
-            Date.now() >= Date.parse('2026-09-11T00:00:00.000Z')
-              ? '15-Second Frenzy'
-              : '30-Second Frenzy',
-          desc: '2x Payout per energy',
-          duration:
-            Date.now() >= Date.parse('2026-09-11T00:00:00.000Z')
-              ? '15 Seconds'
-              : '30 Seconds',
-          cost: 500,
-          iconFrom: '#ff6b35',
-          iconTo: '#7c1d12',
-          iconRing: 'rgba(255,107,53,0.45)',
-          iconGlow: 'rgba(255,107,53,0.25)',
-        },
-        {
-          id: 'battery',
-          name:
-            Date.now() >= Date.parse('2026-09-11T00:00:00.000Z')
-              ? '+250 Daily Energy '
-              : '+500 Daily Energy ',
-          desc:
-            Date.now() >= Date.parse('2026-09-11T00:00:00.000Z')
-              ? 'Update your Max Daily limit by 250'
-              : 'Update your Max Daily limit by 500',
-          duration: 'Until UTC midnight',
-          cost:
-            Date.now() >= Date.parse('2026-09-11T00:00:00.000Z') ? 200 : 400,
-          iconFrom: '#60a5fa',
-          iconTo: '#1e3a8a',
-          iconRing: 'rgba(96,165,250,0.45)',
-          iconGlow: 'rgba(59,130,246,0.25)',
-        },
-        {
-          id: 'refill',
-          name: 'Battery Refill',
-          desc: 'Fills 500 to your Battery · 1× free / UTC day after launch',
-          duration: 'Instant',
-          cost: 300,
-          iconFrom: '#4ade80',
-          iconTo: '#14532d',
-          iconRing: 'rgba(74,222,128,0.4)',
-          iconGlow: 'rgba(74,222,128,0.2)',
-        },
-        {
-          id: 'badge_bronze',
-          name: BADGE_SHARD_SHOP.badge_bronze.name,
-          desc: 'For Mystery Gift · 1/day · 3/week',
-          duration: 'Keep in Backpack',
-          cost: BADGE_SHARD_SHOP.badge_bronze.cost,
-          isBadgeShop: true,
-          iconUrl: BADGE_TIERS.bronze.image,
-          iconFrom: '#cd7f32',
-          iconTo: '#5c3a1a',
-          iconRing: 'rgba(205,127,50,0.5)',
-          iconGlow: 'rgba(205,127,50,0.25)',
-        },
-        {
-          id: 'badge_silver',
-          name: BADGE_SHARD_SHOP.badge_silver.name,
-          desc: 'For Mystery Gift · 1/day · 3/week',
-          duration: 'Keep in Backpack',
-          cost: BADGE_SHARD_SHOP.badge_silver.cost,
-          isBadgeShop: true,
-          iconUrl: BADGE_TIERS.silver.image,
-          iconFrom: '#c0c0c0',
-          iconTo: '#4a4a4a',
-          iconRing: 'rgba(192,192,192,0.5)',
-          iconGlow: 'rgba(192,192,192,0.25)',
-        },
-      ]
+    ? [...freeBoostCatalog, ...freeBadgeShopListings]
     : [];
 
   /** After launch (or VITE_G2U_PREMIUM=true): Premium priced in $G2U (on-chain to master). */
@@ -1068,7 +1071,8 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, bumpEner
     sort: nftSort,
   });
 
-  const allItems = [...shardListings, ...premiumListings];
+  // Always include freeBoostCatalog so Mystery / leftover Frenzy·Battery·Refill show in Backpack
+  const allItems = [...freeBoostCatalog, ...premiumListings];
   const filteredListings = premiumListings.filter(item => marketFilter === 'All' || item.type === marketFilter);
 
   // --- 1. BUYING WITH SHARDS (Goes to Backpack) ---

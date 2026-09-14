@@ -22,6 +22,24 @@ export function mysteryG2uPending(inventory) {
   return Math.max(0, Number(inventory?.mystery_g2u_pending) || 0);
 }
 
+const PLAY_URL = 'https://gift2u.fun/play';
+
+/** Optional public X post — never auto-opens; player must tap Share. */
+function buildClaimShareText(label, amount) {
+  const amt = Math.max(0, Number(amount) || 0).toLocaleString();
+  const what = String(label || 'a milestone').trim();
+  return `I just claimed ${what} on Gift Tap and got ${amt} $G2U! 🎁\n\nPlay: ${PLAY_URL}\n#Gift2U #GiftTap #Solana`;
+}
+
+function openXShareIntent(text) {
+  const url = `https://x.com/intent/tweet?text=${encodeURIComponent(text)}`;
+  try {
+    window.open(url, '_blank', 'noopener,noreferrer');
+  } catch {
+    window.location.href = url;
+  }
+}
+
 const overlay = {
   position: 'fixed',
   inset: 0,
@@ -66,6 +84,8 @@ export default function ClaimG2uPanel({
   const [captchaReset, setCaptchaReset] = useState(0);
   const [busyId, setBusyId] = useState(null);
   const [tick, setTick] = useState(() => formatLaunchCountdown());
+  /** After successful claim — optional Share on X (player choice only). */
+  const [xShareOffer, setXShareOffer] = useState(null);
 
   const airdropTotal = airdropRows.reduce((s, r) => s + (Number(r.amount) || 0), 0);
   const total = mysteryAmt + airdropTotal;
@@ -144,7 +164,14 @@ export default function ClaimG2uPanel({
       }
       const amt = Number(data?.amount) || 0;
       if (data?.already || amt <= 0) ping('Nothing to claim from Mystery', true);
-      else ping(`✅ Mystery: ${amt.toLocaleString()} $G2U → ${shortWallet}`, true);
+      else {
+        ping(`✅ Mystery: ${amt.toLocaleString()} $G2U → ${shortWallet}`, true);
+        setXShareOffer({
+          label: 'Mystery Gift',
+          amount: amt,
+          text: buildClaimShareText('Mystery Gift', amt),
+        });
+      }
       resetCaptcha();
       await refreshAirdrop();
       if (typeof onBalancesRefresh === 'function') {
@@ -235,10 +262,19 @@ export default function ClaimG2uPanel({
       const amt = Number(confirmed?.amount) || Number(prepared.amount) || 0;
       if (confirmed?.already) ping('Already claimed', true);
       else {
+        const label =
+          row.label || confirmed?.source || prepared.source || 'milestone';
         ping(
-          `✅ ${row.label || confirmed?.source || prepared.source}: ${amt.toLocaleString()} $G2U → ${shortWallet} (you paid the network fee)`,
+          `✅ ${label}: ${amt.toLocaleString()} $G2U → ${shortWallet} (you paid the network fee)`,
           true,
         );
+        if (amt > 0) {
+          setXShareOffer({
+            label,
+            amount: amt,
+            text: buildClaimShareText(label, amt),
+          });
+        }
       }
       resetCaptcha();
       await refreshAirdrop();
@@ -500,6 +536,93 @@ export default function ClaimG2uPanel({
                 />
               </div>
             ) : null}
+          </div>
+        </div>
+      ) : null}
+
+      {/* Optional Share on X — never auto-posts; player must tap Share */}
+      {xShareOffer ? (
+        <div
+          style={{ ...overlay, zIndex: 100060 }}
+          onClick={() => setXShareOffer(null)}
+          role="dialog"
+          aria-modal="true"
+        >
+          <div style={panel} onClick={(e) => e.stopPropagation()}>
+            <h3
+              style={{
+                color: '#fbef43',
+                margin: '0 0 10px',
+                fontSize: 18,
+                textAlign: 'center',
+              }}
+            >
+              Share on X?
+            </h3>
+            <p
+              style={{
+                color: '#ccc',
+                fontSize: 13,
+                lineHeight: 1.45,
+                margin: '0 0 12px',
+                textAlign: 'center',
+              }}
+            >
+              Optional — opens X with a draft. Nothing posts unless you hit Post.
+            </p>
+            <pre
+              style={{
+                background: '#1c1e22',
+                border: '1px solid #333',
+                borderRadius: 10,
+                padding: 12,
+                color: '#aaa',
+                fontSize: 12,
+                lineHeight: 1.4,
+                whiteSpace: 'pre-wrap',
+                wordBreak: 'break-word',
+                margin: '0 0 14px',
+                fontFamily: 'inherit',
+              }}
+            >
+              {xShareOffer.text}
+            </pre>
+            <button
+              type="button"
+              onClick={() => {
+                openXShareIntent(xShareOffer.text);
+                setXShareOffer(null);
+              }}
+              style={{
+                width: '100%',
+                padding: 12,
+                marginBottom: 8,
+                border: 'none',
+                borderRadius: 10,
+                fontWeight: 'bold',
+                cursor: 'pointer',
+                background: 'linear-gradient(90deg,#fbef43,#fbbf24)',
+                color: '#000',
+              }}
+            >
+              Share on X
+            </button>
+            <button
+              type="button"
+              onClick={() => setXShareOffer(null)}
+              style={{
+                width: '100%',
+                padding: 12,
+                border: '1px solid #555',
+                borderRadius: 10,
+                fontWeight: 'bold',
+                cursor: 'pointer',
+                background: '#333',
+                color: '#fff',
+              }}
+            >
+              Done
+            </button>
           </div>
         </div>
       ) : null}
