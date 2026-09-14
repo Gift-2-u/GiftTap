@@ -456,19 +456,19 @@ export function freeBoostV2Active(nowMs: number = Date.now()): boolean {
 }
 
 /**
- * Free shard shop (boosts + badge buys) ends at this UTC instant.
- * After: Premium / NFT / Backpack hub. Free Energy via ads.
- * Backpack leftovers still activate. Weekly badges + Mystery Gift stay.
+ * Free Frenzy/Battery/Refill shop ended at this UTC instant.
+ * Badges-only Free shop stays open. Mystery Free Boost unchanged.
  */
 export const FREE_BOOST_SHOP_REMOVED_AT_MS = Date.parse(
   "2026-09-13T00:00:00.000Z",
 );
 
+/** @deprecated Free boost buys closed; badges use shardShopCatalog. */
 export function freeBoostShopOpen(nowMs: number = Date.now()): boolean {
   return nowMs < FREE_BOOST_SHOP_REMOVED_AT_MS;
 }
 
-/** Free Frenzy duration ms (UTC-day free path / shard shop frenzy). */
+/** Free Frenzy duration ms (leftover / Mystery activate). */
 export function freeFrenzyDurationMs(nowMs: number = Date.now()): number {
   return freeBoostV2Active(nowMs) ? 15_000 : 30_000;
 }
@@ -478,25 +478,15 @@ export function batteryDailyTapBonus(nowMs: number = Date.now()): number {
   return freeBoostV2Active(nowMs) ? 250 : 500;
 }
 
-/** Shard shop catalog (server source of truth for costs). Empty after Free shop cutover. */
+/** Shard shop catalog — badges only (Bronze→Diamond). No Frenzy/Battery/Refill. */
 export function shardShopCatalog(
-  nowMs: number = Date.now(),
+  _nowMs: number = Date.now(),
 ): Record<string, { name: string; cost: number }> {
-  if (!freeBoostShopOpen(nowMs)) return {};
-
-  const v2 = freeBoostV2Active(nowMs);
   return {
-    frenzy: {
-      name: v2 ? "15-Second Frenzy" : "30-Second Frenzy",
-      cost: v2 ? 700 : 700,
-    },
-    battery: {
-      name: v2 ? "+250 Daily Energy" : "Expanded Battery",
-      cost: v2 ? 200 : 750,
-    },
-    refill: { name: "Instant Refill", cost: 300 },
     badge_bronze: { name: "Bronze Badge", cost: 10000 },
     badge_silver: { name: "Silver Badge", cost: 30000 },
+    badge_gold: { name: "Gold Badge", cost: 50000 },
+    badge_diamond: { name: "Diamond Badge", cost: 75000 },
   };
 }
 
@@ -504,10 +494,15 @@ export function shardShopCatalog(
 export const SHARD_SHOP: Record<string, { name: string; cost: number }> =
   shardShopCatalog();
 
-/** Shared stop-buy for badge_bronze / badge_silver shop purchases */
+/** Shared stop-buy for badge shop (any tier). */
 export const BADGE_SHOP_DAY_CAP = 1;
 export const BADGE_SHOP_WEEK_CAP = 3;
-export const BADGE_SHOP_ITEM_IDS = new Set(["badge_bronze", "badge_silver"]);
+export const BADGE_SHOP_ITEM_IDS = new Set([
+  "badge_bronze",
+  "badge_silver",
+  "badge_gold",
+  "badge_diamond",
+]);
 
 export function invObj(raw: unknown): Record<string, unknown> {
   if (raw && typeof raw === "object" && !Array.isArray(raw)) {

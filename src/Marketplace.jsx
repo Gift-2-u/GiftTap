@@ -250,18 +250,16 @@ function nftMintBlockedByPlayLevel(playLevel, rarityKey, kindKey = '') {
 
 const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, bumpEnergyEpoch, flushPendingTaps, player, tgUser, playerWallet, decryptedPhrase, initialTab, onInitialTabConsumed, maxUnlockedLevel = 4, lifetimeTaps = null, onChainBalanceChange = null, onMaxDailyLimitChange = null }) => {
   const user = player || tgUser;
-  // Free shop (boosts + badge buys) until 2026-09-13 00:00 UTC — then Premium / NFT / Backpack only
-  const showFreeShop = Date.now() < Date.parse('2026-09-13T00:00:00.000Z');
+  // Free shop = badges only (Bronze→Diamond). Frenzy/Battery/Refill not for sale.
+  const showBadgeShop = true;
   const [activeTab, setActiveTab] = useState(initialTab || 'home');
 
-  // Deep-link: Free upgrades while Free shop open, else Premium
+  // Deep-link: Free badges tab, or Premium
   useEffect(() => {
     if (!initialTab) return;
-    setActiveTab(
-      initialTab === 'upgrades' && !showFreeShop ? 'market' : initialTab,
-    );
+    setActiveTab(initialTab);
     if (typeof onInitialTabConsumed === 'function') onInitialTabConsumed();
-  }, [initialTab, onInitialTabConsumed, showFreeShop]);
+  }, [initialTab, onInitialTabConsumed]);
   const [marketFilter, setMarketFilter] = useState('All');
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [itemToBuy, setItemToBuy] = useState(null);
@@ -510,7 +508,7 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, bumpEner
   };
 
   // --- ITEM DEFINITIONS (icon + gradient for ShopItemIcon) ---
-  // Free boost defs ALWAYS kept for Backpack (Mystery / leftovers). Shop listings only if showFreeShop.
+  // Free boost defs ALWAYS kept for Backpack (Mystery / leftovers). Not sold in Free shop.
   const freeBoostCatalog = [
     {
       id: 'frenzy',
@@ -586,10 +584,35 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, bumpEner
       iconRing: 'rgba(192,192,192,0.5)',
       iconGlow: 'rgba(192,192,192,0.25)',
     },
+    {
+      id: 'badge_gold',
+      name: BADGE_SHARD_SHOP.badge_gold.name,
+      desc: 'For Mystery Gift · 1/day · 3/week',
+      duration: 'Keep in Backpack',
+      cost: BADGE_SHARD_SHOP.badge_gold.cost,
+      isBadgeShop: true,
+      iconUrl: BADGE_TIERS.gold.image,
+      iconFrom: '#fbbf24',
+      iconTo: '#854d0e',
+      iconRing: 'rgba(251,191,36,0.5)',
+      iconGlow: 'rgba(251,191,36,0.25)',
+    },
+    {
+      id: 'badge_diamond',
+      name: BADGE_SHARD_SHOP.badge_diamond.name,
+      desc: 'For Mystery Gift · 1/day · 3/week',
+      duration: 'Keep in Backpack',
+      cost: BADGE_SHARD_SHOP.badge_diamond.cost,
+      isBadgeShop: true,
+      iconUrl: BADGE_TIERS.diamond.image,
+      iconFrom: '#67e8f9',
+      iconTo: '#0e7490',
+      iconRing: 'rgba(103,232,249,0.5)',
+      iconGlow: 'rgba(34,211,238,0.25)',
+    },
   ];
-  const shardListings = showFreeShop
-    ? [...freeBoostCatalog, ...freeBadgeShopListings]
-    : [];
+  // Free shop sells badges only
+  const shardListings = freeBadgeShopListings;
 
   /** After launch (or VITE_G2U_PREMIUM=true): Premium priced in $G2U (on-chain to master). */
   const G2U_PREMIUM =
@@ -2790,38 +2813,31 @@ Daily claim active · Pack → NFT to see it.`,
 
       <div style={{ flex: 1, overflowY: 'auto' }}>
 
-        {/* --- HUB: Free until 2026-09-13 UTC, then Premium / NFT / Backpack row --- */}
+        {/* --- HUB: Badges (Free) / Premium / NFT / Backpack --- */}
         {activeTab === 'home' && (
           <>
             <p style={{ color: '#888', fontSize: 12, margin: '0 0 12px', textAlign: 'center', lineHeight: 1.45 }}>
-              {showFreeShop
-                ? 'Pick where you want to go — free boosts, SOL premium, NFTs, or your backpack.'
-                : 'Premium boosts, NFTs, or your backpack. Free Energy is on the tap screen (ads).'}
+              Badges with shards, Premium boosts, NFTs, or your backpack. Free Energy is on the tap screen (ads).
             </p>
             <div
               style={{
                 display: 'grid',
-                // Free open: 2×2. After: one column (phone-friendly), not 3-wide row.
-                gridTemplateColumns: showFreeShop ? 'repeat(2, 1fr)' : '1fr',
+                gridTemplateColumns: 'repeat(2, 1fr)',
                 gap: '10px',
               }}
             >
               {[
-                ...(showFreeShop
-                  ? [
-                      {
-                        id: 'upgrades',
-                        title: 'Boost',
-                        desc: 'Battery, frenzy, refill…',
-                        badge: 'G2Ushards',
-                        word: 'FREE',
-                        border: '#4ade80',
-                        titleColor: '#4ade80',
-                        iconFrom: '#4ade80',
-                        iconTo: '#14532d',
-                      },
-                    ]
-                  : []),
+                {
+                  id: 'upgrades',
+                  title: 'Badges',
+                  desc: 'Bronze → Diamond',
+                  badge: 'G2Ushards',
+                  word: 'FREE',
+                  border: '#4ade80',
+                  titleColor: '#4ade80',
+                  iconFrom: '#4ade80',
+                  iconTo: '#14532d',
+                },
                 {
                   id: 'market',
                   title: 'Boost',
@@ -2963,11 +2979,11 @@ Daily claim active · Pack → NFT to see it.`,
           </>
         )}
        
-        {/* --- Free shard shop (until 2026-09-13 UTC) --- */}
-        {activeTab === 'upgrades' && showFreeShop && (
+        {/* --- Free shop: badges only --- */}
+        {activeTab === 'upgrades' && showBadgeShop && (
           <>
             <p style={{ color: '#666', fontSize: 11, margin: '0 0 12px', textAlign: 'center' }}>
-              Free · pay with G2Ushards · then use items from Backpack
+              Free · buy badges with G2Ushards · burn in Mystery Gift
             </p>
             <p
               style={{
@@ -2978,8 +2994,8 @@ Daily claim active · Pack → NFT to see it.`,
                 lineHeight: 1.4,
               }}
             >
-              Bronze / Silver badges: in-game shards only · max {BADGE_SHOP_DAY_CAP}/day ·{' '}
-              {BADGE_SHOP_WEEK_CAP}/week · Gold / Diamond from Weekly ranks
+              Bronze 10k · Silver 30k · Gold 50k · Diamond 75k · max {BADGE_SHOP_DAY_CAP}/day ·{' '}
+              {BADGE_SHOP_WEEK_CAP}/week (any tier). Weekly ranks still award badges too.
             </p>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '10px' }}>
               {shardListings.map((item) => {

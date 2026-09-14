@@ -133,7 +133,7 @@ export const HELP_TIPS = {
       'Echo, Fate, Rush, and Shadow start at 100% durability when owned in wallet/backpack. Attributes apply automatically (highest of each kind) — no equip step.\n\n' +
       'Drains 1% per 2,000 mining shards. At 0% the perk is fully off.\n\n' +
       'Reload with $G2U in Wallet / Backpack → NFT (50 G2U per 1%).\n\n' +
-      'Premium boosts are bought with $G2U. Free Energy capacity comes from ads on the tap screen.',
+      'Premium boosts are bought with $G2U. Free shop sells badges for G2Ushards (Bronze 10k · Silver 30k · Gold 50k · Diamond 75k). Free Energy capacity comes from ads on the tap screen.',
   },
   weekly_badges: {
     title: 'Weekly badges',

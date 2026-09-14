@@ -68,8 +68,8 @@ export const MYSTERY_BOX_COSTS = {
 };
 
 /**
- * Free shop: buy Bronze/Silver with G2Ushards (keep in sync with economy.ts SHARD_SHOP).
- * Shared caps: 1 badge / UTC day, 3 / UTC week (either tier).
+ * Free shop: buy Bronze–Diamond with G2Ushards (sync with economy.ts shardShopCatalog).
+ * Shared caps: 1 badge / UTC day, 3 / UTC week (any tier).
  */
 export const BADGE_SHARD_SHOP = {
   badge_bronze: {
@@ -83,6 +83,18 @@ export const BADGE_SHARD_SHOP = {
     tier: 'silver',
     cost: 30000,
     name: 'Silver Badge',
+  },
+  badge_gold: {
+    itemId: 'badge_gold',
+    tier: 'gold',
+    cost: 50000,
+    name: 'Gold Badge',
+  },
+  badge_diamond: {
+    itemId: 'badge_diamond',
+    tier: 'diamond',
+    cost: 75000,
+    name: 'Diamond Badge',
   },
 };
 export const BADGE_SHOP_DAY_CAP = 1;
