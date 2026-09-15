@@ -144,6 +144,7 @@ import LegalModal from './LegalModal';
 import AppNotice from './AppNotice';
 import HelpTip from './HelpTip';
 import { showRewardedAdWaterfall, AD_MIN_WATCH_SECONDS, isSeekerShell } from './adService';
+import { getGiftTapApkUrl } from './GiftTapLaunchModal';
 import WalletHub from './WalletHub';
 import TokenBalanceList from './TokenBalanceList';
 import { fetchFiatRates, FIAT_CURRENCIES, formatTokenFiatLine } from './fiatPrices';
@@ -890,6 +891,9 @@ const GiftTapGame = () => {
   /** One-time: boosts use in-game $G2U */
   const [showBoostTokenNotice, setShowBoostTokenNotice] = useState(false);
   const BOOST_TOKEN_NOTICE_KEY = 'gift2u_boost_g2u_notice_v1';
+  /** One-time: announce Android APK download (skip Seeker shell) */
+  const [showApkNotice, setShowApkNotice] = useState(false);
+  const APK_NOTICE_KEY = 'gift2u_android_apk_notice_v1';
   const [showFeeConsent, setShowFeeConsent] = useState(false);
   const [feeConsentBusy, setFeeConsentBusy] = useState(false);
   const notify = useCallback((message, opts = {}) => {
@@ -3357,10 +3361,45 @@ const GiftTapGame = () => {
     setShowBoostTokenNotice(false);
   }, [playerId]);
 
+  // Android APK download — once per account (browser only; Seeker already has an app)
+  useEffect(() => {
+    if (!isDataLoaded || !playerId || showAscensionModal || showRulesNotice || showBoostTokenNotice) {
+      return undefined;
+    }
+    if (isSeekerShell()) return undefined;
+    const key = `${APK_NOTICE_KEY}_${playerId}`;
+    try {
+      if (localStorage.getItem(key) === '1') return undefined;
+    } catch {
+      /* ignore */
+    }
+    const t = setTimeout(() => {
+      if (!showAscensionModal && !showRulesNotice && !showBoostTokenNotice) {
+        setShowApkNotice(true);
+      }
+    }, 1800);
+    return () => clearTimeout(t);
+  }, [
+    isDataLoaded,
+    playerId,
+    showAscensionModal,
+    showRulesNotice,
+    showBoostTokenNotice,
+  ]);
+
+  const dismissApkNotice = useCallback(() => {
+    try {
+      localStorage.setItem(`${APK_NOTICE_KEY}_${playerId}`, '1');
+    } catch {
+      /* ignore */
+    }
+    setShowApkNotice(false);
+  }, [playerId]);
+
   // Fee popup: show until inventory.fee_micro_consent is saved
   useEffect(() => {
     if (!isDataLoaded || !playerId || !hasSecureSession()) return;
-    if (showAscensionModal || showRulesNotice || showBoostTokenNotice) return;
+    if (showAscensionModal || showRulesNotice || showBoostTokenNotice || showApkNotice) return;
     const inv = stats?.inventory || inventoryRef.current || {};
     const ok =
       String(inv?.fee_micro_consent?.accepted_at || '').trim().length >= 10;
@@ -3371,6 +3410,7 @@ const GiftTapGame = () => {
     showAscensionModal,
     showRulesNotice,
     showBoostTokenNotice,
+    showApkNotice,
     stats?.inventory?.fee_micro_consent?.accepted_at,
   ]);
 
@@ -3422,7 +3462,7 @@ const GiftTapGame = () => {
 
   useEffect(() => {
     if (!isDataLoaded || !isModalOpen || !playerId) return;
-    if (showAscensionModal || showRulesNotice || showBoostTokenNotice) return;
+    if (showAscensionModal || showRulesNotice || showBoostTokenNotice || showApkNotice) return;
     void checkAirdropTip();
   }, [
     isDataLoaded,
@@ -3431,6 +3471,7 @@ const GiftTapGame = () => {
     showAscensionModal,
     showRulesNotice,
     showBoostTokenNotice,
+    showApkNotice,
     checkAirdropTip,
   ]);
 
@@ -6910,10 +6951,101 @@ const GiftTapGame = () => {
         </div>
       )}
 
+      {showApkNotice &&
+        !showAscensionModal &&
+        !showRulesNotice &&
+        !showBoostTokenNotice &&
+        !appNotice.show && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,0.88)',
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center',
+            zIndex: 195000,
+            padding: 16,
+            boxSizing: 'border-box',
+          }}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="gift2u-apk-notice-title"
+        >
+          <div
+            style={{
+              background: '#1c1e22',
+              padding: 22,
+              borderRadius: 16,
+              border: '2px solid #34d399',
+              width: '100%',
+              maxWidth: 360,
+              boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
+              textAlign: 'left',
+            }}
+          >
+            <h3
+              id="gift2u-apk-notice-title"
+              style={{
+                color: '#34d399',
+                margin: '0 0 10px',
+                fontSize: 18,
+                textAlign: 'center',
+              }}
+            >
+              Gift Tap on Android
+            </h3>
+            <p style={{ color: '#ccc', fontSize: 13, lineHeight: 1.45, margin: '0 0 12px' }}>
+              Install Gift Tap as an Android app (AdMob Free Energy, same as Seeker). Download from
+              gift2u.fun — Google Play not required. Allow install from this site if Android asks.
+            </p>
+            <a
+              href={getGiftTapApkUrl()}
+              download="Gift2U.apk"
+              onClick={dismissApkNotice}
+              style={{
+                display: 'block',
+                width: '100%',
+                boxSizing: 'border-box',
+                textAlign: 'center',
+                background: 'linear-gradient(90deg,#34d399,#059669)',
+                color: '#042f2e',
+                border: 'none',
+                padding: 12,
+                borderRadius: 10,
+                fontWeight: 'bold',
+                cursor: 'pointer',
+                textDecoration: 'none',
+                marginBottom: 8,
+              }}
+            >
+              Download Android app
+            </a>
+            <button
+              type="button"
+              onClick={dismissApkNotice}
+              style={{
+                width: '100%',
+                background: '#333',
+                color: '#fff',
+                border: '1px solid #555',
+                padding: 12,
+                borderRadius: 10,
+                fontWeight: 'bold',
+                cursor: 'pointer',
+              }}
+            >
+              Keep playing on web
+            </button>
+          </div>
+        </div>
+      )}
+
       {showFeeConsent &&
         !showAscensionModal &&
         !showRulesNotice &&
         !showBoostTokenNotice &&
+        !showApkNotice &&
         !appNotice.show && (
         <div
           style={{
@@ -7268,6 +7400,7 @@ const GiftTapGame = () => {
         !showAirdropTip &&
         !showRulesNotice &&
         !showBoostTokenNotice &&
+        !showApkNotice &&
         !showAscensionModal &&
         !appNotice.show &&
         !showMilestoneModal && (
@@ -7368,6 +7501,7 @@ const GiftTapGame = () => {
       {showAirdropTip &&
         !showRulesNotice &&
         !showBoostTokenNotice &&
+        !showApkNotice &&
         !showAscensionModal &&
         !appNotice.show && (
         <div

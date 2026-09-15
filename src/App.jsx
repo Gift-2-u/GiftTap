@@ -39,6 +39,7 @@ import {
 import { PROGRAM_ID, MINT_ADDRESS } from './config';
 import idl from "../target/idl/gift_staking.json";
 import UpdatePrompt from './UpdatePrompt';
+import GiftTapPlayButton from './GiftTapPlayButton';
 import '@solana/wallet-adapter-react-ui/styles.css';
 
 // Lazy-load game so homepage can load without pulling the full game first
@@ -155,9 +156,12 @@ const SiteFooter = () => {
         <Link to="/airdrop" className="hover:text-yellow-300 font-semibold">
           G2U Airdrop
         </Link>
-        <Link to="/play" className="hover:text-yellow-300 font-semibold">
-          Play Gift Tap
-        </Link>
+        <GiftTapPlayButton
+          asLinkStyle
+          className="hover:text-yellow-300 font-semibold text-slate-400"
+        >
+          Gift Tap
+        </GiftTapPlayButton>
         <span
           className="text-cyan-400/40 font-semibold cursor-not-allowed"
           title="Walk2u coming soon"
@@ -239,10 +243,9 @@ const Navigation = () => {
               <span className="sm:hidden">Airdrop</span>
               <span className="hidden sm:inline">G2U Airdrop</span>
             </Link>
-            <Link to="/play" className="hover:text-purple-400 font-bold text-yellow-400 whitespace-nowrap">
-              <span className="sm:hidden">Play</span>
-              <span className="hidden sm:inline">Play Game</span>
-            </Link>
+            <GiftTapPlayButton className="hover:text-purple-400 font-bold text-yellow-400 whitespace-nowrap">
+              Gift Tap
+            </GiftTapPlayButton>
             <span
               className="font-bold text-cyan-400/40 whitespace-nowrap cursor-not-allowed"
               title="Walk2u coming soon"
@@ -868,14 +871,14 @@ const HomePage = () => {
             </p>
           </div>
           <div className="flex-shrink-0 flex flex-col items-center gap-2">
-            <Link
-              to="/play"
+            <GiftTapPlayButton
+              variant="modal"
               className="inline-flex items-center justify-center rounded-full px-6 py-3.5 text-base font-black text-slate-950 bg-gradient-to-r from-yellow-300 to-amber-400 hover:from-yellow-200 hover:to-yellow-300 shadow-lg transition"
             >
-              Play Gift Tap →
-            </Link>
+              Gift Tap →
+            </GiftTapPlayButton>
             <span className="text-[11px] text-slate-400 font-semibold">
-              {TOKEN_LAUNCH_AT > Date.now() ? 'Countdown to Sept 1 UTC' : 'Token is live'}
+              Play on web or download the Android app
             </span>
           </div>
         </div>
