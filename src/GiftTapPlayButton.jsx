@@ -1,9 +1,11 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Link } from 'react-router-dom';
-import GiftTapLaunchModal, { getGiftTapApkUrl } from './GiftTapLaunchModal';
+import GiftTapLaunchModal, {
+  getGiftTapApkUrl,
+  mustDownloadGiftTapApp,
+} from './GiftTapLaunchModal';
 
-/** Nav/link look — transparent, inherits yellow text (no white browser button). */
 const navBtnReset = {
   background: 'transparent',
   border: 'none',
@@ -16,7 +18,6 @@ const navBtnReset = {
   WebkitAppearance: 'none',
 };
 
-/** Homepage CTA — keep Tailwind gradient; only kill default button chrome. */
 const ctaBtnReset = {
   border: 'none',
   cursor: 'pointer',
@@ -25,56 +26,52 @@ const ctaBtnReset = {
 };
 
 /**
- * Gift Tap entry: dropdown menu under the button (header/nav),
- * or full modal for big homepage CTA (variant="modal").
+ * Gift Tap entry.
+ * Android browser → must download Gift2U app (modal).
+ * Desktop → menu or modal with Play on web + Download.
  */
 export default function GiftTapPlayButton({
   children,
   className = '',
   style,
   asLinkStyle = false,
-  /** "menu" = dropdown under button; "modal" = centered popup */
   variant = 'menu',
 }) {
   const [open, setOpen] = useState(false);
   const [menuPos, setMenuPos] = useState(null);
   const btnRef = useRef(null);
+  const forceApp = mustDownloadGiftTapApp();
 
   const placeMenu = () => {
     const el = btnRef.current;
     if (!el) return;
     const r = el.getBoundingClientRect();
-    const width = 224;
+    const width = 240;
     let left = r.right - width;
     if (left < 8) left = 8;
     if (left + width > window.innerWidth - 8) {
       left = Math.max(8, window.innerWidth - width - 8);
     }
-    setMenuPos({
-      top: r.bottom + 8,
-      left,
-      width,
-    });
+    setMenuPos({ top: r.bottom + 8, left, width });
   };
 
   useLayoutEffect(() => {
-    if (!open || variant !== 'menu') {
+    if (!open || variant !== 'menu' || forceApp) {
       setMenuPos(null);
       return undefined;
     }
     placeMenu();
     const onScrollOrResize = () => placeMenu();
     window.addEventListener('resize', onScrollOrResize);
-    // capture scroll from any ancestor without making the header grow
     window.addEventListener('scroll', onScrollOrResize, true);
     return () => {
       window.removeEventListener('resize', onScrollOrResize);
       window.removeEventListener('scroll', onScrollOrResize, true);
     };
-  }, [open, variant]);
+  }, [open, variant, forceApp]);
 
   useEffect(() => {
-    if (!open || variant !== 'menu') return undefined;
+    if (!open || variant !== 'menu' || forceApp) return undefined;
     const onDoc = (e) => {
       if (btnRef.current?.contains(e.target)) return;
       const menu = document.getElementById('gift-tap-play-menu');
@@ -90,7 +87,28 @@ export default function GiftTapPlayButton({
       document.removeEventListener('mousedown', onDoc);
       document.removeEventListener('keydown', onKey);
     };
-  }, [open, variant]);
+  }, [open, variant, forceApp]);
+
+  // Android phone browser: always the force-download modal
+  if (forceApp) {
+    return (
+      <>
+        <button
+          type="button"
+          className={className}
+          style={variant === 'modal' ? { ...ctaBtnReset, ...style } : { ...navBtnReset, ...style }}
+          onClick={() => setOpen(true)}
+        >
+          {children}
+        </button>
+        <GiftTapLaunchModal
+          open={open}
+          onClose={() => setOpen(false)}
+          forceAndroid
+        />
+      </>
+    );
+  }
 
   if (variant === 'modal') {
     return (
@@ -143,7 +161,7 @@ export default function GiftTapPlayButton({
               onClick={() => setOpen(false)}
               className="block w-full border-t border-white/10 px-4 py-3 text-left text-sm font-bold text-emerald-300 hover:bg-emerald-950/40"
             >
-              Download Android app
+              Download Gift2U (Gift Tap)
             </a>
           </div>,
           document.body,

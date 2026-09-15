@@ -40,11 +40,23 @@ import { PROGRAM_ID, MINT_ADDRESS } from './config';
 import idl from "../target/idl/gift_staking.json";
 import UpdatePrompt from './UpdatePrompt';
 import GiftTapPlayButton from './GiftTapPlayButton';
+import { AndroidMustDownloadGate, mustDownloadGiftTapApp } from './GiftTapLaunchModal';
 import '@solana/wallet-adapter-react-ui/styles.css';
 
 // Lazy-load game so homepage can load without pulling the full game first
 const TapGame = lazy(() => import('./GiftTap'));
 // Walk2u stub kept in walk2u/ — route + nav blocked until ready
+
+function PlayGiftTapRoute() {
+  if (mustDownloadGiftTapApp()) {
+    return <AndroidMustDownloadGate />;
+  }
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-black text-white flex items-center justify-center">Loading game…</div>}>
+      <TapGame />
+    </Suspense>
+  );
+}
 
 const [vaultAuthority] = PublicKey.findProgramAddressSync(
   [Buffer.from("vault")],
@@ -100,14 +112,7 @@ export default function App() {
                 {/* Site home = marketing page; game only at /play */}
                 <Route path="/" element={<HomePage />} />
                 <Route path="/home" element={<HomePage />} />
-                <Route
-                  path="/play"
-                  element={
-                    <Suspense fallback={<div className="min-h-screen bg-black text-white flex items-center justify-center">Loading game…</div>}>
-                      <TapGame />
-                    </Suspense>
-                  }
-                />
+                <Route path="/play" element={<PlayGiftTapRoute />} />
                 {/* Walk2u stub exists but access blocked until ready */}
                 <Route path="/walk2u" element={<Navigate to="/" replace />} />
                 {/* On-chain G2U staking (Solana Playground program) */}

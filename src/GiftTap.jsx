@@ -6996,8 +6996,9 @@ const GiftTapGame = () => {
               Gift Tap on Android
             </h3>
             <p style={{ color: '#ccc', fontSize: 13, lineHeight: 1.45, margin: '0 0 12px' }}>
-              Install Gift Tap as an Android app (AdMob Free Energy, same as Seeker). Download from
-              gift2u.fun — Google Play not required. Allow install from this site if Android asks.
+              Gift Tap is updating to an app. On Android, download{' '}
+              <strong style={{ color: '#34d399' }}>Gift2U</strong> to continue (AdMob Free Energy).
+              Same login = same stats. App name on the phone is Gift2U — the game inside is Gift Tap.
             </p>
             <a
               href={getGiftTapApkUrl()}
@@ -7019,7 +7020,7 @@ const GiftTapGame = () => {
                 marginBottom: 8,
               }}
             >
-              Download Android app
+              Download Gift2U (Gift Tap)
             </a>
             <button
               type="button"
@@ -7035,7 +7036,7 @@ const GiftTapGame = () => {
                 cursor: 'pointer',
               }}
             >
-              Keep playing on web
+              Got it
             </button>
           </div>
         </div>
