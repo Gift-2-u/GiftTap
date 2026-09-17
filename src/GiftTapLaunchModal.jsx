@@ -155,9 +155,15 @@ export function AndroidMustDownloadGate() {
         >
           Download Gift2U (Gift Tap)
         </a>
-        <p className="text-[11px] text-slate-500 leading-snug">
+        <p className="text-[11px] text-slate-500 leading-snug mb-4">
           On your phone the app is named Gift2U — inside you play Gift Tap.
         </p>
+        <Link
+          to="/"
+          className="block w-full rounded-full border border-slate-600 py-2.5 text-sm font-bold text-slate-400 hover:text-white"
+        >
+          Back to site
+        </Link>
       </div>
     </div>
   );

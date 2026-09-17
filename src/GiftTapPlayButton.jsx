@@ -89,24 +89,20 @@ export default function GiftTapPlayButton({
     };
   }, [open, variant, forceApp]);
 
-  // Android phone browser: always the force-download modal
+  // Android phone browser: scrollable /play download page (not a fixed overlay on the header)
   if (forceApp) {
     return (
-      <>
-        <button
-          type="button"
-          className={className}
-          style={variant === 'modal' ? { ...ctaBtnReset, ...style } : { ...navBtnReset, ...style }}
-          onClick={() => setOpen(true)}
-        >
-          {children}
-        </button>
-        <GiftTapLaunchModal
-          open={open}
-          onClose={() => setOpen(false)}
-          forceAndroid
-        />
-      </>
+      <Link
+        to="/play"
+        className={className}
+        style={
+          variant === 'modal'
+            ? { ...ctaBtnReset, ...style, display: 'inline-flex', textDecoration: 'none' }
+            : { ...navBtnReset, ...style, textDecoration: 'none' }
+        }
+      >
+        {children}
+      </Link>
     );
   }
 

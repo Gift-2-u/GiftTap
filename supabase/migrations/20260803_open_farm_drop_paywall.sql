@@ -1,23 +1,42 @@
--- Unlock lifetime_taps (same column name as always). Run in Supabase SQL Editor once.
--- No new columns. No renames.
+-- Unlock Stay-and-mine past walls (Lv5 / 50k etc).
+-- Wall only gates level unlock / Locksmith perks — NEVER blocks lifetime_taps or shards.
+-- Surgical: drop PAYWALL bouncer only. Keep HARD_LOCK protect / identity / ledger triggers.
+-- Run in Supabase SQL Editor (or apply via Management API). No new columns.
 
--- Drop every user trigger on players (paywall blocks lifetime_taps)
+-- 1) Drop ONLY triggers on players whose function is a paywall / PAYWALL_LOCKED bouncer
+--    (scan trigger fns only — never call pg_get_functiondef on aggregates)
 DO $$
 DECLARE r RECORD;
+  def text;
 BEGIN
   FOR r IN
-    SELECT tg.tgname AS tgname
+    SELECT tg.tgname AS tgname, p.oid AS funcoid, p.proname AS proname
     FROM pg_trigger tg
     JOIN pg_class c ON c.oid = tg.tgrelid
     JOIN pg_namespace n ON n.oid = c.relnamespace
-    WHERE n.nspname = 'public' AND c.relname = 'players' AND NOT tg.tgisinternal
+    JOIN pg_proc p ON p.oid = tg.tgfoid
+    WHERE n.nspname = 'public'
+      AND c.relname = 'players'
+      AND NOT tg.tgisinternal
   LOOP
-    EXECUTE format('DROP TRIGGER IF EXISTS %I ON public.players', r.tgname);
-    RAISE NOTICE 'Dropped %', r.tgname;
+    IF r.proname ILIKE '%paywall%' THEN
+      EXECUTE format('DROP TRIGGER IF EXISTS %I ON public.players', r.tgname);
+      RAISE NOTICE 'Dropped paywall trigger % (fn %)', r.tgname, r.proname;
+      CONTINUE;
+    END IF;
+    BEGIN
+      def := pg_get_functiondef(r.funcoid);
+    EXCEPTION WHEN OTHERS THEN
+      CONTINUE;
+    END;
+    IF def ILIKE '%PAYWALL_LOCKED%' THEN
+      EXECUTE format('DROP TRIGGER IF EXISTS %I ON public.players', r.tgname);
+      RAISE NOTICE 'Dropped paywall trigger % (fn %)', r.tgname, r.proname;
+    END IF;
   END LOOP;
 END $$;
 
--- Drop paywall functions
+-- 2) Drop paywall functions by name only (safe — no aggregate scan)
 DO $$
 DECLARE r RECORD;
 BEGIN
@@ -26,31 +45,29 @@ BEGIN
     FROM pg_proc p
     JOIN pg_namespace n ON n.oid = p.pronamespace
     WHERE n.nspname = 'public'
-      AND (p.proname ILIKE '%paywall%' OR pg_get_functiondef(p.oid) ILIKE '%PAYWALL_LOCKED%')
+      AND p.proname ILIKE '%paywall%'
+      AND p.prokind = 'f'
   LOOP
     BEGIN
-      EXECUTE format('DROP FUNCTION IF EXISTS %I.%I(%s) CASCADE', r.nspname, r.proname, r.args);
-    EXCEPTION WHEN OTHERS THEN NULL;
+      EXECUTE format(
+        'DROP FUNCTION IF EXISTS %I.%I(%s) CASCADE',
+        r.nspname, r.proname, r.args
+      );
+      RAISE NOTICE 'Dropped paywall function %.%(%)', r.nspname, r.proname, r.args;
+    EXCEPTION WHEN OTHERS THEN
+      RAISE NOTICE 'Skip drop %.%: %', r.nspname, r.proname, SQLERRM;
     END;
   END LOOP;
 END $$;
 
--- Remove mistaken column if it was added
+-- 3) Remove mistaken column if it was ever added
 ALTER TABLE public.players DROP COLUMN IF EXISTS true_lifetime_taps;
 
--- Leaderboard still ranks by lifetime_taps only
-DROP VIEW IF EXISTS public.leaderboard_all_time CASCADE;
-CREATE VIEW public.leaderboard_all_time AS
-SELECT
-  p.telegram_id,
-  p.username,
-  COALESCE(p.lifetime_taps, 0) AS lifetime_taps,
-  COALESCE(p.season_shards, 0) AS season_shards,
-  COALESCE(p.shard_balance, 0) AS shard_balance,
-  COALESCE(p.max_unlocked_level, 4) AS max_unlocked_level,
-  p.wallet_address,
-  p.last_updated
-FROM public.players p
-WHERE p.username IS NOT NULL AND btrim(p.username) <> '';
-
-GRANT SELECT ON public.leaderboard_all_time TO anon, authenticated, service_role;
+-- 4) Verify: remaining players triggers (expect protect / identity / ledger — NOT paywall)
+SELECT tg.tgname AS trigger_name, p.proname AS function_name
+FROM pg_trigger tg
+JOIN pg_class c ON c.oid = tg.tgrelid
+JOIN pg_namespace n ON n.oid = c.relnamespace
+JOIN pg_proc p ON p.oid = tg.tgfoid
+WHERE n.nspname = 'public' AND c.relname = 'players' AND NOT tg.tgisinternal
+ORDER BY tg.tgname;

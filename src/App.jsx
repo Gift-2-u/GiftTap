@@ -27,7 +27,7 @@ import LegalPage from './LegalPage';
 import DeleteAccountPage from './DeleteAccountPage';
 import RoadmapPage from './RoadmapPage';
 import AirdropPage from './AirdropPage';
-import { getPlayerId, isLoggedIn } from './playerIdentity';
+import { getPlayerId, getUsername, isLoggedIn } from './playerIdentity';
 import { SOCIAL_LINKS } from './socialLinks';
 import {
   TOKEN_LAUNCH_AT,
@@ -45,7 +45,46 @@ import '@solana/wallet-adapter-react-ui/styles.css';
 
 // Lazy-load game so homepage can load without pulling the full game first
 const TapGame = lazy(() => import('./GiftTap'));
-// Walk2u stub kept in walk2u/ — route + nav blocked until ready
+const Walk2uApp = lazy(() => import('../walk2u/Walk2uApp'));
+
+/** Public blocked. You unlock via localhost, TwrLtr login, or code gift2u-walk-test */
+const WALK2U_TEST_KEY =
+  (typeof import.meta !== 'undefined' &&
+    import.meta.env &&
+    String(import.meta.env.VITE_WALK2U_TEST_KEY || '').trim()) ||
+  'gift2u-walk-test';
+const WALK2U_TEST_LS = 'gift2u_walk2u_test_v1';
+
+function canAccessWalk2uTest() {
+  if (typeof window === 'undefined') return false;
+  try {
+    const host = String(window.location.hostname || '');
+    if (
+      host === 'localhost' ||
+      host === '127.0.0.1' ||
+      host === '[::1]' ||
+      host.endsWith('.local')
+    ) {
+      return true;
+    }
+    const user = String(getUsername() || '')
+      .trim()
+      .toLowerCase();
+    if (user === 'twrltr' || user === 'twlltr') {
+      localStorage.setItem(WALK2U_TEST_LS, '1');
+      return true;
+    }
+    const params = new URLSearchParams(window.location.search || '');
+    const q = String(params.get('walk2u') || params.get('test') || '').trim();
+    if (q && q === WALK2U_TEST_KEY) {
+      localStorage.setItem(WALK2U_TEST_LS, '1');
+      return true;
+    }
+    return localStorage.getItem(WALK2U_TEST_LS) === '1';
+  } catch {
+    return false;
+  }
+}
 
 function PlayGiftTapRoute() {
   if (mustDownloadGiftTapApp()) {
@@ -55,6 +94,98 @@ function PlayGiftTapRoute() {
     <Suspense fallback={<div className="min-h-screen bg-black text-white flex items-center justify-center">Loading game…</div>}>
       <TapGame />
     </Suspense>
+  );
+}
+
+function Walk2uTestRoute() {
+  const location = useLocation();
+  const [allowed, setAllowed] = useState(() => canAccessWalk2uTest());
+  const [pin, setPin] = useState('');
+  const [err, setErr] = useState('');
+
+  // Re-check when URL query changes (secret link)
+  useEffect(() => {
+    try {
+      const params = new URLSearchParams(location.search || '');
+      const q = params.get('walk2u') || params.get('test') || '';
+      if (q && q === WALK2U_TEST_KEY) {
+        localStorage.setItem(WALK2U_TEST_LS, '1');
+        setAllowed(true);
+        setErr('');
+        // Drop secret from address bar after unlock
+        if (window.history?.replaceState) {
+          window.history.replaceState(null, '', '/walk2u');
+        }
+        return;
+      }
+      if (localStorage.getItem(WALK2U_TEST_LS) === '1') {
+        setAllowed(true);
+      }
+    } catch {
+      /* ignore */
+    }
+  }, [location.search]);
+
+  const tryUnlock = (e) => {
+    e?.preventDefault?.();
+    const v = String(pin || '').trim();
+    if (v === WALK2U_TEST_KEY) {
+      try {
+        localStorage.setItem(WALK2U_TEST_LS, '1');
+      } catch {
+        /* ignore */
+      }
+      setAllowed(true);
+      setErr('');
+      return;
+    }
+    setErr('Wrong code — Walk2u is test-only.');
+  };
+
+  if (allowed) {
+    return (
+      <Suspense fallback={<div className="min-h-screen bg-black text-white flex items-center justify-center">Loading Walk2u…</div>}>
+        <Walk2uApp />
+      </Suspense>
+    );
+  }
+
+  // Locked screen (not silent redirect) so you can see the gate + enter the code
+  return (
+    <div className="min-h-screen w-full flex items-center justify-center p-4 bg-slate-950 text-white">
+      <form
+        onSubmit={tryUnlock}
+        className="w-full max-w-sm rounded-2xl border border-emerald-500/40 p-5"
+        style={{ background: '#0f2918' }}
+      >
+        <h1 className="text-xl font-black text-emerald-300 text-center mb-2">Walk2u</h1>
+        <p className="text-sm text-slate-300 text-center mb-4 leading-relaxed">
+          Test access only. Public is blocked.
+          <br />
+          Enter your test code to continue.
+        </p>
+        <input
+          type="text"
+          value={pin}
+          onChange={(e) => setPin(e.target.value)}
+          placeholder="Test code"
+          className="w-full mb-3 rounded-xl border border-emerald-800 bg-black/40 px-3 py-3 text-white"
+          autoComplete="off"
+          spellCheck={false}
+        />
+        {err ? <p className="text-red-400 text-xs mb-2">{err}</p> : null}
+        <button
+          type="submit"
+          className="w-full rounded-full py-3 font-black text-slate-950"
+          style={{ background: 'linear-gradient(90deg,#34d399,#059669)' }}
+        >
+          Unlock Walk2u
+        </button>
+        <p className="text-[11px] text-slate-500 text-center mt-3">
+          Private tester access · not open to the public yet
+        </p>
+      </form>
+    </div>
   );
 }
 
@@ -113,8 +244,8 @@ export default function App() {
                 <Route path="/" element={<HomePage />} />
                 <Route path="/home" element={<HomePage />} />
                 <Route path="/play" element={<PlayGiftTapRoute />} />
-                {/* Walk2u stub exists but access blocked until ready */}
-                <Route path="/walk2u" element={<Navigate to="/" replace />} />
+                {/* Walk2u: public blocked — tester unlock via ?walk2u=<secret> */}
+                <Route path="/walk2u" element={<Walk2uTestRoute />} />
                 {/* On-chain G2U staking (Solana Playground program) */}
                 <Route path="/stake" element={<StakingPage />} />
                 {/* Off-chain G2U credit vault — GiftLocksmith NFT holders */}
@@ -167,13 +298,9 @@ const SiteFooter = () => {
         >
           Gift Tap
         </GiftTapPlayButton>
-        <span
-          className="text-cyan-400/40 font-semibold cursor-not-allowed"
-          title="Walk2u coming soon"
-          aria-disabled="true"
-        >
+        <Link to="/walk2u" className="hover:text-cyan-300 font-semibold text-cyan-400">
           Walk2u
-        </span>
+        </Link>
         <a
           href="https://gift2u.fun"
           className="hover:text-slate-200"
@@ -251,13 +378,12 @@ const Navigation = () => {
             <GiftTapPlayButton className="hover:text-purple-400 font-bold text-yellow-400 whitespace-nowrap">
               Gift Tap
             </GiftTapPlayButton>
-            <span
-              className="font-bold text-cyan-400/40 whitespace-nowrap cursor-not-allowed"
-              title="Walk2u coming soon"
-              aria-disabled="true"
+            <Link
+              to="/walk2u"
+              className="hover:text-cyan-300 font-bold text-cyan-400 whitespace-nowrap"
             >
               Walk2u
-            </span>
+            </Link>
             <button
               type="button"
               onClick={() => setWalletHubOpen(true)}
