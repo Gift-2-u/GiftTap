@@ -1,7 +1,7 @@
 /**
  * shadow-claim — once per UTC day claim yield while Shadow is active.
- * yield = floor((hours/24) * baseDailyCap)
- * baseDailyCap = Rush cap or 1000 (no Expanded Battery / task boosts)
+ * yield = floor((hours/24) * claimCap)
+ * claimCap = Rush (or 1000) + premium shop boosts only (no quest / ads)
  * Credits shard_balance, season, daily_taps, weekly score.
  */
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
@@ -34,7 +34,7 @@ serve(async (req) => {
     const { data: row, error } = await sb
       .from("players")
       .select(
-        "inventory, shard_balance, season_shards, lifetime_taps, daily_taps, weekly_shards, weekly_week_id, last_tap_date, max_daily_limit, username",
+        "inventory, shard_balance, season_shards, lifetime_taps, daily_taps, weekly_shards, weekly_week_id, last_tap_date, max_daily_limit, limit_boost_amount, limit_boost_expires, username",
       )
       .eq("telegram_id", playerId)
       .maybeSingle();
@@ -70,7 +70,11 @@ serve(async (req) => {
       throw new Error("Shadow already claimed today (UTC)");
     }
 
-    const baseCap = shadowBaseDailyCap(inv, Number(row.max_daily_limit) || 1000);
+    // Rush + premium shop boosts only (not quest / ads / Expanded Battery)
+    const baseCap = shadowBaseDailyCap(inv, {
+      limit_boost_amount: row.limit_boost_amount,
+      limit_boost_expires: row.limit_boost_expires,
+    });
     const yieldAmt = shadowYield(hours, baseCap);
     if (yieldAmt <= 0) throw new Error("Shadow yield is 0");
 

@@ -109,7 +109,7 @@ export const HELP_TIPS = {
       '• Fate — luck jackpots on taps\n' +
       '• Echo — always-on tap multi (up to 3.00×)\n' +
       '• Rush — higher max daily taps (up to 3,000)\n' +
-      '• Shadow — daily claim without tapping\n\n' +
+      '• Shadow — daily claim without tapping (share of Rush + Premium max daily; not quest)\n\n' +
       'Level up in Backpack → NFT ($G2U):\n' +
       '• Fate/Echo/Rush/Shadow (all rarities): L2 75k · L3 150k · L4 225k · L5 300k\n' +
       '• Locksmith: L2 250k · L3 750k · L4 1.5M · L5 2.5M\n' +

@@ -853,7 +853,7 @@ export function rushDailyLimitFromInv(inv: Record<string, unknown>): number {
   return rushDailyLimit(rarity, level);
 }
 
-/** Shadow (Night) AFK hours — level 1..5. 24h = full base daily cap. */
+/** Shadow (Night) AFK hours — level 1..5. 24h = full claim cap. */
 export const SHADOW_HOURS: Record<string, number[]> = {
   common: [2, 3, 4, 5, 6],
   rare: [8, 9, 10, 11, 12],
@@ -874,11 +874,35 @@ export function shadowYield(hours: number, baseDailyCap: number): number {
   return Math.floor((h / 24) * cap);
 }
 
-/** Base daily cap for Shadow yield: Rush active or 1000 (no battery/task boosts). */
-export function shadowBaseDailyCap(inv: Record<string, unknown>, maxDailyLimitCol?: number): number {
+/**
+ * Shadow claim cap = Rush (or 1000) + premium shop daily boosts only.
+ * Includes: Rush NFT, limit_boost, premium_daily_boost.
+ * Excludes: quest task_limit_boost, Free Energy ads, Expanded Battery.
+ */
+export function shadowBaseDailyCap(
+  inv: Record<string, unknown>,
+  row?: {
+    limit_boost_amount?: unknown;
+    limit_boost_expires?: unknown;
+  },
+  now: Date = new Date(),
+): number {
   const rush = rushDailyLimitFromInv(inv);
-  if (rush > 0) return rush;
-  const col = Number(maxDailyLimitCol);
-  if (Number.isFinite(col) && col > 0) return Math.floor(col);
-  return 1000;
+  let n = rush > 0 ? rush : 1000;
+  if (
+    row?.limit_boost_expires &&
+    now < new Date(String(row.limit_boost_expires))
+  ) {
+    n += Number(row.limit_boost_amount) || 0;
+  }
+  const pdb = inv?.premium_daily_boost as
+    | { amount?: number; expires?: string }
+    | undefined;
+  if (
+    pdb?.expires &&
+    new Date(String(pdb.expires)).getTime() > now.getTime()
+  ) {
+    n += Math.max(0, Number(pdb.amount) || 0);
+  }
+  return Math.max(1000, Math.floor(n));
 }

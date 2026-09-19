@@ -481,6 +481,18 @@ export default function WalletNftSection({
             `Need ~${(needSol / LAMPORTS_PER_SOL).toFixed(4)} SOL (0.0005 treasury fee + network).`,
           );
         }
+        let haveG2u = 0;
+        try {
+          const balInfo = await connection.getTokenAccountBalance(fromAta);
+          haveG2u = Number(balInfo?.value?.uiAmount) || 0;
+        } catch {
+          haveG2u = 0;
+        }
+        if (haveG2u < costG2u) {
+          throw new Error(
+            `Not enough $G2U in wallet (need ${costG2u.toLocaleString()}, have ${Math.floor(haveG2u).toLocaleString()}).`,
+          );
+        }
         toast(
           `Sending ${costG2u.toLocaleString()} $G2U + ${ELF_LEVEL_UP_FEE_SOL} SOL fee…`,
           true,
@@ -646,7 +658,20 @@ export default function WalletNftSection({
         console.warn('nft-set-level', metaErr?.message || metaErr);
       }
     } catch (e) {
-      toast(e?.message || 'Level up failed', false);
+      const raw = String(e?.message || e || '');
+      let msg = raw;
+      if (
+        /insufficient funds|custom program error:\s*0x1|Error: insufficient funds/i.test(
+          raw,
+        )
+      ) {
+        msg = 'Not enough $G2U in wallet.';
+      } else if (/Simulation failed/i.test(raw) && msg.length > 120) {
+        msg = 'Transaction failed. Check $G2U / SOL balance and try again.';
+      } else if (msg.length > 160) {
+        msg = `${msg.slice(0, 140)}…`;
+      }
+      toast(msg || 'Level up failed', false);
     } finally {
       setLevelBusy(false);
     }
