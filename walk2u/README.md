@@ -1,34 +1,40 @@
-# Walk2u v1 — frozen spec
+# Walk2u
 
-Same repo as Gift Tap. Shared login, wallet, Locksmith shoes, $G2U claim path later.
+**Native Android app** — package `fun.gift2u.walk2u`  
+Code: `walk2u/shell/`
 
-## Locked rules
+STEPN-style **GPS** walk + **signal bars** (not a Gift Tap WebView).
+
+## Rules (frozen)
 
 | Rule | Decision |
 |------|----------|
-| **Walk2u points** | **1 Walk2u per 1,000 steps** (server-validated) |
-| **$G2U milestones** | Like Gift Tap milestones, driven by **km walked** |
-| **No shoe** | **Blocked** — cannot start without a shoe |
-| **Rent shoe** | Later (maybe) |
-| **Energy** | **1 energy block = 5 minutes** of rewarded walk |
-| **Rarer shoes** | More energy capacity (later); Common first |
-| **Buy energy** | Yes — blocks can be bought |
-| **Durability** | Drains by **km** |
+| Walk2u points | 1 Walk2u per 1,000 steps (from GPS distance) |
+| $G2U milestones | From km walked (later server) |
+| No shoe | Cannot start |
+| Energy | 1 block = 5 minutes rewarded walk |
+| Tracking | **GPS** + accuracy bars (strong / good / weak / poor) |
+| Durability | Drains by km |
 
-## Loop
+## Build APK (on your PC)
 
-Equip shoe → energy blocks limit rewarded time → walk (GPS/steps on phone) → End walk → Edge validates → grant Walk2u + km milestone progress → drain durability by km.
+```bash
+cd walk2u/shell
+npm install
+npx expo prebuild --platform android   # if android/ missing
+echo "sdk.dir=$HOME/Android/Sdk" > android/local.properties
+cd android
+./gradlew assembleRelease -PreactNativeArchitectures=arm64-v8a
+```
 
-## Supabase calm
+APK: `android/app/build/outputs/apk/release/app-release.apk`  
+→ Drive / USB → phone → Install → open **Walk2u** → **Link Health Connect / pedometer**.
 
-- No GPS tick writes. One session summary on finish.
-- No idle polls.
-- Don’t ship Edge writes until Disk IO is stable.
+## In-app flow
 
-## Status
+1. Home → **+ Demo shoe** / **+1 energy**  
+2. **Start walking** → allow location once  
+3. Watch **GPS bars** while you walk → **End walk**  
+4. km from GPS; steps ≈ distance ÷ stride  
 
-- Spec frozen.
-- **Full-screen Gift2U app** at `/walk2u` (outdoors green UI — not Gift Tap chrome).
-- Local GPS demo + Home / Walk / Bag tabs. Nothing saved to DB.
-- Shared Gift2U login/$G2U later; not linked as a Gift Tap mode.
-- Edge / real inventory / pedometer — next.
+Rebuild after this change (`expo prebuild` if permissions changed, then `assembleRelease`).

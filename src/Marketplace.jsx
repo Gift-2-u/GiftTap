@@ -240,12 +240,48 @@ function nftMintBlockedByPlayLevel(playLevel, rarityKey, kindKey = '') {
     .replace(/\s+/g, '');
   const lvl = Math.max(0, Math.floor(Number(playLevel) || 0));
   if (r.startsWith('rare') && lvl < 5) {
-    return `Reach Level 5 to mint Rare (you are L${lvl}).`;
+    return `Mint after Lv5 (you are L${lvl}).`;
   }
   if ((r.startsWith('epic') || r.startsWith('legend')) && lvl < 10) {
-    return `Reach Level 10 to mint ${r.startsWith('legend') ? 'Legendary' : 'Epic'} (you are L${lvl}).`;
+    return `Mint after Lv10 (you are L${lvl}).`;
   }
   return null;
+}
+
+/** Short locked CTA — same closed look as “Soon”, not an open Mint button. */
+function nftMintLevelLockShort(playLevel, rarityKey, kindKey = '') {
+  if (!nftMintBlockedByPlayLevel(playLevel, rarityKey, kindKey)) return null;
+  const r = String(rarityKey || '')
+    .toLowerCase()
+    .replace(/\s+/g, '');
+  if (r.startsWith('rare')) return 'Mint after Lv5';
+  if (r.startsWith('epic') || r.startsWith('legend')) return 'Mint after Lv10';
+  return 'Locked';
+}
+
+function nftDetailKindAndRarity(nft) {
+  if (!nft) return { kindKey: '', rarityKey: 'common' };
+  const rarityKey =
+    nft.shadowRarity ||
+    nft.rushRarity ||
+    nft.echoRarity ||
+    nft.fateRarity ||
+    nft.rarity ||
+    'common';
+  const kindKey = nft.isShadowMint
+    ? 'shadow'
+    : nft.isRushMint
+      ? 'rush'
+      : nft.isEchoMint
+        ? 'echo'
+        : nft.isFateMint
+          ? 'fate'
+          : nft.isStarMint || nft.id === 'star_badge'
+            ? 'star'
+            : nft.id === 'locksmith'
+              ? 'locksmith'
+              : '';
+  return { kindKey, rarityKey };
 }
 
 const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, bumpEnergyEpoch, flushPendingTaps, player, tgUser, playerWallet, decryptedPhrase, initialTab, onInitialTabConsumed, maxUnlockedLevel = 4, lifetimeTaps = null, onChainBalanceChange = null, onMaxDailyLimitChange = null }) => {
@@ -845,7 +881,7 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, bumpEner
       imageUrl: c.imageUrl || c.imageUri,
       supply: c.itemsAvailable,
       maxPerWallet: c.maxPerWallet || 5,
-      feeBufferSol: c.feeBufferSol || 0.02,
+      feeBufferSol: c.feeBufferSol || 0.01,
       isNftMint: true,
       isFateMint: true,
       mintLive: live,
@@ -895,7 +931,7 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, bumpEner
       imageUrl: c.imageUrl || c.imageUri,
       supply: c.itemsAvailable,
       maxPerWallet: c.maxPerWallet || 5,
-      feeBufferSol: c.feeBufferSol || 0.02,
+      feeBufferSol: c.feeBufferSol || 0.01,
       isNftMint: true,
       isEchoMint: true,
       mintLive: live,
@@ -946,7 +982,7 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, bumpEner
       imageUrl: c.imageUrl || c.imageUri,
       supply: c.itemsAvailable,
       maxPerWallet: c.maxPerWallet || 5,
-      feeBufferSol: c.feeBufferSol || 0.02,
+      feeBufferSol: c.feeBufferSol || 0.01,
       isNftMint: true,
       isRushMint: true,
       mintLive: live,
@@ -998,7 +1034,7 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, bumpEner
       imageUrl: c.imageUrl || c.imageUri,
       supply: c.itemsAvailable,
       maxPerWallet: c.maxPerWallet || 5,
-      feeBufferSol: c.feeBufferSol || 0.02,
+      feeBufferSol: c.feeBufferSol || 0.01,
       isNftMint: true,
       isShadowMint: true,
       mintLive: live,
@@ -4398,38 +4434,34 @@ Daily claim active · Pack → NFT to see it.`,
                   disabled={(() => {
                     if (!nftDetail.isNftMint) return false;
                     if (walletSolLoading) return true;
+                    const { kindKey, rarityKey } = nftDetailKindAndRarity(nftDetail);
+                    if (nftMintLevelLockShort(playLevel, rarityKey, kindKey)) return true;
                     if (!walletUnlocked) return false;
                     if (
                       (nftDetail.isFateMint || nftDetail.isEchoMint || nftDetail.isRushMint || nftDetail.isShadowMint || nftDetail.isStarMint) &&
                       !nftDetail.mintLive
                     )
                       return true;
-                    const rarityKey =
-                      nftDetail.shadowRarity ||
-                      nftDetail.rushRarity ||
-                      nftDetail.echoRarity ||
-                      nftDetail.fateRarity ||
-                      nftDetail.rarity ||
-                      'common';
-                    const kindKey = nftDetail.isShadowMint
-                      ? 'shadow'
-                      : nftDetail.isRushMint
-                        ? 'rush'
-                        : nftDetail.isEchoMint
-                          ? 'echo'
-                          : nftDetail.isFateMint
-                            ? 'fate'
-                            : nftDetail.isStarMint || nftDetail.id === 'star_badge'
-                              ? 'star'
-                              : nftDetail.id === 'locksmith'
-                                ? 'locksmith'
-                                : '';
-                    if (nftMintBlockedByPlayLevel(playLevel, rarityKey, kindKey)) return true;
                     return false;
                   })()}
                   onClick={() => {
                     if (nftDetail.isNftMint) {
                       if (walletSolLoading) return;
+                      const { kindKey, rarityKey } = nftDetailKindAndRarity(nftDetail);
+                      const levelLock = nftMintLevelLockShort(
+                        playLevel,
+                        rarityKey,
+                        kindKey,
+                      );
+                      if (levelLock) {
+                        setTxStatus({
+                          show: true,
+                          loading: false,
+                          message: `❌ ${nftMintBlockedByPlayLevel(playLevel, rarityKey, kindKey)}`,
+                          success: false,
+                        });
+                        return;
+                      }
                       if (!walletUnlocked) {
                         setTxStatus({
                           show: true,
@@ -4451,42 +4483,6 @@ Daily claim active · Pack → NFT to see it.`,
                           success: false,
                         });
                         return;
-                      }
-                      {
-                        const rarityKey =
-                          nftDetail.shadowRarity ||
-                          nftDetail.rushRarity ||
-                          nftDetail.echoRarity ||
-                          nftDetail.fateRarity ||
-                          nftDetail.rarity ||
-                          'common';
-                        const kindKey = nftDetail.isShadowMint
-                          ? 'shadow'
-                          : nftDetail.isRushMint
-                            ? 'rush'
-                            : nftDetail.isEchoMint
-                              ? 'echo'
-                              : nftDetail.isFateMint
-                                ? 'fate'
-                                : nftDetail.isStarMint || nftDetail.id === 'star_badge'
-                                  ? 'star'
-                                  : nftDetail.id === 'locksmith'
-                                    ? 'locksmith'
-                                    : '';
-                        const blocked = nftMintBlockedByPlayLevel(
-                          playLevel,
-                          rarityKey,
-                          kindKey,
-                        );
-                        if (blocked) {
-                          setTxStatus({
-                            show: true,
-                            loading: false,
-                            message: `❌ ${blocked}`,
-                            success: false,
-                          });
-                          return;
-                        }
                       }
                       const afford = nftDetail.isShadowMint
                         ? canAffordShadow(nftDetail.shadowRarity || 'common')
@@ -4539,26 +4535,34 @@ Daily claim active · Pack → NFT to see it.`,
                     background: (() => {
                       if (!nftDetail.isNftMint)
                         return 'linear-gradient(90deg, #9945FF, #14F195)';
+                      const { kindKey, rarityKey } =
+                        nftDetailKindAndRarity(nftDetail);
+                      if (nftMintLevelLockShort(playLevel, rarityKey, kindKey))
+                        return '#2a2a2a';
                       if (
                         (nftDetail.isFateMint || nftDetail.isEchoMint || nftDetail.isRushMint || nftDetail.isShadowMint || nftDetail.isStarMint) &&
                         !nftDetail.mintLive
                       )
-                        return '#444';
+                        return '#2a2a2a';
                       return 'linear-gradient(90deg, #9945FF, #14F195)';
                     })(),
                     color: (() => {
                       if (!nftDetail.isNftMint) return '#000';
+                      const { kindKey, rarityKey } =
+                        nftDetailKindAndRarity(nftDetail);
+                      if (nftMintLevelLockShort(playLevel, rarityKey, kindKey))
+                        return '#777';
                       if (
                         (nftDetail.isFateMint || nftDetail.isEchoMint || nftDetail.isRushMint || nftDetail.isShadowMint || nftDetail.isStarMint) &&
                         !nftDetail.mintLive
                       )
-                        return '#888';
+                        return '#777';
                       return '#000';
                     })(),
                     borderRadius: 10,
                     border: 'none',
                     fontWeight: 'bold',
-                    fontSize: 13,
+                    fontSize: 12,
                     cursor: 'pointer',
                     opacity: walletSolLoading && nftDetail.isNftMint ? 0.7 : 1,
                   }}
@@ -4566,12 +4570,27 @@ Daily claim active · Pack → NFT to see it.`,
                   {nftDetail.isNftMint
                     ? walletSolLoading
                       ? '…'
-                      : !walletUnlocked
-                        ? 'Buy'
-                        : (nftDetail.isFateMint || nftDetail.isEchoMint || nftDetail.isRushMint || nftDetail.isShadowMint || nftDetail.isStarMint) &&
+                      : (() => {
+                          const { kindKey, rarityKey } =
+                            nftDetailKindAndRarity(nftDetail);
+                          const lock = nftMintLevelLockShort(
+                            playLevel,
+                            rarityKey,
+                            kindKey,
+                          );
+                          if (lock) return lock;
+                          if (!walletUnlocked) return 'Buy';
+                          if (
+                            (nftDetail.isFateMint ||
+                              nftDetail.isEchoMint ||
+                              nftDetail.isRushMint ||
+                              nftDetail.isShadowMint ||
+                              nftDetail.isStarMint) &&
                             !nftDetail.mintLive
-                          ? 'Soon'
-                          : 'Mint'
+                          )
+                            return 'Soon';
+                          return 'Mint';
+                        })()
                     : 'Buy'}
                 </button>
               </div>

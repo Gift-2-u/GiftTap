@@ -25,7 +25,7 @@ import { RPC_URL } from './rpc';
 import { SHADOW_COLLECTION, SHADOW_WAVE1 } from './shadow';
 
 export const SHADOW_TREASURY = 'AdvMvv6GzGvdLRtuxaso1Eubk7jmn6LCZEeEFHn22yeb';
-export const SHADOW_FEE_BUFFER_SOL = 0.02;
+export const SHADOW_FEE_BUFFER_SOL = 0.01;
 export const SHADOW_MAX_PER_WALLET = 5;
 export const SHADOW_WAVE = 1;
 

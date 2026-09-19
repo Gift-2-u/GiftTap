@@ -25,7 +25,7 @@ import { RPC_URL } from './rpc';
 import { RUSH_COLLECTION, RUSH_WAVE1 } from './rush';
 
 export const RUSH_TREASURY = 'AdvMvv6GzGvdLRtuxaso1Eubk7jmn6LCZEeEFHn22yeb';
-export const RUSH_FEE_BUFFER_SOL = 0.02;
+export const RUSH_FEE_BUFFER_SOL = 0.01;
 export const RUSH_MAX_PER_WALLET = 5;
 export const RUSH_WAVE = 1;
 

@@ -1,14 +1,89 @@
 /**
  * Walk2u — Gift2U walking app (full-screen).
  * Same login / $G2U ecosystem later; not a Gift Tap skin.
- * Local GPS demo for now — no Supabase writes.
+ * Real steps = Health Connect Start/End via Walk2u Android shell (fun.gift2u.walk2u).
+ * No GPS fake steps. No Supabase writes yet.
  */
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 
 const MS_PER_BLOCK = 5 * 60 * 1000;
 const STRIDE_M = 0.78;
-const MAX_SPEED_M_S = 4.5;
-const MIN_MOVE_M = 2;
+
+function hasWalk2uHealthBridge() {
+  if (typeof window === 'undefined') return false;
+  try {
+    if (window.__GIFT2U_HEALTH_STEPS__ || window.__GIFT2U_WALK2U_SHELL__) return true;
+    if (sessionStorage.getItem('gift2u_walk2u_shell') === '1') return true;
+    if (localStorage.getItem('gift2u_walk2u_shell') === '1') return true;
+    const q = new URLSearchParams(window.location.search || '');
+    if (q.get('walk2u_app') === '1') return true;
+  } catch {
+    /* ignore */
+  }
+  return false;
+}
+
+function postToWalk2uShell(payload) {
+  try {
+    if (window.ReactNativeWebView?.postMessage) {
+      window.ReactNativeWebView.postMessage(JSON.stringify(payload));
+      return true;
+    }
+  } catch {
+    /* ignore */
+  }
+  return false;
+}
+
+function requestStepsFromShell(type, extra = {}) {
+  const requestId =
+    (crypto.randomUUID && crypto.randomUUID()) ||
+    `w2u_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+  return new Promise((resolve) => {
+    const done = (detail) => {
+      cleanup();
+      resolve(detail || { success: false, error: 'No response from Walk2u app' });
+    };
+    const onEvent = (e) => {
+      const d = e?.detail;
+      if (!d || d.requestId !== requestId) return;
+      done(d);
+    };
+    const onFn = (d) => {
+      if (!d || d.requestId !== requestId) return;
+      done(d);
+    };
+    const cleanup = () => {
+      try {
+        window.removeEventListener('gift2u-steps-result', onEvent);
+      } catch {
+        /* ignore */
+      }
+      if (window.__gift2uOnStepsResult === onFn) {
+        try {
+          delete window.__gift2uOnStepsResult;
+        } catch {
+          window.__gift2uOnStepsResult = undefined;
+        }
+      }
+      clearTimeout(timer);
+    };
+    window.addEventListener('gift2u-steps-result', onEvent);
+    window.__gift2uOnStepsResult = onFn;
+    const ok = postToWalk2uShell({ type, requestId, ...extra });
+    if (!ok) {
+      done({
+        requestId,
+        success: false,
+        error: 'Open Walk2u in the Walk2u Android app (Health Connect).',
+      });
+      return;
+    }
+    const timer = setTimeout(() => {
+      done({ requestId, success: false, error: 'Health Connect timed out.' });
+    }, 45000);
+  });
+}
 
 const C = {
   bg: '#f4faf6',
@@ -23,19 +98,6 @@ const C = {
   warn: '#dc2626',
   soft: '#ecfdf5',
 };
-
-function haversineM(a, b) {
-  const R = 6371000;
-  const toRad = (d) => (d * Math.PI) / 180;
-  const dLat = toRad(b.lat - a.lat);
-  const dLon = toRad(b.lon - a.lon);
-  const lat1 = toRad(a.lat);
-  const lat2 = toRad(b.lat);
-  const h =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) ** 2;
-  return 2 * R * Math.asin(Math.min(1, Math.sqrt(h)));
-}
 
 function formatMs(ms) {
   const s = Math.max(0, Math.floor(ms / 1000));
@@ -57,123 +119,197 @@ export default function Walk2uApp() {
   const [sessionSteps, setSessionSteps] = useState(0);
   const [sessionMs, setSessionMs] = useState(0);
   const [rewardedMs, setRewardedMs] = useState(0);
-  const [speedMps, setSpeedMps] = useState(0);
-  const [gpsError, setGpsError] = useState('');
+  const [stepsError, setStepsError] = useState('');
   const [lastSummary, setLastSummary] = useState(null);
+  const [healthBridge, setHealthBridge] = useState(() => hasWalk2uHealthBridge());
+  const [pedometerLinked, setPedometerLinked] = useState(() => {
+    try {
+      return localStorage.getItem('walk2u_hc_linked_v1') === '1';
+    } catch {
+      return false;
+    }
+  });
+  const [linkingPedometer, setLinkingPedometer] = useState(false);
 
-  const watchIdRef = useRef(null);
-  const lastPosRef = useRef(null);
   const startedAtRef = useRef(0);
+  const startedAtIsoRef = useRef('');
   const blocksAtStartRef = useRef(0);
-  const distMRef = useRef(0);
+  const stepsRef = useRef(0);
   const tickRef = useRef(null);
+  const pollRef = useRef(null);
 
   const hasShoe = shoeCount > 0;
-  const canStart = hasShoe && energyBlocks > 0 && !walking;
+  const canStart =
+    hasShoe &&
+    energyBlocks > 0 &&
+    !walking &&
+    healthBridge &&
+    pedometerLinked;
 
-  const stopWatch = useCallback(() => {
-    if (watchIdRef.current != null && navigator.geolocation) {
-      navigator.geolocation.clearWatch(watchIdRef.current);
-      watchIdRef.current = null;
-    }
+  const stopTimers = useCallback(() => {
     if (tickRef.current) {
       clearInterval(tickRef.current);
       tickRef.current = null;
     }
-  }, []);
-
-  useEffect(() => () => stopWatch(), [stopWatch]);
-
-  const onPosition = useCallback((pos) => {
-    const { latitude: lat, longitude: lon, speed } = pos.coords;
-    const now = Date.now();
-    const cur = { lat, lon, t: now };
-    const prev = lastPosRef.current;
-    lastPosRef.current = cur;
-    if (typeof speed === 'number' && Number.isFinite(speed) && speed >= 0) {
-      setSpeedMps(speed);
+    if (pollRef.current) {
+      clearInterval(pollRef.current);
+      pollRef.current = null;
     }
-    if (!prev) return;
-    const dt = (now - prev.t) / 1000;
-    if (dt <= 0) return;
-    const d = haversineM(prev, cur);
-    if (d < MIN_MOVE_M) return;
-    const implied = d / dt;
-    if (implied > MAX_SPEED_M_S) return;
-    distMRef.current += d;
-    setSessionKm(distMRef.current / 1000);
-    setSessionSteps(Math.floor(distMRef.current / STRIDE_M));
-    if (!(typeof speed === 'number' && speed >= 0)) setSpeedMps(implied);
   }, []);
 
-  const startWalk = useCallback(() => {
-    if (!canStart) return;
-    if (!navigator.geolocation) {
-      setGpsError('GPS not available. Open this page on your phone (Chrome/Safari).');
+  useEffect(() => () => stopTimers(), [stopTimers]);
+
+  // WebView inject can land after first paint — keep re-checking the Walk2u shell bridge
+  useEffect(() => {
+    const refresh = () => setHealthBridge(hasWalk2uHealthBridge());
+    refresh();
+    const id = setInterval(refresh, 1500);
+    const onVis = () => {
+      if (document.visibilityState === 'visible') refresh();
+    };
+    window.addEventListener('focus', refresh);
+    document.addEventListener('visibilitychange', onVis);
+    return () => {
+      clearInterval(id);
+      window.removeEventListener('focus', refresh);
+      document.removeEventListener('visibilitychange', onVis);
+    };
+  }, []);
+
+  const applyLiveSteps = useCallback((steps) => {
+    const n = Math.max(0, Math.floor(Number(steps) || 0));
+    stepsRef.current = n;
+    setSessionSteps(n);
+    setSessionKm((n * STRIDE_M) / 1000);
+  }, []);
+
+  /** Explicit pedometer link — does NOT need shoe/energy (so the prompt always appears). */
+  const linkPedometer = useCallback(async () => {
+    if (!hasWalk2uHealthBridge()) {
+      setHealthBridge(false);
+      setStepsError(
+        'Open the Walk2u Android app (not Chrome, not Gift Tap). Browser cannot link a pedometer.',
+      );
       return;
     }
-    setGpsError('Asking for location…');
+    setHealthBridge(true);
+    setLinkingPedometer(true);
+    setStepsError('Asking Health Connect for Steps access…');
+    try {
+      const perm = await requestStepsFromShell('WALK2U_STEPS_PERMISSION');
+      if (!perm?.success) {
+        setPedometerLinked(false);
+        setStepsError(
+          perm?.error ||
+            'Allow Steps for Walk2u in Health Connect, then tap Link again.',
+        );
+        return;
+      }
+      setPedometerLinked(true);
+      setStepsError('');
+    } finally {
+      setLinkingPedometer(false);
+    }
+  }, []);
+
+  const openHealthConnectSettings = useCallback(() => {
+    postToWalk2uShell({ type: 'OPEN_HEALTH_CONNECT_SETTINGS' });
+  }, []);
+
+  const startWalk = useCallback(async () => {
+    if (!healthBridge) {
+      setStepsError(
+        'Open the Walk2u Android app (not Chrome / Gift Tap). Real steps need Health Connect.',
+      );
+      return;
+    }
+    if (!pedometerLinked) {
+      const perm = await requestStepsFromShell('WALK2U_STEPS_PERMISSION');
+      if (!perm?.success) {
+        setPedometerLinked(false);
+        setStepsError(
+          perm?.error ||
+            'Allow Steps for Walk2u in Health Connect, then try Start again.',
+        );
+        return;
+      }
+      setPedometerLinked(true);
+    }
+    if (!(hasShoe && energyBlocks > 0 && !walking)) {
+      setStepsError(
+        !hasShoe
+          ? 'Add a demo shoe (Bag / Demo fills), then Start.'
+          : energyBlocks <= 0
+            ? 'Add energy (Demo fills), then Start.'
+            : '',
+      );
+      return;
+    }
+    setStepsError('');
     setLastSummary(null);
     setTab('walk');
 
-    // Warm permission + first fix, then watch
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        setGpsError('');
-        distMRef.current = 0;
-        lastPosRef.current = {
-          lat: pos.coords.latitude,
-          lon: pos.coords.longitude,
-          t: Date.now(),
-        };
-        startedAtRef.current = Date.now();
-        blocksAtStartRef.current = energyBlocks;
-        setSessionKm(0);
-        setSessionSteps(0);
-        setSessionMs(0);
-        setRewardedMs(0);
-        setSpeedMps(0);
-        setWalking(true);
+    const startIso = new Date().toISOString();
+    startedAtIsoRef.current = startIso;
+    startedAtRef.current = Date.now();
+    blocksAtStartRef.current = energyBlocks;
+    stepsRef.current = 0;
+    setSessionKm(0);
+    setSessionSteps(0);
+    setSessionMs(0);
+    setRewardedMs(0);
+    setStepsError('');
+    setWalking(true);
 
-        watchIdRef.current = navigator.geolocation.watchPosition(
-          onPosition,
-          (err) =>
-            setGpsError(
-              err?.code === 1
-                ? 'Location denied — enable it in phone settings for this site.'
-                : err?.message || 'GPS error.',
-            ),
-          { enableHighAccuracy: true, maximumAge: 1000, timeout: 20000 },
-        );
+    tickRef.current = setInterval(() => {
+      const elapsed = Date.now() - startedAtRef.current;
+      const cap = blocksAtStartRef.current * MS_PER_BLOCK;
+      setSessionMs(elapsed);
+      setRewardedMs(Math.min(elapsed, cap));
+    }, 500);
 
-        tickRef.current = setInterval(() => {
-          const elapsed = Date.now() - startedAtRef.current;
-          const cap = blocksAtStartRef.current * MS_PER_BLOCK;
-          setSessionMs(elapsed);
-          setRewardedMs(Math.min(elapsed, cap));
-        }, 500);
-      },
-      (err) => {
-        setWalking(false);
-        setGpsError(
-          err?.code === 1
-            ? 'Location denied — enable it in phone settings for this site.'
-            : err?.message || 'Could not get GPS. Try outdoors / Wi‑Fi off.',
-        );
-      },
-      { enableHighAccuracy: true, maximumAge: 0, timeout: 20000 },
-    );
-  }, [canStart, energyBlocks, onPosition]);
+    // Live step refresh from Health Connect (same Start→now window)
+    const poll = async () => {
+      const r = await requestStepsFromShell('WALK2U_STEPS_AGGREGATE', {
+        startTime: startedAtIsoRef.current,
+        endTime: new Date().toISOString(),
+      });
+      if (r?.success) applyLiveSteps(r.steps);
+      else if (r?.error) setStepsError(r.error);
+    };
+    poll();
+    pollRef.current = setInterval(poll, 15000);
+  }, [
+    healthBridge,
+    pedometerLinked,
+    hasShoe,
+    energyBlocks,
+    walking,
+    applyLiveSteps,
+  ]);
 
-  const endWalk = useCallback(() => {
-    stopWatch();
+  const endWalk = useCallback(async () => {
+    stopTimers();
     setWalking(false);
     const elapsed = Date.now() - startedAtRef.current;
     const cap = blocksAtStartRef.current * MS_PER_BLOCK;
     const rewarded = Math.min(elapsed, cap);
-    const distM = distMRef.current;
-    const km = distM / 1000;
-    const steps = Math.floor(distM / STRIDE_M);
+
+    let steps = stepsRef.current;
+    if (healthBridge && startedAtIsoRef.current) {
+      const r = await requestStepsFromShell('WALK2U_STEPS_AGGREGATE', {
+        startTime: startedAtIsoRef.current,
+        endTime: new Date().toISOString(),
+      });
+      if (r?.success) {
+        steps = Math.max(0, Math.floor(Number(r.steps) || 0));
+        applyLiveSteps(steps);
+      } else if (r?.error) {
+        setStepsError(r.error);
+      }
+    }
+
+    const km = (steps * STRIDE_M) / 1000;
     const frac = elapsed > 0 ? Math.min(1, rewarded / elapsed) : 0;
     const creditedSteps = Math.floor(steps * frac);
     const points = Math.floor(creditedSteps / 1000);
@@ -197,7 +333,7 @@ export default function Walk2uApp() {
       blocksUsed,
     });
     setTab('home');
-  }, [energyBlocks, stopWatch]);
+  }, [energyBlocks, stopTimers, healthBridge, applyLiveSteps]);
 
   const energyCapMs = Math.max(1, blocksAtStartRef.current * MS_PER_BLOCK);
   const energyFrac = walking ? Math.min(1, rewardedMs / energyCapMs) : 0;
@@ -328,7 +464,12 @@ export default function Walk2uApp() {
               setDurabilityPct(100);
             }}
             onDemoEnergy={() => setEnergyBlocks((n) => n + 1)}
-            gpsError={gpsError}
+            stepsError={stepsError}
+            healthBridge={healthBridge}
+            pedometerLinked={pedometerLinked}
+            linkingPedometer={linkingPedometer}
+            onLinkPedometer={linkPedometer}
+            onOpenHealthSettings={openHealthConnectSettings}
           />
         )}
         {tab === 'walk' && (
@@ -340,8 +481,8 @@ export default function Walk2uApp() {
             rewardedMs={rewardedMs}
             energyCapMs={energyCapMs}
             energyFrac={energyFrac}
-            speedMps={speedMps}
-            gpsError={gpsError}
+            stepsError={stepsError}
+            healthBridge={healthBridge}
             canStart={canStart}
             hasShoe={hasShoe}
             energyBlocks={energyBlocks}
@@ -403,7 +544,12 @@ function HomeTab({
   onStart,
   onDemoShoe,
   onDemoEnergy,
-  gpsError,
+  stepsError,
+  healthBridge,
+  pedometerLinked,
+  linkingPedometer,
+  onLinkPedometer,
+  onOpenHealthSettings,
 }) {
   return (
     <>
@@ -425,15 +571,70 @@ function HomeTab({
           label="Next km milestone"
           value={`${kmToNext.toFixed(2)} km → ${nextKmMilestone} km`}
         />
-        <PrimaryButton disabled={!canStart} onClick={onStart}>
-          {!hasShoe
-            ? 'Need a shoe'
-            : energyBlocks <= 0
-              ? 'Need energy'
-              : 'Start walking'}
-        </PrimaryButton>
-        {gpsError ? (
-          <p style={{ color: C.warn, fontSize: 12, margin: '10px 0 0' }}>{gpsError}</p>
+        <StatLine
+          label="Pedometer"
+          value={
+            !healthBridge
+              ? 'Need Walk2u app (not browser / Gift Tap)'
+              : pedometerLinked
+                ? 'Health Connect linked'
+                : 'Not linked yet'
+          }
+          warn={!healthBridge || !pedometerLinked}
+        />
+
+        {healthBridge ? (
+          <PrimaryButton
+            disabled={linkingPedometer}
+            onClick={onLinkPedometer}
+          >
+            {linkingPedometer
+              ? 'Linking…'
+              : pedometerLinked
+                ? 'Pedometer linked ✓ (tap to re-link)'
+                : 'Link Health Connect / pedometer'}
+          </PrimaryButton>
+        ) : (
+          <p style={{ color: C.warn, fontSize: 13, margin: '0 0 10px', lineHeight: 1.45 }}>
+            Chrome / Gift Tap cannot link a pedometer. Install and open the{' '}
+            <strong>Walk2u</strong> APK, then this button appears.
+          </p>
+        )}
+
+        {healthBridge && pedometerLinked ? (
+          <div style={{ marginTop: 10 }}>
+            <PrimaryButton disabled={!canStart} onClick={onStart}>
+              {!hasShoe
+                ? 'Need a shoe'
+                : energyBlocks <= 0
+                  ? 'Need energy'
+                  : 'Start walking'}
+            </PrimaryButton>
+          </div>
+        ) : null}
+
+        {healthBridge ? (
+          <button
+            type="button"
+            onClick={onOpenHealthSettings}
+            style={{
+              marginTop: 10,
+              width: '100%',
+              border: 'none',
+              background: 'transparent',
+              color: C.muted,
+              fontSize: 12,
+              fontWeight: 700,
+              textDecoration: 'underline',
+              cursor: 'pointer',
+            }}
+          >
+            Open Health Connect settings
+          </button>
+        ) : null}
+
+        {stepsError ? (
+          <p style={{ color: C.warn, fontSize: 12, margin: '10px 0 0' }}>{stepsError}</p>
         ) : null}
       </div>
 
@@ -480,8 +681,8 @@ function WalkTab({
   rewardedMs,
   energyCapMs,
   energyFrac,
-  speedMps,
-  gpsError,
+  stepsError,
+  healthBridge,
   canStart,
   hasShoe,
   energyBlocks,
@@ -493,18 +694,20 @@ function WalkTab({
       <div style={glassCard}>
         <SectionLabel>Walk</SectionLabel>
         <p style={{ color: C.muted, fontSize: 14, lineHeight: 1.5, margin: '0 0 14px' }}>
-          Go outside, keep the screen on, and walk. Rewards only count while energy
-          lasts (1 block = 5 minutes).
+          Walk with the Walk2u app. Steps come from Health Connect (Start→End).
+          Rewards only count while energy lasts (1 block = 5 minutes).
         </p>
         <PrimaryButton disabled={!canStart} onClick={onStart}>
-          {!hasShoe
-            ? 'Need a shoe'
-            : energyBlocks <= 0
-              ? 'Need energy'
-              : 'Start walking'}
+          {!healthBridge
+            ? 'Open Walk2u app'
+            : !hasShoe
+              ? 'Need a shoe'
+              : energyBlocks <= 0
+                ? 'Need energy'
+                : 'Start walking'}
         </PrimaryButton>
-        {gpsError ? (
-          <p style={{ color: C.warn, fontSize: 12, margin: '10px 0 0' }}>{gpsError}</p>
+        {stepsError ? (
+          <p style={{ color: C.warn, fontSize: 12, margin: '10px 0 0' }}>{stepsError}</p>
         ) : null}
       </div>
     );
@@ -536,7 +739,7 @@ function WalkTab({
           <span style={{ fontSize: 18, fontWeight: 700, color: C.muted }}> km</span>
         </div>
         <div style={{ marginTop: 8, fontSize: 14, color: C.muted }}>
-          {sessionSteps.toLocaleString()} steps · {(speedMps * 3.6).toFixed(1)} km/h
+          {sessionSteps.toLocaleString()} steps · from Health Connect
         </div>
 
         <div style={{ marginTop: 22, textAlign: 'left' }}>
@@ -577,11 +780,11 @@ function WalkTab({
           </div>
         </div>
 
-        {gpsError ? (
-          <p style={{ color: C.warn, fontSize: 12, margin: '14px 0 0' }}>{gpsError}</p>
+        {stepsError ? (
+          <p style={{ color: C.warn, fontSize: 12, margin: '14px 0 0' }}>{stepsError}</p>
         ) : (
           <p style={{ color: C.muted, fontSize: 12, margin: '14px 0 0' }}>
-            GPS tracking — jumps that look too fast are ignored.
+            Steps from Health Connect · distance = steps × stride
           </p>
         )}
       </div>
@@ -735,6 +938,7 @@ function BagTab({
         >
           <li>1 Walk2u per 1,000 steps (energy-limited)</li>
           <li>$G2U milestones from km — same idea as Gift2U milestones</li>
+          <li>Steps from Health Connect in the Walk2u app — not Gift Tap</li>
           <li>Shared Gift2U login & token — separate game from Gift Tap</li>
         </ul>
       </div>

@@ -45,9 +45,9 @@ export const LOCKSMITH_WAVE1 = {
   priceSol: 0.10,
   /**
    * Rent for Core asset + CU priority + botTax(0.001) + slack.
-   * Never allow a mint attempt without price + this buffer.
+   * Not a Gift2U fee — wallet must keep this for the chain.
    */
-  feeBufferSol: 0.02,
+  feeBufferSol: 0.01,
   maxPerWallet: 5,
   itemsAvailable: 500,
   wave: 1,

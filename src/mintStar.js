@@ -33,7 +33,7 @@ export const STAR_WAVE1 = {
   collection: STAR_COLLECTION,
   treasury: 'AdvMvv6GzGvdLRtuxaso1Eubk7jmn6LCZEeEFHn22yeb',
   priceSol: STAR_MINT_SOL || 0.1,
-  feeBufferSol: 0.02,
+  feeBufferSol: 0.01,
   maxPerWallet: 10,
   itemsAvailable: 50000,
   wave: 1,

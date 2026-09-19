@@ -25,7 +25,7 @@ import { RPC_URL } from './rpc';
 import { FATE_COLLECTION, FATE_WAVE1 } from './fate';
 
 export const FATE_TREASURY = 'AdvMvv6GzGvdLRtuxaso1Eubk7jmn6LCZEeEFHn22yeb';
-export const FATE_FEE_BUFFER_SOL = 0.02;
+export const FATE_FEE_BUFFER_SOL = 0.01;
 export const FATE_MAX_PER_WALLET = 5;
 export const FATE_WAVE = 1;
 

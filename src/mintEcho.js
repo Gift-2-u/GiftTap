@@ -25,7 +25,7 @@ import { RPC_URL } from './rpc';
 import { ECHO_COLLECTION, ECHO_WAVE1 } from './echo';
 
 export const ECHO_TREASURY = 'AdvMvv6GzGvdLRtuxaso1Eubk7jmn6LCZEeEFHn22yeb';
-export const ECHO_FEE_BUFFER_SOL = 0.02;
+export const ECHO_FEE_BUFFER_SOL = 0.01;
 export const ECHO_MAX_PER_WALLET = 5;
 export const ECHO_WAVE = 1;
 
