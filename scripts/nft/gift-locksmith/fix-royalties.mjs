@@ -1,34 +1,17 @@
 /**
- * GiftLocksmith royalties fix (Metaplex Core)
+ * ONE-TIME backfill: 5% Royalties + creator on ALL minted Gift2u Elves NFTs.
+ * Covers the whole collection: Fate, Echo, Rush, Shadow, Locksmith (+ Star if any).
+ * (Lives under gift-locksmith/ but is NOT Locksmith-only — same collection id.)
  *
- * Metaplex docs: Collection-level Royalties apply to ALL assets in the collection
- * unless an asset has its own Royalties plugin (asset wins).
+ * New mints: sealed on activate via _shared/nftRoyalties.ts.
  *
- * Collection FQPYWS… already has 5% → treasury AdvMvv6…
- * Player CM mints often show 0% on explorers because they have NO asset plugin
- * (empty ≠ override). Magic Eden often shows collection 5% correctly.
+ * Usage (authority = AdvMvv6 ~/.config/solana/id.json):
  *
- * This script ADDS an explicit 5% Royalties plugin on every collection asset
- * that is missing it or not at 500 bps — so Solscan/DAS match ME.
+ *   cd scripts/nft/gift-locksmith
+ *   node fix-royalties.mjs                    # dry-run
+ *   CONFIRM_MAINNET=yes node fix-royalties.mjs  # live
  *
- * Future CM mints: covered by collection 5% already. After each mint you can
- * re-run this script to pin asset-level 5% if you want explorers to match.
- *
- * Usage (update authority = AdvMvv6 key, usually ~/.config/solana/id.json):
- *
- *   # Dry-run (no txs)
- *   node fix-royalties.mjs
- *
- *   # Live mainnet
- *   export CONFIRM_MAINNET=yes
- *   export RPC_URL="https://mainnet.helius-rpc.com/?api-key=YOUR_KEY"
- *   node fix-royalties.mjs
- *
- * Optional:
- *   export COLLECTION=FQPYWSohCPnS57W2AWAqwmQM21KRxGi4YXcCaiXUghPD
- *   export TREASURY=AdvMvv6GzGvdLRtuxaso1Eubk7jmn6LCZEeEFHn22yeb
- *   export KEYPAIR_PATH=/path/to/id.json
- *   export ONLY_ASSET=D6CYXgSVrs8JVazWU8qAvS8Hvg3CT1B218QAUXamFsBc
+ * Optional: COLLECTION, TREASURY, KEYPAIR_PATH, ONLY_ASSET, RPC_URL
  */
 import fs from 'fs';
 import os from 'os';
@@ -111,8 +94,20 @@ function royaltyBpsFromAsset(asset) {
   return 0;
 }
 
+function classFromName(name) {
+  const n = String(name || '').toLowerCase();
+  if (n.includes('fate')) return 'Fate';
+  if (n.includes('echo')) return 'Echo';
+  if (n.includes('rush')) return 'Rush';
+  if (n.includes('shadow')) return 'Shadow';
+  if (n.includes('locksmith') || n.includes('giftlocksmith')) return 'Locksmith';
+  if (n.includes('star')) return 'Star';
+  return 'Other';
+}
+
 async function main() {
-  console.log('=== GiftLocksmith royalty fix ===');
+  console.log('=== Gift2u Elves royalty seal (ALL classes) ===');
+  console.log('Fate · Echo · Rush · Shadow · Locksmith (+ Star if present)');
   console.log('Collection:', COLLECTION);
   console.log('Treasury:  ', TREASURY);
   console.log('Target:    ', TARGET_BPS, 'bps (', TARGET_BPS / 100, '%)');
@@ -205,32 +200,46 @@ async function main() {
       : path.join(process.cwd(), 'scripts/nft/gift-locksmith'),
     'fix-royalties-result.json',
   );
+  const byClass = {};
+  for (const r of results) {
+    const c = classFromName(r.name);
+    byClass[c] = byClass[c] || { ok: 0, need: 0, fixed: 0, error: 0 };
+    if (r.status === 'ok') byClass[c].ok += 1;
+    else if (r.status === 'dry-run-would-fix') byClass[c].need += 1;
+    else if (r.status === 'fixed') byClass[c].fixed += 1;
+    else if (r.status === 'error') byClass[c].error += 1;
+  }
+  console.log('\nBy class (Fate / Echo / Rush / Shadow / Locksmith / Star):');
+  for (const [c, s] of Object.entries(byClass).sort()) {
+    console.log(
+      `  ${c}: already_ok=${s.ok} need_fix=${s.need} fixed=${s.fixed} error=${s.error}`,
+    );
+  }
+
   try {
-    fs.writeFileSync(outPath2, JSON.stringify({ dry: DRY, results }, null, 2));
+    fs.writeFileSync(outPath2, JSON.stringify({ dry: DRY, results, byClass }, null, 2));
     console.log('\nSaved', outPath2);
   } catch {
-    fs.writeFileSync('fix-royalties-result.json', JSON.stringify({ dry: DRY, results }, null, 2));
+    fs.writeFileSync(
+      'fix-royalties-result.json',
+      JSON.stringify({ dry: DRY, results, byClass }, null, 2),
+    );
   }
 
   console.log('\nDone.');
   if (DRY) {
     console.log(`
-To apply on mainnet:
+To apply on mainnet (ALL classes in this collection):
 
   export CONFIRM_MAINNET=yes
-  export RPC_URL="https://mainnet.helius-rpc.com/?api-key=YOUR_KEY"
-  # key must be update authority (AdvMvv6…):
   export KEYPAIR_PATH="$HOME/.config/solana/id.json"
   node fix-royalties.mjs
 `);
   }
 
   console.log(`
-Note on the remaining unminted supply (up to 500 Wave 1 / 5000 Gen 1):
-  Collection already has Royalties 5%. Metaplex: collection royalties apply to
-  ALL assets in the collection unless an asset sets its own plugin.
-  New CM mints are covered by collection 5% even before you re-run this script.
-  Re-run this script after big mint waves if you want asset-level 5% on explorers.
+New shop mints: sealed on activate (5% + creator on Solscan).
+This script = one-time backfill for NFTs already minted before that.
 `);
 }
 

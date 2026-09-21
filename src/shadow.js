@@ -27,7 +27,7 @@ export function shadowYield(rarityKey, level, baseDailyCap) {
 }
 
 export const SHADOW_DESCRIPTION =
-  "Shadow is the Night elf of the Gift2u Elves. Own it in wallet/backpack and its attributes apply (highest Shadow if you hold several). Once per UTC day, Shadow grants shards without tapping equal to (hours÷24) of your max daily taps from Rush + Premium boosts (quest boosts not included). Up to 24h = full that cap on Legendary L5.";
+  "Shadow is the Night elf of the Gift2u Elves. It does not raise your max daily. From each UTC midnight it accrues AFK shards up to its hours (e.g. Common L1 = 2h). Claim once per UTC day — you only get what has accrued so far, and only unused daily room (never over your max daily). Rush + Premium set the cap; quest boosts do not.";
 
 export const SHADOW_WAVE1 = {
   common: {

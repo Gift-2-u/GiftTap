@@ -108,8 +108,40 @@ export function isEchoMintLive(rarityKey) {
   return !!(c?.candyMachine && c?.candyGuard);
 }
 
-export function minSolForEchoMint(rarityKey) {
-  const c = ECHO_CM[rarityKey] || ECHO_CM.common;
+/** Promo Common CM (60 percent off). Separate from live Wave-1. Fill after allowList deploy. */
+export const ECHO_CM_PROMO = {
+  common: {
+    ...ECHO_WAVE1.common,
+    priceSol: Math.round(ECHO_WAVE1.common.priceSol * 0.4 * 10000) / 10000,
+    candyMachine: null,
+    candyGuard: null,
+    collection: ECHO_COLLECTION,
+    treasury: ECHO_TREASURY,
+    feeBufferSol: ECHO_FEE_BUFFER_SOL,
+    maxPerWallet: ECHO_MAX_PER_WALLET,
+    wave: ECHO_WAVE,
+    name: 'Echo',
+    promo: true,
+  },
+};
+
+export function isEchoPromoMintLive() {
+  const c = ECHO_CM_PROMO.common;
+  return !!(c?.candyMachine && c?.candyGuard);
+}
+
+export function getEchoMintCfg(rarityKey, promo = false) {
+  if (promo) {
+    if (String(rarityKey) !== 'common') {
+      throw new Error('Echo voucher promo mint is Common only');
+    }
+    return ECHO_CM_PROMO.common;
+  }
+  return ECHO_CM[rarityKey];
+}
+
+export function minSolForEchoMint(rarityKey, promo = false) {
+  const c = getEchoMintCfg(rarityKey, promo) || ECHO_CM.common;
   return (Number(c.priceSol) || 0) + (Number(c.feeBufferSol) || ECHO_FEE_BUFFER_SOL);
 }
 
@@ -124,15 +156,25 @@ export async function getWalletSolBalance(walletAddress) {
   return lamports / LAMPORTS_PER_SOL;
 }
 
-export async function assertWalletCanMintEcho(walletAddress, rarityKey) {
-  const cfg = ECHO_CM[rarityKey];
+export async function assertWalletCanMintEcho(
+  walletAddress,
+  rarityKey,
+  promo = false,
+) {
+  const cfg = getEchoMintCfg(rarityKey, promo);
   if (!cfg) throw new Error('Unknown Echo rarity');
-  if (!isEchoMintLive(rarityKey)) {
+  if (promo) {
+    if (!isEchoPromoMintLive()) {
+      throw new Error(
+        'Echo Common voucher mint is not live yet (promo candy machine not deployed).',
+      );
+    }
+  } else if (!isEchoMintLive(rarityKey)) {
     throw new Error(
       `Echo ${cfg.label} Wave 1 mint is not live yet (candy machine not deployed).`,
     );
   }
-  const need = minSolForEchoMint(rarityKey);
+  const need = minSolForEchoMint(rarityKey, promo);
   let sol = 0;
   try {
     sol = await getWalletSolBalance(walletAddress);
@@ -143,7 +185,7 @@ export async function assertWalletCanMintEcho(walletAddress, rarityKey) {
   }
   if (!(sol >= need)) {
     throw new Error(
-      `Not enough SOL to mint Echo ${cfg.label}. Need at least ${need.toFixed(2)} SOL ` +
+      `Not enough SOL to mint Echo ${cfg.label}${promo ? ' (voucher)' : ''}. Need at least ${need.toFixed(2)} SOL ` +
         `(${cfg.priceSol} mint + ~${cfg.feeBufferSol} network/rent). ` +
         `Your game wallet has ${Number(sol).toFixed(4)} SOL.`,
     );
@@ -184,14 +226,25 @@ function umiFromSecret(secretPhraseOrBase58) {
  * @param {string} secretPhraseOrBase58
  * @param {'common'|'rare'|'epic'|'legendary'} rarityKey
  */
-export async function mintEchoWave1(secretPhraseOrBase58, rarityKey = 'common') {
+export async function mintEchoWave1(
+  secretPhraseOrBase58,
+  rarityKey = 'common',
+  opts = {},
+) {
+  const promo = !!opts.promo;
   if (!secretPhraseOrBase58) {
     throw new Error('Wallet secret not available. Unlock your game wallet first.');
   }
   await loadEchoCmConfig();
-  const cfg = ECHO_CM[rarityKey];
+  const cfg = getEchoMintCfg(rarityKey, promo);
   if (!cfg) throw new Error('Unknown Echo rarity');
-  if (!isEchoMintLive(rarityKey)) {
+  if (promo) {
+    if (!isEchoPromoMintLive()) {
+      throw new Error(
+        'Echo Common voucher mint is listed but promo candy machine is not live yet.',
+      );
+    }
+  } else if (!isEchoMintLive(rarityKey)) {
     throw new Error(
       `Echo ${cfg.label} is listed but Wave 1 candy machine is not live yet.`,
     );
@@ -199,8 +252,7 @@ export async function mintEchoWave1(secretPhraseOrBase58, rarityKey = 'common') 
 
   const umi = umiFromSecret(secretPhraseOrBase58);
   const owner = umi.identity.publicKey.toString();
-  await assertWalletCanMintEcho(owner, rarityKey);
-  await assertWalletCanMintEcho(owner, rarityKey);
+  await assertWalletCanMintEcho(owner, rarityKey, promo);
 
   const asset = generateSigner(umi);
   const builder = transactionBuilder()
@@ -213,7 +265,7 @@ export async function mintEchoWave1(secretPhraseOrBase58, rarityKey = 'common') 
         candyGuard: publicKey(cfg.candyGuard),
         mintArgs: {
           solPayment: some({ destination: publicKey(cfg.treasury) }),
-          mintLimit: some({ id: cfg.wave }),
+          mintLimit: some({ id: promo ? 90 + cfg.wave : cfg.wave }),
         },
       }),
     );
@@ -235,5 +287,6 @@ export async function mintEchoWave1(secretPhraseOrBase58, rarityKey = 'common') 
     priceSol: cfg.priceSol,
     name: `Echo ${cfg.label}`,
     rarity: cfg.label,
+    promo,
   };
 }

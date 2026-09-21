@@ -108,8 +108,40 @@ export function isShadowMintLive(rarityKey) {
   return !!(c?.candyMachine && c?.candyGuard);
 }
 
-export function minSolForShadowMint(rarityKey) {
-  const c = SHADOW_CM[rarityKey] || SHADOW_CM.common;
+/** Promo Common CM (60 percent off). Separate from live Wave-1. Fill after allowList deploy. */
+export const SHADOW_CM_PROMO = {
+  common: {
+    ...SHADOW_WAVE1.common,
+    priceSol: Math.round(SHADOW_WAVE1.common.priceSol * 0.4 * 10000) / 10000,
+    candyMachine: null,
+    candyGuard: null,
+    collection: SHADOW_COLLECTION,
+    treasury: SHADOW_TREASURY,
+    feeBufferSol: SHADOW_FEE_BUFFER_SOL,
+    maxPerWallet: SHADOW_MAX_PER_WALLET,
+    wave: SHADOW_WAVE,
+    name: 'Shadow',
+    promo: true,
+  },
+};
+
+export function isShadowPromoMintLive() {
+  const c = SHADOW_CM_PROMO.common;
+  return !!(c?.candyMachine && c?.candyGuard);
+}
+
+export function getShadowMintCfg(rarityKey, promo = false) {
+  if (promo) {
+    if (String(rarityKey) !== 'common') {
+      throw new Error('Shadow voucher promo mint is Common only');
+    }
+    return SHADOW_CM_PROMO.common;
+  }
+  return SHADOW_CM[rarityKey];
+}
+
+export function minSolForShadowMint(rarityKey, promo = false) {
+  const c = getShadowMintCfg(rarityKey, promo) || SHADOW_CM.common;
   return (Number(c.priceSol) || 0) + (Number(c.feeBufferSol) || SHADOW_FEE_BUFFER_SOL);
 }
 
@@ -124,15 +156,25 @@ export async function getWalletSolBalance(walletAddress) {
   return lamports / LAMPORTS_PER_SOL;
 }
 
-export async function assertWalletCanMintShadow(walletAddress, rarityKey) {
-  const cfg = SHADOW_CM[rarityKey];
+export async function assertWalletCanMintShadow(
+  walletAddress,
+  rarityKey,
+  promo = false,
+) {
+  const cfg = getShadowMintCfg(rarityKey, promo);
   if (!cfg) throw new Error('Unknown Shadow rarity');
-  if (!isShadowMintLive(rarityKey)) {
+  if (promo) {
+    if (!isShadowPromoMintLive()) {
+      throw new Error(
+        'Shadow Common voucher mint is not live yet (promo candy machine not deployed).',
+      );
+    }
+  } else if (!isShadowMintLive(rarityKey)) {
     throw new Error(
       `Shadow ${cfg.label} Wave 1 mint is not live yet (candy machine not deployed).`,
     );
   }
-  const need = minSolForShadowMint(rarityKey);
+  const need = minSolForShadowMint(rarityKey, promo);
   let sol = 0;
   try {
     sol = await getWalletSolBalance(walletAddress);
@@ -143,7 +185,7 @@ export async function assertWalletCanMintShadow(walletAddress, rarityKey) {
   }
   if (!(sol >= need)) {
     throw new Error(
-      `Not enough SOL to mint Shadow ${cfg.label}. Need at least ${need.toFixed(2)} SOL ` +
+      `Not enough SOL to mint Shadow ${cfg.label}${promo ? ' (voucher)' : ''}. Need at least ${need.toFixed(2)} SOL ` +
         `(${cfg.priceSol} mint + ~${cfg.feeBufferSol} network/rent). ` +
         `Your game wallet has ${Number(sol).toFixed(4)} SOL.`,
     );
@@ -184,14 +226,25 @@ function umiFromSecret(secretPhraseOrBase58) {
  * @param {string} secretPhraseOrBase58
  * @param {'common'|'rare'|'epic'|'legendary'} rarityKey
  */
-export async function mintShadowWave1(secretPhraseOrBase58, rarityKey = 'common') {
+export async function mintShadowWave1(
+  secretPhraseOrBase58,
+  rarityKey = 'common',
+  opts = {},
+) {
+  const promo = !!opts.promo;
   if (!secretPhraseOrBase58) {
     throw new Error('Wallet secret not available. Unlock your game wallet first.');
   }
   await loadShadowCmConfig();
-  const cfg = SHADOW_CM[rarityKey];
+  const cfg = getShadowMintCfg(rarityKey, promo);
   if (!cfg) throw new Error('Unknown Shadow rarity');
-  if (!isShadowMintLive(rarityKey)) {
+  if (promo) {
+    if (!isShadowPromoMintLive()) {
+      throw new Error(
+        'Shadow Common voucher mint is listed but promo candy machine is not live yet.',
+      );
+    }
+  } else if (!isShadowMintLive(rarityKey)) {
     throw new Error(
       `Shadow ${cfg.label} is listed but Wave 1 candy machine is not live yet.`,
     );
@@ -199,8 +252,7 @@ export async function mintShadowWave1(secretPhraseOrBase58, rarityKey = 'common'
 
   const umi = umiFromSecret(secretPhraseOrBase58);
   const owner = umi.identity.publicKey.toString();
-  await assertWalletCanMintShadow(owner, rarityKey);
-  await assertWalletCanMintShadow(owner, rarityKey);
+  await assertWalletCanMintShadow(owner, rarityKey, promo);
 
   const asset = generateSigner(umi);
   const builder = transactionBuilder()
@@ -213,7 +265,7 @@ export async function mintShadowWave1(secretPhraseOrBase58, rarityKey = 'common'
         candyGuard: publicKey(cfg.candyGuard),
         mintArgs: {
           solPayment: some({ destination: publicKey(cfg.treasury) }),
-          mintLimit: some({ id: cfg.wave }),
+          mintLimit: some({ id: promo ? 90 + cfg.wave : cfg.wave }),
         },
       }),
     );
@@ -235,5 +287,6 @@ export async function mintShadowWave1(secretPhraseOrBase58, rarityKey = 'common'
     priceSol: cfg.priceSol,
     name: `Shadow ${cfg.label}`,
     rarity: cfg.label,
+    promo,
   };
 }

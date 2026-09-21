@@ -1491,7 +1491,7 @@ export default function WalletNftSection({
                         onInventoryChange(nextInv, data.player || null);
                       }
                       toast(
-                        `Shadow claimed · +${data.yield ?? 0} shards (${data.hours || '?'}h of base ${data.base_cap ?? '?'})`,
+                        `Shadow claimed · +${data.yield ?? 0} shards (${data.effective_hours ?? data.hours ?? '?'}h accrued · daily ${data.daily_taps ?? '?'}/${data.base_cap ?? '?'})`,
                         true,
                       );
                     } catch (e) {

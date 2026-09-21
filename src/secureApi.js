@@ -548,3 +548,30 @@ export async function secureShadowActivate({ rarity, level = 1, assetId = null, 
 export async function secureShadowClaim() {
   return callSecureFunction('shadow-claim', {});
 }
+
+/** Common NFT voucher (60% off) — status / TwrLtr grant / consume after promo mint. */
+export async function secureNftVoucher(action, payload = {}) {
+  return callSecureFunction('nft-voucher', { action, ...payload });
+}
+
+export async function secureNftVoucherStatus() {
+  return secureNftVoucher('status');
+}
+
+export async function secureNftVoucherGrant({ username, expiresAt = null } = {}) {
+  return secureNftVoucher('grant', { username, expires_at: expiresAt });
+}
+
+export async function secureNftVoucherConsume({
+  kind,
+  rarity = 'common',
+  assetId = null,
+  txSignature = null,
+} = {}) {
+  return secureNftVoucher('consume', {
+    kind,
+    rarity,
+    asset_id: assetId,
+    tx_signature: txSignature,
+  });
+}

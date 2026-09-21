@@ -2,10 +2,83 @@
   "dry": false,
   "results": [
     {
+      "id": "J5RsJKk5yC8hieBfqRcPDn37xPVL21jb2UbBPLHuAEqh",
+      "name": "Echo Common #1",
+      "status": "fixed",
+      "sig": "5hYEnd7MBS17iNfCHEo9jMNFcxg2JBZHwMmKiuCy4cJx4aBrSwZAKGQz9eBD98DBb8QvwK1MMPLDSBLSZ4yiywQh",
+      "bps": 500
+    },
+    {
+      "id": "GTrDYWhhh8XSiNyQMyJ7RcRg3uBu8ktRv2jp7EucWtUi",
+      "name": "Shadow Common #1",
+      "status": "fixed",
+      "sig": "5L75MBrXLoQB5ut1fyiQ4qHYkywbyRMb3LYxoMvW5Qisb9jEfMPzpHoWG2Z5QLqvBSBgWAit9zXj1fFEj9AmnCEg",
+      "bps": 500
+    },
+    {
       "id": "D6CYXgSVrs8JVazWU8qAvS8Hvg3CT1B218QAUXamFsBc",
       "name": "GiftLocksmith #1",
       "status": "ok",
       "bps": 500
+    },
+    {
+      "id": "92L9vJbnfwpKvQyCRMu7pyiyggthSwFM7KyQ8gA2S2vi",
+      "name": "Rush Common #1",
+      "status": "fixed",
+      "sig": "4jk28mnx1ELUvdbga9oqEKDXCTzeaKxzTeHTu7wuptwrEfnHpeqrXBePwunqALTBzsZ6hR2guAtzCGBy2eLN6hWc",
+      "bps": 500
+    },
+    {
+      "id": "8Lz91tAGSqsWC2EttSwtiWsgsWidUDE6bz2fLWTKraYv",
+      "name": "Echo Common #3",
+      "status": "fixed",
+      "sig": "2FqVPdYCV6dyAT2ZbhNLspD2cHXoh48QzMdVzHegnhT6tDjWy7RBv1oKtVfpPNErwEPm6tHcFs5kwrWXnpnea6in",
+      "bps": 500
+    },
+    {
+      "id": "7aR6vPhkU4EKWwPFWf3UrdmZP9AGP4iFbn87vTYs8r19",
+      "name": "Fate",
+      "status": "ok",
+      "bps": 500
+    },
+    {
+      "id": "5LpMcpbxjPiyT9XxQQHUtjKFD48db3F47k5eyAZi3uo5",
+      "name": "Echo Common #2",
+      "status": "fixed",
+      "sig": "4B1wnyifissaeErPaT27KejDrwgq8iZ25ZQWD4cTMZwkU1jMRwgyoHMHTKqAq9wQ3j8f7n7HLwy9Y5CCD21n7zXx",
+      "bps": 500
     }
-  ]
+  ],
+  "byClass": {
+    "Echo": {
+      "ok": 0,
+      "need": 0,
+      "fixed": 3,
+      "error": 0
+    },
+    "Shadow": {
+      "ok": 0,
+      "need": 0,
+      "fixed": 1,
+      "error": 0
+    },
+    "Locksmith": {
+      "ok": 1,
+      "need": 0,
+      "fixed": 0,
+      "error": 0
+    },
+    "Rush": {
+      "ok": 0,
+      "need": 0,
+      "fixed": 1,
+      "error": 0
+    },
+    "Fate": {
+      "ok": 1,
+      "need": 0,
+      "fixed": 0,
+      "error": 0
+    }
+  }
 }

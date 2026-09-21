@@ -16,6 +16,7 @@ import {
   instantEconomyPatch,
 } from "../_shared/economy.ts";
 import { ensureNftDurabilityOnActivate } from "../_shared/nftDurability.ts";
+import { sealAssetRoyalties } from "../_shared/nftRoyalties.ts";
 
 const RARITIES = new Set(Object.keys(RUSH_DAILY_LIMIT));
 
@@ -107,6 +108,18 @@ serve(async (req) => {
       },
     });
 
+    let royalties: Record<string, unknown> | null = null;
+    const sealId =
+      (active && typeof active === "object"
+        ? (active as Record<string, unknown>).asset_id
+        : null) ||
+      body.asset_id ||
+      body.assetId ||
+      null;
+    if (sealId && body.clear !== true && body.unequip !== true) {
+      royalties = await sealAssetRoyalties(String(sealId));
+    }
+
     return jsonResponse({
       success: true,
       inventory: updated?.inventory ?? inv,
@@ -119,6 +132,7 @@ serve(async (req) => {
       max_daily_limit:
         (updated as { max_daily_limit?: number } | null)?.max_daily_limit ??
         patch.max_daily_limit,
+      royalties,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

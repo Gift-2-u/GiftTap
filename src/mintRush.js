@@ -108,8 +108,40 @@ export function isRushMintLive(rarityKey) {
   return !!(c?.candyMachine && c?.candyGuard);
 }
 
-export function minSolForRushMint(rarityKey) {
-  const c = RUSH_CM[rarityKey] || RUSH_CM.common;
+/** Promo Common CM (60 percent off). Separate from live Wave-1. Fill after allowList deploy. */
+export const RUSH_CM_PROMO = {
+  common: {
+    ...RUSH_WAVE1.common,
+    priceSol: Math.round(RUSH_WAVE1.common.priceSol * 0.4 * 10000) / 10000,
+    candyMachine: null,
+    candyGuard: null,
+    collection: RUSH_COLLECTION,
+    treasury: RUSH_TREASURY,
+    feeBufferSol: RUSH_FEE_BUFFER_SOL,
+    maxPerWallet: RUSH_MAX_PER_WALLET,
+    wave: RUSH_WAVE,
+    name: 'Rush',
+    promo: true,
+  },
+};
+
+export function isRushPromoMintLive() {
+  const c = RUSH_CM_PROMO.common;
+  return !!(c?.candyMachine && c?.candyGuard);
+}
+
+export function getRushMintCfg(rarityKey, promo = false) {
+  if (promo) {
+    if (String(rarityKey) !== 'common') {
+      throw new Error('Rush voucher promo mint is Common only');
+    }
+    return RUSH_CM_PROMO.common;
+  }
+  return RUSH_CM[rarityKey];
+}
+
+export function minSolForRushMint(rarityKey, promo = false) {
+  const c = getRushMintCfg(rarityKey, promo) || RUSH_CM.common;
   return (Number(c.priceSol) || 0) + (Number(c.feeBufferSol) || RUSH_FEE_BUFFER_SOL);
 }
 
@@ -124,15 +156,25 @@ export async function getWalletSolBalance(walletAddress) {
   return lamports / LAMPORTS_PER_SOL;
 }
 
-export async function assertWalletCanMintRush(walletAddress, rarityKey) {
-  const cfg = RUSH_CM[rarityKey];
+export async function assertWalletCanMintRush(
+  walletAddress,
+  rarityKey,
+  promo = false,
+) {
+  const cfg = getRushMintCfg(rarityKey, promo);
   if (!cfg) throw new Error('Unknown Rush rarity');
-  if (!isRushMintLive(rarityKey)) {
+  if (promo) {
+    if (!isRushPromoMintLive()) {
+      throw new Error(
+        'Rush Common voucher mint is not live yet (promo candy machine not deployed).',
+      );
+    }
+  } else if (!isRushMintLive(rarityKey)) {
     throw new Error(
       `Rush ${cfg.label} Wave 1 mint is not live yet (candy machine not deployed).`,
     );
   }
-  const need = minSolForRushMint(rarityKey);
+  const need = minSolForRushMint(rarityKey, promo);
   let sol = 0;
   try {
     sol = await getWalletSolBalance(walletAddress);
@@ -143,7 +185,7 @@ export async function assertWalletCanMintRush(walletAddress, rarityKey) {
   }
   if (!(sol >= need)) {
     throw new Error(
-      `Not enough SOL to mint Rush ${cfg.label}. Need at least ${need.toFixed(2)} SOL ` +
+      `Not enough SOL to mint Rush ${cfg.label}${promo ? ' (voucher)' : ''}. Need at least ${need.toFixed(2)} SOL ` +
         `(${cfg.priceSol} mint + ~${cfg.feeBufferSol} network/rent). ` +
         `Your game wallet has ${Number(sol).toFixed(4)} SOL.`,
     );
@@ -184,14 +226,25 @@ function umiFromSecret(secretPhraseOrBase58) {
  * @param {string} secretPhraseOrBase58
  * @param {'common'|'rare'|'epic'|'legendary'} rarityKey
  */
-export async function mintRushWave1(secretPhraseOrBase58, rarityKey = 'common') {
+export async function mintRushWave1(
+  secretPhraseOrBase58,
+  rarityKey = 'common',
+  opts = {},
+) {
+  const promo = !!opts.promo;
   if (!secretPhraseOrBase58) {
     throw new Error('Wallet secret not available. Unlock your game wallet first.');
   }
   await loadRushCmConfig();
-  const cfg = RUSH_CM[rarityKey];
+  const cfg = getRushMintCfg(rarityKey, promo);
   if (!cfg) throw new Error('Unknown Rush rarity');
-  if (!isRushMintLive(rarityKey)) {
+  if (promo) {
+    if (!isRushPromoMintLive()) {
+      throw new Error(
+        'Rush Common voucher mint is listed but promo candy machine is not live yet.',
+      );
+    }
+  } else if (!isRushMintLive(rarityKey)) {
     throw new Error(
       `Rush ${cfg.label} is listed but Wave 1 candy machine is not live yet.`,
     );
@@ -199,8 +252,7 @@ export async function mintRushWave1(secretPhraseOrBase58, rarityKey = 'common') 
 
   const umi = umiFromSecret(secretPhraseOrBase58);
   const owner = umi.identity.publicKey.toString();
-  await assertWalletCanMintRush(owner, rarityKey);
-  await assertWalletCanMintRush(owner, rarityKey);
+  await assertWalletCanMintRush(owner, rarityKey, promo);
 
   const asset = generateSigner(umi);
   const builder = transactionBuilder()
@@ -213,7 +265,7 @@ export async function mintRushWave1(secretPhraseOrBase58, rarityKey = 'common') 
         candyGuard: publicKey(cfg.candyGuard),
         mintArgs: {
           solPayment: some({ destination: publicKey(cfg.treasury) }),
-          mintLimit: some({ id: cfg.wave }),
+          mintLimit: some({ id: promo ? 90 + cfg.wave : cfg.wave }),
         },
       }),
     );
@@ -235,5 +287,6 @@ export async function mintRushWave1(secretPhraseOrBase58, rarityKey = 'common') 
     priceSol: cfg.priceSol,
     name: `Rush ${cfg.label}`,
     rarity: cfg.label,
+    promo,
   };
 }

@@ -1,6 +1,7 @@
 /**
  * Walk2u — native app (fun.gift2u.walk2u)
- * STEPN-style: GPS walk + signal bars. Start → walk → End.
+ * STEPN-style: GPS + signal bars. Start → Pause → Continue / End.
+ * GPS permission once. Speed shown for upcoming min/max walk limits.
  * Demo shoe / energy on Home.
  */
 import React, { useCallback, useEffect, useRef, useState } from 'react';
@@ -14,11 +15,81 @@ import {
   View,
 } from 'react-native';
 import * as Location from 'expo-location';
+import * as TaskManager from 'expo-task-manager';
+
+/** Ongoing notification + GPS while walking (STEPN-style status-bar icon). */
+const WALK_LOCATION_TASK = 'WALK2U_WALK_LOCATION';
+const walkLocListeners = new Set();
+
+TaskManager.defineTask(WALK_LOCATION_TASK, ({ data, error }) => {
+  if (error) {
+    walkLocListeners.forEach((fn) => {
+      try {
+        fn({ error });
+      } catch {
+        /* ignore */
+      }
+    });
+    return;
+  }
+  const locations = data?.locations;
+  if (!locations?.length) return;
+  const location = locations[locations.length - 1];
+  walkLocListeners.forEach((fn) => {
+    try {
+      fn({ location });
+    } catch {
+      /* ignore */
+    }
+  });
+});
+
+function addWalkLocationListener(fn) {
+  walkLocListeners.add(fn);
+  return () => walkLocListeners.delete(fn);
+}
+
+async function startWalkForegroundGps() {
+  const running = await Location.hasStartedLocationUpdatesAsync(
+    WALK_LOCATION_TASK,
+  );
+  if (running) {
+    await Location.stopLocationUpdatesAsync(WALK_LOCATION_TASK);
+  }
+  await Location.startLocationUpdatesAsync(WALK_LOCATION_TASK, {
+    accuracy: Location.Accuracy.BestForNavigation,
+    timeInterval: 1000,
+    distanceInterval: 1,
+    showsBackgroundLocationIndicator: true,
+    foregroundService: {
+      notificationTitle: 'Walk2u',
+      notificationBody: 'Walk in progress — tap to open',
+      notificationColor: '#059669',
+    },
+  });
+}
+
+async function stopWalkForegroundGps() {
+  try {
+    const running = await Location.hasStartedLocationUpdatesAsync(
+      WALK_LOCATION_TASK,
+    );
+    if (running) {
+      await Location.stopLocationUpdatesAsync(WALK_LOCATION_TASK);
+    }
+  } catch {
+    /* ignore */
+  }
+}
 
 const MS_PER_BLOCK = 5 * 60 * 1000;
 const STRIDE_M = 0.78;
-const MAX_SPEED_M_S = 4.5; // ~16 km/h — ignore GPS jumps
+/** Hard filter for GPS teleport jumps (~16 km/h). Real walk min/max limits come later. */
+const MAX_SPEED_M_S = 4.5;
 const MIN_MOVE_M = 2;
+/** Future walk band (shown now; not enforced yet) */
+const WALK_SPEED_MIN_KMH = 1;
+const WALK_SPEED_MAX_KMH = 12;
 
 const C = {
   bg: '#f4faf6',
@@ -108,34 +179,32 @@ export default function App() {
   const [durabilityPct, setDurabilityPct] = useState(100);
 
   const [walking, setWalking] = useState(false);
+  const [paused, setPaused] = useState(false);
   const [sessionKm, setSessionKm] = useState(0);
   const [sessionSteps, setSessionSteps] = useState(0);
   const [sessionMs, setSessionMs] = useState(0);
   const [rewardedMs, setRewardedMs] = useState(0);
+  const [speedKmh, setSpeedKmh] = useState(0);
   const [gpsBars, setGpsBars] = useState(0);
   const [gpsAccuracy, setGpsAccuracy] = useState(null);
   const [statusMsg, setStatusMsg] = useState('');
   const [lastSummary, setLastSummary] = useState(null);
 
-  const watchRef = useRef(null);
   const lastPosRef = useRef(null);
   const startedAtRef = useRef(0);
+  const pausedTotalRef = useRef(0);
+  const pauseStartedAtRef = useRef(0);
   const blocksAtStartRef = useRef(0);
   const distMRef = useRef(0);
   const tickRef = useRef(null);
+  const pausedRef = useRef(false);
+  const onPositionRef = useRef(null);
 
   const hasShoe = shoeCount > 0;
   const canStart = hasShoe && energyBlocks > 0 && !walking;
 
   const stopGps = useCallback(async () => {
-    if (watchRef.current) {
-      try {
-        watchRef.current.remove();
-      } catch {
-        /* ignore */
-      }
-      watchRef.current = null;
-    }
+    await stopWalkForegroundGps();
     if (tickRef.current) {
       clearInterval(tickRef.current);
       tickRef.current = null;
@@ -146,7 +215,30 @@ export default function App() {
     stopGps();
   }, [stopGps]);
 
+  // Bridge TaskManager locations → React (status-bar notification stays up)
+  useEffect(() => {
+    return addWalkLocationListener((payload) => {
+      if (payload?.error) {
+        setStatusMsg(payload.error.message || 'GPS error');
+        return;
+      }
+      const loc = payload?.location;
+      if (!loc?.coords) return;
+      onPositionRef.current?.(loc);
+    });
+  }, []);
+
+  const sessionElapsedMs = useCallback(() => {
+    const now = Date.now();
+    let pausedExtra = pausedTotalRef.current;
+    if (pausedRef.current && pauseStartedAtRef.current) {
+      pausedExtra += now - pauseStartedAtRef.current;
+    }
+    return Math.max(0, now - startedAtRef.current - pausedExtra);
+  }, []);
+
   const onPosition = useCallback((pos) => {
+    if (pausedRef.current) return;
     const { latitude: lat, longitude: lon, accuracy, speed } = pos.coords;
     const now = Date.now();
     const acc = accuracy != null ? Number(accuracy) : null;
@@ -163,14 +255,32 @@ export default function App() {
     const d = haversineM(prev, cur);
     if (d < MIN_MOVE_M) return;
     const implied = d / dt;
-    // Ignore teleport jumps; still allow real walking speed
     if (implied > MAX_SPEED_M_S) return;
-    // Weak GPS: still accept small moves but skip huge ones already filtered
+
+    let speedMs =
+      typeof speed === 'number' && Number.isFinite(speed) && speed >= 0
+        ? speed
+        : implied;
+    setSpeedKmh(Math.round(speedMs * 3.6 * 10) / 10);
+
     distMRef.current += d;
-    const km = distMRef.current / 1000;
-    setSessionKm(km);
+    setSessionKm(distMRef.current / 1000);
     setSessionSteps(Math.floor(distMRef.current / STRIDE_M));
-    void speed;
+  }, []);
+
+  useEffect(() => {
+    onPositionRef.current = onPosition;
+  }, [onPosition]);
+
+  const startGpsWatch = useCallback(async () => {
+    await startWalkForegroundGps();
+  }, []);
+
+  const ensureGpsPermission = useCallback(async () => {
+    const cur = await Location.getForegroundPermissionsAsync();
+    if (cur.status === 'granted') return true;
+    const req = await Location.requestForegroundPermissionsAsync();
+    return req.status === 'granted';
   }, []);
 
   const startWalk = useCallback(async () => {
@@ -187,9 +297,9 @@ export default function App() {
     setStatusMsg('Getting GPS…');
     setLastSummary(null);
 
-    const { status } = await Location.requestForegroundPermissionsAsync();
-    if (status !== 'granted') {
-      setStatusMsg('Location permission denied. Enable GPS for Walk2u.');
+    const ok = await ensureGpsPermission();
+    if (!ok) {
+      setStatusMsg('Location permission denied. Enable GPS for Walk2u once in settings.');
       return;
     }
 
@@ -202,9 +312,16 @@ export default function App() {
         lon: first.coords.longitude,
         t: Date.now(),
       };
-      const acc = first.coords.accuracy != null ? Number(first.coords.accuracy) : null;
+      const acc =
+        first.coords.accuracy != null ? Number(first.coords.accuracy) : null;
       setGpsAccuracy(acc);
       setGpsBars(gpsBarsFromAccuracy(acc));
+      const sp = first.coords.speed;
+      if (typeof sp === 'number' && Number.isFinite(sp) && sp >= 0) {
+        setSpeedKmh(Math.round(sp * 3.6 * 10) / 10);
+      } else {
+        setSpeedKmh(0);
+      }
     } catch {
       setStatusMsg('Could not get GPS. Go outside and try again.');
       return;
@@ -212,36 +329,100 @@ export default function App() {
 
     distMRef.current = 0;
     startedAtRef.current = Date.now();
+    pausedTotalRef.current = 0;
+    pauseStartedAtRef.current = 0;
+    pausedRef.current = false;
     blocksAtStartRef.current = energyBlocks;
     setSessionKm(0);
     setSessionSteps(0);
     setSessionMs(0);
     setRewardedMs(0);
+    setPaused(false);
     setStatusMsg('');
     setWalking(true);
     setTab('walk');
 
-    watchRef.current = await Location.watchPositionAsync(
-      {
-        accuracy: Location.Accuracy.BestForNavigation,
-        timeInterval: 1000,
-        distanceInterval: 1,
-      },
-      onPosition,
-    );
+    await startGpsWatch();
 
     tickRef.current = setInterval(() => {
-      const elapsed = Date.now() - startedAtRef.current;
+      const elapsed = sessionElapsedMs();
       const cap = blocksAtStartRef.current * MS_PER_BLOCK;
       setSessionMs(elapsed);
       setRewardedMs(Math.min(elapsed, cap));
     }, 500);
-  }, [canStart, hasShoe, energyBlocks, onPosition]);
+  }, [
+    canStart,
+    hasShoe,
+    energyBlocks,
+    ensureGpsPermission,
+    startGpsWatch,
+    sessionElapsedMs,
+  ]);
+
+  const pauseWalk = useCallback(async () => {
+    if (!walking || pausedRef.current) return;
+    pausedRef.current = true;
+    pauseStartedAtRef.current = Date.now();
+    setPaused(true);
+    setSpeedKmh(0);
+    lastPosRef.current = null;
+    // Stop foreground notification while paused (Continue brings it back)
+    await stopWalkForegroundGps();
+  }, [walking]);
+
+  const continueWalk = useCallback(async () => {
+    if (!walking || !pausedRef.current) return;
+    if (pauseStartedAtRef.current) {
+      pausedTotalRef.current += Date.now() - pauseStartedAtRef.current;
+      pauseStartedAtRef.current = 0;
+    }
+    pausedRef.current = false;
+    setPaused(false);
+    setStatusMsg('Resuming GPS…');
+    try {
+      const ok = await ensureGpsPermission();
+      if (!ok) {
+        setStatusMsg('Location permission denied.');
+        pausedRef.current = true;
+        pauseStartedAtRef.current = Date.now();
+        setPaused(true);
+        return;
+      }
+      const first = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.BestForNavigation,
+      });
+      lastPosRef.current = {
+        lat: first.coords.latitude,
+        lon: first.coords.longitude,
+        t: Date.now(),
+      };
+      const acc =
+        first.coords.accuracy != null ? Number(first.coords.accuracy) : null;
+      setGpsAccuracy(acc);
+      setGpsBars(gpsBarsFromAccuracy(acc));
+      await startGpsWatch();
+      setStatusMsg('');
+    } catch {
+      setStatusMsg('Could not resume GPS. Try Continue again outdoors.');
+      pausedRef.current = true;
+      pauseStartedAtRef.current = Date.now();
+      setPaused(true);
+    }
+  }, [walking, ensureGpsPermission, startGpsWatch]);
 
   const endWalk = useCallback(async () => {
+    if (pausedRef.current && pauseStartedAtRef.current) {
+      pausedTotalRef.current += Date.now() - pauseStartedAtRef.current;
+      pauseStartedAtRef.current = 0;
+    }
+    pausedRef.current = false;
     await stopGps();
     setWalking(false);
-    const elapsed = Date.now() - startedAtRef.current;
+    setPaused(false);
+    const elapsed = Math.max(
+      0,
+      Date.now() - startedAtRef.current - pausedTotalRef.current,
+    );
     const cap = blocksAtStartRef.current * MS_PER_BLOCK;
     const rewarded = Math.min(elapsed, cap);
     const distM = distMRef.current;
@@ -262,6 +443,7 @@ export default function App() {
     setLastSummary({ km, creditedSteps, points, blocksUsed });
     setGpsBars(0);
     setGpsAccuracy(null);
+    setSpeedKmh(0);
     setTab('home');
   }, [energyBlocks, stopGps]);
 
@@ -331,7 +513,7 @@ export default function App() {
               />
               {statusMsg ? <Text style={styles.warn}>{statusMsg}</Text> : null}
               <Text style={styles.hint}>
-                STEPN-style GPS · go outside · watch the signal bars while walking
+                STEPN-style GPS · status-bar walk icon while live · Pause anytime
               </Text>
             </View>
 
@@ -389,17 +571,17 @@ export default function App() {
             ) : (
               <View>
                 <View style={[styles.card, styles.liveCard]}>
-                  <GpsBars bars={gpsBars} />
-                  {gpsAccuracy != null ? (
+                  <GpsBars bars={paused ? 0 : gpsBars} />
+                  {!paused && gpsAccuracy != null ? (
                     <Text style={styles.hint}>±{Math.round(gpsAccuracy)} m</Text>
                   ) : null}
-                  <Text style={styles.liveTag}>LIVE</Text>
+                  <Text style={styles.liveTag}>{paused ? 'PAUSED' : 'LIVE'}</Text>
                   <Text style={styles.liveKm}>
                     {sessionKm.toFixed(2)}
                     <Text style={styles.liveKmUnit}> km</Text>
                   </Text>
                   <Text style={styles.hint}>
-                    {sessionSteps.toLocaleString()} steps (from GPS)
+                    {sessionSteps.toLocaleString()} steps · {speedKmh.toFixed(1)} km/h
                   </Text>
                   <View style={styles.barWrap}>
                     <View style={styles.barTop}>
@@ -418,16 +600,24 @@ export default function App() {
                     </View>
                     <Text style={[styles.hint, { marginTop: 8 }]}>
                       Session {formatMs(sessionMs)}
+                      {paused ? ' · timer paused' : ''}
                     </Text>
                   </View>
                   {statusMsg ? <Text style={styles.warn}>{statusMsg}</Text> : null}
-                  {gpsBars <= 1 ? (
+                  {!paused && gpsBars <= 1 ? (
                     <Text style={styles.warn}>
                       Weak GPS — move outdoors / wait for a better fix
                     </Text>
                   ) : null}
                 </View>
-                <Btn title="End walk" onPress={endWalk} dark style={{ marginTop: 14 }} />
+                {paused ? (
+                  <View style={{ marginTop: 14, gap: 10 }}>
+                    <Btn title="Continue" onPress={continueWalk} primary />
+                    <Btn title="End walk" onPress={endWalk} dark />
+                  </View>
+                ) : (
+                  <Btn title="Pause" onPress={pauseWalk} dark style={{ marginTop: 14 }} />
+                )}
               </View>
             )}
           </View>

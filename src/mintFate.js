@@ -108,8 +108,43 @@ export function isFateMintLive(rarityKey) {
   return !!(c?.candyMachine && c?.candyGuard);
 }
 
-export function minSolForFateMint(rarityKey) {
-  const c = FATE_CM[rarityKey] || FATE_CM.common;
+/**
+ * Promo Common CM only (60% off). Separate from live Wave-1 — fill after deploy.
+ * Gate on-chain with allowList before setting addresses.
+ */
+export const FATE_CM_PROMO = {
+  common: {
+    ...FATE_WAVE1.common,
+    priceSol: Math.round(FATE_WAVE1.common.priceSol * 0.4 * 10000) / 10000,
+    candyMachine: null,
+    candyGuard: null,
+    collection: FATE_COLLECTION,
+    treasury: FATE_TREASURY,
+    feeBufferSol: FATE_FEE_BUFFER_SOL,
+    maxPerWallet: FATE_MAX_PER_WALLET,
+    wave: FATE_WAVE,
+    name: 'Fate',
+    promo: true,
+  },
+};
+
+export function isFatePromoMintLive() {
+  const c = FATE_CM_PROMO.common;
+  return !!(c?.candyMachine && c?.candyGuard);
+}
+
+export function getFateMintCfg(rarityKey, promo = false) {
+  if (promo) {
+    if (String(rarityKey) !== 'common') {
+      throw new Error('Fate voucher promo mint is Common only');
+    }
+    return FATE_CM_PROMO.common;
+  }
+  return FATE_CM[rarityKey];
+}
+
+export function minSolForFateMint(rarityKey, promo = false) {
+  const c = getFateMintCfg(rarityKey, promo) || FATE_CM.common;
   return (Number(c.priceSol) || 0) + (Number(c.feeBufferSol) || FATE_FEE_BUFFER_SOL);
 }
 
@@ -124,15 +159,25 @@ export async function getWalletSolBalance(walletAddress) {
   return lamports / LAMPORTS_PER_SOL;
 }
 
-export async function assertWalletCanMintFate(walletAddress, rarityKey) {
-  const cfg = FATE_CM[rarityKey];
+export async function assertWalletCanMintFate(
+  walletAddress,
+  rarityKey,
+  promo = false,
+) {
+  const cfg = getFateMintCfg(rarityKey, promo);
   if (!cfg) throw new Error('Unknown Fate rarity');
-  if (!isFateMintLive(rarityKey)) {
+  if (promo) {
+    if (!isFatePromoMintLive()) {
+      throw new Error(
+        'Fate Common voucher mint is not live yet (promo candy machine not deployed).',
+      );
+    }
+  } else if (!isFateMintLive(rarityKey)) {
     throw new Error(
       `Fate ${cfg.label} Wave 1 mint is not live yet (candy machine not deployed).`,
     );
   }
-  const need = minSolForFateMint(rarityKey);
+  const need = minSolForFateMint(rarityKey, promo);
   let sol = 0;
   try {
     sol = await getWalletSolBalance(walletAddress);
@@ -143,7 +188,7 @@ export async function assertWalletCanMintFate(walletAddress, rarityKey) {
   }
   if (!(sol >= need)) {
     throw new Error(
-      `Not enough SOL to mint Fate ${cfg.label}. Need at least ${need.toFixed(2)} SOL ` +
+      `Not enough SOL to mint Fate ${cfg.label}${promo ? ' (voucher)' : ''}. Need at least ${need.toFixed(2)} SOL ` +
         `(${cfg.priceSol} mint + ~${cfg.feeBufferSol} network/rent). ` +
         `Your game wallet has ${Number(sol).toFixed(4)} SOL.`,
     );
@@ -180,18 +225,30 @@ function umiFromSecret(secretPhraseOrBase58) {
 }
 
 /**
- * Mint one Fate of the given rarity from Wave 1 CM.
+ * Mint one Fate of the given rarity from Wave 1 CM (or promo Common CM).
  * @param {string} secretPhraseOrBase58
  * @param {'common'|'rare'|'epic'|'legendary'} rarityKey
+ * @param {{ promo?: boolean }} [opts] — promo=true uses 40% Common voucher CM
  */
-export async function mintFateWave1(secretPhraseOrBase58, rarityKey = 'common') {
+export async function mintFateWave1(
+  secretPhraseOrBase58,
+  rarityKey = 'common',
+  opts = {},
+) {
+  const promo = !!opts.promo;
   if (!secretPhraseOrBase58) {
     throw new Error('Wallet secret not available. Unlock your game wallet first.');
   }
   await loadFateCmConfig();
-  const cfg = FATE_CM[rarityKey];
+  const cfg = getFateMintCfg(rarityKey, promo);
   if (!cfg) throw new Error('Unknown Fate rarity');
-  if (!isFateMintLive(rarityKey)) {
+  if (promo) {
+    if (!isFatePromoMintLive()) {
+      throw new Error(
+        'Fate Common voucher mint is listed but promo candy machine is not live yet.',
+      );
+    }
+  } else if (!isFateMintLive(rarityKey)) {
     throw new Error(
       `Fate ${cfg.label} is listed but Wave 1 candy machine is not live yet.`,
     );
@@ -199,8 +256,7 @@ export async function mintFateWave1(secretPhraseOrBase58, rarityKey = 'common') 
 
   const umi = umiFromSecret(secretPhraseOrBase58);
   const owner = umi.identity.publicKey.toString();
-  await assertWalletCanMintFate(owner, rarityKey);
-  await assertWalletCanMintFate(owner, rarityKey);
+  await assertWalletCanMintFate(owner, rarityKey, promo);
 
   const asset = generateSigner(umi);
   const builder = transactionBuilder()
@@ -213,7 +269,7 @@ export async function mintFateWave1(secretPhraseOrBase58, rarityKey = 'common') 
         candyGuard: publicKey(cfg.candyGuard),
         mintArgs: {
           solPayment: some({ destination: publicKey(cfg.treasury) }),
-          mintLimit: some({ id: cfg.wave }),
+          mintLimit: some({ id: promo ? 90 + cfg.wave : cfg.wave }),
         },
       }),
     );
@@ -235,5 +291,6 @@ export async function mintFateWave1(secretPhraseOrBase58, rarityKey = 'common') 
     priceSol: cfg.priceSol,
     name: `Fate ${cfg.label}`,
     rarity: cfg.label,
+    promo,
   };
 }

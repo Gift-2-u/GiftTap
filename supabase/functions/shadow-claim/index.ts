@@ -1,8 +1,11 @@
 /**
- * shadow-claim — once per UTC day claim yield while Shadow is active.
- * yield = floor((hours/24) * claimCap)
- * claimCap = Rush (or 1000) + premium shop boosts only (no quest / ads)
- * Credits shard_balance, season, daily_taps, weekly score.
+ * shadow-claim — once per UTC day while Shadow is active.
+ *
+ * Accrues from UTC midnight up to NFT max hours (e.g. Common L1 = 2h).
+ * Fills UNUSED daily room only — never exceeds max daily.
+ *   potential = floor((min(nftHours, hoursSinceUtcMidnight) / 24) * claimCap)
+ *   yield     = min(potential, max(0, claimCap - daily_taps))
+ * claimCap = Rush (or 1000) + premium shop boosts (not quest / ads).
  */
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { requirePlayerFromRequest } from "../_shared/sessionJwt.ts";
@@ -75,13 +78,38 @@ serve(async (req) => {
       limit_boost_amount: row.limit_boost_amount,
       limit_boost_expires: row.limit_boost_expires,
     });
-    const yieldAmt = shadowYield(hours, baseCap);
-    if (yieldAmt <= 0) throw new Error("Shadow yield is 0");
 
     // Daily reset if new day
     let dailyTaps = Number(row.daily_taps) || 0;
     const prevLtd = String(row.last_tap_date || "").slice(0, 10);
     if (prevLtd && prevLtd !== today) dailyTaps = 0;
+
+    // Accrue from UTC midnight → only hours that have actually passed (capped by NFT)
+    const now = new Date();
+    const utcMidnightMs = Date.UTC(
+      now.getUTCFullYear(),
+      now.getUTCMonth(),
+      now.getUTCDate(),
+    );
+    const elapsedHours = Math.max(0, (now.getTime() - utcMidnightMs) / 3_600_000);
+    const effectiveHours = Math.min(hours, elapsedHours);
+    const potential = shadowYield(effectiveHours, baseCap);
+    const remaining = Math.max(0, baseCap - dailyTaps);
+    const yieldAmt = Math.min(potential, remaining);
+
+    if (remaining <= 0) {
+      throw new Error(
+        "Daily limit already full — Shadow only fills unused taps (cannot go over max daily).",
+      );
+    }
+    if (potential <= 0) {
+      throw new Error(
+        `Shadow has not accrued yet today (UTC). Common L1 needs time since midnight — try again later (${hours}h max).`,
+      );
+    }
+    if (yieldAmt <= 0) {
+      throw new Error("Shadow yield is 0");
+    }
 
     const nextBal =
       Math.round(((Number(row.shard_balance) || 0) + yieldAmt) * 1000) / 1000;
@@ -100,10 +128,14 @@ serve(async (req) => {
     claimsMap[today] = {
       yield: yieldAmt,
       hours,
+      effective_hours: Math.round(effectiveHours * 1000) / 1000,
+      potential,
+      remaining_before: remaining,
       base_cap: baseCap,
       rarity,
       level,
-      claimed_at: new Date().toISOString()};
+      claimed_at: new Date().toISOString(),
+    };
     inv.shadow_claims = claimsMap;
 
     const updates = {
@@ -140,15 +172,28 @@ serve(async (req) => {
       delta: yieldAmt,
       balance_after: nextBal,
       ref: today,
-      meta: { hours, baseCap, rarity, level, yield: yieldAmt }});
+      meta: {
+        hours,
+        effectiveHours,
+        potential,
+        remaining,
+        baseCap,
+        rarity,
+        level,
+        yield: yieldAmt,
+      },
+    });
 
     return jsonResponse({
       success: true,
       yield: yieldAmt,
       hours,
+      effective_hours: Math.round(effectiveHours * 1000) / 1000,
       base_cap: baseCap,
+      daily_taps: nextDaily,
       inventory: inv,
-      player: updates});
+      player: updates,
+    });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     const status = /authenticated|expired|signature|Invalid session|Not authenticated/i.test(

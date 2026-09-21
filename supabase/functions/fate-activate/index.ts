@@ -22,6 +22,7 @@ import {
   instantEconomyPatch,
 } from "../_shared/economy.ts";
 import { ensureNftDurabilityOnActivate } from "../_shared/nftDurability.ts";
+import { sealAssetRoyalties } from "../_shared/nftRoyalties.ts";
 
 const RARITIES = new Set(Object.keys(FATE_JACKPOT));
 
@@ -106,6 +107,17 @@ serve(async (req) => {
       },
     });
 
+    // Solscan needs asset-level 5% + creator (CM mint does not attach it)
+    let royalties: Record<string, unknown> | null = null;
+    const sealId =
+      (inv.fate_power as Record<string, unknown> | undefined)?.asset_id ||
+      body.asset_id ||
+      body.assetId ||
+      null;
+    if (sealId && body.clear !== true && body.unequip !== true) {
+      royalties = await sealAssetRoyalties(String(sealId));
+    }
+
     return jsonResponse({
       success: true,
       inventory: updated?.inventory ?? inv,
@@ -118,6 +130,7 @@ serve(async (req) => {
       max_daily_limit:
         (updated as { max_daily_limit?: number } | null)?.max_daily_limit ??
         patch.max_daily_limit,
+      royalties,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

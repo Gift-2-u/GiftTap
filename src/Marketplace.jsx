@@ -34,6 +34,7 @@ import {
   minSolForFateMint,
   assertWalletCanMintFate,
   isFateMintLive,
+  isFatePromoMintLive,
   loadFateCmConfig,
 } from './mintFate';
 import { fateDescription } from './fate';
@@ -43,6 +44,7 @@ import {
   minSolForEchoMint,
   assertWalletCanMintEcho,
   isEchoMintLive,
+  isEchoPromoMintLive,
   loadEchoCmConfig,
 } from './mintEcho';
 import { echoDescription, ECHO_MULTI } from './echo';
@@ -53,6 +55,7 @@ import {
   minSolForRushMint,
   assertWalletCanMintRush,
   isRushMintLive,
+  isRushPromoMintLive,
   loadRushCmConfig,
 } from './mintRush';
 import { rushDescription, RUSH_DAILY_LIMIT } from './rush';
@@ -62,9 +65,15 @@ import {
   minSolForShadowMint,
   assertWalletCanMintShadow,
   isShadowMintLive,
+  isShadowPromoMintLive,
   loadShadowCmConfig,
 } from './mintShadow';
 import { shadowDescription, SHADOW_HOURS } from './shadow';
+import {
+  voucherAppliesToMint,
+  shopMintPriceSol,
+  isNftVoucherActive,
+} from './nftVoucher';
 import { ShopGlyph } from './shopIcons';
 import {
   applyWeeklyBoostBuy,
@@ -109,6 +118,7 @@ import {
   secureFateActivate,
   secureRushActivate,
   secureShadowActivate,
+  secureNftVoucherConsume,
 } from './secureApi';
 import WalletNftSection from './WalletNftSection';
 import { listGiftNfts, invalidateGiftNftListCache } from './locksmith';
@@ -350,21 +360,31 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, bumpEner
     lifetimeTaps ?? stats?.lifetime_taps ?? player?.lifetime_taps,
   );
 
+  // Voucher = mint price only (60% off Common). Does not change NFT abilities.
+  const invForVoucher = localInventory || stats?.inventory || {};
+  const hasCommonVoucher = isNftVoucherActive(invForVoucher);
+  const usePromoFor = (kind, rarityKey) =>
+    voucherAppliesToMint(invForVoucher, kind, rarityKey) &&
+    ((kind === 'fate' && isFatePromoMintLive()) ||
+      (kind === 'echo' && isEchoPromoMintLive()) ||
+      (kind === 'rush' && isRushPromoMintLive()) ||
+      (kind === 'shadow' && isShadowPromoMintLive()));
+
   const canAffordFate = (rarityKey) => {
     if (!walletUnlocked || walletSol == null || !Number.isFinite(walletSol)) return false;
-    return walletSol >= minSolForFateMint(rarityKey);
+    return walletSol >= minSolForFateMint(rarityKey, usePromoFor('fate', rarityKey));
   };
   const canAffordEcho = (rarityKey) => {
     if (!walletUnlocked || walletSol == null || !Number.isFinite(walletSol)) return false;
-    return walletSol >= minSolForEchoMint(rarityKey);
+    return walletSol >= minSolForEchoMint(rarityKey, usePromoFor('echo', rarityKey));
   };
   const canAffordRush = (rarityKey) => {
     if (!walletUnlocked || walletSol == null || !Number.isFinite(walletSol)) return false;
-    return walletSol >= minSolForRushMint(rarityKey);
+    return walletSol >= minSolForRushMint(rarityKey, usePromoFor('rush', rarityKey));
   };
   const canAffordShadow = (rarityKey) => {
     if (!walletUnlocked || walletSol == null || !Number.isFinite(walletSol)) return false;
-    return walletSol >= minSolForShadowMint(rarityKey);
+    return walletSol >= minSolForShadowMint(rarityKey, usePromoFor('shadow', rarityKey));
   };
 
   useEffect(() => {
@@ -841,7 +861,10 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, bumpEner
   /** Separate NFT marketplace (on-chain mints) */
   const fateListings = ['common', 'rare', 'epic', 'legendary'].map((key) => {
     const c = FATE_CM[key];
-    const live = fateCmReady && isFateMintLive(key);
+    const promo = usePromoFor('fate', key);
+    const priceSol = shopMintPriceSol(invForVoucher, 'fate', key, c.priceSol);
+    const live =
+      fateCmReady && (promo ? isFatePromoMintLive() : isFateMintLive(key));
     return {
       id: `fate_${key}`,
       fateRarity: key,
@@ -854,9 +877,11 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, bumpEner
         'Own in wallet = attributes on (highest Fate if several)',
         'Chance of jackpot multi on tap G2Ushards',
         'Rarity border · Star socket in Backpack (outside art)',
-        live
-          ? `Wave 1 live · ${c.priceSol} SOL`
-          : 'Wave 1 candy machine — mint opens when live',
+        promo
+          ? `Voucher 60% off · ${priceSol} SOL (was ${c.priceSol})`
+          : live
+            ? `Wave 1 live · ${c.priceSol} SOL`
+            : 'Wave 1 candy machine — mint opens when live',
       ],
       level: 1,
       attributes: [
@@ -871,10 +896,15 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, bumpEner
         { trait_type: 'Wave', value: '1 of 3' },
         { trait_type: 'Max Supply', value: String(c.maxSupply) },
         { trait_type: 'Wave 1 supply', value: String(c.itemsAvailable) },
+        ...(promo
+          ? [{ trait_type: 'Voucher', value: '60% off mint price' }]
+          : []),
       ],
       description: fateDescription(key),
       duration: `Permanent · Gen 1 · Wave 1 · ${c.itemsAvailable.toLocaleString()} supply`,
-      price: c.priceSol,
+      price: priceSol,
+      priceFullSol: c.priceSol,
+      voucherPromo: promo,
       currency: 'SOL',
       image: '🍀',
       // Prefer local art (locked socket). Irys URI still used for on-chain mints.
@@ -890,7 +920,10 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, bumpEner
 
   const echoListings = ['common', 'rare', 'epic', 'legendary'].map((key) => {
     const c = ECHO_CM[key];
-    const live = echoCmReady && isEchoMintLive(key);
+    const promo = usePromoFor('echo', key);
+    const priceSol = shopMintPriceSol(invForVoucher, 'echo', key, c.priceSol);
+    const live =
+      echoCmReady && (promo ? isEchoPromoMintLive() : isEchoMintLive(key));
     const multiL1 = ECHO_MULTI[key]?.[0];
     const multiL5 = ECHO_MULTI[key]?.[4];
     return {
@@ -905,9 +938,11 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, bumpEner
         'Own in wallet = attributes on (highest Echo if several)',
         `Always-on tap multiplier ${multiL1}×–${multiL5}×`,
         'Rarity border · Star socket in Backpack (outside art)',
-        live
-          ? `Wave 1 live · ${c.priceSol} SOL`
-          : 'Wave 1 candy machine — mint opens when live',
+        promo
+          ? `Voucher 60% off · ${priceSol} SOL (was ${c.priceSol})`
+          : live
+            ? `Wave 1 live · ${c.priceSol} SOL`
+            : 'Wave 1 candy machine — mint opens when live',
       ],
       level: 1,
       attributes: [
@@ -922,10 +957,15 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, bumpEner
         { trait_type: 'Wave', value: '1 of 3' },
         { trait_type: 'Max Supply', value: String(c.maxSupply) },
         { trait_type: 'Wave 1 supply', value: String(c.itemsAvailable) },
+        ...(promo
+          ? [{ trait_type: 'Voucher', value: '60% off mint price' }]
+          : []),
       ],
       description: echoDescription(key),
       duration: `Permanent · Gen 1 · Wave 1 · ${Number(c.itemsAvailable).toLocaleString()} supply`,
-      price: c.priceSol,
+      price: priceSol,
+      priceFullSol: c.priceSol,
+      voucherPromo: promo,
       currency: 'SOL',
       image: '⚡',
       imageUrl: c.imageUrl || c.imageUri,
@@ -940,7 +980,10 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, bumpEner
 
   const rushListings = ['common', 'rare', 'epic', 'legendary'].map((key) => {
     const c = RUSH_CM[key];
-    const live = rushCmReady && isRushMintLive(key);
+    const promo = usePromoFor('rush', key);
+    const priceSol = shopMintPriceSol(invForVoucher, 'rush', key, c.priceSol);
+    const live =
+      rushCmReady && (promo ? isRushPromoMintLive() : isRushMintLive(key));
     const limL1 = RUSH_DAILY_LIMIT[key]?.[0];
     const limL5 = RUSH_DAILY_LIMIT[key]?.[4];
     return {
@@ -956,9 +999,11 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, bumpEner
         `Max daily taps ${Number(limL1).toLocaleString()}–${Number(limL5).toLocaleString()}`,
         'Expanded Battery & task boosts add on top',
         'Rarity border · Star socket in Backpack (outside art)',
-        live
-          ? `Wave 1 live · ${c.priceSol} SOL`
-          : 'Wave 1 candy machine — mint opens when live',
+        promo
+          ? `Voucher 60% off · ${priceSol} SOL (was ${c.priceSol})`
+          : live
+            ? `Wave 1 live · ${c.priceSol} SOL`
+            : 'Wave 1 candy machine — mint opens when live',
       ],
       level: 1,
       attributes: [
@@ -973,10 +1018,15 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, bumpEner
         { trait_type: 'Wave', value: '1 of 3' },
         { trait_type: 'Max Supply', value: String(c.maxSupply) },
         { trait_type: 'Wave 1 supply', value: String(c.itemsAvailable) },
+        ...(promo
+          ? [{ trait_type: 'Voucher', value: '60% off mint price' }]
+          : []),
       ],
       description: rushDescription(key),
       duration: `Permanent · Gen 1 · Wave 1 · ${Number(c.itemsAvailable).toLocaleString()} supply`,
-      price: c.priceSol,
+      price: priceSol,
+      priceFullSol: c.priceSol,
+      voucherPromo: promo,
       currency: 'SOL',
       image: '🔋',
       imageUrl: c.imageUrl || c.imageUri,
@@ -991,7 +1041,10 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, bumpEner
 
   const shadowListings = ['common', 'rare', 'epic', 'legendary'].map((key) => {
     const c = SHADOW_CM[key];
-    const live = shadowCmReady && isShadowMintLive(key);
+    const promo = usePromoFor('shadow', key);
+    const priceSol = shopMintPriceSol(invForVoucher, 'shadow', key, c.priceSol);
+    const live =
+      shadowCmReady && (promo ? isShadowPromoMintLive() : isShadowMintLive(key));
     const h1 = SHADOW_HOURS[key]?.[0];
     const h5 = SHADOW_HOURS[key]?.[4];
     return {
@@ -1004,12 +1057,14 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, bumpEner
       boost: `${h1}h → ${h5}h daily claim (base cap)`,
       perks: [
         'Own in wallet = attributes on (highest Shadow if several)',
-        `${h1}–${h5} hours of base daily cap (Rush or 1,000)`,
-        'Claim once per UTC day · boosts not included',
+        `${h1}–${h5} hours of claim share (Rush + Premium max daily)`,
+        'Claim once per UTC day · quest boosts not included',
         'Rarity border · Star socket in Backpack (outside art)',
-        live
-          ? `Wave 1 live · ${c.priceSol} SOL`
-          : 'Wave 1 candy machine — mint opens when live',
+        promo
+          ? `Voucher 60% off · ${priceSol} SOL (was ${c.priceSol})`
+          : live
+            ? `Wave 1 live · ${c.priceSol} SOL`
+            : 'Wave 1 candy machine — mint opens when live',
       ],
       level: 1,
       attributes: [
@@ -1020,14 +1075,19 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, bumpEner
         { trait_type: 'Generation', value: 'Gen 1' },
         { trait_type: 'Rarity', value: c.label },
         { trait_type: 'Type', value: 'Utility' },
-        { trait_type: 'Utility', value: 'Daily claim share of base daily cap' },
+        { trait_type: 'Utility', value: 'Daily claim share of max daily' },
         { trait_type: 'Wave', value: '1 of 3' },
         { trait_type: 'Max Supply', value: String(c.maxSupply) },
         { trait_type: 'Wave 1 supply', value: String(c.itemsAvailable) },
+        ...(promo
+          ? [{ trait_type: 'Voucher', value: '60% off mint price' }]
+          : []),
       ],
       description: shadowDescription(key),
       duration: `Permanent · Gen 1 · Wave 1 · ${Number(c.itemsAvailable).toLocaleString()} supply`,
-      price: c.priceSol,
+      price: priceSol,
+      priceFullSol: c.priceSol,
+      voucherPromo: promo,
       currency: 'SOL',
       image: '🌑',
       // Prefer local art (locked socket). Irys URI still used for on-chain mints.
@@ -1434,10 +1494,12 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, bumpEner
     }
   };
 
-  /** Mint Fate Wave 1 for a rarity (common|rare|epic|legendary). */
+  /** Mint Fate Wave 1 for a rarity (common|rare|epic|legendary). Promo = price only. */
   const handleFateMint = async (rarityKey) => {
     const cfg = FATE_CM[rarityKey];
     const label = cfg?.label || rarityKey;
+    const promo = usePromoFor('fate', rarityKey);
+    const priceSol = shopMintPriceSol(invForVoucher, 'fate', rarityKey, cfg?.priceSol);
     if (!decryptedPhrase) {
       setTxStatus({
         show: true,
@@ -1454,17 +1516,19 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, bumpEner
         return;
       }
     }
-    if (!isFateMintLive(rarityKey)) {
+    if (promo ? !isFatePromoMintLive() : !isFateMintLive(rarityKey)) {
       setTxStatus({
         show: true,
         loading: false,
-        message: `Fate ${label} Wave 1 is listed but the candy machine is not live yet. Check back soon.`,
+        message: promo
+          ? `Fate Common voucher mint is not live yet (promo candy machine).`
+          : `Fate ${label} Wave 1 is listed but the candy machine is not live yet. Check back soon.`,
         success: false,
       });
       return;
     }
     if (!canAffordFate(rarityKey)) {
-      const need = minSolForFateMint(rarityKey);
+      const need = minSolForFateMint(rarityKey, promo);
       const have =
         walletSol != null && Number.isFinite(walletSol)
           ? walletSol.toFixed(4)
@@ -1472,7 +1536,7 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, bumpEner
       setTxStatus({
         show: true,
         loading: false,
-        message: `Not enough SOL. Need ${need.toFixed(2)} SOL for Fate ${label}. You have ${have} SOL — buy more SOL for your game wallet.`,
+        message: `Not enough SOL. Need ${need.toFixed(2)} SOL for Fate ${label}${promo ? ' (voucher)' : ''}. You have ${have} SOL — buy more SOL for your game wallet.`,
         success: false,
       });
       return;
@@ -1494,14 +1558,14 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, bumpEner
       }
       if (!signerAddress) throw new Error('No game wallet found on this account.');
 
-      await assertWalletCanMintFate(signerAddress, rarityKey);
+      await assertWalletCanMintFate(signerAddress, rarityKey, promo);
       setTxStatus({
         show: true,
         loading: true,
-        message: `Minting Fate ${label} for ${cfg.priceSol} SOL…`,
+        message: `Minting Fate ${label} for ${priceSol} SOL${promo ? ' (60% off voucher)' : ''}…`,
         success: false,
       });
-            const result = await mintFateWave1(decryptedPhrase, rarityKey);
+      const result = await mintFateWave1(decryptedPhrase, rarityKey, { promo });
       try {
         applyWalletSol(await getWalletSolBalance(signerAddress));
       } catch {
@@ -1529,10 +1593,31 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, bumpEner
       } catch (e) {
         console.warn('fate activate after mint', e?.message || e);
       }
+      if (promo) {
+        try {
+          const burned = await secureNftVoucherConsume({
+            kind: 'fate',
+            rarity: rarityKey,
+            assetId: result.asset,
+            txSignature: result.signature,
+          });
+          if (burned?.inventory) {
+            setLocalInventory((prev) => ({ ...prev, ...burned.inventory }));
+            if (setStats) {
+              setStats((prev) => ({
+                ...prev,
+                inventory: { ...(prev?.inventory || {}), ...burned.inventory },
+              }));
+            }
+          }
+        } catch (e) {
+          console.warn('voucher consume after fate mint', e?.message || e);
+        }
+      }
       setTxStatus({
         show: true,
         loading: false,
-        message: `✅ Fate ${label} minted!
+        message: `✅ Fate ${label} minted${promo ? ' with voucher' : ''}!
 Asset: ${String(result.asset).slice(0, 8)}…
 Luck jackpot active · Pack → NFT to see it.`,
         success: true,
@@ -1562,6 +1647,8 @@ Luck jackpot active · Pack → NFT to see it.`,
   const handleEchoMint = async (rarityKey) => {
     const cfg = ECHO_CM[rarityKey];
     const label = cfg?.label || rarityKey;
+    const promo = usePromoFor('echo', rarityKey);
+    const priceSol = shopMintPriceSol(invForVoucher, 'echo', rarityKey, cfg?.priceSol);
     if (!decryptedPhrase) {
       setTxStatus({
         show: true,
@@ -1578,17 +1665,19 @@ Luck jackpot active · Pack → NFT to see it.`,
         return;
       }
     }
-    if (!isEchoMintLive(rarityKey)) {
+    if (promo ? !isEchoPromoMintLive() : !isEchoMintLive(rarityKey)) {
       setTxStatus({
         show: true,
         loading: false,
-        message: `Echo ${label} Wave 1 is listed but the candy machine is not live yet. Check back soon.`,
+        message: promo
+          ? 'Echo Common voucher mint is not live yet (promo candy machine).'
+          : `Echo ${label} Wave 1 is listed but the candy machine is not live yet. Check back soon.`,
         success: false,
       });
       return;
     }
     if (!canAffordEcho(rarityKey)) {
-      const need = minSolForEchoMint(rarityKey);
+      const need = minSolForEchoMint(rarityKey, promo);
       const have =
         walletSol != null && Number.isFinite(walletSol)
           ? walletSol.toFixed(4)
@@ -1596,7 +1685,7 @@ Luck jackpot active · Pack → NFT to see it.`,
       setTxStatus({
         show: true,
         loading: false,
-        message: `Not enough SOL. Need ${need.toFixed(2)} SOL for Echo ${label}. You have ${have} SOL — buy more SOL for your game wallet.`,
+        message: `Not enough SOL. Need ${need.toFixed(2)} SOL for Echo ${label}${promo ? ' (voucher)' : ''}. You have ${have} SOL — buy more SOL for your game wallet.`,
         success: false,
       });
       return;
@@ -1617,21 +1706,20 @@ Luck jackpot active · Pack → NFT to see it.`,
         signerAddress = playerWallet ? String(playerWallet) : null;
       }
       if (!signerAddress) throw new Error('No game wallet found on this account.');
-      await assertWalletCanMintEcho(signerAddress, rarityKey);
+      await assertWalletCanMintEcho(signerAddress, rarityKey, promo);
       setTxStatus({
         show: true,
         loading: true,
-        message: `Minting Echo ${label} for ${cfg.priceSol} SOL…`,
+        message: `Minting Echo ${label} for ${priceSol} SOL${promo ? ' (60% off voucher)' : ''}…`,
         success: false,
       });
-            const result = await mintEchoWave1(decryptedPhrase, rarityKey);
+      const result = await mintEchoWave1(decryptedPhrase, rarityKey, { promo });
       try {
         const after = await getWalletSolBalance(signerAddress);
         applyWalletSol(after);
       } catch {
         /* ignore */
       }
-      // Auto-activate Echo so tap multi applies immediately
       try {
         const act = await secureEchoActivate({
           rarity: rarityKey,
@@ -1654,10 +1742,31 @@ Luck jackpot active · Pack → NFT to see it.`,
       } catch (e) {
         console.warn('echo activate after mint', e?.message || e);
       }
+      if (promo) {
+        try {
+          const burned = await secureNftVoucherConsume({
+            kind: 'echo',
+            rarity: rarityKey,
+            assetId: result.asset,
+            txSignature: result.signature,
+          });
+          if (burned?.inventory) {
+            setLocalInventory((prev) => ({ ...prev, ...burned.inventory }));
+            if (setStats) {
+              setStats((prev) => ({
+                ...prev,
+                inventory: { ...(prev?.inventory || {}), ...burned.inventory },
+              }));
+            }
+          }
+        } catch (e) {
+          console.warn('voucher consume after echo mint', e?.message || e);
+        }
+      }
       setTxStatus({
         show: true,
         loading: false,
-        message: `✅ Echo ${label} minted!
+        message: `✅ Echo ${label} minted${promo ? ' with voucher' : ''}!
 Asset: ${String(result.asset).slice(0, 8)}…
 Tap multi active · Pack → NFT to see it.`,
         success: true,
@@ -1679,6 +1788,8 @@ Tap multi active · Pack → NFT to see it.`,
   const handleRushMint = async (rarityKey) => {
     const cfg = RUSH_CM[rarityKey];
     const label = cfg?.label || rarityKey;
+    const promo = usePromoFor('rush', rarityKey);
+    const priceSol = shopMintPriceSol(invForVoucher, 'rush', rarityKey, cfg?.priceSol);
     if (!decryptedPhrase) {
       setTxStatus({
         show: true,
@@ -1696,17 +1807,19 @@ Tap multi active · Pack → NFT to see it.`,
         return;
       }
     }
-    if (!isRushMintLive(rarityKey)) {
+    if (promo ? !isRushPromoMintLive() : !isRushMintLive(rarityKey)) {
       setTxStatus({
         show: true,
         loading: false,
-        message: `Rush ${label} Wave 1 is listed but the candy machine is not live yet. Check back soon.`,
+        message: promo
+          ? 'Rush Common voucher mint is not live yet (promo candy machine).'
+          : `Rush ${label} Wave 1 is listed but the candy machine is not live yet. Check back soon.`,
         success: false,
       });
       return;
     }
     if (!canAffordRush(rarityKey)) {
-      const need = minSolForRushMint(rarityKey);
+      const need = minSolForRushMint(rarityKey, promo);
       const have =
         walletSol != null && Number.isFinite(walletSol)
           ? walletSol.toFixed(4)
@@ -1714,7 +1827,7 @@ Tap multi active · Pack → NFT to see it.`,
       setTxStatus({
         show: true,
         loading: false,
-        message: `Not enough SOL. Need ${need.toFixed(2)} SOL for Rush ${label}. You have ${have} SOL — buy more SOL for your game wallet.`,
+        message: `Not enough SOL. Need ${need.toFixed(2)} SOL for Rush ${label}${promo ? ' (voucher)' : ''}. You have ${have} SOL — buy more SOL for your game wallet.`,
         success: false,
       });
       return;
@@ -1728,14 +1841,14 @@ Tap multi active · Pack → NFT to see it.`,
         signerAddress = playerWallet ? String(playerWallet) : null;
       }
       if (!signerAddress) throw new Error('No game wallet found on this account.');
-      await assertWalletCanMintRush(signerAddress, rarityKey);
+      await assertWalletCanMintRush(signerAddress, rarityKey, promo);
       setTxStatus({
         show: true,
         loading: true,
-        message: `Minting Rush ${label} for ${cfg.priceSol} SOL…`,
+        message: `Minting Rush ${label} for ${priceSol} SOL${promo ? ' (60% off voucher)' : ''}…`,
         success: false,
       });
-      const result = await mintRushWave1(decryptedPhrase, rarityKey);
+      const result = await mintRushWave1(decryptedPhrase, rarityKey, { promo });
       try {
         const after = await getWalletSolBalance(signerAddress);
         applyWalletSol(after);
@@ -1762,10 +1875,31 @@ Tap multi active · Pack → NFT to see it.`,
       } catch (e) {
         console.warn('rush activate after mint', e?.message || e);
       }
+      if (promo) {
+        try {
+          const burned = await secureNftVoucherConsume({
+            kind: 'rush',
+            rarity: rarityKey,
+            assetId: result.asset,
+            txSignature: result.signature,
+          });
+          if (burned?.inventory) {
+            setLocalInventory((prev) => ({ ...prev, ...burned.inventory }));
+            if (setStats) {
+              setStats((prev) => ({
+                ...prev,
+                inventory: { ...(prev?.inventory || {}), ...burned.inventory },
+              }));
+            }
+          }
+        } catch (e) {
+          console.warn('voucher consume after rush mint', e?.message || e);
+        }
+      }
       setTxStatus({
         show: true,
         loading: false,
-        message: `✅ Rush ${label} minted!
+        message: `✅ Rush ${label} minted${promo ? ' with voucher' : ''}!
 Asset: ${String(result.asset).slice(0, 8)}…
 Daily cap active · Pack → NFT to see it.`,
         success: true,
@@ -1787,6 +1921,8 @@ Daily cap active · Pack → NFT to see it.`,
   const handleShadowMint = async (rarityKey) => {
     const cfg = SHADOW_CM[rarityKey];
     const label = cfg?.label || rarityKey;
+    const promo = usePromoFor('shadow', rarityKey);
+    const priceSol = shopMintPriceSol(invForVoucher, 'shadow', rarityKey, cfg?.priceSol);
     if (!decryptedPhrase) {
       setTxStatus({
         show: true,
@@ -1803,17 +1939,19 @@ Daily cap active · Pack → NFT to see it.`,
         return;
       }
     }
-    if (!isShadowMintLive(rarityKey)) {
+    if (promo ? !isShadowPromoMintLive() : !isShadowMintLive(rarityKey)) {
       setTxStatus({
         show: true,
         loading: false,
-        message: `Shadow ${label} Wave 1 is listed but the candy machine is not live yet. Check back soon.`,
+        message: promo
+          ? 'Shadow Common voucher mint is not live yet (promo candy machine).'
+          : `Shadow ${label} Wave 1 is listed but the candy machine is not live yet. Check back soon.`,
         success: false,
       });
       return;
     }
     if (!canAffordShadow(rarityKey)) {
-      const need = minSolForShadowMint(rarityKey);
+      const need = minSolForShadowMint(rarityKey, promo);
       const have =
         walletSol != null && Number.isFinite(walletSol)
           ? walletSol.toFixed(4)
@@ -1821,7 +1959,7 @@ Daily cap active · Pack → NFT to see it.`,
       setTxStatus({
         show: true,
         loading: false,
-        message: `Not enough SOL. Need ${need.toFixed(2)} SOL for Shadow ${label}. You have ${have} SOL — buy more SOL for your game wallet.`,
+        message: `Not enough SOL. Need ${need.toFixed(2)} SOL for Shadow ${label}${promo ? ' (voucher)' : ''}. You have ${have} SOL — buy more SOL for your game wallet.`,
         success: false,
       });
       return;
@@ -1835,14 +1973,14 @@ Daily cap active · Pack → NFT to see it.`,
         signerAddress = playerWallet ? String(playerWallet) : null;
       }
       if (!signerAddress) throw new Error('No game wallet found on this account.');
-      await assertWalletCanMintShadow(signerAddress, rarityKey);
+      await assertWalletCanMintShadow(signerAddress, rarityKey, promo);
       setTxStatus({
         show: true,
         loading: true,
-        message: `Minting Shadow ${label} for ${cfg.priceSol} SOL…`,
+        message: `Minting Shadow ${label} for ${priceSol} SOL${promo ? ' (60% off voucher)' : ''}…`,
         success: false,
       });
-      const result = await mintShadowWave1(decryptedPhrase, rarityKey);
+      const result = await mintShadowWave1(decryptedPhrase, rarityKey, { promo });
       try {
         const after = await getWalletSolBalance(signerAddress);
         applyWalletSol(after);
@@ -1869,10 +2007,31 @@ Daily cap active · Pack → NFT to see it.`,
       } catch (e) {
         console.warn('shadow activate after mint', e?.message || e);
       }
+      if (promo) {
+        try {
+          const burned = await secureNftVoucherConsume({
+            kind: 'shadow',
+            rarity: rarityKey,
+            assetId: result.asset,
+            txSignature: result.signature,
+          });
+          if (burned?.inventory) {
+            setLocalInventory((prev) => ({ ...prev, ...burned.inventory }));
+            if (setStats) {
+              setStats((prev) => ({
+                ...prev,
+                inventory: { ...(prev?.inventory || {}), ...burned.inventory },
+              }));
+            }
+          }
+        } catch (e) {
+          console.warn('voucher consume after shadow mint', e?.message || e);
+        }
+      }
       setTxStatus({
         show: true,
         loading: false,
-        message: `✅ Shadow ${label} minted!
+        message: `✅ Shadow ${label} minted${promo ? ' with voucher' : ''}!
 Asset: ${String(result.asset).slice(0, 8)}…
 Daily claim active · Pack → NFT to see it.`,
         success: true,

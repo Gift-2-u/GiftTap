@@ -15,6 +15,7 @@ import {
   PLAYER_ECONOMY_SELECT,
   instantEconomyPatch,
 } from "../_shared/economy.ts";
+import { sealAssetRoyalties } from "../_shared/nftRoyalties.ts";
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -82,6 +83,16 @@ serve(async (req) => {
       },
     });
 
+    let royalties: Record<string, unknown> | null = null;
+    const sealId =
+      (inv.locksmith_active as Record<string, unknown> | undefined)?.asset_id ||
+      body.asset_id ||
+      body.assetId ||
+      null;
+    if (sealId && body.clear !== true && body.unequip !== true) {
+      royalties = await sealAssetRoyalties(String(sealId));
+    }
+
     return jsonResponse({
       success: true,
       inventory: updated?.inventory ?? inv,
@@ -94,6 +105,7 @@ serve(async (req) => {
       max_daily_limit:
         (updated as { max_daily_limit?: number } | null)?.max_daily_limit ??
         patch.max_daily_limit,
+      royalties,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
