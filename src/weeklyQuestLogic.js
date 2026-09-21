@@ -55,6 +55,34 @@ export function utcDayStr(date = new Date()) {
   return date.toISOString().slice(0, 10);
 }
 
+/** All YYYY-MM-DD (UTC) dates in an ISO week id like 2026-W39. */
+export function utcDaysForWeekId(weekId) {
+  const m = String(weekId || '').match(/^(\d{4})-W(\d{1,2})$/);
+  if (!m) return new Set();
+  const year = Number(m[1]);
+  const week = Number(m[2]);
+  if (!Number.isFinite(year) || !Number.isFinite(week) || week < 1 || week > 53) {
+    return new Set();
+  }
+  const jan4 = new Date(Date.UTC(year, 0, 4));
+  const jan4Day = jan4.getUTCDay() || 7; // Mon=1 … Sun=7
+  const monday = new Date(jan4);
+  monday.setUTCDate(jan4.getUTCDate() - (jan4Day - 1) + (week - 1) * 7);
+  const out = new Set();
+  for (let i = 0; i < 7; i += 1) {
+    const d = new Date(monday);
+    d.setUTCDate(monday.getUTCDate() + i);
+    out.add(d.toISOString().slice(0, 10));
+  }
+  return out;
+}
+
+function filterDaysToWeek(arr, weekId) {
+  const allowed = utcDaysForWeekId(weekId);
+  if (!allowed.size || !Array.isArray(arr)) return [];
+  return [...new Set(arr.filter((d) => typeof d === 'string' && allowed.has(d)))].sort();
+}
+
 /** Monday 00:00 UTC of current ISO week → next Monday (for UI) */
 export function getUtcWeekRangeLabel(date = new Date()) {
   const d = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
@@ -83,16 +111,18 @@ export function ensureWeeklyState(raw, weekId = getUtcWeekId()) {
   if (!raw || typeof raw !== 'object') {
     return emptyWeeklyState(weekId);
   }
-  // Different week → fresh board. Missing weekId → keep arrays (partial writes / migration).
+  // Different week → fresh board (never carry last week's days into a new week).
   if (raw.weekId && raw.weekId !== weekId) {
     return emptyWeeklyState(weekId);
   }
+  // Same week OR missing weekId: keep claimed/boosts, but ONLY day stamps in this UTC week.
+  // (Bug: missing weekId kept old daysTap500/daysFull → 3/3 on first day.)
   return {
     weekId,
     claimed: Array.isArray(raw.claimed) ? [...raw.claimed] : [],
-    daysTap500: Array.isArray(raw.daysTap500) ? [...raw.daysTap500] : [],
-    daysActive: Array.isArray(raw.daysActive) ? [...raw.daysActive] : [],
-    daysFull: Array.isArray(raw.daysFull) ? [...raw.daysFull] : [],
+    daysTap500: filterDaysToWeek(raw.daysTap500, weekId),
+    daysActive: filterDaysToWeek(raw.daysActive, weekId),
+    daysFull: filterDaysToWeek(raw.daysFull, weekId),
     boostBuys: Math.max(0, Number(raw.boostBuys) || 0),
   };
 }

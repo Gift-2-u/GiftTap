@@ -290,7 +290,7 @@ export default function WeeklyQuests({
 
     claimLockRef.current = true;
     setClaimingId(quest.id);
-    markClaimedLocal(quest.id);
+    // Do NOT mark claimed until server confirms — keeps Claim off only when really claimed
 
     try {
       // Hard security: Edge wrapper (JWT) → SQL RPC with service_role
@@ -679,11 +679,14 @@ export default function WeeklyQuests({
               >
                 ✓ DONE
               </span>
-            ) : ready ? (
+            ) : ready && !claimed ? (
               <button
                 type="button"
-                disabled={!!claimingId}
-                onClick={() => handleClaim(quest)}
+                disabled={!!claimingId || claimed}
+                onClick={() => {
+                  if (claimed || isDone(quest.id)) return;
+                  handleClaim(quest);
+                }}
                 style={{
                   background: '#fbef43',
                   color: '#000',
@@ -692,8 +695,9 @@ export default function WeeklyQuests({
                   borderRadius: 20,
                   fontSize: 12,
                   fontWeight: 'bold',
-                  cursor: claimingId ? 'wait' : 'pointer',
+                  cursor: claimingId || claimed ? 'not-allowed' : 'pointer',
                   flexShrink: 0,
+                  opacity: claimed ? 0.5 : 1,
                 }}
               >
                 {claimingId === quest.id ? '…' : 'Claim'}
