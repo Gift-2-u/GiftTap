@@ -4208,6 +4208,45 @@ const GiftTapGame = () => {
               }));
             }
           }
+          // Milestone 1 → Common elf 60% voucher (once) + popup
+          if (data?.nft_voucher_granted && playerId) {
+            if (data?.player?.inventory && typeof data.player.inventory === 'object') {
+              inventoryRef.current = {
+                ...(inventoryRef.current || {}),
+                ...data.player.inventory,
+              };
+              setStats((prev) => ({
+                ...prev,
+                inventory: inventoryRef.current,
+              }));
+            }
+            const seenV = `gift2u_ms1_voucher_notice_${playerId}`;
+            if (!localStorage.getItem(seenV)) {
+              localStorage.setItem(seenV, '1');
+              setAppNotice({
+                show: true,
+                title: 'NFT voucher unlocked',
+                message:
+                  'You reached Milestone 1!\n\n' +
+                  'You unlocked 60% off your next Common Gift2u Elf NFT ' +
+                  '(Fate, Echo, Rush, or Shadow).\n\n' +
+                  'One use — open Shop → NFTs and mint while the voucher price is shown.',
+                loading: false,
+                success: true,
+                confirm: {
+                  confirmLabel: 'Open Shop',
+                  cancelLabel: 'OK',
+                  confirmDanger: false,
+                  resolve: (ok) => {
+                    if (ok) {
+                      setShopFocusTab('nft');
+                      setCurrentPage('shop');
+                    }
+                  },
+                },
+              });
+            }
+          }
           flushErrorNotifiedRef.current = false;
           lastLocalSaveAtRef.current = Date.now();
           // Referral milestones (Edge also pays inside commit-taps; this covers any gap)

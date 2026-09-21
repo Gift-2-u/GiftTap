@@ -906,3 +906,43 @@ export function shadowBaseDailyCap(
   }
   return Math.max(1000, Math.floor(n));
 }
+
+/** Common elf 60% off voucher — once at personal Milestone 1 (10k taps / L1). */
+export const NFT_VOUCHER_MS1_TEMPLATE = {
+  id: "common60_v1",
+  discount_bps: 6000,
+  applies_to: ["fate", "echo", "rush", "shadow"],
+  rarity: "common",
+  uses_left: 1,
+  source: "milestone_1",
+};
+
+/**
+ * One-time MS1 voucher. Returns { inv, granted }.
+ * Trigger: crossed level 1, claimed_level >= 1, or lifetime >= 10_000.
+ */
+export function maybeGrantMs1NftVoucher(
+  invIn: Record<string, unknown>,
+  opts: { lifetimeTaps: number; milestoneLevels?: number[] },
+): { inv: Record<string, unknown>; granted: boolean } {
+  const inv = { ...invIn };
+  if (inv.nft_voucher_ms1_granted === true) {
+    return { inv, granted: false };
+  }
+  const levels = Array.isArray(opts.milestoneLevels)
+    ? opts.milestoneLevels.map((n) => Number(n))
+    : [];
+  const claimedLvl = Math.floor(
+    Number(inv.personal_milestone_claimed_level) || 0,
+  );
+  const life = Math.max(0, Math.floor(Number(opts.lifetimeTaps) || 0));
+  const hitMs1 = levels.includes(1) || claimedLvl >= 1 || life >= 10000;
+  if (!hitMs1) return { inv, granted: false };
+
+  inv.nft_voucher = {
+    ...NFT_VOUCHER_MS1_TEMPLATE,
+    granted_at: new Date().toISOString(),
+  };
+  inv.nft_voucher_ms1_granted = true;
+  return { inv, granted: true };
+}

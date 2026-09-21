@@ -15,6 +15,7 @@ import {
   rollFateJackpot,
   effectiveDailyLimit,
   runReferralCredit,
+  maybeGrantMs1NftVoucher,
 } from "../_shared/economy.ts";
 import {
   applyWeeklyEnergyCredit,
@@ -500,6 +501,7 @@ serve(async (req) => {
     // Personal milestones — same moment as level progress: only when this flush crosses a level
     let milestoneGranted = 0;
     let milestoneLevels: number[] = [];
+    let nftVoucherGranted = false;
     try {
       const accrued = await accruePersonalMilestones(sb, {
         playerId,
@@ -511,12 +513,21 @@ serve(async (req) => {
       milestoneLevels = Array.isArray(accrued.levels) ? accrued.levels : [];
       if (milestoneGranted > 0) {
         inv = accrued.inv;
+      }
+      // Milestone 1 → 60% off next Common elf (one-time) + client popup
+      const vGrant = maybeGrantMs1NftVoucher(inv, {
+        lifetimeTaps: nextLife,
+        milestoneLevels,
+      });
+      inv = vGrant.inv;
+      nftVoucherGranted = vGrant.granted;
+      if (milestoneGranted > 0 || nftVoucherGranted) {
         updates.inventory = inv;
         const { error: msErr } = await sb
           .from("players")
           .update({ inventory: inv })
           .eq("telegram_id", playerId);
-        if (msErr) console.warn("milestone inventory", msErr);
+        if (msErr) console.warn("milestone/voucher inventory", msErr);
       }
     } catch (e) {
       console.warn("milestone accrue after taps", e);
@@ -637,6 +648,7 @@ serve(async (req) => {
       nft_durability: durabilitySnapshot(inv),
       milestone_granted: milestoneGranted,
       milestone_levels: milestoneLevels,
+      nft_voucher_granted: nftVoucherGranted,
       player: {
         ...updates,
         max_unlocked_level: maxU,

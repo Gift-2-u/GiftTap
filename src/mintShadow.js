@@ -113,8 +113,8 @@ export const SHADOW_CM_PROMO = {
   common: {
     ...SHADOW_WAVE1.common,
     priceSol: Math.round(SHADOW_WAVE1.common.priceSol * 0.4 * 10000) / 10000,
-    candyMachine: null,
-    candyGuard: null,
+    candyMachine: '4aowJrqVHEm6eVdrbDSi2Ldp1GmgghpJhqeJt4UJPdiY',
+    candyGuard: '87guPX2WgcvxySefkKxvZiCCENS59fWDnBb7fa5DnRng',
     collection: SHADOW_COLLECTION,
     treasury: SHADOW_TREASURY,
     feeBufferSol: SHADOW_FEE_BUFFER_SOL,

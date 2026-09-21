@@ -68,10 +68,24 @@ const COLLECTION =
 const TREASURY = publicKey(process.env.TREASURY || SHADOW_TREASURY);
 
 const r = SHADOW_RARITIES[rarityKey];
-const ITEMS = waveItems(rarityKey, WAVE);
-const PRICE_SOL = wavePrice(rarityKey, WAVE);
-const outPath = path.join(__dirname, `wave1-${rarityKey}-result.json`);
-const partialPath = path.join(__dirname, `wave1-${rarityKey}-partial.json`);
+const PROMO = (process.env.PROMO || "").toLowerCase() === "yes";
+if (PROMO && rarityKey !== "common") {
+  console.error("PROMO=yes only for common (voucher 40% CM)");
+  process.exit(1);
+}
+const ITEMS = Number(process.env.PROMO_ITEMS || 0) || waveItems(rarityKey, WAVE);
+const basePrice = wavePrice(rarityKey, WAVE);
+const PRICE_SOL = PROMO
+  ? Math.round(basePrice * 0.4 * 10000) / 10000
+  : basePrice;
+const outPath = path.join(
+  __dirname,
+  PROMO ? `wave1-${rarityKey}-promo-result.json` : `wave1-${rarityKey}-result.json`,
+);
+const partialPath = path.join(
+  __dirname,
+  PROMO ? `wave1-${rarityKey}-promo-partial.json` : `wave1-${rarityKey}-partial.json`,
+);
 
 if (fs.existsSync(outPath)) {
   const existing = JSON.parse(fs.readFileSync(outPath, "utf8"));
@@ -116,7 +130,7 @@ const secret = new Uint8Array(
 umi.use(keypairIdentity(umi.eddsa.createKeypairFromSecretKey(secret)));
 
 console.log("=== Shadow", r.label, "Wave 1 ===");
-console.log("Items", ITEMS, "Price", PRICE_SOL, "SOL");
+console.log("Items", ITEMS, "Price", PRICE_SOL, "SOL", PROMO ? "(PROMO 40%)" : "");
 console.log("Authority", umi.identity.publicKey.toString());
 console.log("Collection", COLLECTION);
 
@@ -206,7 +220,7 @@ const guardBuilder = createCandyGuard(umi, {
       lastInstruction: true,
     }),
     mintLimit: some({
-      id: WAVE,
+      id: PROMO ? 90 + WAVE : WAVE,
       limit: 5,
     }),
   },
@@ -265,6 +279,7 @@ const out = {
   imageUri,
   maxPerWallet: 5,
   cluster: "mainnet",
+  promo: PROMO,
 };
 fs.writeFileSync(outPath, JSON.stringify(out, null, 2));
 console.log("WROTE", outPath);

@@ -113,8 +113,8 @@ export const ECHO_CM_PROMO = {
   common: {
     ...ECHO_WAVE1.common,
     priceSol: Math.round(ECHO_WAVE1.common.priceSol * 0.4 * 10000) / 10000,
-    candyMachine: null,
-    candyGuard: null,
+    candyMachine: 'Ff91JFCRsKP4qcY1GHPVXYHK9z4iSXdXa4AthyRH3zwd',
+    candyGuard: '2FAxkV5U1dvGUBy52C4pxSHaLAp1AbmigcyfVfW9Tnh9',
     collection: ECHO_COLLECTION,
     treasury: ECHO_TREASURY,
     feeBufferSol: ECHO_FEE_BUFFER_SOL,

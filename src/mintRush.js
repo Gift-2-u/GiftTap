@@ -113,8 +113,8 @@ export const RUSH_CM_PROMO = {
   common: {
     ...RUSH_WAVE1.common,
     priceSol: Math.round(RUSH_WAVE1.common.priceSol * 0.4 * 10000) / 10000,
-    candyMachine: null,
-    candyGuard: null,
+    candyMachine: '3LKe3ymHeqg6dJyinFnH6waJLyXXfgLGuEZ2a5LvzeTt',
+    candyGuard: 'yJYynBd1dh32hs8sQAnZMGoYJ1wNnHnjuRXcu6Dm1KM',
     collection: RUSH_COLLECTION,
     treasury: RUSH_TREASURY,
     feeBufferSol: RUSH_FEE_BUFFER_SOL,

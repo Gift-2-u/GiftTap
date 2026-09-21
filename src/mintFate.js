@@ -116,8 +116,8 @@ export const FATE_CM_PROMO = {
   common: {
     ...FATE_WAVE1.common,
     priceSol: Math.round(FATE_WAVE1.common.priceSol * 0.4 * 10000) / 10000,
-    candyMachine: null,
-    candyGuard: null,
+    candyMachine: 'kxmpkctxCYRiHP5aXr9TgGRzJR7DbsKZtSDvTNV4uMe',
+    candyGuard: '9gfqheZBqETfuEQfDK47SpRuiLmkThX5PH3Y1DUyz45c',
     collection: FATE_COLLECTION,
     treasury: FATE_TREASURY,
     feeBufferSol: FATE_FEE_BUFFER_SOL,
