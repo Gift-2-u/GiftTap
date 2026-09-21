@@ -49,6 +49,45 @@ export async function logEconomy(
   }
 }
 
+/**
+ * NFT sales → public.nft_sales (own table, not economy_events).
+ * Open in Supabase → Table Editor → nft_sales (newest first).
+ */
+export async function logNftMintSale(
+  sb: SupabaseClient,
+  opts: {
+    playerId: string;
+    elf: string;
+    rarity: string;
+    priceSol?: number | null;
+    assetId: string;
+    signature?: string | null;
+    promo?: boolean;
+    username?: string | null;
+  },
+) {
+  const assetId = String(opts.assetId || "").trim();
+  if (!assetId) return;
+  try {
+    const { error } = await sb.from("nft_sales").upsert(
+      {
+        player_id: opts.playerId,
+        username: opts.username ? String(opts.username) : null,
+        elf: String(opts.elf || "").toLowerCase(),
+        rarity: String(opts.rarity || "").toLowerCase(),
+        price_sol: opts.priceSol != null ? Number(opts.priceSol) : null,
+        asset_id: assetId,
+        signature: opts.signature ? String(opts.signature) : null,
+        promo: !!opts.promo,
+      },
+      { onConflict: "asset_id", ignoreDuplicates: true },
+    );
+    if (error) console.warn("nft_sales insert failed", error.message || error);
+  } catch (e) {
+    console.warn("nft_sales log failed", e);
+  }
+}
+
 /** Max invitees that can credit one referrer (anti multi-account farm). */
 export const MAX_REFERRALS = 5;
 

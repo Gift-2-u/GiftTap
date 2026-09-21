@@ -1576,6 +1576,11 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, bumpEner
           rarity: rarityKey,
           level: 1,
           assetId: result.asset,
+          mintSale: true,
+          priceSol: result.priceSol ?? priceSol,
+          signature: result.signature,
+          promo: !!result.promo || promo,
+          username: stats?.username || null,
         });
         if (act?.inventory) {
           setLocalInventory((prev) => addToBackpackInventory(prev, act.inventory));
@@ -1725,6 +1730,11 @@ Luck jackpot active · Pack → NFT to see it.`,
           rarity: rarityKey,
           level: 1,
           assetId: result.asset,
+          mintSale: true,
+          priceSol: result.priceSol ?? priceSol,
+          signature: result.signature,
+          promo: !!result.promo || promo,
+          username: stats?.username || null,
         });
         if (act?.inventory) {
           setLocalInventory((prev) => addToBackpackInventory(prev, act.inventory));
@@ -1858,6 +1868,11 @@ Tap multi active · Pack → NFT to see it.`,
           rarity: rarityKey,
           level: 1,
           assetId: result.asset,
+          mintSale: true,
+          priceSol: result.priceSol ?? priceSol,
+          signature: result.signature,
+          promo: !!result.promo || promo,
+          username: stats?.username || null,
         });
         if (act?.inventory) {
           setLocalInventory((prev) => addToBackpackInventory(prev, act.inventory));
@@ -1990,6 +2005,11 @@ Daily cap active · Pack → NFT to see it.`,
           rarity: rarityKey,
           level: 1,
           assetId: result.asset,
+          mintSale: true,
+          priceSol: result.priceSol ?? priceSol,
+          signature: result.signature,
+          promo: !!result.promo || promo,
+          username: stats?.username || null,
         });
         if (act?.inventory) {
           setLocalInventory((prev) => addToBackpackInventory(prev, act.inventory));

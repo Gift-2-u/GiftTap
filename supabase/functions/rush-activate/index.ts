@@ -10,6 +10,7 @@ import {
   jsonResponse,
   invObj,
   logEconomy,
+  logNftMintSale,
   RUSH_DAILY_LIMIT,
   rushDailyLimit,
   PLAYER_ECONOMY_SELECT,
@@ -118,6 +119,18 @@ serve(async (req) => {
       null;
     if (sealId && body.clear !== true && body.unequip !== true) {
       royalties = await sealAssetRoyalties(String(sealId));
+      if (body.mint_sale === true || body.mintSale === true) {
+        await logNftMintSale(sb, {
+          playerId,
+          elf: "rush",
+          rarity: String(body.rarity || body.rarityKey || "common"),
+          priceSol: body.price_sol ?? body.priceSol ?? null,
+          assetId: String(sealId),
+          signature: body.signature || body.tx_signature || null,
+          promo: !!(body.promo || body.voucher_promo),
+          username: String(body.username || "") || null,
+        });
+      }
     }
 
     return jsonResponse({
