@@ -3334,6 +3334,53 @@ const GiftTapGame = () => {
     [playerId],
   );
 
+  // Common NFT voucher (MS1): popup so players know they have it + how to use it
+  useEffect(() => {
+    if (!isDataLoaded || !playerId || showAscensionModal) return undefined;
+    const inv = inventoryRef.current || stats?.inventory || {};
+    const v = inv?.nft_voucher;
+    const uses = Math.floor(Number(v?.uses_left) || 0);
+    if (!v || uses < 1) return undefined;
+    const seenV = `gift2u_ms1_voucher_notice_${playerId}`;
+    try {
+      if (localStorage.getItem(seenV) === '1') return undefined;
+    } catch {
+      /* ignore */
+    }
+    const t = setTimeout(() => {
+      try {
+        localStorage.setItem(seenV, '1');
+      } catch {
+        /* ignore */
+      }
+      setAppNotice({
+        show: true,
+        title: 'NFT voucher unlocked',
+        message:
+          'You unlocked 60% off your next Common Gift2u Elf NFT ' +
+          '(Fate, Echo, Rush, or Shadow).\n\n' +
+          'How to use it:\n' +
+          '1. Open Shop → NFTs\n' +
+          '2. Pick a Common elf (shows 0.02 SOL instead of 0.05)\n' +
+          '3. Mint once — the voucher is used up after that mint',
+        loading: false,
+        success: true,
+        confirm: {
+          confirmLabel: 'Open Shop',
+          cancelLabel: 'OK',
+          confirmDanger: false,
+          resolve: (ok) => {
+            if (ok) {
+              setShopFocusTab('nft');
+              setCurrentPage('shop');
+            }
+          },
+        },
+      });
+    }, 1600);
+    return () => clearTimeout(t);
+  }, [isDataLoaded, playerId, showAscensionModal, stats?.inventory]);
+
   // Boosts use $G2U — once per account after Free shop ends (2026-09-13 UTC)
   useEffect(() => {
     if (!isDataLoaded || !playerId || showAscensionModal || showRulesNotice) {
@@ -4230,7 +4277,10 @@ const GiftTapGame = () => {
                   'You reached Milestone 1!\n\n' +
                   'You unlocked 60% off your next Common Gift2u Elf NFT ' +
                   '(Fate, Echo, Rush, or Shadow).\n\n' +
-                  'One use — open Shop → NFTs and mint while the voucher price is shown.',
+                  'How to use it:\n' +
+                  '1. Open Shop → NFTs\n' +
+                  '2. Pick a Common elf (shows 0.02 SOL instead of 0.05)\n' +
+                  '3. Mint once — the voucher is used up after that mint',
                 loading: false,
                 success: true,
                 confirm: {

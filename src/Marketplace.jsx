@@ -3469,6 +3469,26 @@ Daily claim active · Pack → NFT to see it.`,
             <p style={{ color: '#666', fontSize: 10, margin: '0 0 8px', textAlign: 'center' }}>
               NFT Marketplace · tap for details
             </p>
+            {hasCommonVoucher ? (
+              <div
+                style={{
+                  margin: '0 0 10px',
+                  padding: '10px 12px',
+                  borderRadius: 10,
+                  border: '1px solid #34d399',
+                  background: 'rgba(16,185,129,0.12)',
+                  color: '#a7f3d0',
+                  fontSize: 12,
+                  lineHeight: 1.45,
+                  textAlign: 'center',
+                }}
+              >
+                <strong style={{ color: '#6ee7b7' }}>Voucher active — 60% off</strong>
+                <br />
+                Common Fate / Echo / Rush / Shadow = <strong>0.02 SOL</strong> (was 0.05).
+                One mint uses it up.
+              </div>
+            ) : null}
             <NftFilterBar
               rarity={nftRarityFilter}
               role={nftRoleFilter}
