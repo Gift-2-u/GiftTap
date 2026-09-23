@@ -361,7 +361,11 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, bumpEner
   );
 
   // Voucher = mint price only (60% off Common). Does not change NFT abilities.
-  const invForVoucher = localInventory || stats?.inventory || {};
+  // Merge stats + local — do NOT use `localInventory || stats` ({} is truthy and hid vouchers).
+  const invForVoucher = {
+    ...(stats?.inventory && typeof stats.inventory === 'object' ? stats.inventory : {}),
+    ...(localInventory && typeof localInventory === 'object' ? localInventory : {}),
+  };
   const hasCommonVoucher = isNftVoucherActive(invForVoucher);
   const usePromoFor = (kind, rarityKey) =>
     voucherAppliesToMint(invForVoucher, kind, rarityKey) &&

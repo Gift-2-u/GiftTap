@@ -158,10 +158,29 @@ export async function listGiftNftsWithStatus(walletAddress, opts = {}) {
 
   const force = opts.force === true;
   const now = Date.now();
+  const knownFromInv = (inv) => {
+    const ids = [];
+    if (!inv || typeof inv !== 'object') return ids;
+    for (const key of [
+      'locksmith_active',
+      'fate_power',
+      'echo_active',
+      'rush_active',
+      'shadow_active',
+    ]) {
+      const id = String(inv[key]?.asset_id || inv[key]?.assetId || '').trim();
+      if (id.length >= 32) ids.push(id);
+    }
+    return ids;
+  };
   if (!force) {
     const hit = nftListCache.get(owner);
     if (hit && now - hit.at < NFT_LIST_CACHE_TTL_MS) {
-      return hit.result;
+      const known = knownFromInv(opts.inventory);
+      const cachedIds = new Set((hit.result?.nfts || []).map((n) => n.id));
+      const miss = known.some((id) => !cachedIds.has(id));
+      // Stale cache omitted Locksmith (or other equipped) — refresh
+      if (!miss) return hit.result;
     }
     const pending = nftListInflight.get(owner);
     if (pending) return pending;
@@ -207,8 +226,27 @@ export async function listGiftNftsWithStatus(walletAddress, opts = {}) {
       console.warn('listGiftNfts searchAssets failed', e?.message || e);
     }
 
-    // Fallback when search fails OR returns empty (search can miss; empty ≠ "no NFTs")
-    if (!searchOk || byId.size === 0) {
+    // Known equipped asset ids (e.g. locksmith_active) — searchAssets can return
+    // other elves but miss Locksmith; never skip fallback when these are missing.
+    const knownIds = [];
+    const invOpt = opts.inventory && typeof opts.inventory === 'object' ? opts.inventory : null;
+    if (invOpt) {
+      for (const key of [
+        'locksmith_active',
+        'fate_power',
+        'echo_active',
+        'rush_active',
+        'shadow_active',
+      ]) {
+        const row = invOpt[key];
+        const id = String(row?.asset_id || row?.assetId || '').trim();
+        if (id.length >= 32) knownIds.push(id);
+      }
+    }
+    const missingKnown = () => knownIds.filter((id) => !byId.has(id));
+
+    // Fallback when search fails, empty, OR known inventory NFTs are missing from search
+    if (!searchOk || byId.size === 0 || missingKnown().length > 0) {
       try {
         const res2 = await fetch(RPC_URL, {
           method: 'POST',
@@ -241,13 +279,53 @@ export async function listGiftNftsWithStatus(walletAddress, opts = {}) {
       }
     }
 
+    // Still missing? Fetch each known asset by id (Locksmith often missed by collection search)
+    for (const assetId of missingKnown()) {
+      try {
+        const res3 = await fetch(RPC_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            jsonrpc: '2.0',
+            id: 'gift-nft-get',
+            method: 'getAsset',
+            params: { id: assetId },
+          }),
+        });
+        if (!res3.ok) continue;
+        const json3 = await res3.json();
+        const asset = json3?.result;
+        if (!asset || json3?.error) continue;
+        const own =
+          asset?.ownership?.owner != null
+            ? String(asset.ownership.owner).trim()
+            : '';
+        if (own && own !== owner) continue;
+        if (!inElvesCollection(asset) && assetId !== LOCKSMITH_TEST_ASSET) {
+          // Still allow if name/class says Locksmith
+          const card0 = assetToCard(asset);
+          if (card0.kind !== 'locksmith' && card0.kind !== 'fate' && card0.kind !== 'echo' && card0.kind !== 'rush' && card0.kind !== 'shadow' && card0.kind !== 'star') {
+            continue;
+          }
+        }
+        const card = assetToCard(asset);
+        if (card.id) {
+          byId.set(card.id, { ...byId.get(card.id), ...card });
+          ownerOk = true;
+        }
+      } catch (e) {
+        console.warn('listGiftNfts getAsset failed', assetId?.slice?.(0, 8), e?.message || e);
+      }
+    }
+
     const result = {
-      ok: searchOk || ownerOk,
+      ok: searchOk || ownerOk || byId.size > 0,
       nfts: Array.from(byId.values()),
       searchOk,
       ownerOk,
     };
-    if (result.ok) {
+    // Never cache a list that omits known inventory assets (e.g. Locksmith)
+    if (result.ok && missingKnown().length === 0) {
       nftListCache.set(owner, { at: Date.now(), result });
     }
     return result;
@@ -265,8 +343,8 @@ export async function listGiftNftsWithStatus(walletAddress, opts = {}) {
  * List Gift2u Elves NFTs owned by the game wallet (Locksmith + Fate + Echo + Rush + Shadow + Star).
  * Note: [] can mean zero NFTs OR a failed scan — prefer listGiftNftsWithStatus for ownership sync.
  */
-export async function listGiftNfts(walletAddress) {
-  const { nfts } = await listGiftNftsWithStatus(walletAddress);
+export async function listGiftNfts(walletAddress, opts = {}) {
+  const { nfts } = await listGiftNftsWithStatus(walletAddress, opts);
   return nfts;
 }
 

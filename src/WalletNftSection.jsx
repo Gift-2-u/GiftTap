@@ -747,7 +747,12 @@ export default function WalletNftSection({
       setLoading(true);
       setError('');
       try {
-        const list = await listGiftNfts(walletAddress);
+        // Pass inventory so Locksmith (and other equipped elves) still list
+        // when collection searchAssets misses them.
+        const inv = localInv || inventory || {};
+        const list = await listGiftNfts(walletAddress, {
+          inventory: inv,
+        });
         if (!cancelled) setNfts(list);
       } catch (e) {
         if (!cancelled) {
@@ -761,7 +766,7 @@ export default function WalletNftSection({
     return () => {
       cancelled = true;
     };
-  }, [walletAddress, refreshKey, listKey]);
+  }, [walletAddress, refreshKey, listKey, localInv, inventory]);
 
   // Ownership sync — reuse the list we just fetched (no second DAS). Throttled inside sync.
   useEffect(() => {

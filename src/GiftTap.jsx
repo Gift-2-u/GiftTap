@@ -1239,7 +1239,9 @@ const GiftTapGame = () => {
       const nftWallet = playerWallet || raw?.walletAddress;
       if (nftWallet) {
         try {
-          const owned = await listGiftNfts(nftWallet);
+          const owned = await listGiftNfts(nftWallet, {
+            inventory: inventoryRef.current || {},
+          });
           if (nftWallet === playerWallet) {
             ownedElfAssetIdsRef.current = new Set(
               (owned || [])
@@ -1666,7 +1668,9 @@ const GiftTapGame = () => {
           (async () => {
             try {
               await ensureSecureSession();
-              const owned = await listGiftNfts(playerWallet);
+              const owned = await listGiftNfts(playerWallet, {
+                inventory: inventoryRef.current || {},
+              });
               const viewerNfts = Array.isArray(owned)
                 ? owned.map((n) => ({
                     kind: n.kind || n.name,
