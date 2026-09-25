@@ -1009,7 +1009,7 @@ const HomePage = () => {
               Gift Tap →
             </GiftTapPlayButton>
             <span className="text-[11px] text-slate-400 font-semibold">
-              Open the Gift2U app or download it
+              Play Gift Tap or download it
             </span>
           </div>
         </div>

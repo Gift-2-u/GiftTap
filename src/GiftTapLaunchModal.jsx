@@ -18,7 +18,7 @@ export function getGiftTapApkUrl() {
 export const GIFT_TAP_APK_URL = 'https://gift2u.fun/Gift2U.apk';
 
 /**
- * Open installed Gift2U app (fun.gift2u.tap) to /play.
+ * Open installed Gift Tap app (fun.gift2u.tap) to /play.
  * Falls back to APK download if the app is not installed.
  */
 export function getGiftTapOpenAppUrl() {
@@ -29,7 +29,7 @@ export function getGiftTapOpenAppUrl() {
   );
 }
 
-/** Android phone in Chrome/Samsung browser — not already inside Gift2U / Seeker app. */
+/** Android phone in Chrome/Samsung browser — not already inside Gift Tap / Seeker app. */
 export function mustDownloadGiftTapApp() {
   if (typeof navigator === 'undefined') return false;
   try {
@@ -44,7 +44,7 @@ export function mustDownloadGiftTapApp() {
 /**
  * Gift Tap chooser.
  * Android: Open app (if installed) + Download — no web play.
- * Desktop: Play on web + Download.
+ * Desktop: Play Gift Tap + Download Gift Tap.
  */
 export default function GiftTapLaunchModal({ open, onClose, forceAndroid = false }) {
   if (!open) return null;
@@ -74,14 +74,14 @@ export default function GiftTapLaunchModal({ open, onClose, forceAndroid = false
 
         {androidOnly ? (
           <p className="text-center text-slate-300 text-sm mb-5 leading-relaxed">
-            Gift Tap is an <strong className="text-white">app</strong> on your phone (
-            <strong className="text-emerald-300">Gift2U</strong>). Open it if you already
-            installed it, or download it.
+            Gift Tap is an <strong className="text-white">app</strong> on your phone. Open it
+            if you already installed it, or download it.
           </p>
         ) : (
           <p className="text-center text-slate-400 text-sm mb-5 leading-relaxed">
-            Play Gift Tap on web, or download the <strong className="text-emerald-300">Gift2U</strong>{' '}
-            Android app (AdMob Free Energy).
+            Play Gift Tap here, or download the{' '}
+            <strong className="text-emerald-300">Gift Tap</strong> Android app (AdMob Free
+            Energy).
           </p>
         )}
 
@@ -106,7 +106,7 @@ export default function GiftTapLaunchModal({ open, onClose, forceAndroid = false
               background: 'linear-gradient(90deg,#fbef43,#fbbf24)',
             }}
           >
-            Play on web
+            Play Gift Tap
           </Link>
         )}
 
@@ -115,13 +115,10 @@ export default function GiftTapLaunchModal({ open, onClose, forceAndroid = false
           download="Gift2U.apk"
           className="mb-3 flex w-full items-center justify-center rounded-full border-2 border-emerald-400/60 px-5 py-3.5 text-base font-black text-emerald-200 hover:bg-emerald-950/40"
         >
-          Download Gift2U (Gift Tap)
+          Download Gift Tap
         </a>
 
         <p className="text-center text-[11px] text-slate-500 mb-4 leading-snug">
-          App name on your phone: <strong className="text-slate-400">Gift2U</strong> · Game inside:{' '}
-          <strong className="text-slate-400">Gift Tap</strong>
-          <br />
           Same login = same stats · allow install from this site if asked
         </p>
 
@@ -150,7 +147,7 @@ export function AndroidMustDownloadGate() {
       >
         <h1 className="text-xl font-black text-yellow-300 mb-3">Gift Tap</h1>
         <p className="text-slate-300 text-sm mb-5 leading-relaxed">
-          Gift Tap runs in the <strong className="text-emerald-300">Gift2U</strong> app.
+          Gift Tap runs in the <strong className="text-emerald-300">Gift Tap</strong> app.
           <br />
           <span className="text-slate-500 text-xs">
             Already installed? Open the app. Otherwise download it. Same login = same stats.
@@ -175,10 +172,10 @@ export function AndroidMustDownloadGate() {
             color: '#042f2e',
           }}
         >
-          Download Gift2U (Gift Tap)
+          Download Gift Tap
         </a>
         <p className="text-[11px] text-slate-500 leading-snug mb-4">
-          On your phone the app is named Gift2U — inside you play Gift Tap.
+          Same login = same stats · allow install from this site if asked
         </p>
         <Link
           to="/"

@@ -27,8 +27,8 @@ const ctaBtnReset = {
 
 /**
  * Gift Tap entry.
- * Android browser → must download Gift2U app (modal).
- * Desktop → menu or modal with Play on web + Download.
+ * Android browser → must download Gift Tap app (modal).
+ * Desktop → menu or modal with Play Gift Tap + Download Gift Tap.
  */
 export default function GiftTapPlayButton({
   children,
@@ -156,7 +156,7 @@ export default function GiftTapPlayButton({
               className="block w-full px-4 py-3 text-left text-sm font-bold text-slate-950 hover:brightness-110"
               style={{ background: 'linear-gradient(90deg,#fbef43,#fbbf24)' }}
             >
-              Play on web
+              Play Gift Tap
             </Link>
             <a
               href={getGiftTapApkUrl()}
@@ -165,7 +165,7 @@ export default function GiftTapPlayButton({
               onClick={() => setOpen(false)}
               className="block w-full border-t border-white/10 px-4 py-3 text-left text-sm font-bold text-emerald-300 hover:bg-emerald-950/40"
             >
-              Download Gift2U (Gift Tap)
+              Download Gift Tap
             </a>
           </div>,
           document.body,
