@@ -247,10 +247,15 @@ import {
   secureSetVaultIfEmpty,
   secureVaultStatus,
   secureAdReward,
+  secureShadowClaim,
   fetchAirdropBoard,
   secureAirdropClaimStatus,
   secureAcceptFeeConsent,
 } from './secureApi';
+import {
+  shadowClaimEstimate,
+  shadowClaimedToday,
+} from './shadow';
 import {
   needsMilestoneSeed,
   needsLifetimeMilestoneSeed,
@@ -440,7 +445,7 @@ export const ASCENSION_WALLS = {
   4: {
     targetLevel: 5,
     shardCost: 15000,
-    g2uCost: 10000,
+    g2uCost: 15000,
     solCost: 0.02,
     requiresBoth: true,
     payWithG2u: true,
@@ -449,7 +454,7 @@ export const ASCENSION_WALLS = {
   9: {
     targetLevel: 10,
     shardCost: 30000,
-    g2uCost: 25000,
+    g2uCost: 30000,
     solCost: 0.03,
     requiresBoth: true,
     payWithG2u: true,
@@ -882,6 +887,7 @@ const GiftTapGame = () => {
     title: undefined,
     confirm: null,
   });
+  const [shadowClaimBusy, setShadowClaimBusy] = useState(false);
   /** Popup when new unclaimed airdrop allocation(s) appear */
   const [showAirdropTip, setShowAirdropTip] = useState(false);
   const [airdropTipPending, setAirdropTipPending] = useState([]);
@@ -3337,6 +3343,113 @@ const GiftTapGame = () => {
     },
     [playerId],
   );
+
+  const shadowClaimReady = useMemo(() => {
+    const inv = stats?.inventory || inventoryRef.current || {};
+    const a = inv.shadow_active;
+    if (!a || typeof a !== 'object') return 0;
+    if (shadowClaimedToday(inv)) return 0;
+    const dur =
+      a.durability === undefined || a.durability === null
+        ? 100
+        : Number(a.durability);
+    if (!(dur > 0)) return 0;
+    return shadowClaimEstimate({
+      rarityKey: a.rarity,
+      level: a.level || 1,
+      baseDailyCap: Math.max(1000, Number(maxDailyLimit) || 1000),
+      dailyTaps: Math.max(
+        Number(dailyTaps) || 0,
+        Number(optimisticDaily.current) || 0,
+      ),
+    });
+  }, [stats?.inventory, dailyTaps, maxDailyLimit, shadowClaimBusy]);
+
+  const claimShadowFromHome = useCallback(async () => {
+    if (shadowClaimBusy || !hasSecureSession()) return;
+    setShadowClaimBusy(true);
+    try {
+      const data = await secureShadowClaim();
+      const nextInv = data.inventory || inventoryRef.current || {};
+      inventoryRef.current = nextInv;
+      if (data.player) {
+        const p = data.player;
+        if (p.shard_balance != null) {
+          const b = Number(p.shard_balance) || 0;
+          optimisticBalance.current = b;
+          setBalance(b);
+          setBalances((x) => ({ ...x, G2Ushards: b }));
+        }
+        if (p.daily_taps != null) {
+          const d = Number(p.daily_taps) || 0;
+          optimisticDaily.current = d;
+          setDailyTaps(d);
+        }
+        if (p.max_daily_limit != null) {
+          setMaxDailyLimit(Number(p.max_daily_limit) || 1000);
+        }
+        setStats((prev) => ({
+          ...prev,
+          ...p,
+          inventory: nextInv,
+        }));
+      } else {
+        setStats((prev) => ({ ...prev, inventory: nextInv }));
+      }
+      notify(
+        `Shadow claimed · +${data.yield ?? 0} shards (daily ${data.daily_taps ?? '?'}/${data.base_cap ?? '?'})`,
+        true,
+      );
+    } catch (e) {
+      notify(e?.message || 'Shadow claim failed', false);
+    } finally {
+      setShadowClaimBusy(false);
+    }
+  }, [shadowClaimBusy, notify]);
+
+  // Shadow ready: once-per-UTC-day popup + home button (don't bury claim in Pack only)
+  useEffect(() => {
+    if (!isDataLoaded || !playerId || showAscensionModal) return undefined;
+    if (!(shadowClaimReady > 0)) return undefined;
+    const seenKey = `gift2u_shadow_claim_notice_${playerId}_${utcTodayStr()}`;
+    try {
+      if (localStorage.getItem(seenKey) === '1') return undefined;
+    } catch {
+      /* ignore */
+    }
+    const t = setTimeout(() => {
+      try {
+        localStorage.setItem(seenKey, '1');
+      } catch {
+        /* ignore */
+      }
+      setAppNotice({
+        show: true,
+        title: 'Shadow ready',
+        message:
+          `Your Shadow accrued +${shadowClaimReady} shards since UTC midnight ` +
+          `(unused daily only — never over your max).\n\n` +
+          'Claim from the Shadow button on the home screen, or Pack → NFT.',
+        loading: false,
+        success: true,
+        confirm: {
+          confirmLabel: 'Claim now',
+          cancelLabel: 'Later',
+          confirmDanger: false,
+          resolve: (ok) => {
+            if (ok) claimShadowFromHome();
+          },
+        },
+      });
+    }, 1800);
+    return () => clearTimeout(t);
+  }, [
+    isDataLoaded,
+    playerId,
+    showAscensionModal,
+    shadowClaimReady,
+    claimShadowFromHome,
+  ]);
 
   // Common NFT voucher (MS1): popup so players know they have it + how to use it
   useEffect(() => {
@@ -8386,6 +8499,60 @@ const GiftTapGame = () => {
                      </div>
                    </div>
                    
+                   {/* Shadow claim (home) — left of Free Energy when ready */}
+                  {shadowClaimReady > 0 ? (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        claimShadowFromHome();
+                      }}
+                      disabled={shadowClaimBusy}
+                      style={{
+                        position: 'absolute',
+                        bottom: '110px',
+                        right: '95px',
+                        width: '65px',
+                        height: '65px',
+                        borderRadius: '50%',
+                        background: 'linear-gradient(135deg, #6366f1 0%, #312e81 100%)',
+                        border: '2px solid #000',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        justifyContent: 'center',
+                        alignItems: 'center',
+                        boxShadow: '0 4px 15px rgba(0,0,0,0.6)',
+                        cursor: shadowClaimBusy ? 'wait' : 'pointer',
+                        zIndex: 50,
+                        outline: 'none',
+                        WebkitTapHighlightColor: 'transparent',
+                        opacity: shadowClaimBusy ? 0.7 : 1,
+                      }}
+                    >
+                      <span
+                        style={{
+                          fontSize: '9px',
+                          fontWeight: '900',
+                          color: '#fff',
+                          lineHeight: '1.1',
+                          textTransform: 'uppercase',
+                        }}
+                      >
+                        Shadow
+                      </span>
+                      <span
+                        style={{
+                          fontSize: '11px',
+                          fontWeight: '900',
+                          color: '#c7d2fe',
+                          lineHeight: '1.1',
+                        }}
+                      >
+                        {shadowClaimBusy ? '…' : `+${shadowClaimReady}`}
+                      </span>
+                    </button>
+                  ) : null}
+
                    {/* Restored Ad Button - Placed elegantly on the right */}
                    {/* THE FREE ENERGY BUTTON */}
                   {/* FREE ENERGY AD BUTTON */}

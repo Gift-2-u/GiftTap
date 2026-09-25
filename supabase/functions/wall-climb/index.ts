@@ -32,7 +32,7 @@ const WALLS: Record<
   4: {
     targetLevel: 5,
     shardCost: 15000,
-    g2uCost: 10000,
+    g2uCost: 15000,
     solCost: 0.02,
     requiresBoth: true,
     payWithG2u: true,
@@ -41,7 +41,7 @@ const WALLS: Record<
   9: {
     targetLevel: 10,
     shardCost: 30000,
-    g2uCost: 25000,
+    g2uCost: 30000,
     solCost: 0.03,
     requiresBoth: true,
     payWithG2u: true,

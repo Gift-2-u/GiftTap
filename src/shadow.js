@@ -26,6 +26,38 @@ export function shadowYield(rarityKey, level, baseDailyCap) {
   return Math.floor((h / 24) * cap);
 }
 
+/**
+ * Client estimate matching shadow-claim:
+ * accrues from UTC midnight up to NFT hours; only unused daily room.
+ */
+export function shadowClaimEstimate({
+  rarityKey,
+  level = 1,
+  baseDailyCap,
+  dailyTaps = 0,
+  now = new Date(),
+}) {
+  const hours = shadowHours(rarityKey, level);
+  const cap = Math.max(0, Math.floor(Number(baseDailyCap) || 0));
+  const midnight = Date.UTC(
+    now.getUTCFullYear(),
+    now.getUTCMonth(),
+    now.getUTCDate(),
+  );
+  const elapsed = Math.max(0, (now.getTime() - midnight) / 3_600_000);
+  const effective = Math.min(hours, elapsed);
+  const potential = Math.floor((effective / 24) * cap);
+  const remaining = Math.max(0, cap - Math.max(0, Math.floor(Number(dailyTaps) || 0)));
+  return Math.min(potential, remaining);
+}
+
+export function shadowClaimedToday(inv, now = new Date()) {
+  const today = now.toISOString().slice(0, 10);
+  const claims = inv?.shadow_claims;
+  if (!claims || typeof claims !== 'object') return false;
+  return !!claims[today];
+}
+
 export const SHADOW_DESCRIPTION =
   "Shadow is the Night elf of the Gift2u Elves. It does not raise your max daily. From each UTC midnight it accrues AFK shards up to its hours (e.g. Common L1 = 2h). Claim once per UTC day — you only get what has accrued so far, and only unused daily room (never over your max daily). Rush + Premium set the cap; quest boosts do not.";
 
