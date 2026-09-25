@@ -7302,11 +7302,91 @@ const GiftTapGame = () => {
         </div>
       )}
 
+      {showAgeConsent &&
+        !showAscensionModal &&
+        !showRulesNotice &&
+        !showBoostTokenNotice &&
+        !showApkNotice &&
+        !appNotice.show && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,0.88)',
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center',
+            zIndex: 197000,
+            padding: 16,
+            boxSizing: 'border-box',
+          }}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="gift2u-age-consent-title"
+        >
+          <div
+            style={{
+              background: '#1c1e22',
+              padding: 22,
+              borderRadius: 16,
+              border: '2px solid #fbef43',
+              width: '100%',
+              maxWidth: 360,
+              boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
+              textAlign: 'left',
+            }}
+          >
+            <h3
+              id="gift2u-age-consent-title"
+              style={{
+                color: '#fbef43',
+                margin: '0 0 12px',
+                fontSize: 18,
+                textAlign: 'center',
+              }}
+            >
+              {AGE_CONSENT_TITLE}
+            </h3>
+            <p
+              style={{
+                color: '#ccc',
+                fontSize: 13,
+                lineHeight: 1.5,
+                margin: '0 0 16px',
+                whiteSpace: 'pre-line',
+              }}
+            >
+              {AGE_CONSENT_BODY}
+            </p>
+            <button
+              type="button"
+              disabled={ageConsentBusy}
+              onClick={acceptAgeConsent}
+              style={{
+                width: '100%',
+                background: ageConsentBusy
+                  ? '#333'
+                  : 'linear-gradient(90deg,#fbef43,#fbbf24)',
+                color: ageConsentBusy ? '#777' : '#000',
+                border: 'none',
+                padding: 12,
+                borderRadius: 10,
+                fontWeight: 'bold',
+                cursor: ageConsentBusy ? 'not-allowed' : 'pointer',
+              }}
+            >
+              {ageConsentBusy ? 'Saving…' : 'Accept'}
+            </button>
+          </div>
+        </div>
+      )}
+
       {showFeeConsent &&
         !showAscensionModal &&
         !showRulesNotice &&
         !showBoostTokenNotice &&
         !showApkNotice &&
+        !showAgeConsent &&
         !appNotice.show && (
         <div
           style={{
