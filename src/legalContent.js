@@ -38,37 +38,59 @@ The Service is provided for entertainment and experimental software purposes. No
 Players may stay at a wall level (e.g. 4 or 9) and keep earning G2Ushards. Climbing walls and purchasing boosts/NFTs are optional power-ups.
 Energy, levels, NFTs, boosts, referrals, leaderboards, swaps, vaults, and rewards may be changed, balanced, delayed, limited, or removed. We may fix bugs, fight abuse, and adjust rates without notice when needed for security or fair play.
 
-5. Accounts, wallets, and security
+5. Age requirement (18+)
+• You must be at least 18 years old to create an account or use Gift Tap / Gift2u.
+• The Service may include prizes, rewards, digital assets, and features where players can win or receive value.
+• By accepting the in-app age agreement and using the Service, you confirm that you are 18 or older and have legal capacity to agree to these Terms.
+• If you are under 18, you must not use the Service. We may suspend or close accounts that do not meet this requirement.
+• You are responsible for complying with the age and other laws that apply where you live.
+
+6. Accounts, wallets, and security
 • You must keep your password and 12-word recovery phrase secret. Anyone with your phrase can control your wallet.
 • We do not custody your seed phrase after you back it up. Loss of keys may mean permanent loss of access and funds — we cannot reverse blockchain transactions.
 • You are responsible for all activity under your account and wallet.
 
-6. Purchases and fees
+7. Purchases and fees
 In-app purchases (e.g. SOL for NFT mints, boosts, ascension) and swap fees may include network fees and platform fees. Blockchain transactions are generally irreversible. Refunds, if any, are at our discretion except where law requires otherwise.
 
-7. Prohibited conduct
+8. Prohibited conduct
 You may not: use bots/auto-clickers/scripts to cheat; create fake accounts for referral or reward mining (Sybil attacks); exploit bugs without reporting them; launder funds; harass others; or violate applicable law. We may suspend or ban accounts and void illegitimate rewards.
 
-8. Third-party services
+9. Third-party services
 Ads, analytics, RPC providers, Supabase, Solana, wallets, and other third parties have their own terms. We are not liable for third-party outages, ads, or content.
 
-9. Disclaimers
+10. Disclaimers
 THE SERVICE IS PROVIDED "AS IS" AND "AS AVAILABLE" WITHOUT WARRANTIES OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, AND NON-INFRINGEMENT. We do not warrant uninterrupted or error-free operation.
 
-10. Limitation of liability
+11. Limitation of liability
 TO THE MAXIMUM EXTENT PERMITTED BY LAW, GIFT2U AND ITS OPERATORS SHALL NOT BE LIABLE FOR INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL, OR PUNITIVE DAMAGES, OR ANY LOSS OF PROFITS, DATA, GOODWILL, OR DIGITAL ASSET VALUE (INCLUDING TOKEN PRICE CHANGES), WHETHER BASED ON CONTRACT, TORT, OR OTHERWISE, EVEN IF ADVISED OF THE POSSIBILITY. OUR TOTAL LIABILITY FOR ANY CLAIM RELATED TO THE SERVICE SHALL NOT EXCEED THE GREATER OF (A) AMOUNTS YOU PAID US FOR THE SERVICE IN THE 3 MONTHS BEFORE THE CLAIM OR (B) USD $50.
 
-11. Indemnity
+12. Indemnity
 You agree to indemnify and hold us harmless from claims arising from your use of the Service, your wallet, your violation of these Terms, or your violation of law.
 
-12. Changes
+13. Changes
 We may update these Terms. Continued use after changes means you accept the updated Terms. Material changes may be noted in-app or on the site when practical.
 
-13. Contact
+14. Contact
 For questions about these Terms, contact the project via official channels listed on gift2u.fun or the official Gift2u / Gift Tap social accounts (e.g. X @Gift2udev, official Telegram).
 
-14. Governing considerations
+15. Governing considerations
 You are responsible for complying with laws in your jurisdiction, including crypto, tax, and gambling-related rules if they apply to you. If any part of these Terms is unenforceable, the rest remains in effect.
+`.trim();
+
+export const AGE_CONSENT_TITLE = 'Age requirement (18+)';
+
+export const AGE_CONSENT_BODY = `
+You must be 18 or older to use Gift Tap / Gift2u.
+
+The Service may include prizes, rewards, digital assets, and features where you can win or receive value.
+
+By tapping Accept, you confirm that:
+• you are at least 18 years old;
+• you have legal capacity to agree to our Terms of Use; and
+• if you are under 18, you will not use the Service.
+
+Full rules are in Terms of Use.
 `.trim();
 
 export const PRIVACY_BODY = `
@@ -110,8 +132,8 @@ We keep account and game data while your account exists and as needed for securi
 7. Security
 We use reasonable technical measures (e.g. hashed passwords, HTTPS). No method is 100% secure. Protect your password and recovery phrase.
 
-8. Children
-The Service is not directed at children under 13 (or higher age required in your country). Do not use the Service if you are under the applicable age.
+8. Children and age
+You must be at least 18 years old to use the Service. Do not use Gift Tap / Gift2u if you are under 18.
 
 9. Your choices
 • Log out; clear site data in your browser

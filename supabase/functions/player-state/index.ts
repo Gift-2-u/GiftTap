@@ -173,6 +173,47 @@ serve(async (req) => {
     if (error) throw error;
     if (!player) throw new Error("Player not found");
 
+    // Age 18+ once → inventory.age_majority_consent (blocks play until accepted)
+    if (body?.action === "accept_age_consent") {
+      const inv = invObj(
+        (player as Record<string, unknown>).inventory as Record<
+          string,
+          unknown
+        >,
+      );
+      const prev =
+        inv.age_majority_consent && typeof inv.age_majority_consent === "object"
+          ? (inv.age_majority_consent as Record<string, unknown>)
+          : null;
+      const already = String(prev?.accepted_at || "").trim().length >= 10;
+      if (!already) {
+        inv.age_majority_consent = {
+          accepted_at: new Date().toISOString(),
+          min_age: 18,
+        };
+        const { data: updated, error: upErr } = await supabase
+          .from("players")
+          .update({ inventory: inv })
+          .eq("telegram_id", playerId)
+          .select(PLAYER_SELECT)
+          .maybeSingle();
+        if (upErr) throw upErr;
+        if (updated) player = updated;
+        else (player as Record<string, unknown>).inventory = inv;
+      }
+      return new Response(
+        JSON.stringify({
+          success: true,
+          already,
+          inventory: (player as Record<string, unknown>).inventory,
+        }),
+        {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          status: 200,
+        },
+      );
+    }
+
     // Fee Accept once → inventory.fee_micro_consent
     if (body?.action === "accept_fee_consent") {
       const inv = invObj(

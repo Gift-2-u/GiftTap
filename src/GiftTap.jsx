@@ -251,7 +251,9 @@ import {
   fetchAirdropBoard,
   secureAirdropClaimStatus,
   secureAcceptFeeConsent,
+  secureAcceptAgeConsent,
 } from './secureApi';
+import { AGE_CONSENT_TITLE, AGE_CONSENT_BODY } from './legalContent';
 import {
   shadowClaimEstimate,
   shadowClaimedToday,
@@ -900,6 +902,8 @@ const GiftTapGame = () => {
   /** One-time: announce Android APK download (skip Seeker shell) */
   const [showApkNotice, setShowApkNotice] = useState(false);
   const APK_NOTICE_KEY = 'gift2u_android_apk_notice_v1';
+  const [showAgeConsent, setShowAgeConsent] = useState(false);
+  const [ageConsentBusy, setAgeConsentBusy] = useState(false);
   const [showFeeConsent, setShowFeeConsent] = useState(false);
   const [feeConsentBusy, setFeeConsentBusy] = useState(false);
   const notify = useCallback((message, opts = {}) => {
@@ -3560,11 +3564,59 @@ const GiftTapGame = () => {
     setShowApkNotice(false);
   }, [playerId]);
 
-  // Fee popup: show until inventory.fee_micro_consent is saved
+  // Age 18+: block play until inventory.age_majority_consent is saved
   useEffect(() => {
     if (!isDataLoaded || !playerId || !hasSecureSession()) return;
     if (showAscensionModal || showRulesNotice || showBoostTokenNotice || showApkNotice) return;
     const inv = stats?.inventory || inventoryRef.current || {};
+    const ok =
+      String(inv?.age_majority_consent?.accepted_at || '').trim().length >= 10;
+    setShowAgeConsent(!ok);
+    if (!ok) setShowFeeConsent(false);
+  }, [
+    isDataLoaded,
+    playerId,
+    showAscensionModal,
+    showRulesNotice,
+    showBoostTokenNotice,
+    showApkNotice,
+    stats?.inventory?.age_majority_consent?.accepted_at,
+  ]);
+
+  const acceptAgeConsent = useCallback(async () => {
+    if (ageConsentBusy) return;
+    setAgeConsentBusy(true);
+    try {
+      await ensureSecureSession();
+      const data = await secureAcceptAgeConsent();
+      const inv = data?.inventory;
+      if (inv && typeof inv === 'object') {
+        inventoryRef.current = inv;
+        setStats((prev) => ({ ...(prev || {}), inventory: inv }));
+      }
+      setShowAgeConsent(false);
+    } catch (e) {
+      notify(e?.message || 'Could not save', false);
+    } finally {
+      setAgeConsentBusy(false);
+    }
+  }, [ageConsentBusy, notify]);
+
+  // Fee popup: show until inventory.fee_micro_consent is saved (after age gate)
+  useEffect(() => {
+    if (!isDataLoaded || !playerId || !hasSecureSession()) return;
+    if (showAscensionModal || showRulesNotice || showBoostTokenNotice || showApkNotice) return;
+    if (showAgeConsent) {
+      setShowFeeConsent(false);
+      return;
+    }
+    const inv = stats?.inventory || inventoryRef.current || {};
+    const ageOk =
+      String(inv?.age_majority_consent?.accepted_at || '').trim().length >= 10;
+    if (!ageOk) {
+      setShowFeeConsent(false);
+      return;
+    }
     const ok =
       String(inv?.fee_micro_consent?.accepted_at || '').trim().length >= 10;
     setShowFeeConsent(!ok);
@@ -3575,6 +3627,8 @@ const GiftTapGame = () => {
     showRulesNotice,
     showBoostTokenNotice,
     showApkNotice,
+    showAgeConsent,
+    stats?.inventory?.age_majority_consent?.accepted_at,
     stats?.inventory?.fee_micro_consent?.accepted_at,
   ]);
 

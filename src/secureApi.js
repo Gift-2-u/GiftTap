@@ -92,6 +92,11 @@ export async function secureAcceptFeeConsent() {
   return callSecureFunction('player-state', { action: 'accept_fee_consent' });
 }
 
+/** Age 18+ Accept → inventory.age_majority_consent */
+export async function secureAcceptAgeConsent() {
+  return callSecureFunction('player-state', { action: 'accept_age_consent' });
+}
+
 export function hasSecureSession() {
   return !!getSessionToken() && !!getPlayerId();
 }
