@@ -1009,7 +1009,7 @@ const HomePage = () => {
               Gift Tap →
             </GiftTapPlayButton>
             <span className="text-[11px] text-slate-400 font-semibold">
-              Play Gift Tap or download it
+              Download Gift Tap app
             </span>
           </div>
         </div>

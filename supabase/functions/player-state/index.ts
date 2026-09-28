@@ -84,11 +84,23 @@ async function readChainBalances(walletAddress: string): Promise<{
   return { sol, g2u };
 }
 
-const ENERGY_CAP = 500;
+const ENERGY_CAP_DEFAULT = 500;
 const ENERGY_SECONDS_PER_POINT = 1.5;
 
 function utcDayStr(ms: number): string {
   return new Date(ms).toISOString().slice(0, 10);
+}
+
+/** Active Expanded Battery (inventory) → 1000 until UTC expiry; else 500. */
+function energyCapFromInv(
+  inv: Record<string, unknown> | null | undefined,
+  nowMs = Date.now(),
+): number {
+  const b = inv?.energy_cap_boost as { cap?: number; expires?: string } | undefined;
+  if (!b?.expires) return ENERGY_CAP_DEFAULT;
+  if (new Date(String(b.expires)).getTime() <= nowMs) return ENERGY_CAP_DEFAULT;
+  const cap = Math.floor(Number(b.cap) || 0);
+  return cap >= 1000 ? 1000 : ENERGY_CAP_DEFAULT;
 }
 
 /** Same rules as commit-taps — catch up bar before stamping last_updated. */
@@ -96,18 +108,19 @@ function energyFromAnchor(
   value: number,
   atIso: string | null | undefined,
   nowMs = Date.now(),
+  cap = ENERGY_CAP_DEFAULT,
 ): number {
   const at = atIso ? Date.parse(String(atIso)) : NaN;
   if (Number.isFinite(at) && utcDayStr(at) < utcDayStr(nowMs)) {
-    return ENERGY_CAP;
+    return cap;
   }
   const base = Number.isFinite(Number(value))
-    ? Math.max(0, Math.min(ENERGY_CAP, Number(value)))
-    : ENERGY_CAP;
+    ? Math.max(0, Math.min(cap, Number(value)))
+    : cap;
   const t0 = Number.isFinite(at) ? at : nowMs;
   const seconds = Math.max(0, Math.floor((nowMs - t0) / 1000));
   const gained = Math.floor(seconds / ENERGY_SECONDS_PER_POINT);
-  return Math.min(ENERGY_CAP, base + gained);
+  return Math.min(cap, base + gained);
 }
 
 /** Public game fields only — never password_hash / encrypted_vault in this payload */
@@ -352,8 +365,9 @@ serve(async (req) => {
 
     // This player only on login / player-state:
     //  - If previous last_updated is a prior UTC day → new day:
-    //      daily_taps = 0 + energy = 500 + max_daily_limit recomputed for today
+    //      daily_taps = 0 + energy = current battery cap + max_daily_limit recomputed
     //    (Must NOT wait for a tap — player can already be maxed and unable to tap.)
+    //  - Expanded Battery (inventory.energy_cap_boost) raises dormant regen to 1000
     //  - Then stamp last_updated / energy_at = now
     try {
       const nowMs = Date.now();
@@ -375,6 +389,11 @@ serve(async (req) => {
         !!(prevUpdatedDay && prevUpdatedDay !== today) ||
         !!(prevTapDay && prevTapDay !== today && dailyStuck);
 
+      const ENERGY_CAP = energyCapFromInv(
+        invObj(player.inventory as Record<string, unknown>),
+        nowMs,
+      );
+
       let energy: number;
       if (isNewUtcDay) {
         energy = ENERGY_CAP;
@@ -387,6 +406,7 @@ serve(async (req) => {
           Number(player.last_energy),
           energyAnchor,
           nowMs,
+          ENERGY_CAP,
         );
       }
 
