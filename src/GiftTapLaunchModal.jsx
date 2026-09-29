@@ -18,7 +18,7 @@ export function getGiftTapApkUrl() {
 export const GIFT_TAP_APK_URL = 'https://gift2u.fun/Gift2U.apk';
 
 /**
- * Open installed Gift Tap app (fun.gift2u.tap) to /play.
+ * Open installed Gift2U app (fun.gift2u.tap) to /play.
  * Falls back to APK download if the app is not installed.
  */
 export function getGiftTapOpenAppUrl() {
@@ -29,12 +29,24 @@ export function getGiftTapOpenAppUrl() {
   );
 }
 
-/**
- * Gift Tap is app-only on the public site.
- * Browser (any device) → download / open app. Seeker / APK WebView → play.
- * Localhost stays open for your own testing.
- */
+/** Android phone in Chrome/Samsung browser — not already inside Gift2U / Seeker app. */
 export function mustDownloadGiftTapApp() {
+  if (typeof navigator === 'undefined') return false;
+  try {
+    if (isSeekerShell()) return false;
+  } catch {
+    /* ignore */
+  }
+  const ua = String(navigator.userAgent || '');
+  return /Android/i.test(ua);
+}
+
+/**
+ * Block loading the game in any public browser (PC included).
+ * Used only by /play route — does not change the header/banner button UX.
+ * Seeker/APK and localhost still play.
+ */
+export function mustBlockBrowserPlay() {
   if (typeof window === 'undefined' || typeof navigator === 'undefined') return false;
   try {
     if (isSeekerShell()) return false;
@@ -57,21 +69,15 @@ export function mustDownloadGiftTapApp() {
   return true;
 }
 
-function isAndroidUa() {
-  try {
-    return /Android/i.test(String(navigator.userAgent || ''));
-  } catch {
-    return false;
-  }
-}
-
 /**
- * Gift Tap chooser — Open app (Android) + Download. No web play.
+ * Gift Tap chooser.
+ * Android: Open app (if installed) + Download — no web play.
+ * Desktop: Play on web + Download.
  */
-export default function GiftTapLaunchModal({ open, onClose }) {
+export default function GiftTapLaunchModal({ open, onClose, forceAndroid = false }) {
   if (!open) return null;
 
-  const showOpenApp = isAndroidUa();
+  const androidOnly = forceAndroid || mustDownloadGiftTapApp();
 
   return (
     <div
@@ -94,24 +100,30 @@ export default function GiftTapLaunchModal({ open, onClose }) {
           Gift Tap
         </h2>
 
-        <p className="text-center text-slate-300 text-sm mb-5 leading-relaxed">
-          Gift Tap is an <strong className="text-white">Android app</strong> (AdMob Free
-          Energy). Download it on your phone — same login = same stats.
-        </p>
+        {androidOnly ? (
+          <p className="text-center text-slate-300 text-sm mb-5 leading-relaxed">
+            Gift Tap is an <strong className="text-white">app</strong> on your phone (
+            <strong className="text-emerald-300">Gift2U</strong>). Open it if you already
+            installed it, or download it.
+          </p>
+        ) : (
+          <p className="text-center text-slate-400 text-sm mb-5 leading-relaxed">
+            Play Gift Tap on web, or download the <strong className="text-emerald-300">Gift2U</strong>{' '}
+            Android app (AdMob Free Energy).
+          </p>
+        )}
 
-        {showOpenApp ? (
-          <a
-            href={getGiftTapOpenAppUrl()}
-            onClick={onClose}
-            className="mb-3 flex w-full items-center justify-center rounded-full px-5 py-3.5 text-base font-black"
-            style={{
-              background: 'linear-gradient(90deg,#fbef43,#fbbf24)',
-              color: '#042f2e',
-            }}
-          >
-            Open Gift Tap app
-          </a>
-        ) : null}
+        <a
+          href={getGiftTapOpenAppUrl()}
+          onClick={onClose}
+          className="mb-3 flex w-full items-center justify-center rounded-full px-5 py-3.5 text-base font-black"
+          style={{
+            background: 'linear-gradient(90deg,#fbef43,#fbbf24)',
+            color: '#042f2e',
+          }}
+        >
+          Play Gift Tap
+        </a>
 
         <a
           href={getGiftTapApkUrl()}
@@ -122,6 +134,9 @@ export default function GiftTapLaunchModal({ open, onClose }) {
         </a>
 
         <p className="text-center text-[11px] text-slate-500 mb-4 leading-snug">
+          App name on your phone: <strong className="text-slate-400">Gift2U</strong> · Game inside:{' '}
+          <strong className="text-slate-400">Gift Tap</strong>
+          <br />
           Same login = same stats · allow install from this site if asked
         </p>
 
@@ -137,10 +152,8 @@ export default function GiftTapLaunchModal({ open, onClose }) {
   );
 }
 
-/** Full-screen gate when a browser opens /play — Open app + Download (no web play). */
+/** Full-screen gate when Android opens /play in a browser — Open app + Download (no web play). */
 export function AndroidMustDownloadGate() {
-  const showOpenApp = isAndroidUa();
-
   return (
     <div
       className="min-h-screen w-full flex items-center justify-center p-4"
@@ -152,25 +165,22 @@ export function AndroidMustDownloadGate() {
       >
         <h1 className="text-xl font-black text-yellow-300 mb-3">Gift Tap</h1>
         <p className="text-slate-300 text-sm mb-5 leading-relaxed">
-          Gift Tap runs in the <strong className="text-emerald-300">Gift Tap</strong> Android
-          app.
+          Gift Tap runs in the <strong className="text-emerald-300">Gift2U</strong> app.
           <br />
           <span className="text-slate-500 text-xs">
-            Download on your phone for Free Energy ads (AdMob). Same login = same stats.
+            Already installed? Open the app. Otherwise download it. Same login = same stats.
           </span>
         </p>
-        {showOpenApp ? (
-          <a
-            href={getGiftTapOpenAppUrl()}
-            className="mb-3 flex w-full items-center justify-center rounded-full px-5 py-3.5 text-base font-black"
-            style={{
-              background: 'linear-gradient(90deg,#fbef43,#fbbf24)',
-              color: '#042f2e',
-            }}
-          >
-            Open Gift Tap app
-          </a>
-        ) : null}
+        <a
+          href={getGiftTapOpenAppUrl()}
+          className="mb-3 flex w-full items-center justify-center rounded-full px-5 py-3.5 text-base font-black"
+          style={{
+            background: 'linear-gradient(90deg,#fbef43,#fbbf24)',
+            color: '#042f2e',
+          }}
+        >
+          Play Gift Tap
+        </a>
         <a
           href={getGiftTapApkUrl()}
           download="Gift2U.apk"
@@ -183,7 +193,7 @@ export function AndroidMustDownloadGate() {
           Download Gift Tap
         </a>
         <p className="text-[11px] text-slate-500 leading-snug mb-4">
-          Same login = same stats · allow install from this site if asked
+          On your phone the app is named Gift2U — inside you play Gift Tap.
         </p>
         <Link
           to="/"

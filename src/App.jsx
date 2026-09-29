@@ -40,7 +40,7 @@ import { PROGRAM_ID, MINT_ADDRESS } from './config';
 import idl from "../target/idl/gift_staking.json";
 import UpdatePrompt from './UpdatePrompt';
 import GiftTapPlayButton from './GiftTapPlayButton';
-import { AndroidMustDownloadGate, mustDownloadGiftTapApp } from './GiftTapLaunchModal';
+import { AndroidMustDownloadGate, mustBlockBrowserPlay } from './GiftTapLaunchModal';
 import '@solana/wallet-adapter-react-ui/styles.css';
 
 // Lazy-load game so homepage can load without pulling the full game first
@@ -87,7 +87,8 @@ function canAccessWalk2uTest() {
 }
 
 function PlayGiftTapRoute() {
-  if (mustDownloadGiftTapApp()) {
+  // App-only: any public browser hitting /play gets download gate (button UX unchanged).
+  if (mustBlockBrowserPlay()) {
     return <AndroidMustDownloadGate />;
   }
   return (

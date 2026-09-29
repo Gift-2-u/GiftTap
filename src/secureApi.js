@@ -97,6 +97,13 @@ export async function secureAcceptAgeConsent() {
   return callSecureFunction('player-state', { action: 'accept_age_consent' });
 }
 
+/** Dani7890 wall double-pay apology → backpack 1-day Grinder charge */
+export async function secureAckWallClimbApology() {
+  return callSecureFunction('player-state', {
+    action: 'ack_wall_climb_apology',
+  });
+}
+
 export function hasSecureSession() {
   return !!getSessionToken() && !!getPlayerId();
 }

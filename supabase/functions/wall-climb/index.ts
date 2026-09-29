@@ -110,6 +110,19 @@ const WALLS_GRANT_COMMON_SHOE = new Set([4, 29, 49]);
 
 const SHOE_KEY = "walk2u_shoe_common";
 
+/** Same caps as src/GiftTap.jsx getPaywallCap — must reach taps before climb. */
+function getPaywallCap(maxUnlockedLevel: number): number {
+  const m = Number(maxUnlockedLevel) || 4;
+  if (m <= 4) return 50000;
+  if (m <= 9) return 125000;
+  if (m <= 19) return 625000;
+  if (m <= 29) return 2125000;
+  if (m <= 49) return 9125000;
+  if (m <= 74) return 34125000;
+  if (m <= 99) return 109125000;
+  return Number.POSITIVE_INFINITY;
+}
+
 function locksmithLevel(inv: Record<string, unknown>): number {
   const raw = inv.locksmith_active;
   if (!raw || typeof raw !== "object") return 0;
@@ -143,6 +156,16 @@ serve(async (req) => {
     const wall = WALLS[wallKey];
     if (!wall) {
       throw new Error("No climb wall at your current unlock tier");
+    }
+
+    // Must reach this wall's tap gate first (50k → wall 5, 125k → wall 10, …).
+    // After wall 5, popup/climb stays closed until 125k — Locksmith still free at the wall.
+    const tapsNeeded = getPaywallCap(wallKey);
+    const lifetimeTaps = Number(row.lifetime_taps) || 0;
+    if (Number.isFinite(tapsNeeded) && lifetimeTaps + 1e-9 < tapsNeeded) {
+      throw new Error(
+        `Need ${tapsNeeded.toLocaleString()} lifetime taps to climb this wall (have ${Math.floor(lifetimeTaps).toLocaleString()}). Keep mining.`,
+      );
     }
 
     const inv = invObj(row.inventory);
@@ -218,11 +241,19 @@ serve(async (req) => {
       last_updated: new Date().toISOString(),
     };
 
-    const { error: upErr } = await sb
+    // Optimistic lock: only one climb per wall (blocks double wall-5 / double 15k).
+    const { data: updatedRows, error: upErr } = await sb
       .from("players")
       .update(updates)
-      .eq("telegram_id", playerId);
+      .eq("telegram_id", playerId)
+      .eq("max_unlocked_level", wallKey)
+      .select("telegram_id");
     if (upErr) throw upErr;
+    if (!updatedRows || updatedRows.length === 0) {
+      throw new Error(
+        "Wall already climbed (or refresh and try again). You were not charged twice on-server.",
+      );
+    }
 
     // First wall (4→5, newCap 9): pay referrer +3000 once via existing referral-credit
     if (wallKey === 4) {

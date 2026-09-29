@@ -252,6 +252,7 @@ import {
   secureAirdropClaimStatus,
   secureAcceptFeeConsent,
   secureAcceptAgeConsent,
+  secureAckWallClimbApology,
 } from './secureApi';
 import { AGE_CONSENT_TITLE, AGE_CONSENT_BODY } from './legalContent';
 import {
@@ -871,9 +872,12 @@ const GiftTapGame = () => {
   const [lifetimeTaps, setLifetimeTaps] = useState(0);
   const [maxUnlockedLevel, setMaxUnlockedLevel] = useState(4);
   const [showAscensionModal, setShowAscensionModal] = useState(false);
+  /** Prevents double-tap paying wall climb twice (e.g. 2× 15k $G2U). */
+  const [wallClimbBusy, setWallClimbBusy] = useState(false);
+  const wallClimbBusyRef = useRef(false);
   /**
    * When set to current maxUnlockedLevel, never auto-popup the climb modal for this wall.
-   * After dismiss → stay on current unlock + HUD Level up / Climb bar.
+   * After dismiss → stay on current unlock + HUD Level up / HUD Climb bar.
    */
   const [wallSnoozedFor, setWallSnoozedFor] = useState(null);
   /** Auto-opened climb modal once per wall unlock key this session (load / already past). */
@@ -3455,6 +3459,84 @@ const GiftTapGame = () => {
     claimShadowFromHome,
   ]);
 
+  // Dani7890 only: wall double-pay apology → backpack +2K (1 day) on OK
+  useEffect(() => {
+    if (!isDataLoaded || !playerId || showAscensionModal) return undefined;
+    const uname = String(player?.username || '').trim().toLowerCase();
+    if (uname !== 'dani7890') return undefined;
+    const inv = inventoryRef.current || stats?.inventory || {};
+    const already =
+      String(inv?.wall_climb_apology_v1?.accepted_at || '').trim().length >= 10;
+    if (already) return undefined;
+    if (
+      showRulesNotice ||
+      showBoostTokenNotice ||
+      showApkNotice ||
+      showAgeConsent ||
+      showFeeConsent ||
+      appNotice.show
+    ) {
+      return undefined;
+    }
+    const t = setTimeout(() => {
+      setAppNotice({
+        show: true,
+        title: 'Wallet correction',
+        message:
+          'Sorry — a wall-climb bug charged you twice on Wall 5 and unlocked Wall 10 too early.\n\n' +
+          'We will correct your shards and $G2U wallet manually.\n\n' +
+          'Goodwill gift: tap OK for a free +2K daily limit (1 day) in your backpack. ' +
+          'It will not replace your active +2K — activate the new one later from Pack.',
+        loading: false,
+        success: true,
+        confirm: {
+          confirmLabel: 'OK — add +2K',
+          cancelLabel: 'Later',
+          confirmDanger: false,
+          resolve: async (ok) => {
+            if (!ok) return;
+            try {
+              const data = await secureAckWallClimbApology();
+              if (data?.inventory) {
+                inventoryRef.current = {
+                  ...(inventoryRef.current || {}),
+                  ...data.inventory,
+                };
+                setStats((prev) => ({
+                  ...prev,
+                  inventory: inventoryRef.current,
+                }));
+              }
+              setAppNotice({
+                show: true,
+                title: '+2K added',
+                message:
+                  'A 1-day +2K is in your backpack. Your active boost is unchanged. Activate the new one from Pack when you want.',
+                loading: false,
+                success: true,
+              });
+            } catch (e) {
+              notify(e?.message || 'Could not add +2K — try again later.');
+            }
+          },
+        },
+      });
+    }, 2200);
+    return () => clearTimeout(t);
+  }, [
+    isDataLoaded,
+    playerId,
+    player?.username,
+    showAscensionModal,
+    showRulesNotice,
+    showBoostTokenNotice,
+    showApkNotice,
+    showAgeConsent,
+    showFeeConsent,
+    appNotice.show,
+    stats?.inventory,
+  ]);
+
   // Common NFT voucher (MS1): popup so players know they have it + how to use it
   useEffect(() => {
     if (!isDataLoaded || !playerId || showAscensionModal) return undefined;
@@ -5538,11 +5620,33 @@ const GiftTapGame = () => {
 
   /** Pay wall climb. method: 'shards' | 'sol' | 'both' | 'locksmith'. */
   const handleAscensionPayment = async (method) => {
+    if (wallClimbBusyRef.current) return;
     const wallKey = maxUnlockedLevel; // e.g. 4 for wall 4→5
     const wallData = ASCENSION_WALLS[wallKey];
     if (!wallData) return;
     const needsBoth = !!wallData.requiresBoth;
 
+    // Tap gate (same as server): wall 5 @ 50k, wall 10 @ 125k, …
+    const tapsNeeded = getPaywallCap(wallKey);
+    const haveTaps = Number(optimisticTaps.current ?? lifetimeTaps) || 0;
+    if (Number.isFinite(tapsNeeded) && haveTaps + 1e-9 < tapsNeeded) {
+      notify(
+        `Need ${tapsNeeded.toLocaleString()} lifetime taps to climb (have ${Math.floor(haveTaps).toLocaleString()}). Keep mining.`,
+      );
+      return;
+    }
+
+    wallClimbBusyRef.current = true;
+    setWallClimbBusy(true);
+    try {
+      await handleAscensionPaymentInner(method, wallKey, wallData, needsBoth);
+    } finally {
+      wallClimbBusyRef.current = false;
+      setWallClimbBusy(false);
+    }
+  };
+
+  const handleAscensionPaymentInner = async (method, wallKey, wallData, needsBoth) => {
     if (method === 'locksmith') {
       let inv = inventoryRef.current || stats.inventory || {};
       // Own Locksmith in wallet = free climb. Sync inventory if on-chain but not active yet.
@@ -8039,22 +8143,24 @@ const GiftTapGame = () => {
                 <button
                   type="button"
                   onClick={() => handleAscensionPayment('locksmith')}
-                  disabled={!lsCanFree}
+                  disabled={!lsCanFree || wallClimbBusy}
                   style={{
                     width: '100%',
-                    background: lsCanFree
+                    background: lsCanFree && !wallClimbBusy
                       ? 'linear-gradient(90deg, #9945FF, #14F195)'
                       : '#1a1a1a',
-                    color: lsCanFree ? '#000' : '#666',
+                    color: lsCanFree && !wallClimbBusy ? '#000' : '#666',
                     border: 'none',
                     padding: '15px',
                     borderRadius: '12px',
                     fontWeight: 'bold',
-                    cursor: lsCanFree ? 'pointer' : 'not-allowed',
+                    cursor: lsCanFree && !wallClimbBusy ? 'pointer' : 'not-allowed',
                     marginBottom: '10px',
                   }}
                 >
-                  {lsOk
+                  {wallClimbBusy
+                    ? 'Climbing…'
+                    : lsOk
                     ? `Locksmith free climb → L${wall.targetLevel}`
                     : hasLocksmithNft
                       ? `Free climb with Locksmith → L${wall.targetLevel}`
@@ -8076,22 +8182,24 @@ const GiftTapGame = () => {
                     <button
                       type="button"
                       onClick={() => handleAscensionPayment('both')}
-                      disabled={!ready}
+                      disabled={!ready || wallClimbBusy}
                       style={{
                         width: '100%',
-                        background: ready
+                        background: ready && !wallClimbBusy
                           ? 'linear-gradient(90deg, #9945FF, #14F195)'
                           : '#1a1a1a',
-                        color: ready ? '#000' : '#666',
+                        color: ready && !wallClimbBusy ? '#000' : '#666',
                         border: 'none',
                         padding: '15px',
                         borderRadius: '12px',
                         fontWeight: 'bold',
-                        cursor: ready ? 'pointer' : 'not-allowed',
+                        cursor: ready && !wallClimbBusy ? 'pointer' : 'not-allowed',
                         marginBottom: '10px',
                       }}
                     >
-                      {ready
+                      {wallClimbBusy
+                        ? 'Climbing…'
+                        : ready
                         ? wall.payWithG2u
                           ? `Climb to L${wall.targetLevel} (${need.toLocaleString()} shards + ${wallG2uCost(wall).toLocaleString()} $G2U)`
                           : `Climb to L${wall.targetLevel} (${need.toLocaleString()} shards + ${wall.solCost} SOL)`
@@ -8103,39 +8211,46 @@ const GiftTapGame = () => {
                     <button
                       type="button"
                       onClick={() => handleAscensionPayment('shards')}
-                      disabled={!ready}
+                      disabled={!ready || wallClimbBusy}
                       style={{
                         width: '100%',
-                        background: ready ? '#2a2d34' : '#1a1a1a',
-                        color: ready ? '#fff' : '#666',
-                        border: `1px solid ${ready ? '#4ade80' : '#444'}`,
+                        background: ready && !wallClimbBusy ? '#2a2d34' : '#1a1a1a',
+                        color: ready && !wallClimbBusy ? '#fff' : '#666',
+                        border: `1px solid ${ready && !wallClimbBusy ? '#4ade80' : '#444'}`,
                         padding: '15px',
                         borderRadius: '12px',
                         fontWeight: 'bold',
-                        cursor: ready ? 'pointer' : 'not-allowed',
+                        cursor: ready && !wallClimbBusy ? 'pointer' : 'not-allowed',
                         marginBottom: '10px',
                       }}
                     >
-                      {ready
+                      {wallClimbBusy
+                        ? 'Climbing…'
+                        : ready
                         ? `Climb to L${wall.targetLevel} (${need.toLocaleString()} shards)`
                         : `Mine ${missing.toLocaleString()} more shards to climb`}
                     </button>
                     <button
                       type="button"
                       onClick={() => handleAscensionPayment('sol')}
+                      disabled={wallClimbBusy}
                       style={{
                         width: '100%',
-                        background: 'linear-gradient(90deg, #9945FF, #14F195)',
-                        color: '#000',
+                        background: wallClimbBusy
+                          ? '#1a1a1a'
+                          : 'linear-gradient(90deg, #9945FF, #14F195)',
+                        color: wallClimbBusy ? '#666' : '#000',
                         border: 'none',
                         padding: '15px',
                         borderRadius: '12px',
                         fontWeight: 'bold',
-                        cursor: 'pointer',
+                        cursor: wallClimbBusy ? 'not-allowed' : 'pointer',
                         marginBottom: '10px',
                       }}
                     >
-                      Pay {wall.solCost} SOL — skip wait
+                      {wallClimbBusy
+                        ? 'Climbing…'
+                        : `Pay ${wall.solCost} SOL — skip wait`}
                     </button>
                   </>
                 )}

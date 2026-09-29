@@ -2,6 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.7";
 import { requirePlayerFromRequest } from "../_shared/sessionJwt.ts";
 import { effectiveDailyLimit, utcIsoWeekId } from "../_shared/economy.ts";
+import { pushPremiumDuration } from "../_shared/premiumDuration.ts";
 import {
   applyWeeklyQuestDayProgress,
   invObj,
@@ -218,6 +219,75 @@ serve(async (req) => {
         JSON.stringify({
           success: true,
           already,
+          inventory: (player as Record<string, unknown>).inventory,
+        }),
+        {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          status: 200,
+        },
+      );
+    }
+
+    // Dani7890 wall double-pay apology: one-time ACK + 1-day Grinder in backpack
+    // (queued charge — does not touch an already-active 3-day Grinder)
+    if (body?.action === "ack_wall_climb_apology") {
+      const uname = String(
+        (player as Record<string, unknown>).username || "",
+      )
+        .trim()
+        .toLowerCase();
+      if (uname !== "dani7890") {
+        throw new Error("This goodwill notice is not for your account");
+      }
+      const inv = invObj(
+        (player as Record<string, unknown>).inventory as Record<
+          string,
+          unknown
+        >,
+      );
+      const prev =
+        inv.wall_climb_apology_v1 &&
+        typeof inv.wall_climb_apology_v1 === "object"
+          ? (inv.wall_climb_apology_v1 as Record<string, unknown>)
+          : null;
+      const already = String(prev?.accepted_at || "").trim().length >= 10;
+      if (already) {
+        return new Response(
+          JSON.stringify({
+            success: true,
+            already: true,
+            inventory: (player as Record<string, unknown>).inventory,
+          }),
+          {
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+            status: 200,
+          },
+        );
+      }
+
+      inv.grinder = (Number(inv.grinder) || 0) + 1;
+      pushPremiumDuration(inv, "grinder", 1);
+      inv.wall_climb_apology_v1 = {
+        accepted_at: new Date().toISOString(),
+        granted_grinder_backpack: true,
+        granted_grinder_days: 1,
+        note: "wall5_double_pay_goodwill",
+      };
+
+      const { data: updated, error: upErr } = await supabase
+        .from("players")
+        .update({ inventory: inv })
+        .eq("telegram_id", playerId)
+        .select(PLAYER_SELECT)
+        .maybeSingle();
+      if (upErr) throw upErr;
+      if (updated) player = updated;
+      else (player as Record<string, unknown>).inventory = inv;
+
+      return new Response(
+        JSON.stringify({
+          success: true,
+          already: false,
           inventory: (player as Record<string, unknown>).inventory,
         }),
         {
