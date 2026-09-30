@@ -1072,19 +1072,25 @@ const GiftTapGame = () => {
       const add = Math.max(0, Number(amount) || 0);
       if (add <= 0) return 0;
       const nowMs = Date.now();
+      // has Expanded Battery → 1000, else 500
+      const cap = energyCapFromInv(
+        inventoryRef.current || stats?.inventory || {},
+        nowMs,
+      );
       const cur = energyFromAnchor(
         energyAnchorRef.current.value,
         energyAnchorRef.current.at,
         nowMs,
+        cap,
       );
-      const next = Math.min(ENERGY_CAP, cur + add);
+      const next = Math.min(cap, cur + add);
       energyAnchorRef.current = { value: next, at: nowMs };
       optimisticEnergy.current = next;
       setEnergy(next);
       // Never client-write last_updated (login/player-state + commit-taps only).
       return next;
     },
-    [playerId],
+    [playerId, stats?.inventory],
   );
 
   /** Invalidate in-flight flush energy snaps (Frenzy/Battery activate or Refill). */
@@ -2611,9 +2617,15 @@ const GiftTapGame = () => {
           ? String(playerRow.last_tap_date).slice(0, 10)
           : null;
         const dbDaily = Number(playerRow.daily_taps) || 0;
-        const _en = Number.isFinite(Number(playerRow.last_energy))
-          ? Math.max(0, Math.min(ENERGY_CAP, Number(playerRow.last_energy)))
+        // Rule: has Expanded Battery → battery 1000; else normal 500 pool
+        const _eCapEarly = energyCapFromInv(
+          playerRow.inventory || inv || {},
+          Date.now(),
+        );
+        let _en = Number.isFinite(Number(playerRow.last_energy))
+          ? Math.max(0, Math.min(_eCapEarly, Number(playerRow.last_energy)))
           : 0;
+        if (_eCapEarly >= 1000) _en = 1000;
         const _enAtRaw = playerRow.energy_at || playerRow.last_updated;
         const _enAt = _enAtRaw ? new Date(_enAtRaw).getTime() : Date.now();
         energyAnchorRef.current = { value: _en, at: _enAt };
@@ -2708,16 +2720,22 @@ const GiftTapGame = () => {
         const secondsPassed = Math.floor((now - lastDate) / 1000);
 
         // last_energy === 0 is valid (drained). Do NOT treat 0 as missing and force 500.
+        // Only Expanded Battery accounts use cap 1000; everyone else stays on 500.
+        const eCapLoad = energyCapFromInv(playerRow.inventory || inv || {}, now);
         const rawEn = Number(playerRow.last_energy);
-        const dbEnergy = Number.isFinite(rawEn)
-          ? Math.max(0, Math.min(ENERGY_CAP, rawEn))
-          : ENERGY_CAP;
+        let dbEnergy = Number.isFinite(rawEn)
+          ? Math.max(0, Math.min(eCapLoad, rawEn))
+          : eCapLoad;
+        // has Expanded Battery → battery 1000
+        if (eCapLoad >= 1000) dbEnergy = 1000;
         energyAnchorRef.current = {
           value: dbEnergy,
           at: lastDate,
         };
-        const eCapLoad = energyCapFromInv(playerRow.inventory || inv || {}, now);
-        const recoveredEnergy = energyFromAnchor(dbEnergy, lastDate, now, eCapLoad);
+        const recoveredEnergy =
+          eCapLoad >= 1000
+            ? 1000
+            : energyFromAnchor(dbEnergy, lastDate, now, eCapLoad);
         setEnergy(recoveredEnergy);
         optimisticEnergy.current = recoveredEnergy;
         
@@ -3000,10 +3018,15 @@ const GiftTapGame = () => {
         setBalance(startingShards);
       }
       // Do not force 500 when energy is legitimately 0 — catch-up already applied on load.
+      // Rule: has Expanded Battery → battery cap/fill uses 1000 (never hard-clamp to 500).
       setEnergy((e) => {
+        const cap = energyCapFromInv(
+          inventoryRef.current || stats?.inventory || {},
+          Date.now(),
+        );
         const n = Number(e);
-        if (Number.isFinite(n)) return Math.max(0, Math.min(ENERGY_CAP, n));
-        return ENERGY_CAP;
+        if (Number.isFinite(n)) return Math.max(0, Math.min(cap, n));
+        return cap;
       });
       setHasAccess(true);
       setIsDataLoaded(true);
@@ -4063,7 +4086,7 @@ const GiftTapGame = () => {
       const today = utcTodayStr();
       if (utcDayWatchRef.current === today) return false;
       utcDayWatchRef.current = today;
-      // New UTC day — reset daily taps locally + fill energy bar to 500
+      // New UTC day — reset daily; Expanded Battery → 1000, else 500
       optimisticDaily.current = 0;
       setDailyTaps(0);
       setDailyAdsWatched(0);
@@ -4073,9 +4096,15 @@ const GiftTapGame = () => {
         ...(serverProgressRef.current || {}),
         dt: 0,
       };
-      energyAnchorRef.current = { value: ENERGY_CAP, at: Date.now() };
-      optimisticEnergy.current = ENERGY_CAP;
-      setEnergy(ENERGY_CAP);
+      {
+        const dayCap = energyCapFromInv(
+          inventoryRef.current || stats?.inventory || {},
+          Date.now(),
+        );
+        energyAnchorRef.current = { value: dayCap, at: Date.now() };
+        optimisticEnergy.current = dayCap;
+        setEnergy(dayCap);
+      }
       energyEpochRef.current = (energyEpochRef.current || 0) + 1;
       // Local UI day-roll only — DB/inventory refresh on next login or real action
       // (commit-taps / player-state), not an idle player-state pull.
@@ -6055,10 +6084,14 @@ const GiftTapGame = () => {
                 // 0 is valid (empty battery). Skip while bursting — realtime was
                 // resetting the bar to 500 after Instant Refill.
                 if (Number.isFinite(raw)) {
-                  const base = Math.max(0, Math.min(ENERGY_CAP, raw));
+                  const cap = energyCapFromInv(
+                    inventoryRef.current || stats?.inventory || {},
+                    Date.now(),
+                  );
+                  const base = Math.max(0, Math.min(cap, raw));
                   const atRaw = payload.new.energy_at || payload.new.last_updated;
                   const atMs = atRaw ? new Date(atRaw).getTime() : Date.now();
-                  const en = energyFromAnchor(base, atMs);
+                  const en = energyFromAnchor(base, atMs, Date.now(), cap);
                   const localEn = Number(optimisticEnergy.current);
                   // Never snap UP from realtime while local already spent lower
                   if (Number.isFinite(localEn) && en > localEn + 1) {
@@ -6262,22 +6295,35 @@ const GiftTapGame = () => {
           nextDaily = dbDaily;
         }
 
-        // Energy: last_energy + energy_at (regen clock). last_updated is login only.
+        // Energy: last_energy + energy_at. Expanded Battery → 1000, else 500.
         const energyAtRaw = row.energy_at || row.last_updated;
         const lastMs = energyAtRaw ? new Date(energyAtRaw).getTime() : Date.now();
         const rawEn = Number(row.last_energy);
+        const eCapResume = energyCapFromInv(
+          row.inventory || inventoryRef.current || {},
+          Date.now(),
+        );
         let nextEnergy;
         if (Number.isFinite(rawEn)) {
-          const dbEnergy = Math.max(0, Math.min(ENERGY_CAP, rawEn));
-          const fromServer = energyFromAnchor(dbEnergy, lastMs);
-          nextEnergy = fromServer;
+          const dbEnergy = Math.max(0, Math.min(eCapResume, rawEn));
+          const fromServer = energyFromAnchor(
+            dbEnergy,
+            lastMs,
+            Date.now(),
+            eCapResume,
+          );
+          nextEnergy = eCapResume >= 1000 ? 1000 : fromServer;
           // Anchor at caught-up value "now" so the 1.5s clock continues cleanly
           energyAnchorRef.current = { value: nextEnergy, at: Date.now() };
         } else {
           // Missing DB energy: keep local catch-up only (do not invent 500)
-          const fromLocal = catchUpEnergyAnchor(energyAnchorRef.current);
+          const fromLocal = catchUpEnergyAnchor(
+            energyAnchorRef.current,
+            Date.now(),
+            eCapResume,
+          );
           energyAnchorRef.current = fromLocal;
-          nextEnergy = fromLocal.value;
+          nextEnergy = eCapResume >= 1000 ? 1000 : fromLocal.value;
         }
 
         const dbShards = Number(row.shard_balance) || 0;

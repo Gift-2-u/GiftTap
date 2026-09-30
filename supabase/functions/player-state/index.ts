@@ -459,10 +459,12 @@ serve(async (req) => {
         !!(prevUpdatedDay && prevUpdatedDay !== today) ||
         !!(prevTapDay && prevTapDay !== today && dailyStuck);
 
-      const ENERGY_CAP = energyCapFromInv(
-        invObj(player.inventory as Record<string, unknown>),
-        nowMs,
+      const invEnergy = invObj(
+        player.inventory as Record<string, unknown>,
       );
+      // 1000 only while Expanded Battery boost is active; else 500
+      const ENERGY_CAP = energyCapFromInv(invEnergy, nowMs);
+      const rawEnergy = Number(player.last_energy);
 
       let energy: number;
       if (isNewUtcDay) {
@@ -473,11 +475,16 @@ serve(async (req) => {
             ? String((player as Record<string, unknown>).energy_at)
             : (player.last_updated as string | null);
         energy = energyFromAnchor(
-          Number(player.last_energy),
+          rawEnergy,
           energyAnchor,
           nowMs,
           ENERGY_CAP,
         );
+      }
+
+      // Rule: has Expanded Battery → battery is 1000 (not 500/1000).
+      if (ENERGY_CAP >= 1000) {
+        energy = 1000;
       }
 
       const patch: Record<string, unknown> = {
