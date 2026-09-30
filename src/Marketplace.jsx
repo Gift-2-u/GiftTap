@@ -2481,6 +2481,14 @@ Daily claim active · Pack → NFT to see it.`,
             setEnergy(Math.min(500, Math.max(0, en)));
           }
         }
+        // Expanded Battery: always fill bar to 1000 (cap + fill)
+        if (item.id === 'expanded_energy' && setEnergy) {
+          const en =
+            data.last_energy != null ? Number(data.last_energy) : 1000;
+          if (Number.isFinite(en)) {
+            setEnergy(Math.min(1000, Math.max(0, en)));
+          }
+        }
         if (setStats) {
           setStats((prev) => {
             // Post-activate inv is shop authority (keeps remaining charges after use)

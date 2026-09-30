@@ -276,17 +276,15 @@ serve(async (req) => {
       });
     } else if (itemId === "expanded_energy") {
       const days = popPremiumDuration(inv, itemId);
-      // Battery bar 500 → 1000 for chosen UTC days
+      // Battery expands to 1000 AND fills to 1000 (purpose of the boost)
       inv.energy_cap_boost = {
         cap: 1000,
         expires: endOfUtcDay(utcDayOffsetForDuration(days)),
       };
       updates.inventory = inv;
-      // Raise bar toward new cap if already near old full (500)
-      if (Number.isFinite(last_energy) && last_energy >= ENERGY_CAP_DEFAULT - 0.001) {
-        updates.last_energy = 1000;
-        updates.energy_at = new Date(now).toISOString();
-      }
+      last_energy = 1000;
+      updates.last_energy = 1000;
+      updates.energy_at = new Date(now).toISOString();
     }
 
     // Try with daily_usage column; if column missing, retry inventory-only
@@ -360,22 +358,25 @@ serve(async (req) => {
       meta: { dailyUsage: outDaily[itemId] || null },
     });
 
-    // Battery Refill / Extra change the 500 energy pool
+    // Battery Refill / Extra / Expanded Battery change the energy pool
     const isAnyRefill = itemId === "refill" || itemId === "refill_extra";
+    const isExpanded = itemId === "expanded_energy";
     const outEnergy = isAnyRefill
       ? ENERGY_CAP
-      : Number.isFinite(Number(verified?.last_energy))
-        ? Number(verified?.last_energy)
-        : last_energy;
+      : isExpanded
+        ? 1000
+        : Number.isFinite(Number(verified?.last_energy))
+          ? Number(verified?.last_energy)
+          : last_energy;
 
     return jsonResponse({
       success: true,
       item_id: itemId,
       inventory: outInv,
       shard_balance: Number(verified?.shard_balance) || shard_balance,
-      last_energy: isAnyRefill ? outEnergy : undefined,
+      last_energy: isAnyRefill || isExpanded ? outEnergy : undefined,
       energy_at:
-        isAnyRefill && updates.energy_at != null
+        (isAnyRefill || isExpanded) && updates.energy_at != null
           ? String(updates.energy_at)
           : undefined,
       updates: { ...updates, inventory: outInv },

@@ -1097,14 +1097,19 @@ const GiftTapGame = () => {
     const cur = Number(optimisticEnergy.current);
     const raw =
       typeof valueOrUpdater === 'function' ? valueOrUpdater(cur) : valueOrUpdater;
-    const next = Math.max(0, Math.min(ENERGY_CAP, Number(raw) || 0));
+    // Honor Expanded Battery (1000) when active — do not clamp to default 500
+    const cap = energyCapFromInv(
+      inventoryRef.current || stats?.inventory || {},
+      Date.now(),
+    );
+    const next = Math.max(0, Math.min(cap, Number(raw) || 0));
     // Invalidate in-flight flushes so a pre-refill commit cannot overwrite the new bar
     energyEpochRef.current += 1;
     energyAnchorRef.current = { value: next, at: Date.now() };
     optimisticEnergy.current = next;
     lastLocalTapAtRef.current = 0; // allow idle settle after refill before next taps
     setEnergy(next);
-  }, []);
+  }, [stats?.inventory]);
 
   // Keep buff timers fresh for the tap handler (Frenzy ≠ energy cost).
   useEffect(() => {
