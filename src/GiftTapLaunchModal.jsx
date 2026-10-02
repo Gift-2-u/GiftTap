@@ -100,21 +100,14 @@ export default function GiftTapLaunchModal({ open, onClose, forceAndroid = false
           Gift Tap
         </h2>
 
-        {androidOnly ? (
-          <p className="text-center text-slate-300 text-sm mb-5 leading-relaxed">
-            Gift Tap is an <strong className="text-white">app</strong> on your phone (
-            <strong className="text-emerald-300">Gift2U</strong>). Open it if you already
-            installed it, or download it.
-          </p>
-        ) : (
-          <p className="text-center text-slate-400 text-sm mb-5 leading-relaxed">
-            Play Gift Tap on web, or download the <strong className="text-emerald-300">Gift2U</strong>{' '}
-            Android app (AdMob Free Energy).
-          </p>
-        )}
+        <p className="text-center text-slate-300 text-sm mb-5 leading-relaxed">
+          <strong className="text-white">Play</strong> opens Gift Tap (app if installed, or the
+          open/download screen). <strong className="text-emerald-300">Download</strong> installs
+          the Android app. Same login = same stats.
+        </p>
 
-        <a
-          href={getGiftTapOpenAppUrl()}
+        <Link
+          to="/play"
           onClick={onClose}
           className="mb-3 flex w-full items-center justify-center rounded-full px-5 py-3.5 text-base font-black"
           style={{
@@ -123,20 +116,18 @@ export default function GiftTapLaunchModal({ open, onClose, forceAndroid = false
           }}
         >
           Play Gift Tap
-        </a>
+        </Link>
 
         <a
           href={getGiftTapApkUrl()}
           download="Gift2U.apk"
+          onClick={onClose}
           className="mb-3 flex w-full items-center justify-center rounded-full border-2 border-emerald-400/60 px-5 py-3.5 text-base font-black text-emerald-200 hover:bg-emerald-950/40"
         >
           Download Gift Tap
         </a>
 
         <p className="text-center text-[11px] text-slate-500 mb-4 leading-snug">
-          App name on your phone: <strong className="text-slate-400">Gift2U</strong> · Game inside:{' '}
-          <strong className="text-slate-400">Gift Tap</strong>
-          <br />
           Same login = same stats · allow install from this site if asked
         </p>
 
@@ -173,6 +164,11 @@ export function AndroidMustDownloadGate() {
         </p>
         <a
           href={getGiftTapOpenAppUrl()}
+          onClick={(e) => {
+            // Some Android browsers ignore intent:// href; force navigation
+            e.preventDefault();
+            window.location.href = getGiftTapOpenAppUrl();
+          }}
           className="mb-3 flex w-full items-center justify-center rounded-full px-5 py-3.5 text-base font-black"
           style={{
             background: 'linear-gradient(90deg,#fbef43,#fbbf24)',

@@ -1,8 +1,8 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { Link } from 'react-router-dom';
 import GiftTapLaunchModal, {
   getGiftTapApkUrl,
-  getGiftTapOpenAppUrl,
   mustDownloadGiftTapApp,
 } from './GiftTapLaunchModal';
 
@@ -149,15 +149,15 @@ export default function GiftTapPlayButton({
               boxShadow: '0 12px 40px rgba(0,0,0,0.55)',
             }}
           >
-            <a
-              href={getGiftTapOpenAppUrl()}
+            <Link
+              to="/play"
               role="menuitem"
               onClick={() => setOpen(false)}
               className="block w-full px-4 py-3 text-left text-sm font-bold text-slate-950 hover:brightness-110"
               style={{ background: 'linear-gradient(90deg,#fbef43,#fbbf24)' }}
             >
               Play Gift Tap
-            </a>
+            </Link>
             <a
               href={getGiftTapApkUrl()}
               download="Gift2U.apk"
