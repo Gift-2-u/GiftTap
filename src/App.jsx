@@ -290,9 +290,6 @@ const SiteFooter = () => {
         <Link to="/roadmap" className="hover:text-yellow-300 font-semibold">
           Roadmap
         </Link>
-        <Link to="/airdrop" className="hover:text-yellow-300 font-semibold">
-          G2U Airdrop
-        </Link>
         <GiftTapPlayButton
           asLinkStyle
           className="hover:text-yellow-300 font-semibold text-slate-400"
@@ -372,10 +369,6 @@ const Navigation = () => {
             <Link to="/" className="hover:text-purple-400 font-bold whitespace-nowrap">Home</Link>
             <Link to="/stake" className="hover:text-purple-400 font-bold whitespace-nowrap">Stake</Link>
             <Link to="/vault" className="hover:text-purple-400 font-bold whitespace-nowrap">Vault</Link>
-            <Link to="/airdrop" className="hover:text-yellow-300 font-bold whitespace-nowrap">
-              <span className="sm:hidden">Airdrop</span>
-              <span className="hidden sm:inline">G2U Airdrop</span>
-            </Link>
             <GiftTapPlayButton className="hover:text-purple-400 font-bold text-yellow-400 whitespace-nowrap">
               Gift Tap
             </GiftTapPlayButton>
@@ -941,28 +934,13 @@ const StakingPage = () => {
   );
 };
 
-const AIRDROP_ENDS_AT = new Date('2026-09-30T23:59:59Z').getTime();
-
-function formatCountdown(msLeft) {
-  if (msLeft <= 0) return null;
-  const days = Math.floor(msLeft / (1000 * 60 * 60 * 24));
-  const hours = Math.floor((msLeft % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-  const mins = Math.floor((msLeft % (1000 * 60 * 60)) / (1000 * 60));
-  const secs = Math.floor((msLeft % (1000 * 60)) / 1000);
-  const pad = (n) => String(n).padStart(2, '0');
-  if (days > 0) return `${days}d ${pad(hours)}h ${pad(mins)}m ${pad(secs)}s`;
-  return `${pad(hours)}h ${pad(mins)}m ${pad(secs)}s`;
-}
-
 const HomePage = () => {
   const { connection } = useConnection();
   const wallet = useWallet();
-  const [airdropLeft, setAirdropLeft] = useState(() => formatCountdown(AIRDROP_ENDS_AT - Date.now()));
   const [launchLeft, setLaunchLeft] = useState(() => formatLaunchCountdown());
 
   useEffect(() => {
     const tick = () => {
-      setAirdropLeft(formatCountdown(AIRDROP_ENDS_AT - Date.now()));
       setLaunchLeft(formatLaunchCountdown());
     };
     tick();
@@ -1016,69 +994,6 @@ const HomePage = () => {
         </div>
       </div>
 
-      {/* Big G2U Airdrop banner — site homepage CTA */}
-      <Link
-        to="/airdrop"
-        className="group relative w-full max-w-3xl mb-10 block rounded-3xl overflow-hidden border-2 border-purple-400/50 shadow-[0_0_40px_rgba(168,85,247,0.35)] hover:border-yellow-300/70 hover:shadow-[0_0_50px_rgba(251,239,67,0.25)] transition-all duration-300"
-      >
-        <div
-          className="absolute inset-0 opacity-95"
-          style={{
-            background:
-              'linear-gradient(120deg, #4c1d95 0%, #1e3a8a 40%, #0f172a 75%, #312e81 100%)',
-          }}
-        />
-        <div
-          className="absolute -top-16 -right-10 w-56 h-56 rounded-full pointer-events-none"
-          style={{
-            background: 'radial-gradient(circle, rgba(251,239,67,0.28) 0%, transparent 70%)',
-          }}
-        />
-        <div
-          className="absolute -bottom-20 -left-10 w-48 h-48 rounded-full pointer-events-none"
-          style={{
-            background: 'radial-gradient(circle, rgba(103,232,249,0.2) 0%, transparent 70%)',
-          }}
-        />
-        <div className="relative z-10 flex flex-col sm:flex-row items-center gap-5 sm:gap-8 px-6 py-8 sm:px-10 sm:py-10 text-left">
-          <div
-            className="flex-shrink-0 w-20 h-20 sm:w-24 sm:h-24 rounded-2xl flex items-center justify-center shadow-lg overflow-hidden"
-            style={{
-              background: 'linear-gradient(145deg, rgba(192,132,252,0.35), rgba(103,232,249,0.25))',
-            }}
-          >
-            <img
-              src="/g2u-airdrop-gift.png"
-              alt="G2U Airdrop"
-              className="w-[72px] h-[72px] sm:w-[88px] sm:h-[88px] object-contain drop-shadow-lg"
-            />
-          </div>
-          <div className="flex-1 min-w-0 text-center sm:text-left">
-            <div className="inline-flex flex-col sm:flex-row sm:items-baseline gap-0.5 sm:gap-2 rounded-xl px-3 py-1.5 mb-2 bg-black/35 border border-cyan-300/40">
-              <span className="text-cyan-200 text-[10px] sm:text-xs font-black tracking-[0.15em] uppercase">
-                Airdrop ends
-              </span>
-              <span className="text-cyan-100 text-sm sm:text-base font-black tabular-nums tracking-wide">
-                {airdropLeft ? airdropLeft : 'ENDED'}
-              </span>
-            </div>
-            <h3 className="text-3xl sm:text-4xl md:text-5xl font-black leading-tight mb-2 bg-gradient-to-r from-fuchsia-300 via-yellow-200 to-cyan-300 bg-clip-text text-transparent">
-              G2U Airdrop
-            </h3>
-            <p className="text-slate-200 text-sm sm:text-base max-w-xl mx-auto sm:mx-0 leading-relaxed">
-              Clear Level 5 in Gift Tap to qualify. Stack bonuses with levels, lifetime taps,
-              streaks, IAP, GiftLocksmith NFT, and real friends.
-            </p>
-          </div>
-          <div className="flex-shrink-0 flex flex-col items-center gap-2">
-            <span className="inline-flex items-center justify-center rounded-full px-6 py-3.5 text-base sm:text-lg font-black text-slate-950 bg-gradient-to-r from-yellow-300 to-purple-400 group-hover:from-yellow-200 group-hover:to-fuchsia-300 shadow-lg transition">
-              View board →
-            </span>
-            <span className="text-[11px] text-slate-400 font-semibold">Play · qualify · boost</span>
-          </div>
-        </div>
-      </Link>
-      
       {/* If this tag is missing, the box will never show up */}
       {/* Homepage Mystery Gift — burn badges, shake, reveal prize */}
       <DailyGiftBox />

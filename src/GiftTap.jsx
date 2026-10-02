@@ -183,12 +183,6 @@ import {
   fromAtomicAmount,
   swapFromGameWallet,
 } from './gameWalletActions';
-import AirdropBoard from './AirdropBoard';
-import {
-  computeAirdropProgress,
-  fetchAirdropInputs,
-  AIRDROP_META,
-} from './airdropProgress';
 import {
   TOKEN_LAUNCH_LABEL,
   TOKEN_LAUNCH_TITLE,
@@ -248,7 +242,6 @@ import {
   secureVaultStatus,
   secureAdReward,
   secureShadowClaim,
-  fetchAirdropBoard,
   secureAirdropClaimStatus,
   secureAcceptFeeConsent,
   secureAcceptAgeConsent,
@@ -801,9 +794,6 @@ const GiftTapGame = () => {
   const [weeklyBoardFloor, setWeeklyBoardFloor] = useState(() => getWeeklyBoardFloor());
   const [weeklyBoardDay, setWeeklyBoardDay] = useState(() => getUtcIsoWeekDayNumber());
   const [weeklyEligibleCount, setWeeklyEligibleCount] = useState(0);
-  /** Airdrop qualified board (Ranks → Airdrop) */
-  const [airdropQualifiedCount, setAirdropQualifiedCount] = useState(0);
-  const [airdropYouRank, setAirdropYouRank] = useState(null);
   const optimisticWeekly = useRef(0);
   /** Keep ranks tab type for live weekly score patches while mining */
   const leaderboardTypeRef = useRef(leaderboardType);
@@ -811,7 +801,6 @@ const GiftTapGame = () => {
   const leaderboardCacheRef = useRef({
     Season: null,
     Weekly: null,
-    Airdrop: null,
     all_time: null,
   });
   const lbFetchSeqRef = useRef(0);
@@ -1012,9 +1001,6 @@ const GiftTapGame = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   /** View 12 words from Menu only — close returns to Menu, not Wallet hub */
   const [showMenuSecretPhrase, setShowMenuSecretPhrase] = useState(false);
-  const [showAirdropBoard, setShowAirdropBoard] = useState(false);
-  const [airdropProgress, setAirdropProgress] = useState(null);
-  const [airdropLoading, setAirdropLoading] = useState(false);
   const [tokenLaunchLeft, setTokenLaunchLeft] = useState(() => formatLaunchCountdown());
   const [displayCurrency, setDisplayCurrencyState] = useState(() => {
     try {
@@ -1246,91 +1232,6 @@ const GiftTapGame = () => {
     recordWeeklyDailyProgress(taps, WEEKLY_BASE_DAILY_LIMIT, new Date());
   }, [dailyTaps, isDataLoaded, currentPage, recordWeeklyDailyProgress]);
 
-  const refreshAirdropProgress = useCallback(async () => {
-    try {
-      const raw = playerId
-        ? await fetchAirdropInputs(supabase, playerId, DB_PLAYER_ID)
-        : null;
-      const lifetime = Number(lifetimeTaps) || Number(raw?.lifetimeTaps) || 0;
-      const maxU = Number(maxUnlockedLevel) || Number(raw?.maxUnlockedLevel) || 0;
-      const st = Math.max(
-        0,
-        Number(streakRef.current) || Number(streak) || Number(raw?.streak) || 0,
-      );
-      let hasNft = !!hasLocksmithNft;
-      let nfts = hasLocksmithNft
-        ? [{ kind: 'locksmith', rarity: 'rare' }]
-        : [];
-      const nftWallet = playerWallet || raw?.walletAddress;
-      if (nftWallet) {
-        try {
-          const owned = await listGiftNfts(nftWallet, {
-            inventory: inventoryRef.current || {},
-          });
-          if (nftWallet === playerWallet) {
-            ownedElfAssetIdsRef.current = new Set(
-              (owned || [])
-                .map((n) => String(n.id || n.mint || '').trim())
-                .filter(Boolean),
-            );
-            setOwnedElfTick((t) => t + 1);
-          }
-          if (Array.isArray(owned) && owned.length) {
-            nfts = owned.map((n) => ({
-              kind: n.kind || n.name,
-              rarity: n.rarity,
-              name: n.name,
-            }));
-            hasNft = nfts.length > 0;
-          } else {
-            hasNft = !!(await hasLocksmith(nftWallet)) || hasNft;
-            if (hasNft && !nfts.length) {
-              nfts = [{ kind: 'locksmith', rarity: 'rare' }];
-            }
-          }
-        } catch {
-          /* keep state flag */
-        }
-      }
-      const progress = computeAirdropProgress({
-        lifetimeTaps: lifetime,
-        maxUnlockedLevel: maxU,
-        currentLevel,
-        streak: st,
-        hasIap: !!(raw && raw.hasIap),
-        completedTasks: raw?.completedTasks || [],
-        hasNft,
-        nfts,
-        friendsTaps1000: raw?.friendsTaps1000 || 0,
-        friendsL5: raw?.friendsL5 || 0,
-      });
-      setAirdropProgress(progress);
-      return progress;
-    } catch (e) {
-      console.warn('airdrop board', e?.message || e);
-      setAirdropProgress(null);
-      return null;
-    }
-  }, [
-    playerId,
-    lifetimeTaps,
-    maxUnlockedLevel,
-    streak,
-    hasLocksmithNft,
-    playerWallet,
-    currentLevel,
-  ]);
-
-  const openAirdropBoard = async () => {
-    setShowAirdropBoard(true);
-    setAirdropLoading(true);
-    try {
-      await refreshAirdropProgress();
-    } finally {
-      setAirdropLoading(false);
-    }
-  };
-
   // $G2U token launch countdown (Sept 1 UTC)
   useEffect(() => {
     const tick = () => setTokenLaunchLeft(formatLaunchCountdown());
@@ -1338,23 +1239,6 @@ const GiftTapGame = () => {
     const id = setInterval(tick, 1000);
     return () => clearInterval(id);
   }, []);
-
-  // Prefetch airdrop stats for the home banner (no modal)
-  useEffect(() => {
-    if (!isDataLoaded || currentPage !== 'home' || !playerId) return undefined;
-    let cancelled = false;
-    (async () => {
-      try {
-        await refreshAirdropProgress();
-      } catch {
-        /* ignore */
-      }
-      if (cancelled) return;
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [isDataLoaded, currentPage, playerId, refreshAirdropProgress]);
 
   /** +max daily limit (1000 bar), NOT the 500 Energy battery. */
   const grantTaskEnergy = useCallback(
@@ -1625,7 +1509,7 @@ const GiftTapGame = () => {
 
   // Full leaderboard list for the Ranks page (not a modal)
   // opts.silent = background refresh: keep current list visible (no Loading flash)
-  // Weekly/Airdrop: paint from fast DB/cache first (like Season), heal via Edge in background.
+  // Weekly: paint from fast DB/cache first (like Season), heal via Edge in background.
   const fetchFullLeaderboard = async (typeOverride, opts = {}) => {
     const targetType = typeOverride || leaderboardType;
     const cacheKey =
@@ -1644,116 +1528,6 @@ const GiftTapGame = () => {
 
     if (!silent) setLeaderboardLoading(true);
 
-    // --- AIRDROP qualified board (L5+, name / lvl / %) ---
-    if (targetType === 'Airdrop') {
-      try {
-        setSeasonYouRank(null);
-        setWeeklyYouRank(null);
-        setSeasonEligibleCount(0);
-        setWeeklyEligibleCount(0);
-
-        // Fast path: Edge board first (use known Locksmith flag). NFTs refine in background.
-        const board = await fetchAirdropBoard({
-          limit: 100,
-          viewerId: playerId || null,
-          viewerHasNft: !!hasLocksmithNft,
-          viewerNfts: null,
-        });
-        if (!stillThisTab()) return;
-
-        const rows = (Array.isArray(board?.rows) ? board.rows : []).map((r) => ({
-          ...r,
-          [DB_PLAYER_ID]: r.telegram_id,
-          telegram_id: r.telegram_id,
-          username: r.username || 'Player',
-          score: Number(r.bonus_pct) || 0,
-          bonus_pct: Number(r.bonus_pct) || 0,
-          level: Number(r.level) || 0,
-          lifetime_taps: Number(r.lifetime_taps) || 0,
-        }));
-        const you =
-          board?.you && playerId
-            ? {
-                rank: board.you.rank,
-                level: board.you.level,
-                bonus_pct: board.you.bonus_pct,
-                username: board.you.username,
-                inList: !!board.you.inList,
-              }
-            : null;
-        const qCount = Number(board?.qualified_count) || rows.length || 0;
-        setLeaderboard(rows);
-        setAirdropQualifiedCount(qCount);
-        setAirdropYouRank(you);
-        leaderboardCacheRef.current.Airdrop = { rows, you, qualified: qCount };
-        setLeaderboardLoading(false);
-
-        // Background: scan wallet → save YOUR NFT snapshot → reload board (absolute %)
-        if (playerWallet) {
-          (async () => {
-            try {
-              await ensureSecureSession();
-              const owned = await listGiftNfts(playerWallet, {
-                inventory: inventoryRef.current || {},
-              });
-              const viewerNfts = Array.isArray(owned)
-                ? owned.map((n) => ({
-                    kind: n.kind || n.name,
-                    rarity: n.rarity,
-                    name: n.name,
-                  }))
-                : [];
-              const refined = await fetchAirdropBoard({
-                limit: 100,
-                viewerId: playerId || null,
-                viewerHasNft: !!hasLocksmithNft || viewerNfts.length > 0,
-                viewerNfts,
-                syncNfts: true,
-              });
-              if (!stillThisTab()) return;
-              const r2 = (Array.isArray(refined?.rows) ? refined.rows : []).map((r) => ({
-                ...r,
-                [DB_PLAYER_ID]: r.telegram_id,
-                telegram_id: r.telegram_id,
-                username: r.username || 'Player',
-                score: Number(r.bonus_pct) || 0,
-                bonus_pct: Number(r.bonus_pct) || 0,
-                level: Number(r.level) || 0,
-                lifetime_taps: Number(r.lifetime_taps) || 0,
-              }));
-              const you2 =
-                refined?.you && playerId
-                  ? {
-                      rank: refined.you.rank,
-                      level: refined.you.level,
-                      bonus_pct: refined.you.bonus_pct,
-                      username: refined.you.username,
-                      inList: !!refined.you.inList,
-                    }
-                  : null;
-              const q2 = Number(refined?.qualified_count) || r2.length || 0;
-              setLeaderboard(r2);
-              setAirdropQualifiedCount(q2);
-              setAirdropYouRank(you2);
-              leaderboardCacheRef.current.Airdrop = { rows: r2, you: you2, qualified: q2 };
-            } catch {
-              /* ignore refine */
-            }
-          })();
-        }
-      } catch (e) {
-        console.warn('airdrop board', e?.message || e);
-        if (stillThisTab() && !leaderboardCacheRef.current.Airdrop?.rows?.length) {
-          setLeaderboard([]);
-          setAirdropQualifiedCount(0);
-          setAirdropYouRank(null);
-        }
-      } finally {
-        if (stillThisTab()) setLeaderboardLoading(false);
-      }
-      return;
-    }
-
     // --- WEEKLY: one source = players.weekly_shards for current week ---
     if (targetType === 'Weekly') {
       const weekId = getUtcWeekId();
@@ -1762,8 +1536,6 @@ const GiftTapGame = () => {
       const floor = getWeeklyBoardFloor(day);
       setWeeklyBoardDay(day);
       setWeeklyBoardFloor(floor);
-      setAirdropYouRank(null);
-      setAirdropQualifiedCount(0);
       setSeasonYouRank(null);
       setSeasonEligibleCount(0);
 
@@ -1948,8 +1720,6 @@ const GiftTapGame = () => {
         setSeasonYouRank(null);
         setSeasonEligibleCount(0);
         setWeeklyYouRank(null);
-        setAirdropYouRank(null);
-        setAirdropQualifiedCount(0);
         return;
       }
 
@@ -2072,23 +1842,15 @@ const GiftTapGame = () => {
         if (cached.floor != null) setWeeklyBoardFloor(cached.floor);
         if (cached.day != null) setWeeklyBoardDay(cached.day);
         setSeasonYouRank(null);
-        setAirdropYouRank(null);
       } else if (cacheKey === 'Season') {
         setSeasonYouRank(cached.you || null);
         setSeasonEligibleCount(cached.eligible || 0);
         if (cached.floor != null) setSeasonBoardFloor(cached.floor);
         if (cached.day != null) setSeasonBoardDay(cached.day);
         setWeeklyYouRank(null);
-        setAirdropYouRank(null);
-      } else if (cacheKey === 'Airdrop') {
-        setAirdropYouRank(cached.you || null);
-        setAirdropQualifiedCount(cached.qualified || 0);
-        setSeasonYouRank(null);
-        setWeeklyYouRank(null);
       } else {
         setSeasonYouRank(null);
         setWeeklyYouRank(null);
-        setAirdropYouRank(null);
       }
       fetchFullLeaderboard(type, { silent: true });
     } else {
@@ -2096,17 +1858,11 @@ const GiftTapGame = () => {
       setLeaderboard([]);
       if (cacheKey === 'Weekly') {
         setSeasonYouRank(null);
-        setAirdropYouRank(null);
-      } else if (cacheKey === 'Airdrop') {
-        setSeasonYouRank(null);
-        setWeeklyYouRank(null);
       } else if (cacheKey === 'Season') {
         setWeeklyYouRank(null);
-        setAirdropYouRank(null);
       } else {
         setSeasonYouRank(null);
         setWeeklyYouRank(null);
-        setAirdropYouRank(null);
       }
       fetchFullLeaderboard(type);
     }
@@ -9004,10 +8760,10 @@ const GiftTapGame = () => {
                   🏆 Leaderboard
                 </h2>
                 <p style={{ color: '#666', textAlign: 'center', fontSize: '11px', margin: '0 0 14px', lineHeight: 1.35 }}>
-                  Season · Weekly · Airdrop · All-time · details in Menu → Game Guide
+                  Season · Weekly · All-time · details in Menu → Game Guide
                 </p>
 
-                {/* Season | All-time — always land on Season when opening Ranks from nav */}
+                {/* Season | Weekly | All-time — always land on Season when opening Ranks from nav */}
                 <div style={{ display: 'flex', gap: '10px', marginBottom: '14px' }}>
                   <button
                     type="button"
@@ -9051,30 +8807,6 @@ const GiftTapGame = () => {
                     }}
                   >
                     Weekly
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => switchLeaderboardTab('Airdrop')}
-                    style={{
-                      flex: 1,
-                      padding: '12px 6px',
-                      borderRadius: '12px',
-                      border: leaderboardType === 'Airdrop' ? '2px solid #c084fc' : '1px solid #333',
-                      background: leaderboardType === 'Airdrop' ? 'rgba(192, 132, 252, 0.14)' : '#1c1e22',
-                      color: leaderboardType === 'Airdrop' ? '#c084fc' : '#888',
-                      fontWeight: 'bold',
-                      fontSize: '12px',
-                      cursor: 'pointer',
-                      outline: 'none',
-                      WebkitTapHighlightColor: 'transparent',
-                    }}
-                  >
-                    Airdrop
-                    {airdropQualifiedCount > 0 && leaderboardType === 'Airdrop' ? (
-                      <div style={{ fontSize: '10px', fontWeight: 'normal', color: '#4ade80', marginTop: '4px' }}>
-                        {airdropQualifiedCount} in
-                      </div>
-                    ) : null}
                   </button>
                   <button
                     type="button"
@@ -9180,35 +8912,15 @@ const GiftTapGame = () => {
                   </div>
                 ) : null}
 
-                {leaderboardType === 'Airdrop' ? (
-                  <div style={{ textAlign: 'center', color: '#888', fontSize: 11, marginBottom: 12, lineHeight: 1.4 }}>
-                    Clear <span style={{ color: '#c084fc', fontWeight: 'bold' }}>Level 5</span> to qualify.
-                    {' '}Board shows <span style={{ color: '#fff' }}>name</span>,{' '}
-                    <span style={{ color: '#fff' }}>lvl</span>,{' '}
-                    <span style={{ color: '#c084fc' }}>bonus %</span>.
-                    {airdropQualifiedCount > 0 ? (
-                      <span style={{ color: '#4ade80' }}>
-                        {' '}· {airdropQualifiedCount} qualified
-                      </span>
-                    ) : null}
-                    <div style={{ color: '#555', fontSize: 10, marginTop: 4 }}>
-                      Your full checklist: Menu → G2U Airdrop
-                    </div>
-                  </div>
-                ) : null}
-
-<div style={{ background: '#1c1e22', borderRadius: '16px', border: '1px solid #333', overflow: 'hidden' }}>
+                <div style={{ background: '#1c1e22', borderRadius: '16px', border: '1px solid #333', overflow: 'hidden' }}>
                   {leaderboardLoading &&
                   leaderboard.length === 0 &&
                   !(leaderboardType === 'Season' && seasonYouRank && playerId) &&
-                  !(leaderboardType === 'Weekly' && weeklyYouRank && playerId) &&
-                  !(leaderboardType === 'Airdrop' && airdropYouRank && playerId) ? (
+                  !(leaderboardType === 'Weekly' && weeklyYouRank && playerId) ? (
                     <p style={{ color: '#888', textAlign: 'center', padding: '28px' }}>Loading ranks…</p>
-                  ) : leaderboard.length === 0 && !(leaderboardType === 'Season' && seasonYouRank && playerId) && !(leaderboardType === 'Weekly' && weeklyYouRank && playerId) && !(leaderboardType === 'Airdrop' && airdropYouRank && playerId) ? (
+                  ) : leaderboard.length === 0 && !(leaderboardType === 'Season' && seasonYouRank && playerId) && !(leaderboardType === 'Weekly' && weeklyYouRank && playerId) ? (
                     <p style={{ color: '#888', textAlign: 'center', padding: '28px' }}>
-                      {leaderboardType === 'Airdrop'
-                        ? 'No one has cleared Level 5 yet. Be first on the airdrop board!'
-                        : 'No players on the main board yet. Keep mining!'}
+                      No players on the main board yet. Keep mining!
                     </p>
                   ) : (
                     <>
@@ -9222,53 +8934,29 @@ const GiftTapGame = () => {
                         No one has reached the weekly main-board floor yet ({Number(weeklyBoardFloor).toLocaleString()}).
                       </p>
                     ) : null}
-                    {leaderboard.length === 0 && leaderboardType === 'Airdrop' ? (
-                      <p style={{ color: '#666', textAlign: 'center', padding: '16px 14px 8px', fontSize: 12, margin: 0 }}>
-                        Clear the Level 5 wall to appear here with your bonus %.
-                      </p>
-                    ) : null}
-                    {leaderboardType === 'Airdrop' ? (
-                      <div
-                        style={{
-                          display: 'flex',
-                          justifyContent: 'space-between',
-                          padding: '8px 14px',
-                          borderBottom: '1px solid #2a2d34',
-                          color: '#666',
-                          fontSize: 10,
-                          fontWeight: 'bold',
-                          letterSpacing: 0.3,
-                        }}
-                      >
-                        <span style={{ flex: 1 }}>Name</span>
-                        <span style={{ width: 36, textAlign: 'right' }}>Lvl</span>
-                        <span style={{ width: 48, textAlign: 'right' }}>%</span>
-                      </div>
-                    ) : (
-                      <div
-                        style={{
-                          display: 'flex',
-                          justifyContent: 'space-between',
-                          padding: '8px 14px',
-                          borderBottom: '1px solid #2a2d34',
-                          color: '#666',
-                          fontSize: 10,
-                          fontWeight: 'bold',
-                          letterSpacing: 0.3,
-                        }}
-                      >
-                        <span style={{ minWidth: 28 }}>#</span>
-                        <span style={{ flex: 1 }}>Name</span>
-                        <span style={{ width: 36, textAlign: 'right' }}>Lvl</span>
-                        <span style={{ width: 72, textAlign: 'right' }}>
-                          {leaderboardType === 'Weekly'
-                            ? 'Score'
-                            : leaderboardType === 'all_time'
-                              ? 'Taps'
-                              : 'Score'}
-                        </span>
-                      </div>
-                    )}
+                    <div
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        padding: '8px 14px',
+                        borderBottom: '1px solid #2a2d34',
+                        color: '#666',
+                        fontSize: 10,
+                        fontWeight: 'bold',
+                        letterSpacing: 0.3,
+                      }}
+                    >
+                      <span style={{ minWidth: 28 }}>#</span>
+                      <span style={{ flex: 1 }}>Name</span>
+                      <span style={{ width: 36, textAlign: 'right' }}>Lvl</span>
+                      <span style={{ width: 72, textAlign: 'right' }}>
+                        {leaderboardType === 'Weekly'
+                          ? 'Score'
+                          : leaderboardType === 'all_time'
+                            ? 'Taps'
+                            : 'Score'}
+                      </span>
+                    </div>
                     {(leaderboardType === 'Season' ||
                       leaderboardType === 'Weekly' ||
                       leaderboardType === 'all_time') && (
@@ -9290,8 +8978,6 @@ const GiftTapGame = () => {
                         ? (row.lifetime_taps ?? row.score ?? 0)
                         : leaderboardType === 'Weekly'
                           ? (row.weekly_score ?? row.score ?? 0)
-                          : leaderboardType === 'Airdrop'
-                            ? (row.bonus_pct ?? row.score ?? 0)
                           : (row.score ?? row.season_shards ?? row.lifetime_taps ?? 0);
                       const isYou = playerId && String(row[DB_PLAYER_ID] || row.telegram_id || row.id || '') === String(playerId);
                       const rowLevel = (() => {
@@ -9313,64 +8999,6 @@ const GiftTapGame = () => {
                             )
                           : null;
                       const weeklyBadge = weeklyTier ? BADGE_TIERS[weeklyTier] : null;
-                      if (leaderboardType === 'Airdrop') {
-                        const lvl = Number(row.level) || 0;
-                        const pct = Number(row.bonus_pct ?? score) || 0;
-                        return (
-                          <div
-                            key={row.id || row[DB_PLAYER_ID] || row.telegram_id || index}
-                            style={{
-                              display: 'flex',
-                              justifyContent: 'space-between',
-                              alignItems: 'center',
-                              padding: '12px 14px',
-                              borderBottom: '1px solid #2a2d34',
-                              background: isYou ? 'rgba(192, 132, 252, 0.12)' : 'transparent',
-                              gap: 8,
-                            }}
-                          >
-                            <span
-                              style={{
-                                color: isYou ? '#c084fc' : '#fff',
-                                fontSize: 13,
-                                fontWeight: isYou ? 'bold' : 'normal',
-                                minWidth: 0,
-                                flex: 1,
-                                overflow: 'hidden',
-                                textOverflow: 'ellipsis',
-                                whiteSpace: 'nowrap',
-                              }}
-                            >
-                              {name}
-                              {isYou ? ' (you)' : ''}
-                            </span>
-                            <span
-                              style={{
-                                width: 36,
-                                textAlign: 'right',
-                                color: '#ffd700',
-                                fontSize: 13,
-                                fontWeight: 'bold',
-                                flexShrink: 0,
-                              }}
-                            >
-                              {lvl}
-                            </span>
-                            <span
-                              style={{
-                                width: 48,
-                                textAlign: 'right',
-                                color: '#c084fc',
-                                fontSize: 13,
-                                fontWeight: 'bold',
-                                flexShrink: 0,
-                              }}
-                            >
-                              +{pct}%
-                            </span>
-                          </div>
-                        );
-                      }
                       return (
                         <div
                           key={row.id || row[DB_PLAYER_ID] || index}
@@ -9433,40 +9061,6 @@ const GiftTapGame = () => {
                         </div>
                       );
                     })}
-                    {leaderboardType === 'Airdrop' && airdropYouRank && playerId && !airdropYouRank.inList ? (
-                      <div
-                        style={{
-                          display: 'flex',
-                          justifyContent: 'space-between',
-                          alignItems: 'center',
-                          padding: '12px 14px',
-                          borderTop: '2px solid #c084fc',
-                          background: 'rgba(192, 132, 252, 0.12)',
-                          gap: 8,
-                        }}
-                      >
-                        <span style={{ color: '#c084fc', fontSize: 13, fontWeight: 'bold', flex: 1, minWidth: 0 }}>
-                          {(player?.username || airdropYouRank.username || 'You')} (you)
-                          <span
-                            style={{
-                              display: 'block',
-                              color: '#888',
-                              fontSize: 10,
-                              fontWeight: 'normal',
-                              marginTop: 4,
-                            }}
-                          >
-                            Qualified · eligible for airdrop
-                          </span>
-                        </span>
-                        <span style={{ width: 36, textAlign: 'right', color: '#ffd700', fontWeight: 'bold', fontSize: 13 }}>
-                          {Number(airdropYouRank.level) || 0}
-                        </span>
-                        <span style={{ width: 48, textAlign: 'right', color: '#c084fc', fontWeight: 'bold', fontSize: 13 }}>
-                          +{Number(airdropYouRank.bonus_pct) || 0}%
-                        </span>
-                      </div>
-                    ) : null}
                     {/* Season: if you are under the floor or outside the top list, sticky last line with your rank */}
                     {leaderboardType === 'Weekly' && weeklyYouRank && playerId && !weeklyYouRank.inList ? (
                       <div
@@ -10769,98 +10363,6 @@ const GiftTapGame = () => {
           )}
 
 
-          {showAirdropBoard && (
-            <div
-              style={{
-                ...styles.modalOverlay,
-                zIndex: 10050,
-                overflowY: 'auto',
-                alignItems: 'flex-start',
-                padding: '20px 12px',
-              }}
-              onClick={() => {
-                setShowAirdropBoard(false);
-                setIsMenuOpen(true);
-              }}
-            >
-              <div
-                style={{
-                  ...styles.modalContent,
-                  maxWidth: 480,
-                  margin: '24px auto',
-                  maxHeight: 'none',
-                }}
-                onClick={(e) => e.stopPropagation()}
-              >
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                  <h3 style={{ margin: 0, color: '#67e8f9', fontSize: 18, display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <img
-                      src="/g2u-airdrop-gift.png"
-                      alt=""
-                      width={28}
-                      height={28}
-                      style={{ width: 28, height: 28, objectFit: 'contain' }}
-                    />
-                    G2U Airdrop
-                  </h3>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowAirdropBoard(false);
-                      setIsMenuOpen(true);
-                    }}
-                    style={{ background: 'none', border: 'none', color: '#888', fontSize: 22, cursor: 'pointer' }}
-                    aria-label="Close"
-                  >
-                    ✕
-                  </button>
-                </div>
-                {airdropLoading ? (
-                  <p style={{ color: '#888', textAlign: 'center', padding: 24 }}>Loading board…</p>
-                ) : (
-                  <AirdropBoard
-                    progress={airdropProgress}
-                    username={player?.username || getPlayerProfile().username}
-                    compact
-                  />
-                )}
-                <a
-                  href="/airdrop"
-                  style={{
-                    display: 'block',
-                    textAlign: 'center',
-                    marginTop: 14,
-                    color: '#a78bfa',
-                    fontWeight: 'bold',
-                    fontSize: 13,
-                  }}
-                >
-                  Open full page on gift2u.fun →
-                </a>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowAirdropBoard(false);
-                    setIsMenuOpen(true);
-                  }}
-                  style={{
-                    width: '100%',
-                    marginTop: 12,
-                    background: '#fbef43',
-                    color: '#000',
-                    border: 'none',
-                    borderRadius: 10,
-                    padding: 12,
-                    fontWeight: 'bold',
-                    cursor: 'pointer',
-                  }}
-                >
-                  Back to menu
-                </button>
-              </div>
-            </div>
-          )}
-
           {/* --- REFACTORED MENU COMPONENT --- */}
           <Menu 
             isMenuOpen={isMenuOpen} 
@@ -10906,10 +10408,6 @@ const GiftTapGame = () => {
             onOpenLeaderboard={() => {
               setIsMenuOpen(false);
               openLeaderboardPage();
-            }}
-            onOpenAirdrop={() => {
-              setIsMenuOpen(false);
-              openAirdropBoard();
             }}
           />
 
