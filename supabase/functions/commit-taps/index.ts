@@ -551,7 +551,6 @@ serve(async (req) => {
     const prevWeekId = String(row.weekly_week_id || "");
     const prevWeekly =
       prevWeekId === weekId ? Number(row.weekly_shards) || 0 : 0;
-    const prevSeason = Number(row.season_shards) || 0;
     const prevLifeBoard = Number(lifetime) || 0;
     if (weeklyShards > prevWeekly + 0.0005) {
       try {
@@ -565,17 +564,8 @@ serve(async (req) => {
         console.warn("upsert_weekly_score_ledger", e);
       }
     }
-    if (nextSeason > prevSeason + 0.0005) {
-      try {
-        await sb.rpc("upsert_season_score_ledger", {
-          p_telegram_id: playerId,
-          p_username: boardUsername,
-          p_score: nextSeason,
-        });
-      } catch (e) {
-        console.warn("upsert_season_score_ledger", e);
-      }
-    }
+    // Season board reads players.season_shards (leaderboard_season view).
+    // Do NOT upsert season_score_ledger — GREATEST ledger blocked month-end resets.
     if (nextLife > prevLifeBoard + 0.0005) {
       try {
         await sb.rpc("upsert_lifetime_score_ledger", {

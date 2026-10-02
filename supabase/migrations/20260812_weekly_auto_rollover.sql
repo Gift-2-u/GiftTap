@@ -379,3 +379,108 @@ BEGIN
 EXCEPTION WHEN OTHERS THEN
   RAISE NOTICE 'Could not schedule pg_cron job: %', SQLERRM;
 END $$;
+
+-- ---------------------------------------------------------------------------
+-- Monthly season rollover (1st of month 00:00 UTC)
+-- Archive ending month → season_history (kept forever), then zero live season_shards.
+-- leaderboard_season reads players.season_shards — past months stay in season_history only.
+-- ---------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.monthly_season_rollover()
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_prev_month text;
+  v_next_name text;
+  v_next_start timestamptz;
+  v_next_end timestamptz;
+  v_archived int := 0;
+  v_now timestamptz := timezone('utc', now());
+BEGIN
+  -- Label for the season that just ended (previous UTC calendar month)
+  v_prev_month :=
+    trim(to_char((date_trunc('month', v_now) - interval '1 day'), 'FMMonth YYYY'))
+    || ' Season';
+
+  INSERT INTO public.season_history (
+    season_month,
+    telegram_id,
+    username,
+    final_season_shards,
+    created_at
+  )
+  SELECT
+    v_prev_month,
+    p.telegram_id::text,
+    p.username,
+    COALESCE(p.season_shards, 0),
+    v_now
+  FROM public.players p
+  WHERE COALESCE(p.season_shards, 0) > 0
+    AND p.telegram_id IS NOT NULL;
+
+  GET DIAGNOSTICS v_archived = ROW_COUNT;
+
+  UPDATE public.players
+  SET
+    season_shards = 0,
+    last_updated = v_now
+  WHERE COALESCE(season_shards, 0) <> 0;
+
+  -- Clear GREATEST cache so it cannot resurrect old month scores on the live board
+  DELETE FROM public.season_score_ledger;
+
+  v_next_start := date_trunc('month', v_now);
+  v_next_end := date_trunc('month', v_now) + interval '1 month' - interval '1 second';
+  v_next_name := trim(to_char(v_now, 'FMMonth YYYY')) || ' Season';
+
+  UPDATE public.game_settings
+  SET
+    season_name = v_next_name,
+    is_season_active = true,
+    season_start_time = v_next_start,
+    season_end_time = v_next_end
+  WHERE id = 1;
+
+  RETURN jsonb_build_object(
+    'ok', true,
+    'archived_rows', v_archived,
+    'season_month_archived', v_prev_month,
+    'new_season', v_next_name,
+    'season_start', v_next_start,
+    'season_end', v_next_end
+  );
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.monthly_season_rollover() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.monthly_season_rollover() TO service_role, postgres;
+
+DO $$
+BEGIN
+  BEGIN
+    CREATE EXTENSION IF NOT EXISTS pg_cron WITH SCHEMA pg_catalog;
+  EXCEPTION WHEN OTHERS THEN
+    RAISE NOTICE 'pg_cron not available: %', SQLERRM;
+    RETURN;
+  END;
+
+  BEGIN
+    PERFORM cron.unschedule(jobid)
+    FROM cron.job
+    WHERE jobname = 'monthly_season_rollover';
+  EXCEPTION WHEN OTHERS THEN
+    NULL;
+  END;
+
+  PERFORM cron.schedule(
+    'monthly_season_rollover',
+    '0 0 1 * *',
+    $cron$ SELECT public.monthly_season_rollover(); $cron$
+  );
+  RAISE NOTICE 'Scheduled pg_cron job monthly_season_rollover (1st 00:00 UTC)';
+EXCEPTION WHEN OTHERS THEN
+  RAISE NOTICE 'Could not schedule monthly_season_rollover: %', SQLERRM;
+END $$;

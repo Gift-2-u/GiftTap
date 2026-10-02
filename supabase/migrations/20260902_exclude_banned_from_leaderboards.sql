@@ -1,45 +1,23 @@
 -- Hide banned players from ranks (season / lifetime / weekly).
 -- Safe if is_banned missing on older envs: COALESCE(..., false).
 
+-- Season board = live players.season_shards (not season_score_ledger).
+-- Month-end archive → season_history, then season_shards reset (monthly_season_rollover).
 DROP VIEW IF EXISTS public.leaderboard_season CASCADE;
 CREATE VIEW public.leaderboard_season AS
 SELECT
-  x.telegram_id,
-  x.username,
-  x.score,
-  x.score AS season_shards,
+  p.telegram_id,
+  p.username,
+  COALESCE(p.season_shards, 0) AS score,
+  COALESCE(p.season_shards, 0) AS season_shards,
   COALESCE(p.lifetime_taps, 0) AS lifetime_taps,
   COALESCE(p.shard_balance, 0) AS shard_balance,
   COALESCE(p.max_unlocked_level, 4) AS max_unlocked_level,
   p.wallet_address,
-  COALESCE(p.last_updated, x.updated_at) AS last_updated
-FROM (
-  SELECT
-    l.telegram_id,
-    COALESCE(NULLIF(btrim(p2.username), ''), NULLIF(btrim(l.username), ''), 'Player') AS username,
-    l.score,
-    l.updated_at
-  FROM public.season_score_ledger l
-  LEFT JOIN public.players p2 ON p2.telegram_id::text = l.telegram_id
-  WHERE COALESCE(l.score, 0) > 0
-    AND COALESCE(p2.is_banned, false) = false
-  UNION ALL
-  SELECT
-    p.telegram_id::text,
-    COALESCE(NULLIF(btrim(p.username), ''), 'Player'),
-    COALESCE(p.season_shards, 0),
-    p.last_updated
-  FROM public.players p
-  WHERE COALESCE(p.season_shards, 0) > 0
-    AND p.telegram_id IS NOT NULL
-    AND COALESCE(p.is_banned, false) = false
-    AND NOT EXISTS (
-      SELECT 1 FROM public.season_score_ledger l2
-      WHERE l2.telegram_id = p.telegram_id::text
-    )
-) x
-LEFT JOIN public.players p ON p.telegram_id::text = x.telegram_id
-WHERE x.username IS NOT NULL AND btrim(x.username) <> ''
+  p.last_updated
+FROM public.players p
+WHERE p.username IS NOT NULL
+  AND btrim(p.username) <> ''
   AND COALESCE(p.is_banned, false) = false;
 
 GRANT SELECT ON public.leaderboard_season TO anon, authenticated, service_role;

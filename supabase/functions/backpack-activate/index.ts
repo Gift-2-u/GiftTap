@@ -276,10 +276,11 @@ serve(async (req) => {
       });
     } else if (itemId === "expanded_energy") {
       const days = popPremiumDuration(inv, itemId);
-      // Battery expands to 1000 AND fills to 1000 (purpose of the boost)
+      // Expanded Battery only: 1000/1000 for 1/3/7 days (everyone else stays 500)
       inv.energy_cap_boost = {
         cap: 1000,
         expires: endOfUtcDay(utcDayOffsetForDuration(days)),
+        filled_to_cap: true,
       };
       updates.inventory = inv;
       last_energy = 1000;
