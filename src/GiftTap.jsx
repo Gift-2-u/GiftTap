@@ -4515,52 +4515,52 @@ const GiftTapGame = () => {
             const s = Number(p.season_shards);
             const dt = Number(p.daily_taps);
             const en = Number(p.last_energy);
-            // Energy sync (Frenzy/refill):
-            // - Ignore flushes from before activate/refill (epoch).
-            // - Never wipe a live local bar to 0 on a stale no_energy (Frenzy bug).
-            // - While bursting, only nudge DOWN by this batch's spend — not a cliff to 0.
-            // - Never snap UP to 500 mid-burst.
+            // Energy + daily settle together from server (Expanded Battery cap).
+            // Always snap TO server energy — restores overspend when a batch was
+            // only partially credited so the leftover queue can flush next.
             if (Number.isFinite(en) && flushEpoch === energyEpochRef.current) {
               const atRaw = p.energy_at || p.last_updated;
               const atMs = atRaw ? Date.parse(atRaw) : Date.now();
-              const serverLive = catchUpEnergyAnchor({
-                value: en,
-                at: Number.isFinite(atMs) ? atMs : Date.now(),
-              });
-              const stillPending = (pendingTapsRef.current?.count || 0) > 0;
-              const recentlyTapping =
-                Date.now() - (lastLocalTapAtRef.current || 0) < 1200;
+              const eCapFlush = energyCapFromInv(
+                p.inventory && typeof p.inventory === 'object'
+                  ? { ...(inventoryRef.current || {}), ...p.inventory }
+                  : inventoryRef.current || {},
+              );
               const localEn = Number(optimisticEnergy.current);
-              const bursting = stillPending || recentlyTapping;
+              const stillPendingEn = (pendingTapsRef.current?.count || 0) > 0;
               const staleEmpty =
                 credited === 0 &&
                 rejectReason === 'no_energy' &&
                 Number.isFinite(localEn) &&
                 localEn > 1;
-
               if (staleEmpty) {
                 // Keep local battery — server empty is often a desync after Frenzy activate
-              } else if (bursting && Number.isFinite(localEn) && credited > 0) {
-                // Only drop by taps the SERVER actually credited (never the full
-                // requested batch size — that wiped 500 energy on a 2-tap flush).
-                if (serverLive.value < localEn - 0.5) {
-                  const maxDrop = Math.max(credited, 1) + 2;
-                  const nextEn = Math.max(
-                    serverLive.value,
-                    Math.max(0, localEn - maxDrop),
-                  );
-                  const caught = catchUpEnergyAnchor(energyAnchorRef.current);
-                  energyAnchorRef.current = { value: nextEn, at: caught.at };
-                  optimisticEnergy.current = nextEn;
-                  setEnergy(nextEn);
-                }
               } else {
-                energyAnchorRef.current = {
-                  value: serverLive.value,
-                  at: serverLive.at,
-                };
-                optimisticEnergy.current = serverLive.value;
-                setEnergy(serverLive.value);
+                const serverLive = catchUpEnergyAnchor(
+                  {
+                    value: en,
+                    at: Number.isFinite(atMs) ? atMs : Date.now(),
+                  },
+                  Date.now(),
+                  eCapFlush,
+                );
+                // While queue remains, never snap UP — that energy is reserved for
+                // the next commit chunk. Snap down (or settle fully when idle).
+                if (
+                  stillPendingEn &&
+                  credited > 0 &&
+                  Number.isFinite(localEn) &&
+                  serverLive.value > localEn + 0.5
+                ) {
+                  // leave local low; while-loop flushes leftover against server energy
+                } else {
+                  energyAnchorRef.current = {
+                    value: serverLive.value,
+                    at: serverLive.at,
+                  };
+                  optimisticEnergy.current = serverLive.value;
+                  setEnergy(serverLive.value);
+                }
               }
             }
             // Keep Frenzy / Heavy Hands timers aligned with server (cost must match)
@@ -4614,13 +4614,15 @@ const GiftTapGame = () => {
                 let nextDt = dt;
                 if (serverLtd && serverLtd < todayF) {
                   nextDt = dt;
+                } else if (credited === 0) {
+                  // Reject settle: server is truth (clears phantom daily vs empty battery)
+                  nextDt = dt;
                 } else if (stillPending && credited > 0) {
-                  // Mid-burst only: allow local ahead until this flush drains
+                  // Mid-burst: allow local ahead until leftover queue drains
                   nextDt = Math.max(dt, Number(optimisticDaily.current) || 0);
                 } else {
-                  // Finger up: never let a late flush climb the HUD past local
-                  const localDt = Number(optimisticDaily.current) || 0;
-                  nextDt = dt > localDt ? localDt : dt;
+                  // Queue empty: server daily is authoritative
+                  nextDt = dt;
                 }
                 optimisticDaily.current = nextDt;
                 setDailyTaps(nextDt);
@@ -4811,22 +4813,41 @@ const GiftTapGame = () => {
               }
             }
           }
-          // Partial credit: server ran out of energy/limit mid-batch.
-          // DO NOT re-queue unpaid taps — client already spent local energy for them;
-          // re-queue caused phantom flushes (2 taps → drain whole bar / snap to 0).
+          // Partial credit: energy was snapped to server above. Keep unpaid only
+          // while server still has energy so the while-loop can finish the drain
+          // (fixes 0/1000 battery + short daily without Extra Edge polling).
           if (credited > 0 && credited < taps) {
-            pendingTapsRef.current = { count: 0, frenzyCount: 0, batchId: null };
+            const unpaid = taps - credited;
+            const unpaidFrenzy = Math.max(
+              0,
+              frenzyTaps - Math.min(frenzyTaps, credited),
+            );
             if (p && Number.isFinite(Number(p.daily_taps))) {
               const serverDt = Number(p.daily_taps) || 0;
               optimisticDaily.current = serverDt;
               setDailyTaps(serverDt);
             }
-            break;
+            const enNow = Number(optimisticEnergy.current) || 0;
+            if (enNow < 1) {
+              // Battery empty on server — drop unpaid; HUD already server-settled
+              pendingTapsRef.current = { count: 0, frenzyCount: 0, batchId: null };
+              break;
+            }
+            const nextBatchId =
+              crypto.randomUUID
+                ? crypto.randomUUID()
+                : `b_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+            pendingTapsRef.current = {
+              count: (pendingTapsRef.current.count || 0) + unpaid,
+              frenzyCount:
+                (pendingTapsRef.current.frenzyCount || 0) + unpaidFrenzy,
+              batchId: nextBatchId,
+            };
+            continue;
           }
-          // Full reject handling
+          // Full reject: settle HUD to server, drop queue (no regen Edge spam)
           if (credited === 0) {
             if (rejectReason === 'no_energy' || rejectReason === 'daily_limit') {
-              // Drop queue — unpaid optimistic taps must not retry-drain the battery
               pendingTapsRef.current = { count: 0, frenzyCount: 0, batchId: null };
               if (p && Number.isFinite(Number(p.daily_taps))) {
                 const serverDt = Number(p.daily_taps) || 0;
@@ -4861,17 +4882,17 @@ const GiftTapGame = () => {
 
   const scheduleTapFlush = useCallback((delayMs) => {
     if (tapFlushTimerRef.current) clearTimeout(tapFlushTimerRef.current);
-    // Walk2u pattern: HUD already counted 1:1 locally; Edge save is batched.
-    // Cap queue size so one save can drain a large burst (server max 500/call).
+    // Walk2u: HUD already counted 1:1 locally; Edge save is rare + large.
+    // Longer idle = far fewer commit-taps invokes (soft cap 500 still drains).
     const pending = pendingTapsRef.current?.count || 0;
     const delay =
       Number.isFinite(Number(delayMs)) && Number(delayMs) >= 0
         ? Number(delayMs)
         : pending >= 200
-          ? 2000
+          ? 10000
           : pending >= 50
-            ? 2500
-            : 3500;
+            ? 11000
+            : 12000;
     tapFlushTimerRef.current = setTimeout(() => {
       flushPendingTaps();
     }, delay);
@@ -5706,8 +5727,8 @@ const GiftTapGame = () => {
           tapFlushTimerRef.current = null;
           flushPendingTaps();
         } else {
-          // Frenzy: slightly sooner save so ×2 credits land before the window ends
-          scheduleTapFlush(frenzyOn ? 1500 : undefined);
+          // Frenzy: sooner than idle so ×2 credits land; still batched for Edge cost
+          scheduleTapFlush(frenzyOn ? 4500 : undefined);
         }
       }
       // Local UI sync only under secureLock (no last_updated heartbeat — that
