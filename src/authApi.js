@@ -296,6 +296,8 @@ export async function claimAccountCredentials({
   username,
   password,
   currentPassword = '',
+  usernameOnly = false,
+  passwordOnly = false,
 }) {
   const cleanName = String(username || '').trim();
   const pass = String(password || '');
@@ -305,11 +307,12 @@ export async function claimAccountCredentials({
   if (!USERNAME_RE.test(cleanName)) {
     throw new Error('Username must be 3–20 characters: letters, numbers, underscore only.');
   }
-  if (pass.length < 6) {
-    throw new Error('Password must be at least 6 characters.');
-  }
   if (cleanName.toLowerCase() === 'player') {
     throw new Error('Username "Player" is reserved. Keep your Telegram name or pick a new unique one.');
+  }
+  // First-time set always needs a password. Later: username-only may omit new password.
+  if (!usernameOnly && pass.length < 6) {
+    throw new Error('Password must be at least 6 characters.');
   }
 
   const base = (import.meta.env.VITE_SUPABASE_URL || '').replace(/\/$/, '');
@@ -334,8 +337,10 @@ export async function claimAccountCredentials({
     body: JSON.stringify({
       action: 'set_credentials',
       username: cleanName,
-      password: pass,
+      password: pass || undefined,
       current_password: currentPassword || undefined,
+      username_only: !!usernameOnly,
+      password_only: !!passwordOnly,
     }),
   });
   const data = await res.json().catch(() => ({}));

@@ -10,7 +10,7 @@ import { SOCIAL_LINKS, SOCIAL_SURPRISE_EVENT } from './socialLinks';
 
 const DISCORD_URL =
   SOCIAL_LINKS.find((s) => s.id === 'discord')?.href ||
-  'https://discord.gg/d8aEvFbHW';
+  'https://discord.gg/n7e9qF3Jd';
 
 const DEFAULT_SOCIAL_SURPRISE =
   'Surprise gifts on socials (X, Telegram, Discord) — check them every day.';

@@ -51,21 +51,56 @@ const ClaimAccountModal = ({
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
-    if (password !== password2) {
-      setError('Passwords do not match.');
-      return;
+    const nextUser = username.trim();
+    const newPass = String(password || '');
+    const newPass2 = String(password2 || '');
+    const nameChanged =
+      nextUser.toLowerCase() !== String(currentUsername || '').trim().toLowerCase();
+    const changingPassword = newPass.length > 0 || newPass2.length > 0;
+
+    if (isChange) {
+      if (String(currentPassword || '').length < 6) {
+        setError('Enter your current password to save changes.');
+        return;
+      }
+      if (!nameChanged && !changingPassword) {
+        setError('Change your username or enter a new password.');
+        return;
+      }
+      if (nameChanged && changingPassword) {
+        setError('Change username or password in separate saves — not both at once.');
+        return;
+      }
+      if (changingPassword) {
+        if (newPass.length < 6) {
+          setError('New password must be at least 6 characters.');
+          return;
+        }
+        if (newPass !== newPass2) {
+          setError('Passwords do not match.');
+          return;
+        }
+      }
+    } else {
+      if (newPass.length < 6) {
+        setError('Password must be at least 6 characters.');
+        return;
+      }
+      if (newPass !== newPass2) {
+        setError('Passwords do not match.');
+        return;
+      }
     }
-    if (isChange && String(currentPassword || '').length < 6) {
-      setError('Enter your current password to change it.');
-      return;
-    }
+
     setLoading(true);
     try {
       const data = await claimAccountCredentials({
         playerId,
-        username: username.trim(),
-        password,
+        username: nextUser,
+        password: isChange && !changingPassword ? '' : newPass,
         currentPassword: isChange ? currentPassword : '',
+        usernameOnly: isChange && nameChanged && !changingPassword,
+        passwordOnly: isChange && changingPassword && !nameChanged,
       });
       onSuccess?.(data.username);
       onClose?.();
@@ -136,7 +171,7 @@ const ClaimAccountModal = ({
         </div>
         <p style={{ color: '#aaa', fontSize: '13px', lineHeight: 1.45 }}>
           {isChange
-            ? 'Update your username and/or password. You must enter your current password to save changes.'
+            ? 'Change username OR password (one save at a time). Current password is required.'
             : (
               <>
                 Keep your name or change it, then create a password so you can open Gift Tap on
@@ -180,7 +215,9 @@ const ClaimAccountModal = ({
           )}
 
           <label style={{ color: '#888', fontSize: '12px', display: 'block', marginBottom: '6px' }}>
-            {isChange ? 'New password (min 6 characters)' : 'Password (min 6 characters)'}
+            {isChange
+              ? 'New password (optional — leave blank to keep current)'
+              : 'Password (min 6 characters)'}
           </label>
           <input
             style={input}
@@ -190,19 +227,19 @@ const ClaimAccountModal = ({
             placeholder="••••••••"
             autoComplete="new-password"
             disabled={loading}
-            required
-            minLength={6}
+            required={!isChange}
+            minLength={isChange ? undefined : 6}
           />
           <input
             style={input}
             type="password"
             value={password2}
             onChange={(e) => setPassword2(e.target.value)}
-            placeholder="Confirm password"
+            placeholder={isChange ? 'Confirm new password (if changing)' : 'Confirm password'}
             autoComplete="new-password"
             disabled={loading}
-            required
-            minLength={6}
+            required={!isChange}
+            minLength={isChange ? undefined : 6}
           />
 
           {error && (
@@ -224,7 +261,7 @@ const ClaimAccountModal = ({
               marginBottom: '10px',
             }}
           >
-            {loading ? 'Saving…' : 'Save username & password'}
+            {loading ? 'Saving…' : isChange ? 'Save changes' : 'Save username & password'}
           </button>
 
           {!required && (

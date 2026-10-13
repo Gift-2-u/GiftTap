@@ -222,6 +222,8 @@ serve(async (req) => {
       const currentPass = String(
         body.current_password || body.old_password || "",
       );
+      const usernameOnly = !!body.username_only;
+      const passwordOnly = !!body.password_only;
 
       if (!USERNAME_RE.test(cleanName)) {
         throw new Error(
@@ -231,9 +233,6 @@ serve(async (req) => {
       if (cleanName.toLowerCase() === "player") {
         throw new Error('Username "Player" is reserved.');
       }
-      if (pass.length < 6) {
-        throw new Error("Password must be at least 6 characters.");
-      }
 
       const { data: me, error: meErr } = await sb
         .from("players")
@@ -242,17 +241,6 @@ serve(async (req) => {
         .maybeSingle();
       if (meErr) throw meErr;
       if (!me) throw new Error("Player not found");
-
-      // Username unique among other players
-      const { data: taken, error: takeErr } = await sb
-        .from("players")
-        .select("telegram_id")
-        .ilike("username", cleanName)
-        .maybeSingle();
-      if (takeErr) throw takeErr;
-      if (taken && String(taken.telegram_id) !== playerId) {
-        throw new Error("That username is already taken. Choose another.");
-      }
 
       const { data: sec, error: secErr } = await sb
         .from("player_secrets")
@@ -264,27 +252,46 @@ serve(async (req) => {
       const existingHash = sec?.password_hash
         ? String(sec.password_hash).trim()
         : "";
+      const nameChanged = String(me.username || "") !== cleanName;
+      // First-time set (no hash yet) always needs a new password.
+      // Later: allow username-only (no new password) or password-only.
+      const changingPassword = pass.length > 0;
+      if (!existingHash && pass.length < 6) {
+        throw new Error("Password must be at least 6 characters.");
+      }
+      if (existingHash && usernameOnly && !nameChanged) {
+        throw new Error("That is already your username.");
+      }
+      if (existingHash && nameChanged && changingPassword) {
+        throw new Error(
+          "Change username or password in separate saves — not both at once.",
+        );
+      }
+      if (existingHash && !usernameOnly && !passwordOnly && !changingPassword && !nameChanged) {
+        throw new Error("Change your username or enter a new password.");
+      }
+      if (changingPassword && pass.length < 6) {
+        throw new Error("Password must be at least 6 characters.");
+      }
+
       if (existingHash) {
         if (currentPass.length < 6) {
-          throw new Error("Enter your current password to change it.");
+          throw new Error("Enter your current password to save changes.");
         }
         const ok = await verifyPassword(currentPass, existingHash);
         if (!ok) throw new Error("Wrong current password.");
       }
 
-      const password_hash = await hashPassword(pass);
-      const { error: upSec } = await sb.from("player_secrets").upsert(
-        {
-          telegram_id: playerId,
-          password_hash,
-          encrypted_vault: sec?.encrypted_vault ?? null,
-          updated_at: new Date().toISOString(),
-        },
-        { onConflict: "telegram_id" },
-      );
-      if (upSec) throw upSec;
-
-      if (String(me.username || "") !== cleanName) {
+      if (nameChanged) {
+        const { data: taken, error: takeErr } = await sb
+          .from("players")
+          .select("telegram_id")
+          .ilike("username", cleanName)
+          .maybeSingle();
+        if (takeErr) throw takeErr;
+        if (taken && String(taken.telegram_id) !== playerId) {
+          throw new Error("That username is already taken. Choose another.");
+        }
         const { error: upName } = await sb
           .from("players")
           .update({ username: cleanName })
@@ -298,6 +305,20 @@ serve(async (req) => {
           }
           throw upName;
         }
+      }
+
+      if (!existingHash || changingPassword) {
+        const password_hash = await hashPassword(pass);
+        const { error: upSec } = await sb.from("player_secrets").upsert(
+          {
+            telegram_id: playerId,
+            password_hash,
+            encrypted_vault: sec?.encrypted_vault ?? null,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: "telegram_id" },
+        );
+        if (upSec) throw upSec;
       }
 
       return json({

@@ -143,6 +143,7 @@ import RoadmapModal from './RoadmapModal';
 import LegalModal from './LegalModal';
 import AppNotice from './AppNotice';
 import HelpTip from './HelpTip';
+import { HELP_TIPS } from './helpContent';
 import { showRewardedAdWaterfall, AD_MIN_WATCH_SECONDS, isSeekerShell } from './adService';
 import { getGiftTapApkUrl } from './GiftTapLaunchModal';
 import WalletHub from './WalletHub';
@@ -822,6 +823,8 @@ const GiftTapGame = () => {
   const [showMilestoneTip, setShowMilestoneTip] = useState(false);
   const [milestoneTipInfo, setMilestoneTipInfo] = useState(null);
   const [showMilestoneModal, setShowMilestoneModal] = useState(false);
+  /** Help "?" tips — same root overlay pattern as Milestone / Wallet */
+  const [helpTipKey, setHelpTipKey] = useState(null);
   const [streak, setStreak] = useState(0);
 
   const [lastTapDate, setLastTapDate] = useState(''); // '' until DB load — never default to today
@@ -1019,7 +1022,17 @@ const GiftTapGame = () => {
   };
   /** { sol: { USD: n, ... }, usdc: { USD: n, ... } } from CoinGecko */
   const [fiatRates, setFiatRates] = useState({ sol: {}, usdc: {} });
-  const [appLanguage, setAppLanguage] = useState('EN');
+  const [appLanguage, setAppLanguage] = useState(() => {
+    try {
+      const saved = localStorage.getItem('gift2u_lang');
+      if (saved && ['EN', 'FR', 'ES', 'PT', 'RU', 'ID', 'ZH'].includes(saved)) {
+        return saved;
+      }
+    } catch {
+      /* ignore */
+    }
+    return 'EN';
+  });
   const [isWhitepaperOpen, setIsWhitepaperOpen] = useState(false);
   const [isRoadmapOpen, setIsRoadmapOpen] = useState(false);
   const [legalKind, setLegalKind] = useState(null); // 'terms' | 'privacy' | null
@@ -1452,29 +1465,202 @@ const GiftTapGame = () => {
     return () => clearInterval(id);
   }, []);
 
-  // The Translation Engine Dictionary
+  // The Translation Engine Dictionary (Menu + main HUD chrome)
   const TRANSLATIONS = {
     EN: {
-      menu: "Menu",
-      language: "Language",
-      currency: "Currency",
-      secret: "View Secret Phrase",
-      rules: "Game Guide"
+      menu: 'Menu',
+      language: 'Language',
+      currency: 'Currency',
+      secret: 'View Secret Phrase',
+      rules: 'Game Guide',
+      how_to_play: 'How to play',
+      weekly_quest: 'Weekly quest',
+      daily_limit: 'Daily Limit',
+      free_energy: 'Free Energy',
+      free: 'Free',
+      energy: 'Energy',
+      milestones: 'Milestones',
+      loading_gift: 'Loading Gift...',
+      got_it: 'Got it',
+      open_game_guide: 'Open Game Guide',
+      home: 'Home',
+      shop: 'Shop',
+      ranks: 'Ranks',
+      friends: 'Friends',
+      tasks: 'Tasks',
+      wallet: 'Wallet',
+      terms: 'Terms of Use',
+      privacy: 'Privacy Policy',
+      roadmap: 'Roadmap',
     },
     FR: {
-      menu: "Menu",
-      language: "Langue",
-      currency: "Devise",
-      secret: "Voir la phrase secrète",
-      rules: "Guide du jeu"
-    }
-    // You can add ES, PT, etc., as you expand!
+      menu: 'Menu',
+      language: 'Langue',
+      currency: 'Devise',
+      secret: 'Voir la phrase secrète',
+      rules: 'Guide du jeu',
+      how_to_play: 'Comment jouer',
+      weekly_quest: 'Quête hebdo',
+      daily_limit: 'Limite quotidienne',
+      free_energy: 'Énergie gratuite',
+      free: 'Gratuit',
+      energy: 'Énergie',
+      milestones: 'Jalons',
+      loading_gift: 'Chargement Gift...',
+      got_it: 'Compris',
+      open_game_guide: 'Ouvrir le guide',
+      home: 'Accueil',
+      shop: 'Boutique',
+      ranks: 'Classement',
+      friends: 'Amis',
+      tasks: 'Tâches',
+      wallet: 'Portefeuille',
+      terms: "Conditions d'utilisation",
+      privacy: 'Confidentialité',
+      roadmap: 'Feuille de route',
+    },
+    ES: {
+      menu: 'Menú',
+      language: 'Idioma',
+      currency: 'Moneda',
+      secret: 'Ver frase secreta',
+      rules: 'Guía del juego',
+      how_to_play: 'Cómo jugar',
+      weekly_quest: 'Misión semanal',
+      daily_limit: 'Límite diario',
+      free_energy: 'Energía gratis',
+      free: 'Gratis',
+      energy: 'Energía',
+      milestones: 'Hitos',
+      loading_gift: 'Cargando Gift...',
+      got_it: 'Entendido',
+      open_game_guide: 'Abrir guía',
+      home: 'Inicio',
+      shop: 'Tienda',
+      ranks: 'Ranking',
+      friends: 'Amigos',
+      tasks: 'Tareas',
+      wallet: 'Billetera',
+      terms: 'Términos de uso',
+      privacy: 'Privacidad',
+      roadmap: 'Hoja de ruta',
+    },
+    PT: {
+      menu: 'Menu',
+      language: 'Idioma',
+      currency: 'Moeda',
+      secret: 'Ver frase secreta',
+      rules: 'Guia do jogo',
+      how_to_play: 'Como jogar',
+      weekly_quest: 'Missão semanal',
+      daily_limit: 'Limite diário',
+      free_energy: 'Energia grátis',
+      free: 'Grátis',
+      energy: 'Energia',
+      milestones: 'Marcos',
+      loading_gift: 'Carregando Gift...',
+      got_it: 'Entendi',
+      open_game_guide: 'Abrir guia',
+      home: 'Início',
+      shop: 'Loja',
+      ranks: 'Ranking',
+      friends: 'Amigos',
+      tasks: 'Tarefas',
+      wallet: 'Carteira',
+      terms: 'Termos de uso',
+      privacy: 'Privacidade',
+      roadmap: 'Roteiro',
+    },
+    RU: {
+      menu: 'Меню',
+      language: 'Язык',
+      currency: 'Валюта',
+      secret: 'Секретная фраза',
+      rules: 'Гайд',
+      how_to_play: 'Как играть',
+      weekly_quest: 'Недельный квест',
+      daily_limit: 'Дневной лимит',
+      free_energy: 'Бесплатная энергия',
+      free: 'Бесплатно',
+      energy: 'Энергия',
+      milestones: 'Вехи',
+      loading_gift: 'Загрузка Gift...',
+      got_it: 'Понятно',
+      open_game_guide: 'Открыть гайд',
+      home: 'Домой',
+      shop: 'Магазин',
+      ranks: 'Рейтинг',
+      friends: 'Друзья',
+      tasks: 'Задания',
+      wallet: 'Кошелёк',
+      terms: 'Условия',
+      privacy: 'Конфиденциальность',
+      roadmap: 'Дорожная карта',
+    },
+    ID: {
+      menu: 'Menu',
+      language: 'Bahasa',
+      currency: 'Mata uang',
+      secret: 'Lihat frasa rahasia',
+      rules: 'Panduan game',
+      how_to_play: 'Cara main',
+      weekly_quest: 'Misi mingguan',
+      daily_limit: 'Batas harian',
+      free_energy: 'Energi gratis',
+      free: 'Gratis',
+      energy: 'Energi',
+      milestones: 'Tonggak',
+      loading_gift: 'Memuat Gift...',
+      got_it: 'Mengerti',
+      open_game_guide: 'Buka panduan',
+      home: 'Beranda',
+      shop: 'Toko',
+      ranks: 'Peringkat',
+      friends: 'Teman',
+      tasks: 'Tugas',
+      wallet: 'Dompet',
+      terms: 'Syarat penggunaan',
+      privacy: 'Privasi',
+      roadmap: 'Peta jalan',
+    },
+    ZH: {
+      menu: '菜单',
+      language: '语言',
+      currency: '货币',
+      secret: '查看助记词',
+      rules: '游戏指南',
+      how_to_play: '怎么玩',
+      weekly_quest: '每周任务',
+      daily_limit: '每日上限',
+      free_energy: '免费能量',
+      free: '免费',
+      energy: '能量',
+      milestones: '里程碑',
+      loading_gift: '加载中…',
+      got_it: '知道了',
+      open_game_guide: '打开游戏指南',
+      home: '首页',
+      shop: '商店',
+      ranks: '排行',
+      friends: '好友',
+      tasks: '任务',
+      wallet: '钱包',
+      terms: '使用条款',
+      privacy: '隐私政策',
+      roadmap: '路线图',
+    },
   };
-  // Universal Translation Formatter
-  // Usage: t('currency') -> returns "Currency" (if EN) or "Devise" (if FR)
   const t = (key) => {
-    return TRANSLATIONS[appLanguage]?.[key] || TRANSLATIONS['EN'][key] || key;
+    return TRANSLATIONS[appLanguage]?.[key] || TRANSLATIONS.EN[key] || key;
   };
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('gift2u_lang', appLanguage);
+    } catch {
+      /* ignore */
+    }
+  }, [appLanguage]);
 
   // NOTE: Do NOT sync optimisticTaps from lifetimeTaps state each render —
   // rapid taps update the ref first; lagging setState would reset the ref and desync.
@@ -3075,6 +3261,32 @@ const GiftTapGame = () => {
   // 5. EFFECTS
   useEffect(() => { syncPlayer(); }, [syncPlayer]);
 
+  // Returning from main site / background must never leave "Loading Gift..." stuck
+  useEffect(() => {
+    if (!isLoading) return undefined;
+    const watchdog = setTimeout(() => {
+      console.warn('GiftTap load watchdog — clearing stuck spinner');
+      setIsLoading(false);
+    }, 8000);
+    return () => clearTimeout(watchdog);
+  }, [isLoading]);
+
+  useEffect(() => {
+    const onReturn = () => {
+      if (document.visibilityState && document.visibilityState !== 'visible') return;
+      // If the game shell is already authed, drop a leftover full-screen loader
+      if (isLoading && playerId && isAuthed) {
+        setIsLoading(false);
+      }
+    };
+    window.addEventListener('pageshow', onReturn);
+    document.addEventListener('visibilitychange', onReturn);
+    return () => {
+      window.removeEventListener('pageshow', onReturn);
+      document.removeEventListener('visibilitychange', onReturn);
+    };
+  }, [isLoading, playerId, isAuthed]);
+
   // Deep link from https://gift2u.fun/delete-account → /play?delete=1
   useEffect(() => {
     if (!isAuthed || !isDataLoaded) return;
@@ -4195,7 +4407,9 @@ const GiftTapGame = () => {
                   // Mid-burst only: allow local ahead until this flush drains
                   nextDt = Math.max(dt, Number(optimisticDaily.current) || 0);
                 } else {
-                  nextDt = dt;
+                  // Finger up: never let a late flush climb the HUD past local
+                  const localDt = Number(optimisticDaily.current) || 0;
+                  nextDt = dt > localDt ? localDt : dt;
                 }
                 optimisticDaily.current = nextDt;
                 setDailyTaps(nextDt);
@@ -4436,16 +4650,16 @@ const GiftTapGame = () => {
 
   const scheduleTapFlush = useCallback((delayMs) => {
     if (tapFlushTimerRef.current) clearTimeout(tapFlushTimerRef.current);
-    // Fast flush so weekly leaders + daily bar track real mining
+    // Short debounce so daily/lifetime HUD stays ~1 tap → 1 count (flush on finger-up too)
     const pending = pendingTapsRef.current?.count || 0;
     const delay =
       Number.isFinite(Number(delayMs)) && Number(delayMs) >= 0
         ? Number(delayMs)
         : pending >= 40
-          ? 200
+          ? 60
           : pending >= 10
-            ? 350
-            : 450;
+            ? 90
+            : 120;
     tapFlushTimerRef.current = setTimeout(() => {
       flushPendingTaps();
     }, delay);
@@ -4845,10 +5059,20 @@ const GiftTapGame = () => {
       if (e && e.pointerId != null) {
         activeTapPointersRef.current.delete(e.pointerId);
       }
+      // All fingers up → commit now so the count does not keep catching up after you stop
+      if (activeTapPointersRef.current.size === 0) {
+        if (tapFlushTimerRef.current) {
+          clearTimeout(tapFlushTimerRef.current);
+          tapFlushTimerRef.current = null;
+        }
+        if ((pendingTapsRef.current?.count || 0) > 0) {
+          flushPendingTaps();
+        }
+      }
     } catch {
       /* ignore */
     }
-  }, []);
+  }, [flushPendingTaps]);
 
   const handleTap = (e) => {
       if (!isDataLoaded) return;
@@ -7005,7 +7229,7 @@ const GiftTapGame = () => {
     );
   }
 
-  if (isLoading) return <div style={styles.container}>Loading Gift...</div>;
+  if (isLoading) return <div style={styles.container}>{t('loading_gift')}</div>;
 
   return (
     <div style={{ backgroundColor: '#000', minHeight: '100vh', width: '100%' }}>
@@ -7479,6 +7703,120 @@ const GiftTapGame = () => {
         </div>
       )}
 
+      {helpTipKey && HELP_TIPS[helpTipKey] && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,0.85)',
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center',
+            zIndex: 190000,
+            padding: 16,
+            boxSizing: 'border-box',
+          }}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby={`help-tip-${helpTipKey}`}
+          onClick={() => setHelpTipKey(null)}
+        >
+          <div
+            style={{
+              background: '#1c1e22',
+              padding: 20,
+              borderRadius: 16,
+              border: '2px solid #ffd700',
+              width: '100%',
+              maxWidth: 360,
+              maxHeight: '80vh',
+              overflowY: 'auto',
+              boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
+              textAlign: 'left',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                marginBottom: 12,
+              }}
+            >
+              <h3
+                id={`help-tip-${helpTipKey}`}
+                style={{ color: '#ffd700', margin: 0, fontSize: 18 }}
+              >
+                {HELP_TIPS[helpTipKey].title}
+              </h3>
+              <button
+                type="button"
+                onClick={() => setHelpTipKey(null)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: '#888',
+                  fontSize: 22,
+                  cursor: 'pointer',
+                }}
+              >
+                ✕
+              </button>
+            </div>
+            <p
+              style={{
+                color: '#ccc',
+                fontSize: 13,
+                lineHeight: 1.5,
+                margin: '0 0 18px',
+                whiteSpace: 'pre-line',
+              }}
+            >
+              {HELP_TIPS[helpTipKey].body}
+            </p>
+            <button
+              type="button"
+              onClick={() => setHelpTipKey(null)}
+              style={{
+                width: '100%',
+                background: '#ffd700',
+                color: '#000',
+                border: 'none',
+                borderRadius: 30,
+                padding: '12px',
+                fontWeight: 'bold',
+                fontSize: 14,
+                cursor: 'pointer',
+                marginBottom: 10,
+              }}
+            >
+              {t('got_it')}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setHelpTipKey(null);
+                setIsWhitepaperOpen(true);
+              }}
+              style={{
+                width: '100%',
+                background: 'transparent',
+                color: '#94a3b8',
+                border: '1px solid #334155',
+                borderRadius: 30,
+                padding: '12px',
+                fontWeight: 'bold',
+                fontSize: 13,
+                cursor: 'pointer',
+              }}
+            >
+              {t('open_game_guide')}
+            </button>
+          </div>
+        </div>
+      )}
+
       {showMilestoneModal && (
         <div
           style={{
@@ -7520,7 +7858,7 @@ const GiftTapGame = () => {
               }}
             >
               <h3 style={{ color: '#fbef43', margin: 0, fontSize: 18 }}>
-                Milestones
+                {t('milestones')}
               </h3>
               <button
                 type="button"
@@ -7901,7 +8239,7 @@ const GiftTapGame = () => {
               <div style={{ background: '#1c1e22', border: '1px solid #ffd700', borderRadius: '20px', padding: '24px', textAlign: 'center', maxWidth: '320px', width: '90%' }}>
                 <h2 style={{ color: '#ffd700', marginTop: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
                   Optional climb 🚀
-                  <HelpTip tipKey="climb" size={18} onOpenPlaybook={() => setIsWhitepaperOpen(true)} />
+                  <HelpTip tipKey="climb" size={18} onOpen={setHelpTipKey} />
                 </h2>
                 <p style={{ color: '#ddd', fontSize: '13px', lineHeight: 1.45 }}>
                   You can <strong style={{ color: '#4ade80' }}>keep mining G2Ushards</strong> at Level{' '}
@@ -8343,7 +8681,7 @@ const GiftTapGame = () => {
                       </h1>
                       <span style={{ color: '#ffd700', fontSize: '16px', fontWeight: 'bold', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                         G2Ushards
-                        <HelpTip tipKey="level_shards" size={16} onOpenPlaybook={() => setIsWhitepaperOpen(true)} />
+                        <HelpTip tipKey="level_shards" size={16} onOpen={setHelpTipKey} />
                       </span>
                     </div>
 
@@ -8368,8 +8706,8 @@ const GiftTapGame = () => {
                       padding: '4px 8px 4px 10px',
                     }}
                   >
-                    <span style={{ color: '#aaa', fontSize: 11, fontWeight: 'bold' }}>How to play</span>
-                    <HelpTip tipKey="how_to_play" size={18} onOpenPlaybook={() => setIsWhitepaperOpen(true)} />
+                    <span style={{ color: '#aaa', fontSize: 11, fontWeight: 'bold' }}>{t('how_to_play')}</span>
+                    <HelpTip tipKey="how_to_play" size={18} onOpen={setHelpTipKey} />
                   </div>
 
                   {/* Left side: Milestone + Weekly quest */}
@@ -8445,7 +8783,7 @@ const GiftTapGame = () => {
                           letterSpacing: '0.02em',
                         }}
                       >
-                        Weekly quest
+                        {t('weekly_quest')}
                       </span>
                     </button>
                   </div>
@@ -8516,7 +8854,7 @@ const GiftTapGame = () => {
                      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
                        <p style={{ ...styles.energy, margin: '0', fontSize: '12px', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: 5, justifyContent: 'center' }}>
                          ⚡ {energy} / {dynamicEnergyCap}
-                         <HelpTip tipKey="energy_daily" size={14} onOpenPlaybook={() => setIsWhitepaperOpen(true)} />
+                         <HelpTip tipKey="energy_daily" size={14} onOpen={setHelpTipKey} />
                        </p>
                      </div>
                      {/* Battery bar (500 pool) — separate from daily limit */}
@@ -8545,12 +8883,12 @@ const GiftTapGame = () => {
                           height: '100%', 
                           width: `${Math.min((dailyTaps / dynamicMaxLimit) * 100, 100)}%`, 
                           background: dailyTaps >= dynamicMaxLimit ? '#ff4d4d' : 'linear-gradient(90deg,#4ade80)',
-                          transition: 'width 0.3s ease'
+                          transition: 'width 0.05s linear'
                         }} />
                      </div>
                      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
                      <p style={{ color: '#888', fontSize: '10px', margin: '0', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: 4, justifyContent: 'center' }}>
-                       Daily Limit: {dailyTaps}/{dynamicMaxLimit}
+                       {t('daily_limit')}: {dailyTaps}/{dynamicMaxLimit}
                      </p>
                      </div>
                    </div>
@@ -8635,10 +8973,10 @@ const GiftTapGame = () => {
                     }}
                   >
                     <span style={{ fontSize: '10px', fontWeight: '900', color: '#000', lineHeight: '1.1', textTransform: 'uppercase' }}>
-                      Free
+                      {t('free')}
                     </span>
                     <span style={{ fontSize: '10px', fontWeight: '900', color: '#000', lineHeight: '1.1', textTransform: 'uppercase' }}>
-                      Energy
+                      {t('energy')}
                     </span>
                     <span style={{ fontSize: '18px', lineHeight: '1', marginTop: '2px' }}>
                       ⚡
@@ -9198,16 +9536,16 @@ const GiftTapGame = () => {
 
             {/* 3. Navigation Bar (Always at bottom) */}
             <div style={styles.nav}>
-              <button style={currentPage === 'home' ? styles.activeBtn : styles.btn} onClick={() => setCurrentPage('home')}>Home</button>
-              <button style={currentPage === 'tasks' ? styles.activeBtn : styles.btn} onClick={() => { setTasksTab('week'); setCurrentPage('tasks'); }}>Tasks</button>
+              <button style={currentPage === 'home' ? styles.activeBtn : styles.btn} onClick={() => setCurrentPage('home')}>{t('home')}</button>
+              <button style={currentPage === 'tasks' ? styles.activeBtn : styles.btn} onClick={() => { setTasksTab('week'); setCurrentPage('tasks'); }}>{t('tasks')}</button>
               <button
                 style={currentPage === 'leaderboard' ? styles.activeBtn : styles.btn}
                 onClick={openLeaderboardPage}
               >
-                Ranks
+                {t('ranks')}
               </button>
-              <button style={currentPage === 'friends' ? styles.activeBtn : styles.btn} onClick={() => setCurrentPage('friends')}>Friends</button>
-              <button style={currentPage === 'shop' ? styles.activeBtn : styles.btn} onClick={() => setCurrentPage('shop')}>Shop</button>
+              <button style={currentPage === 'friends' ? styles.activeBtn : styles.btn} onClick={() => setCurrentPage('friends')}>{t('friends')}</button>
+              <button style={currentPage === 'shop' ? styles.activeBtn : styles.btn} onClick={() => setCurrentPage('shop')}>{t('shop')}</button>
             </div>
           </div>
 
