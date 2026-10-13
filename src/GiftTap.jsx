@@ -4650,16 +4650,17 @@ const GiftTapGame = () => {
 
   const scheduleTapFlush = useCallback((delayMs) => {
     if (tapFlushTimerRef.current) clearTimeout(tapFlushTimerRef.current);
-    // Short debounce so daily/lifetime HUD stays ~1 tap → 1 count (flush on finger-up too)
+    // Walk2u pattern: HUD already counted 1:1 locally; Edge save is batched.
+    // Cap queue size so one save can drain a large burst (server max 500/call).
     const pending = pendingTapsRef.current?.count || 0;
     const delay =
       Number.isFinite(Number(delayMs)) && Number(delayMs) >= 0
         ? Number(delayMs)
-        : pending >= 40
-          ? 60
-          : pending >= 10
-            ? 90
-            : 120;
+        : pending >= 200
+          ? 2000
+          : pending >= 50
+            ? 2500
+            : 3500;
     tapFlushTimerRef.current = setTimeout(() => {
       flushPendingTaps();
     }, delay);
@@ -5059,7 +5060,7 @@ const GiftTapGame = () => {
       if (e && e.pointerId != null) {
         activeTapPointersRef.current.delete(e.pointerId);
       }
-      // All fingers up → commit now so the count does not keep catching up after you stop
+      // All fingers up → Walk2u-style save (HUD already counted; one Edge batch)
       if (activeTapPointersRef.current.size === 0) {
         if (tapFlushTimerRef.current) {
           clearTimeout(tapFlushTimerRef.current);
@@ -5472,14 +5473,19 @@ const GiftTapGame = () => {
               ? crypto.randomUUID()
               : `b_${Date.now()}_${Math.random().toString(36).slice(2)}`),
         };
-        // Empty battery → flush now so server catches up before more optimistic taps
+        // Empty battery → save now so server catches up before more optimistic taps
         if (nextEnergy < costMultiplier) {
           if (tapFlushTimerRef.current) clearTimeout(tapFlushTimerRef.current);
           tapFlushTimerRef.current = null;
           flushPendingTaps();
+        } else if (pendingTapsRef.current.count >= 500) {
+          // Soft cap: drain a full server batch without waiting the idle timer
+          if (tapFlushTimerRef.current) clearTimeout(tapFlushTimerRef.current);
+          tapFlushTimerRef.current = null;
+          flushPendingTaps();
         } else {
-          // During Frenzy flush often so ×2 credits land before the 30s window ends
-          scheduleTapFlush(frenzyOn ? 400 : undefined);
+          // Frenzy: slightly sooner save so ×2 credits land before the window ends
+          scheduleTapFlush(frenzyOn ? 1500 : undefined);
         }
       }
       // Local UI sync only under secureLock (no last_updated heartbeat — that
@@ -5953,7 +5959,13 @@ const GiftTapGame = () => {
     const channel = supabase
       .channel(channelName)
       .on('postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'players' },
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'players',
+          // Only this player — avoids broadcasting every miner UPDATE to every client
+          filter: `${DB_PLAYER_ID}=eq.${playerId}`,
+        },
         async (payload) => {
           // 1. Update your personal balance (Seamless Sync)
           if (payload.new[DB_PLAYER_ID] === playerId) {
