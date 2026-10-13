@@ -103,6 +103,7 @@ import {
   shardBadgeCatalogEntry,
 } from './shardBadge';
 import WeeklyBadgePanel from './WeeklyBadgePanel';
+import DailyBadgePanel from './DailyBadgePanel';
 import BadgeMarket from './BadgeMarket';
 import NftMarket from './NftMarket';
 import { filterAndSortNfts } from './nftMarketFilters';
@@ -3787,6 +3788,32 @@ Daily claim active · Pack → NFT to see it.`,
             {/* BADGES + MYSTERY GIFT */}
             {backpackCat === 'badges' && (
               <>
+                <DailyBadgePanel
+                  playerId={
+                    user?.id ||
+                    user?.telegram_id ||
+                    stats?.telegram_id ||
+                    stats?.player_id ||
+                    null
+                  }
+                  inventory={localInventory}
+                  onInventoryChange={(inv, playerPatch) => {
+                    setLocalInventory((prev) => addToBackpackInventory(prev, inv));
+                    if (typeof setStats === 'function') {
+                      setStats((prev) => ({
+                        ...(prev || {}),
+                        inventory: addToBackpackInventory(prev?.inventory || {}, inv),
+                        ...(playerPatch && typeof playerPatch === 'object'
+                          ? {
+                              ...(playerPatch.shard_balance != null
+                                ? { shard_balance: playerPatch.shard_balance }
+                                : {}),
+                            }
+                          : {}),
+                      }));
+                    }
+                  }}
+                />
                 <WeeklyBadgePanel
                   playerId={
                     user?.id ||

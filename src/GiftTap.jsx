@@ -227,6 +227,13 @@ import {
   WEEKLY_FLOOR_PCT,
   WEEKLY_DAILY_REFERENCE,
   isWeeklyFloorEligible,
+  getDailyBoardFloor,
+  getDailyBadgeFloor,
+  getUtcDayId,
+  filterDailyMainBoard,
+  rankOnDailyBoard,
+  badgeTierForDailyRank,
+  isDailyFloorEligible,
 } from './weeklyBadges';
 import { ensureWeeklySeasonRollover } from './weeklySeasonRollover';
 import {
@@ -795,13 +802,19 @@ const GiftTapGame = () => {
   const [weeklyBoardFloor, setWeeklyBoardFloor] = useState(() => getWeeklyBoardFloor());
   const [weeklyBoardDay, setWeeklyBoardDay] = useState(() => getUtcIsoWeekDayNumber());
   const [weeklyEligibleCount, setWeeklyEligibleCount] = useState(0);
+  /** Daily board: your rank this UTC day (daily_shards) */
+  const [dailyYouRank, setDailyYouRank] = useState(null);
+  const [dailyEligibleCount, setDailyEligibleCount] = useState(0);
+  const [dailyBoardFloor] = useState(() => getDailyBoardFloor());
   const optimisticWeekly = useRef(0);
+  const optimisticDailyShards = useRef(0);
   /** Keep ranks tab type for live weekly score patches while mining */
   const leaderboardTypeRef = useRef(leaderboardType);
   /** Per-tab board cache so Season→Weekly doesn't flash season rows / zeros */
   const leaderboardCacheRef = useRef({
     Season: null,
     Weekly: null,
+    Daily: null,
     all_time: null,
   });
   const lbFetchSeqRef = useRef(0);
@@ -1724,6 +1737,8 @@ const GiftTapGame = () => {
       setWeeklyBoardFloor(floor);
       setSeasonYouRank(null);
       setSeasonEligibleCount(0);
+      setDailyYouRank(null);
+      setDailyEligibleCount(0);
 
       try {
         try {
@@ -1877,6 +1892,158 @@ const GiftTapGame = () => {
       return;
     }
 
+    // --- DAILY: players.daily_shards for today's UTC day ---
+    if (targetType === 'Daily') {
+      const dayId = getUtcDayId();
+      const liveD = Number(optimisticDailyShards.current) || 0;
+      const floor = getDailyBoardFloor();
+      setSeasonYouRank(null);
+      setSeasonEligibleCount(0);
+      setWeeklyYouRank(null);
+      setWeeklyEligibleCount(0);
+
+      try {
+        try {
+          await flushPendingTaps();
+        } catch {
+          /* ignore */
+        }
+        try {
+          await supabase.rpc('ensure_daily_leaderboard_rollover');
+        } catch {
+          /* ignore */
+        }
+
+        const { data, error } = await supabase
+          .from('players')
+          .select(
+            'telegram_id, username, daily_shards, last_tap_date, lifetime_taps, max_unlocked_level, is_banned',
+          )
+          .eq('last_tap_date', dayId)
+          .gt('daily_shards', 0)
+          .order('daily_shards', { ascending: false })
+          .limit(500);
+        if (error) console.warn('Daily board:', error.message || error);
+        if (!stillThisTab()) return;
+
+        let rows = (data || [])
+          .filter((r) => r.is_banned !== true)
+          .map((r) => {
+            const id = String(r.telegram_id || '').trim();
+            const score = Math.max(0, Number(r.daily_shards) || 0);
+            const ltt = Number(r.lifetime_taps) || 0;
+            const mul = migrateMaxUnlockedLevel(r.max_unlocked_level ?? 4);
+            return {
+              telegram_id: id,
+              [DB_PLAYER_ID]: id,
+              username: r.username || 'Player',
+              daily_shards: score,
+              daily_score: score,
+              score,
+              day_id: dayId,
+              lifetime_taps: ltt,
+              max_unlocked_level: mul,
+              level: effectiveLevel(ltt, mul),
+            };
+          })
+          .filter((r) => r.telegram_id && r.daily_score > 0);
+
+        if (playerId && liveD > 0) {
+          const ix = rows.findIndex(
+            (r) =>
+              String(r[DB_PLAYER_ID] || r.telegram_id || '') === String(playerId),
+          );
+          if (ix >= 0) {
+            const best = Math.max(liveD, Number(rows[ix].daily_score) || 0);
+            rows[ix] = {
+              ...rows[ix],
+              daily_score: best,
+              score: best,
+              daily_shards: best,
+              lifetime_taps:
+                Number(rows[ix].lifetime_taps) || Number(lifetimeTaps) || 0,
+              max_unlocked_level:
+                rows[ix].max_unlocked_level ?? maxUnlockedLevel,
+              level: currentLevel,
+            };
+          } else {
+            rows = [
+              {
+                [DB_PLAYER_ID]: playerId,
+                telegram_id: playerId,
+                username: player?.username || 'You',
+                daily_score: liveD,
+                daily_shards: liveD,
+                score: liveD,
+                day_id: dayId,
+                lifetime_taps: Number(lifetimeTaps) || 0,
+                max_unlocked_level: maxUnlockedLevel,
+                level: currentLevel,
+              },
+              ...rows,
+            ];
+          }
+          rows.sort(
+            (a, b) =>
+              (Number(b.daily_score) || 0) - (Number(a.daily_score) || 0),
+          );
+        }
+
+        const eligibleAll = rows.filter((r) =>
+          isDailyFloorEligible(r.daily_score ?? r.score ?? 0, floor),
+        );
+        const eligibleCount = eligibleAll.length;
+        const mainRows = filterDailyMainBoard(rows, floor, 100);
+        let you = null;
+        const me = rankOnDailyBoard(rows, playerId, DB_PLAYER_ID, floor);
+        if (me && playerId) {
+          const inList = mainRows.some(
+            (r) =>
+              String(r[DB_PLAYER_ID] || r.telegram_id || '') === String(playerId),
+          );
+          let tier = me.tier;
+          if (me.onMain && !tier && me.rank) {
+            tier = badgeTierForDailyRank(me.rank, eligibleCount) || 'bronze';
+          }
+          you = {
+            ...me,
+            tier,
+            total: eligibleCount,
+            score: Math.max(liveD, Number(me.score) || 0),
+            inList,
+          };
+        } else if (playerId) {
+          const onMain = isDailyFloorEligible(liveD, floor);
+          you = {
+            rank: null,
+            score: liveD,
+            total: eligibleCount,
+            tier: onMain ? 'bronze' : null,
+            onMain,
+            floor,
+            need: onMain ? 0 : Math.max(0, floor - liveD),
+            inList: false,
+          };
+        }
+
+        setLeaderboard(mainRows);
+        setDailyEligibleCount(eligibleCount);
+        setDailyYouRank(you);
+        leaderboardCacheRef.current.Daily = {
+          rows: mainRows,
+          you,
+          eligible: eligibleCount,
+          floor,
+          dayId,
+        };
+      } catch (e) {
+        console.warn('daily board', e?.message || e);
+      } finally {
+        if (stillThisTab()) setLeaderboardLoading(false);
+      }
+      return;
+    }
+
     try {
       if (isAllTime) {
         const { data, error } = await supabase
@@ -1906,6 +2073,8 @@ const GiftTapGame = () => {
         setSeasonYouRank(null);
         setSeasonEligibleCount(0);
         setWeeklyYouRank(null);
+        setDailyYouRank(null);
+        setDailyEligibleCount(0);
         return;
       }
 
@@ -2028,15 +2197,23 @@ const GiftTapGame = () => {
         if (cached.floor != null) setWeeklyBoardFloor(cached.floor);
         if (cached.day != null) setWeeklyBoardDay(cached.day);
         setSeasonYouRank(null);
+        setDailyYouRank(null);
+      } else if (cacheKey === 'Daily') {
+        setDailyYouRank(cached.you || null);
+        setDailyEligibleCount(cached.eligible || 0);
+        setSeasonYouRank(null);
+        setWeeklyYouRank(null);
       } else if (cacheKey === 'Season') {
         setSeasonYouRank(cached.you || null);
         setSeasonEligibleCount(cached.eligible || 0);
         if (cached.floor != null) setSeasonBoardFloor(cached.floor);
         if (cached.day != null) setSeasonBoardDay(cached.day);
         setWeeklyYouRank(null);
+        setDailyYouRank(null);
       } else {
         setSeasonYouRank(null);
         setWeeklyYouRank(null);
+        setDailyYouRank(null);
       }
       fetchFullLeaderboard(type, { silent: true });
     } else {
@@ -2044,21 +2221,33 @@ const GiftTapGame = () => {
       setLeaderboard([]);
       if (cacheKey === 'Weekly') {
         setSeasonYouRank(null);
+        setDailyYouRank(null);
+      } else if (cacheKey === 'Daily') {
+        setSeasonYouRank(null);
+        setWeeklyYouRank(null);
       } else if (cacheKey === 'Season') {
         setWeeklyYouRank(null);
+        setDailyYouRank(null);
       } else {
         setSeasonYouRank(null);
         setWeeklyYouRank(null);
+        setDailyYouRank(null);
       }
       fetchFullLeaderboard(type);
     }
   };
 
-  // Live pull other miners while Weekly ranks is open (less often = less CPU)
+  // Live pull other miners while Weekly / Daily ranks is open (less often = less CPU)
   useEffect(() => {
-    if (currentPage !== 'leaderboard' || leaderboardType !== 'Weekly') return undefined;
+    if (
+      currentPage !== 'leaderboard' ||
+      (leaderboardType !== 'Weekly' && leaderboardType !== 'Daily')
+    ) {
+      return undefined;
+    }
+    const tab = leaderboardType;
     const id = setInterval(() => {
-      fetchFullLeaderboard('Weekly', { silent: true });
+      fetchFullLeaderboard(tab, { silent: true });
     }, 40000);
     return () => clearInterval(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -2443,6 +2632,28 @@ const GiftTapGame = () => {
           }
           optimisticWeekly.current = wScore;
           inv.weekly_lb = { weekId: weekIdNow, score: wScore };
+          // Seed daily board score for Ranks → Daily
+          {
+            const todayD = utcTodayStr();
+            const ltdD = String(playerRow.last_tap_date || '').slice(0, 10);
+            const dScore =
+              ltdD === todayD
+                ? Math.max(0, Number(playerRow.daily_shards) || 0)
+                : 0;
+            optimisticDailyShards.current = dScore;
+            const flD = getDailyBoardFloor();
+            setDailyYouRank((prev) => ({
+              ...(prev && typeof prev === 'object' ? prev : {}),
+              score: dScore,
+              onMain: isDailyFloorEligible(dScore, flD),
+              floor: flD,
+              need: Math.max(0, flD - dScore),
+              rank: prev?.rank ?? null,
+              tier: prev?.tier ?? null,
+              inList: !!prev?.inList,
+              total: prev?.total ?? 0,
+            }));
+          }
           // Seed you weekly row so Ranks shows score before first re-fetch
           {
             const fl = getWeeklyBoardFloor();
@@ -5412,6 +5623,17 @@ const GiftTapGame = () => {
         optimisticWeekly.current = wScore;
         // Live Ranks -> Weekly you score (ref alone never re-renders)
         bumpWeeklyLiveUi(wScore);
+      }
+      // Daily board optimistic (same payout-weighted units as weekly)
+      {
+        const dId = getUtcDayId();
+        if (lastTapDateRef.current && lastTapDateRef.current !== dId) {
+          optimisticDailyShards.current = 0;
+        }
+        optimisticDailyShards.current =
+          Math.round(
+            ((Number(optimisticDailyShards.current) || 0) + scoreCredit) * 1000,
+          ) / 1000;
       }
       // Regen continues on the 1.5s clock even while tapping (preserve residual ms)
       {
@@ -9110,23 +9332,23 @@ const GiftTapGame = () => {
                   🏆 Leaderboard
                 </h2>
                 <p style={{ color: '#666', textAlign: 'center', fontSize: '11px', margin: '0 0 14px', lineHeight: 1.35 }}>
-                  Season · Weekly · All-time · details in Menu → Game Guide
+                  Season · Weekly · Daily · All-time · details in Menu → Game Guide
                 </p>
 
-                {/* Season | Weekly | All-time — always land on Season when opening Ranks from nav */}
-                <div style={{ display: 'flex', gap: '10px', marginBottom: '14px' }}>
+                {/* Season | Weekly | Daily | All-time — always land on Season when opening Ranks from nav */}
+                <div style={{ display: 'flex', gap: '6px', marginBottom: '14px' }}>
                   <button
                     type="button"
                     onClick={() => switchLeaderboardTab('Season')}
                     style={{
                       flex: 1,
-                      padding: '12px 8px',
+                      padding: '12px 4px',
                       borderRadius: '12px',
                       border: leaderboardType === 'Season' ? '2px solid #ffd700' : '1px solid #333',
                       background: leaderboardType === 'Season' ? 'rgba(255, 215, 0, 0.15)' : '#1c1e22',
                       color: leaderboardType === 'Season' ? '#ffd700' : '#888',
                       fontWeight: 'bold',
-                      fontSize: '14px',
+                      fontSize: '12px',
                       cursor: 'pointer',
                       outline: 'none',
                       WebkitTapHighlightColor: 'transparent',
@@ -9134,7 +9356,7 @@ const GiftTapGame = () => {
                   >
                     Season
                     {seasonData.name ? (
-                      <div style={{ fontSize: '10px', fontWeight: 'normal', color: '#4ade80', marginTop: '4px' }}>
+                      <div style={{ fontSize: '9px', fontWeight: 'normal', color: '#4ade80', marginTop: '4px' }}>
                         {seasonData.name}
                       </div>
                     ) : null}
@@ -9144,13 +9366,13 @@ const GiftTapGame = () => {
                     onClick={() => switchLeaderboardTab('Weekly')}
                     style={{
                       flex: 1,
-                      padding: '12px 8px',
+                      padding: '12px 4px',
                       borderRadius: '12px',
                       border: leaderboardType === 'Weekly' ? '2px solid #67e8f9' : '1px solid #333',
                       background: leaderboardType === 'Weekly' ? 'rgba(103, 232, 249, 0.12)' : '#1c1e22',
                       color: leaderboardType === 'Weekly' ? '#67e8f9' : '#888',
                       fontWeight: 'bold',
-                      fontSize: '13px',
+                      fontSize: '12px',
                       cursor: 'pointer',
                       outline: 'none',
                       WebkitTapHighlightColor: 'transparent',
@@ -9160,16 +9382,35 @@ const GiftTapGame = () => {
                   </button>
                   <button
                     type="button"
+                    onClick={() => switchLeaderboardTab('Daily')}
+                    style={{
+                      flex: 1,
+                      padding: '12px 4px',
+                      borderRadius: '12px',
+                      border: leaderboardType === 'Daily' ? '2px solid #c084fc' : '1px solid #333',
+                      background: leaderboardType === 'Daily' ? 'rgba(192, 132, 252, 0.14)' : '#1c1e22',
+                      color: leaderboardType === 'Daily' ? '#c084fc' : '#888',
+                      fontWeight: 'bold',
+                      fontSize: '12px',
+                      cursor: 'pointer',
+                      outline: 'none',
+                      WebkitTapHighlightColor: 'transparent',
+                    }}
+                  >
+                    Daily
+                  </button>
+                  <button
+                    type="button"
                     onClick={() => switchLeaderboardTab('all_time')}
                     style={{
                       flex: 1,
-                      padding: '12px 8px',
+                      padding: '12px 4px',
                       borderRadius: '12px',
                       border: leaderboardType === 'all_time' ? '2px solid #ffd700' : '1px solid #333',
                       background: leaderboardType === 'all_time' ? 'rgba(255, 215, 0, 0.15)' : '#1c1e22',
                       color: leaderboardType === 'all_time' ? '#ffd700' : '#888',
                       fontWeight: 'bold',
-                      fontSize: '14px',
+                      fontSize: '12px',
                       cursor: 'pointer',
                       outline: 'none',
                       WebkitTapHighlightColor: 'transparent',
@@ -9177,7 +9418,7 @@ const GiftTapGame = () => {
                   >
                     All-time
                     {topLeader?.name ? (
-                      <div style={{ fontSize: '10px', fontWeight: 'normal', color: '#528db0', marginTop: '4px' }}>
+                      <div style={{ fontSize: '9px', fontWeight: 'normal', color: '#528db0', marginTop: '4px' }}>
                         #1 {topLeader.name}
                       </div>
                     ) : null}
@@ -9262,13 +9503,74 @@ const GiftTapGame = () => {
                   </div>
                 ) : null}
 
+                {leaderboardType === 'Daily' ? (
+                  <div style={{ marginBottom: 12 }}>
+                    <div style={{ textAlign: 'center', color: '#888', fontSize: 11, marginBottom: 6, lineHeight: 1.4 }}>
+                      UTC {getUtcDayId()} · Main board ≥{' '}
+                      <span style={{ color: '#c084fc', fontWeight: 'bold' }}>
+                        {Number(dailyBoardFloor).toLocaleString()}
+                      </span>
+                      {' '}(20% × 1,000)
+                      {dailyEligibleCount > 0 ? (
+                        <span style={{ color: '#4ade80' }}> · {dailyEligibleCount} eligible</span>
+                      ) : null}
+                    </div>
+                    <div style={{ textAlign: 'center', color: '#666', fontSize: 10, marginBottom: 8, lineHeight: 1.35 }}>
+                      Same badge % as Weekly · claim yesterday in Shop → Pack → Badges · score = weighted mining today
+                    </div>
+                    <div
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'center',
+                        gap: 10,
+                        flexWrap: 'wrap',
+                      }}
+                    >
+                      {[
+                        ['diamond', 'top 5%'],
+                        ['gold', 'next 10%'],
+                        ['silver', 'next 15%'],
+                        ['bronze', 'rest'],
+                      ].map(([tier, rankLabel]) => {
+                        const m = BADGE_TIERS[tier];
+                        return (
+                          <div
+                            key={tier}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: 6,
+                              background: '#1c1e22',
+                              border: `1px solid ${m.color}55`,
+                              borderRadius: 10,
+                              padding: '4px 8px',
+                            }}
+                          >
+                            <img
+                              src={m.image}
+                              alt={m.name}
+                              width={28}
+                              height={28}
+                              style={{ width: 28, height: 28, objectFit: 'contain' }}
+                            />
+                            <span style={{ color: m.color, fontSize: 10, fontWeight: 'bold' }}>
+                              {rankLabel}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ) : null}
+
                 <div style={{ background: '#1c1e22', borderRadius: '16px', border: '1px solid #333', overflow: 'hidden' }}>
                   {leaderboardLoading &&
                   leaderboard.length === 0 &&
                   !(leaderboardType === 'Season' && seasonYouRank && playerId) &&
-                  !(leaderboardType === 'Weekly' && weeklyYouRank && playerId) ? (
+                  !(leaderboardType === 'Weekly' && weeklyYouRank && playerId) &&
+                  !(leaderboardType === 'Daily' && dailyYouRank && playerId) ? (
                     <p style={{ color: '#888', textAlign: 'center', padding: '28px' }}>Loading ranks…</p>
-                  ) : leaderboard.length === 0 && !(leaderboardType === 'Season' && seasonYouRank && playerId) && !(leaderboardType === 'Weekly' && weeklyYouRank && playerId) ? (
+                  ) : leaderboard.length === 0 && !(leaderboardType === 'Season' && seasonYouRank && playerId) && !(leaderboardType === 'Weekly' && weeklyYouRank && playerId) && !(leaderboardType === 'Daily' && dailyYouRank && playerId) ? (
                     <p style={{ color: '#888', textAlign: 'center', padding: '28px' }}>
                       No players on the main board yet. Keep mining!
                     </p>
@@ -9282,6 +9584,11 @@ const GiftTapGame = () => {
                     {leaderboard.length === 0 && leaderboardType === 'Weekly' ? (
                       <p style={{ color: '#666', textAlign: 'center', padding: '16px 14px 8px', fontSize: 12, margin: 0 }}>
                         No one has reached the weekly main-board floor yet ({Number(weeklyBoardFloor).toLocaleString()}).
+                      </p>
+                    ) : null}
+                    {leaderboard.length === 0 && leaderboardType === 'Daily' ? (
+                      <p style={{ color: '#666', textAlign: 'center', padding: '16px 14px 8px', fontSize: 12, margin: 0 }}>
+                        No one has reached the daily main-board floor yet ({Number(dailyBoardFloor).toLocaleString()}).
                       </p>
                     ) : null}
                     <div
@@ -9300,7 +9607,7 @@ const GiftTapGame = () => {
                       <span style={{ flex: 1 }}>Name</span>
                       <span style={{ width: 36, textAlign: 'right' }}>Lvl</span>
                       <span style={{ width: 72, textAlign: 'right' }}>
-                        {leaderboardType === 'Weekly'
+                        {leaderboardType === 'Weekly' || leaderboardType === 'Daily'
                           ? 'Score'
                           : leaderboardType === 'all_time'
                             ? 'Taps'
@@ -9309,6 +9616,7 @@ const GiftTapGame = () => {
                     </div>
                     {(leaderboardType === 'Season' ||
                       leaderboardType === 'Weekly' ||
+                      leaderboardType === 'Daily' ||
                       leaderboardType === 'all_time') && (
                       <p
                         style={{
@@ -9328,6 +9636,8 @@ const GiftTapGame = () => {
                         ? (row.lifetime_taps ?? row.score ?? 0)
                         : leaderboardType === 'Weekly'
                           ? (row.weekly_score ?? row.score ?? 0)
+                          : leaderboardType === 'Daily'
+                            ? (row.daily_score ?? row.score ?? 0)
                           : (row.score ?? row.season_shards ?? row.lifetime_taps ?? 0);
                       const isYou = playerId && String(row[DB_PLAYER_ID] || row.telegram_id || row.id || '') === String(playerId);
                       const rowLevel = (() => {
@@ -9347,6 +9657,11 @@ const GiftTapGame = () => {
                               weeklyEligibleCount || leaderboard.length,
                               getUtcWeekId(),
                             )
+                          : leaderboardType === 'Daily'
+                            ? badgeTierForDailyRank(
+                                index + 1,
+                                dailyEligibleCount || leaderboard.length,
+                              )
                           : null;
                       const weeklyBadge = weeklyTier ? BADGE_TIERS[weeklyTier] : null;
                       return (
@@ -9392,7 +9707,11 @@ const GiftTapGame = () => {
                               <img
                                 src={weeklyBadge.image}
                                 alt={weeklyBadge.name}
-                                title={`${weeklyBadge.name} if week ends here`}
+                                title={
+                                  leaderboardType === 'Daily'
+                                    ? `${weeklyBadge.name} if day ends here`
+                                    : `${weeklyBadge.name} if week ends here`
+                                }
                                 width={28}
                                 height={28}
                                 style={{
@@ -9491,6 +9810,88 @@ const GiftTapGame = () => {
                           ) : null}
                           <span style={{ color: '#67e8f9', fontSize: '13px', fontWeight: 'bold' }}>
                             {Number(weeklyYouRank.score || 0).toLocaleString()}
+                          </span>
+                        </span>
+                      </div>
+                    ) : null}
+                    {leaderboardType === 'Daily' && dailyYouRank && playerId && !dailyYouRank.inList ? (
+                      <div
+                        style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          padding: '12px 14px',
+                          borderTop: '2px solid #c084fc',
+                          background: 'rgba(192, 132, 252, 0.1)',
+                          gap: 8,
+                        }}
+                      >
+                        <span style={{ color: '#c084fc', fontSize: '13px', fontWeight: 'bold', flex: 1, minWidth: 0 }}>
+                          <span style={{ color: '#888', marginRight: 8, minWidth: 28, display: 'inline-block' }}>
+                            {dailyYouRank.rank ? `#${dailyYouRank.rank}` : '—'}
+                          </span>
+                          {(player?.username || 'You')} (you)
+                          {!dailyYouRank.onMain ? (
+                            <span
+                              style={{
+                                display: 'block',
+                                color: '#888',
+                                fontSize: 10,
+                                fontWeight: 'normal',
+                                marginTop: 4,
+                                marginLeft: 36,
+                              }}
+                            >
+                              Off main board · need {Number(dailyYouRank.need || 0).toLocaleString()} more for floor ({Number(dailyBoardFloor).toLocaleString()})
+                            </span>
+                          ) : (
+                            <span
+                              style={{
+                                display: 'block',
+                                color: '#888',
+                                fontSize: 10,
+                                fontWeight: 'normal',
+                                marginTop: 4,
+                                marginLeft: 36,
+                              }}
+                            >
+                              On main board · outside top shown
+                              {dailyYouRank.tier
+                                ? ` · ${BADGE_TIERS[dailyYouRank.tier]?.name || dailyYouRank.tier}`
+                                : ''}
+                            </span>
+                          )}
+                        </span>
+                        <span
+                          style={{
+                            width: 36,
+                            textAlign: 'right',
+                            color: currentLevel >= 5 ? '#4ade80' : '#ffd700',
+                            fontSize: 13,
+                            fontWeight: 'bold',
+                            flexShrink: 0,
+                          }}
+                        >
+                          {currentLevel}
+                        </span>
+                        <span style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0, minWidth: 72, justifyContent: 'flex-end' }}>
+                          {dailyYouRank.tier && BADGE_TIERS[dailyYouRank.tier]?.image ? (
+                            <img
+                              src={BADGE_TIERS[dailyYouRank.tier].image}
+                              alt={BADGE_TIERS[dailyYouRank.tier].name}
+                              width={28}
+                              height={28}
+                              style={{
+                                width: 28,
+                                height: 28,
+                                objectFit: 'contain',
+                                borderRadius: 6,
+                                background: '#000',
+                              }}
+                            />
+                          ) : null}
+                          <span style={{ color: '#c084fc', fontSize: '13px', fontWeight: 'bold' }}>
+                            {Number(dailyYouRank.score || 0).toLocaleString()}
                           </span>
                         </span>
                       </div>

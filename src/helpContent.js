@@ -136,13 +136,14 @@ export const HELP_TIPS = {
       'Premium boosts are bought with $G2U. Free shop sells badges for G2Ushards (Bronze 10k · Silver 30k · Gold 50k · Diamond 75k). Free Energy capacity comes from ads on the tap screen.',
   },
   weekly_badges: {
-    title: 'Weekly badges',
+    title: 'Weekly & Daily badges',
     body:
       'Ranks → Weekly uses the same 20% activity idea as Season.\n\n' +
       'Main board floor = 20% × 1,000 × day of the UTC week (day 1 Mon = 200 … day 7 = 1,400).\n\n' +
       'At week end, players with ≥ 1,400 weekly score are badge-eligible.\n\n' +
+      'Ranks → Daily: same score units (weighted mining). Floor = 200 all day. At UTC midnight, eligible players get the same badge cuts as Weekly (5% Diamond · 10% Gold · 15% Silver · rest Bronze).\n\n' +
       'Every eligible player wins a badge. Small board (≤4): #1 Diamond · #2 Gold · #3 Silver · #4 Bronze. From 2026-W36: top 5% Diamond, next 10% Gold, next 15% Silver, rest Bronze (W35 used 10% / 15% / 25%).\n\n' +
-      'Claim finished-week badges in Shop → Pack → Badges. Burn badges there for Mystery Gift.\n\n' +
+      'Claim finished-week and finished-day badges in Shop → Pack → Badges. Burn badges there for Mystery Gift.\n\n' +
       'In-game Badge market: sell badges from your backpack for SOL now (G2U token after launch — not G2Ushards). Listing escrows the badge. 5% fee to treasury (seller receives 95%). No external marketplaces.\n\n' +
       'Owned GiftLocksmith NFTs: Shop → NFTs or Pack → NFT → NFT market. List for SOL, buyer pays 95% to you + 5% treasury, then you tap Send NFT to transfer on-chain.\n\n' +
       'Full rules: Menu → Game Guide → Leaderboards.',

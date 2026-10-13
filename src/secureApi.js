@@ -284,6 +284,17 @@ export async function secureGrantWeeklyBadges(weekId) {
   });
 }
 
+/** Secure daily badge claim (requires JWT). day_id = YYYY-MM-DD (default yesterday). */
+export async function secureBadgeClaimDaily(dayId) {
+  const body = dayId ? { day_id: dayId } : {};
+  return callSecureFunction('badge-claim-daily', body);
+}
+
+/** Live daily board (read-only Edge). */
+export async function fetchDailyBoard(limit = 200) {
+  return callSecureFunction('daily-board', { limit });
+}
+
 /** Server-authoritative mining credit (requires JWT). */
 export async function secureCommitTaps({ batchId, taps, frenzyTaps = 0 }) {
   return callSecureFunction('commit-taps', {

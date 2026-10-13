@@ -784,3 +784,124 @@ export function getActiveFateId(inv) {
   const id = inv?.fate_active;
   return id ? String(id) : null;
 }
+
+/* ---------------------------------------------------------------------------
+ * Daily leaderboard badges (same W36+ % cuts as weekly; floor = 200)
+ * Score = players.daily_shards / daily_score_ledger for UTC day YYYY-MM-DD
+ * --------------------------------------------------------------------------- */
+
+export const DAILY_BADGE_FLOOR = 200; // 20% × 1000 × 1 day
+export const DAILY_BADGE_CUTS = WEEKLY_BADGE_CUTS_W36;
+
+export function getDailyBadgeFloor() {
+  return DAILY_BADGE_FLOOR;
+}
+
+export function getDailyBoardFloor() {
+  return DAILY_BADGE_FLOOR;
+}
+
+/** UTC calendar day YYYY-MM-DD */
+export function getUtcDayId(date = new Date()) {
+  const y = date.getUTCFullYear();
+  const m = String(date.getUTCMonth() + 1).padStart(2, '0');
+  const d = String(date.getUTCDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+export function getPreviousUtcDayId(date = new Date()) {
+  const x = new Date(date.getTime());
+  x.setUTCDate(x.getUTCDate() - 1);
+  return getUtcDayId(x);
+}
+
+export function isUtcDayClosed(dayId, now = new Date()) {
+  const id = String(dayId || '');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(id)) return false;
+  return id < getUtcDayId(now);
+}
+
+/** Same tier math as weekly W36+ (always tight cuts). */
+export function badgeTierForDailyRank(rank, totalEligible) {
+  return badgeTierForWeeklyRank(rank, totalEligible, WEEKLY_TIGHTER_BADGE_CUTS_FROM_WEEK);
+}
+
+export function isDailyFloorEligible(score, floor = DAILY_BADGE_FLOOR) {
+  return isWeeklyFloorEligible(score, floor);
+}
+
+export function filterDailyMainBoard(rows, floor = DAILY_BADGE_FLOOR, limit = 100) {
+  const f = Math.max(0, Number(floor) || 0);
+  return (rows || [])
+    .filter((r) => isDailyFloorEligible(r.daily_score ?? r.score ?? 0, f))
+    .sort(
+      (a, b) =>
+        (Number(b.daily_score ?? b.score) || 0) -
+        (Number(a.daily_score ?? a.score) || 0),
+    )
+    .slice(0, limit);
+}
+
+export function rankOnDailyBoard(sortedRows, playerId, dbPlayerIdCol = 'telegram_id', floor = DAILY_BADGE_FLOOR) {
+  if (!playerId) return null;
+  const pid = String(playerId);
+  const all = sortedRows || [];
+  const f = floor != null ? Math.max(0, Number(floor) || 0) : null;
+  const main =
+    f != null && f > 0
+      ? all.filter((r) => isDailyFloorEligible(r.daily_score ?? r.score ?? 0, f))
+      : all;
+  const inMain = main.findIndex(
+    (r) => String(r[dbPlayerIdCol] || r.telegram_id || r.id || '') === pid,
+  );
+  if (inMain >= 0) {
+    return {
+      rank: inMain + 1,
+      score: main[inMain].daily_score ?? main[inMain].score ?? 0,
+      total: main.length,
+      tier: badgeTierForDailyRank(inMain + 1, main.length),
+      onMain: true,
+      floor: f,
+      need: 0,
+    };
+  }
+  const any = all.find(
+    (r) => String(r[dbPlayerIdCol] || r.telegram_id || r.id || '') === pid,
+  );
+  if (!any && f == null) return null;
+  const score = any ? Number(any.daily_score ?? any.score) || 0 : 0;
+  return {
+    rank: null,
+    score,
+    total: main.length,
+    tier: null,
+    onMain: false,
+    floor: f,
+    need: f != null ? Math.max(0, f - score) : 0,
+  };
+}
+
+export function getDailyBadgeAward(inv, dayId) {
+  const raw = inv?.daily_badge_award;
+  if (!raw || typeof raw !== 'object') return null;
+  if (raw.dayId === dayId && raw.tier) return raw;
+  if (raw[dayId] && raw[dayId].tier) return raw[dayId];
+  if (Array.isArray(raw.history)) {
+    const hit = raw.history.find((h) => h && h.dayId === dayId && h.tier);
+    if (hit) return hit;
+  }
+  return null;
+}
+
+export function hasClaimedDailyBadge(inv, dayId) {
+  if (!dayId) return false;
+  const a = getDailyBadgeAward(inv, dayId);
+  return !!(a && a.tier);
+}
+
+export function hasClaimedDailyBadgeDurable(inv, dayId = getPreviousUtcDayId()) {
+  if (hasClaimedDailyBadge(inv, dayId)) return true;
+  const key = claimKey({ scope: 'daily_badge', id: 'award', periodKey: dayId });
+  const log = inv?.claim_log;
+  return Array.isArray(log) && log.includes(key);
+}

@@ -564,6 +564,19 @@ serve(async (req) => {
         console.warn("upsert_weekly_score_ledger", e);
       }
     }
+    // Daily board ledger (survives UTC day-roll zeroing of players.daily_shards)
+    if (nextDailyShards > 0.0005) {
+      try {
+        await sb.rpc("upsert_daily_score_ledger", {
+          p_day_id: today,
+          p_telegram_id: playerId,
+          p_username: boardUsername,
+          p_score: nextDailyShards,
+        });
+      } catch (e) {
+        console.warn("upsert_daily_score_ledger", e);
+      }
+    }
     // Season board reads players.season_shards (leaderboard_season view).
     // Do NOT upsert season_score_ledger — GREATEST ledger blocked month-end resets.
     if (nextLife > prevLifeBoard + 0.0005) {
