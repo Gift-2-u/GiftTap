@@ -6,7 +6,7 @@ import AppNotice from './AppNotice';
 import { IDEAS_EMAIL, openIdeasEmail, copyIdeasEmail } from './contactIdeas';
 import WeeklyQuests from './WeeklyQuests';
 import { hasSecureSession, secureTaskClaim } from './secureApi';
-import { SOCIAL_LINKS, SOCIAL_SURPRISE_EVENT } from './socialLinks';
+import { SOCIAL_LINKS, SOCIAL_SURPRISE_EVENT, openSocial } from './socialLinks';
 
 const DISCORD_URL =
   SOCIAL_LINKS.find((s) => s.id === 'discord')?.href ||
@@ -313,7 +313,7 @@ const Tasks = ({
 
   const handleGo = (task) => {
     if (task.type === 'social') {
-      window.open(task.link, '_blank', 'noopener,noreferrer');
+      openSocial(task.link);
       setReadyToClaim((prev) => [...prev, task.id]);
     }
   };
@@ -661,13 +661,16 @@ const Tasks = ({
         )}
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
           {SOCIAL_LINKS.map((s) => (
-            <a
+            <button
               key={s.id}
-              href={s.href}
-              target="_blank"
-              rel="noopener noreferrer"
+              type="button"
               title={s.label}
               aria-label={s.label}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                openSocial(s.href);
+              }}
               style={{
                 display: 'inline-flex',
                 alignItems: 'center',
@@ -678,7 +681,9 @@ const Tasks = ({
                 border: '1px solid rgba(255,255,255,0.15)',
                 background: 'rgba(255,255,255,0.06)',
                 color: s.color || '#fff',
-                textDecoration: 'none',
+                cursor: 'pointer',
+                padding: 0,
+                WebkitTapHighlightColor: 'transparent',
               }}
             >
               <span
@@ -692,7 +697,7 @@ const Tasks = ({
                   mask: `url(${s.icon}) center / contain no-repeat`,
                 }}
               />
-            </a>
+            </button>
           ))}
         </div>
       </div>

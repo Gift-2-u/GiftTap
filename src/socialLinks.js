@@ -44,7 +44,69 @@ export const SOCIAL_LINKS = [
   },
 ];
 
+/**
+ * Open an external social URL.
+ * Seeker / Android WebView blocks window.open + target=_blank — use OPEN_URL bridge
+ * (same as mailto in contactIdeas.js → native Linking.openURL).
+ */
 export function openSocial(href) {
-  if (!href) return;
-  window.open(href, '_blank', 'noopener,noreferrer');
+  const url = String(href || '').trim();
+  if (!url) return false;
+
+  // Native Gift2U / Seeker shell
+  try {
+    const bridge =
+      typeof window !== 'undefined' ? window.ReactNativeWebView : null;
+    if (bridge && typeof bridge.postMessage === 'function') {
+      bridge.postMessage(JSON.stringify({ type: 'OPEN_URL', url }));
+      return true;
+    }
+  } catch {
+    /* fall through */
+  }
+
+  // Telegram Mini App (if ever embedded)
+  try {
+    if (window.Telegram?.WebApp?.openLink) {
+      window.Telegram.WebApp.openLink(url);
+      return true;
+    }
+  } catch {
+    /* fall through */
+  }
+
+  // Browser: try window.open, then <a> click
+  try {
+    const win = window.open(url, '_blank', 'noopener,noreferrer');
+    if (win) return true;
+  } catch {
+    /* fall through */
+  }
+
+  try {
+    const a = document.createElement('a');
+    a.href = url;
+    a.target = '_blank';
+    a.rel = 'noopener noreferrer';
+    a.style.display = 'none';
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => {
+      try {
+        document.body.removeChild(a);
+      } catch {
+        /* ignore */
+      }
+    }, 0);
+    return true;
+  } catch {
+    /* fall through */
+  }
+
+  try {
+    window.location.assign(url);
+    return true;
+  } catch {
+    return false;
+  }
 }
