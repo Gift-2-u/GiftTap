@@ -493,6 +493,13 @@ serve(async (req) => {
         last_updated: nowIso,
       };
       if (isNewUtcDay) {
+        // Finalize yesterday from players.daily_shards BEFORE this login zeros them.
+        // No daily_score_ledger — same rule as season (no GREATEST parallel ledger).
+        try {
+          await supabase.rpc("ensure_daily_leaderboard_rollover");
+        } catch (e) {
+          console.warn("ensure_daily_leaderboard_rollover", e);
+        }
         // Credit yesterday's taps into weekly quests BEFORE zeroing the bar
         const creditDay = prevTapDay || prevUpdatedDay;
         const creditTaps = Number(player.daily_taps) || 0;

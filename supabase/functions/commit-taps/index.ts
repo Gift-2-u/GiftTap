@@ -255,10 +255,16 @@ serve(async (req) => {
     // Only reset on a confirmed previous play day.
     // Missing last_tap_date + same-day last_updated must KEEP daily_taps
     // (otherwise a full bar freezes at 0 and players get another 1000).
-    if (prevLtd && prevLtd !== today) {
-      dailyTaps = 0;
-      dailyShards = 0;
-    } else if (!prevLtd && lastUpdatedDay && lastUpdatedDay !== today) {
+    // Finalize yesterday from players.daily_shards BEFORE zeroing (no score ledger).
+    const needsDayRoll =
+      !!(prevLtd && prevLtd !== today) ||
+      !!(!prevLtd && lastUpdatedDay && lastUpdatedDay !== today);
+    if (needsDayRoll) {
+      try {
+        await sb.rpc("ensure_daily_leaderboard_rollover");
+      } catch (e) {
+        console.warn("ensure_daily_leaderboard_rollover", e);
+      }
       dailyTaps = 0;
       dailyShards = 0;
     }
@@ -571,19 +577,7 @@ serve(async (req) => {
         console.warn("upsert_weekly_score_ledger", e);
       }
     }
-    // Daily board ledger (survives UTC day-roll zeroing of players.daily_shards)
-    if (nextDailyShards > 0.0005) {
-      try {
-        await sb.rpc("upsert_daily_score_ledger", {
-          p_day_id: today,
-          p_telegram_id: playerId,
-          p_username: boardUsername,
-          p_score: nextDailyShards,
-        });
-      } catch (e) {
-        console.warn("upsert_daily_score_ledger", e);
-      }
-    }
+    // Daily board = players.daily_shards only (no parallel score ledger).
     // Season board reads players.season_shards (leaderboard_season view).
     // Do NOT upsert season_score_ledger — GREATEST ledger blocked month-end resets.
     if (nextLife > prevLifeBoard + 0.0005) {
