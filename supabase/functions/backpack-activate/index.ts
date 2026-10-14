@@ -42,8 +42,7 @@ function energyCapFromInv(inv: Record<string, unknown>, nowMs = Date.now()): num
   const b = inv?.energy_cap_boost as { cap?: number; expires?: string } | undefined;
   if (!b?.expires) return ENERGY_CAP_DEFAULT;
   if (new Date(String(b.expires)).getTime() <= nowMs) return ENERGY_CAP_DEFAULT;
-  const cap = Math.floor(Number(b.cap) || 0);
-  return cap >= 1000 ? 1000 : ENERGY_CAP_DEFAULT;
+  return 1000;
 }
 
 function endOfUtcDay(offsetDays = 0, from = new Date()): string {

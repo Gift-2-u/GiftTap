@@ -34,13 +34,15 @@ function utcDayStr(ms: number): string {
   return new Date(ms).toISOString().slice(0, 10);
 }
 
-/** Active Expanded Energy (inventory) → 1000 until UTC expiry; else 500. */
+/** Active Expanded Battery (inventory.energy_cap_boost) → 1000 until UTC expiry; else 500. */
 function energyCapFromInv(inv: Record<string, unknown>, nowMs = Date.now()): number {
   const b = inv?.energy_cap_boost as { cap?: number; expires?: string } | undefined;
   if (!b?.expires) return ENERGY_CAP_DEFAULT;
   if (new Date(String(b.expires)).getTime() <= nowMs) return ENERGY_CAP_DEFAULT;
-  const cap = Math.floor(Number(b.cap) || 0);
-  return cap >= 1000 ? 1000 : ENERGY_CAP_DEFAULT;
+  // While boost is active the bar is always 1000 (do not require cap>=1000 —
+  // a missing/stale cap field used to clamp last_energy 1000→500 and only
+  // credit ~500+regen ≈ 750 daily for a full Expanded Battery drain).
+  return 1000;
 }
 
 function energyFromAnchor(
@@ -227,9 +229,15 @@ serve(async (req) => {
       (row as Record<string, unknown>).energy_at != null
         ? String((row as Record<string, unknown>).energy_at)
         : row.last_updated;
-    const ENERGY_CAP = energyCapFromInv(inv, now.getTime());
+    // Cap from boost; if DB already holds an Expanded bar, never clamp it to 500.
+    // 1 energy = 1 daily tap — a 1000/1000 battery must be able to credit 1000 taps.
+    let ENERGY_CAP = energyCapFromInv(inv, now.getTime());
+    const storedEnergy = Number(row.last_energy);
+    if (Number.isFinite(storedEnergy) && storedEnergy > ENERGY_CAP + 0.5) {
+      ENERGY_CAP = Math.min(1000, Math.max(ENERGY_CAP, Math.ceil(storedEnergy)));
+    }
     const energy = energyFromAnchor(
-      Number(row.last_energy),
+      storedEnergy,
       energyAnchorIso,
       now.getTime(),
       ENERGY_CAP,
@@ -293,7 +301,6 @@ serve(async (req) => {
 
     if (validTaps <= 0) {
       const reason = energy < costMultiplier ? "no_energy" : "daily_limit";
-      const storedEnergy = Number(row.last_energy);
       const storedFinite = Number.isFinite(storedEnergy) ? storedEnergy : 0;
       const healLtd = dailyTaps > 0 && prevLtd !== today;
       const nowIso = now.toISOString();

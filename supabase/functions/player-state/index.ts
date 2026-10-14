@@ -100,8 +100,8 @@ function energyCapFromInv(
   const b = inv?.energy_cap_boost as { cap?: number; expires?: string } | undefined;
   if (!b?.expires) return ENERGY_CAP_DEFAULT;
   if (new Date(String(b.expires)).getTime() <= nowMs) return ENERGY_CAP_DEFAULT;
-  const cap = Math.floor(Number(b.cap) || 0);
-  return cap >= 1000 ? 1000 : ENERGY_CAP_DEFAULT;
+  // Active boost ⇒ 1000 bar (do not gate on cap>=1000; that clamped drains to ~750 daily)
+  return 1000;
 }
 
 /** Same rules as commit-taps — catch up bar before stamping last_updated. */

@@ -37,8 +37,8 @@ function energyCapFromInv(inv, nowMs = Date.now()) {
   const b = inv?.energy_cap_boost;
   if (!b?.expires) return ENERGY_CAP_DEFAULT;
   if (new Date(b.expires).getTime() <= nowMs) return ENERGY_CAP_DEFAULT;
-  const cap = Math.floor(Number(b.cap) || 0);
-  return cap >= 1000 ? 1000 : ENERGY_CAP_DEFAULT;
+  // Active Expanded Battery is always a 1000 bar (1 energy = 1 daily tap).
+  return 1000;
 }
 
 /** Recover energy from a stored (value, timestampMs) using wall clock. New UTC day → full cap. */
@@ -824,6 +824,8 @@ const GiftTapGame = () => {
   const frenzyFlushTimerRef = useRef(null);
   const tapFlushTimerRef = useRef(null);
   const flushInFlightRef = useRef(false);
+  /** Set when a flush was requested while one was already running — drain after. */
+  const flushAgainRef = useRef(false);
   /** Throttle 'why shards stopped' notices (no_energy / daily_limit) */
   const mineBlockNotifiedRef = useRef(0);
   const flushErrorNotifiedRef = useRef(false);
@@ -4458,8 +4460,13 @@ const GiftTapGame = () => {
       /* ignore */
     }
     if (!hasSecureSession()) return;
-    if (flushInFlightRef.current) return;
+    if (flushInFlightRef.current) {
+      // Empty-battery / soft-cap asked to save while a flush is running — run again after
+      flushAgainRef.current = true;
+      return;
+    }
     flushInFlightRef.current = true;
+    flushAgainRef.current = false;
     try {
       // Drain queue in chunks (server max 500 taps per batch)
       while (pendingTapsRef.current.count > 0) {
@@ -4877,6 +4884,14 @@ const GiftTapGame = () => {
       }
     } finally {
       flushInFlightRef.current = false;
+      if (flushAgainRef.current && (pendingTapsRef.current?.count || 0) > 0) {
+        flushAgainRef.current = false;
+        setTimeout(() => {
+          flushPendingTaps();
+        }, 0);
+      } else {
+        flushAgainRef.current = false;
+      }
     }
   }, [playerId, notify, bumpWeeklyLiveUi]);
 
