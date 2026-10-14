@@ -782,8 +782,15 @@ const GiftTapGame = () => {
   const [energy, setEnergy] = useState(500);
   const [taps, setTaps] = useState([]);
   const [playerWallet, setPlayerWallet] = useState(null);
-  const [isLoading, setIsLoading] = useState(true);
+  // Returning players (Home → Play): skip full-screen loader; sync fills HUD
+  const [isLoading, setIsLoading] = useState(() => !getPlayerId());
   const [isDataLoaded, setIsDataLoaded] = useState(false);
+  /** Bumps on each syncPlayer start — stale async finishes must not clear a newer load. */
+  const syncGenRef = useRef(0);
+  const isDataLoadedRef = useRef(false);
+  useEffect(() => {
+    isDataLoadedRef.current = isDataLoaded;
+  }, [isDataLoaded]);
   const [topLeader, setTopLeader] = useState({ name: '...', score: 0 });
   const [leaderboard, setLeaderboard] = useState([]); // Fixed: Added missing state
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -2361,51 +2368,56 @@ const GiftTapGame = () => {
       }
   };
 
-  const syncPlayer = useCallback(async () => {
+  const syncPlayer = useCallback(async (opts = {}) => {
+    // silent: Home → Play / app resume — keep game visible, no full-screen loader circle
+    const silent = opts?.silent === true;
     if (!playerId) {
       setIsLoading(false);
       setIsDataLoaded(false);
       return;
     }
-    setIsLoading(true);
-    setIsDataLoaded(false);
-    // Drop previous account's in-memory progress before loading this one
-    // (same device: logout → login as someone else)
-    try {
-      if (window.saveTimeout) clearTimeout(window.saveTimeout);
-    } catch {
-      /* ignore */
+    const myGen = ++syncGenRef.current;
+    if (!silent) {
+      setIsLoading(true);
+      setIsDataLoaded(false);
+      // Drop previous account's in-memory progress before loading this one
+      // (same device: logout → login as someone else)
+      try {
+        if (window.saveTimeout) clearTimeout(window.saveTimeout);
+      } catch {
+        /* ignore */
+      }
+      window.saveTimeout = null;
+      pendingSaveRef.current = null;
+      spendGuardRef.current = false;
+      saveGenerationRef.current += 1;
+      optimisticTaps.current = 0;
+      optimisticBalance.current = 0;
+      optimisticSeason.current = 0;
+      optimisticEnergy.current = 500;
+      energyAnchorRef.current = { value: 500, at: Date.now() };
+      optimisticDaily.current = 0;
+      setBalance(0);
+      setSeasonShards(0);
+      setLifetimeTaps(0);
+      setDailyTaps(0);
+      setEnergy(500);
+      // Keep prior inventory until players row loads — clearing to {} wiped badges/boosts.
+      setStats((prev) => ({
+        frenzy_expires: null,
+        efficiency_expires: null,
+        energy_boost_expires: null,
+        limit_boost_amount: prev?.limit_boost_amount,
+        limit_boost_expires: prev?.limit_boost_expires,
+        ad_energy_boost: prev?.ad_energy_boost,
+        ad_energy_expires: prev?.ad_energy_expires,
+        inventory:
+          prev?.inventory && Object.keys(prev.inventory).length > 0
+            ? prev.inventory
+            : {},
+      }));
+      setBalances({ sol: 0, G2U: 0, G2Ushards: 0, usdc: 0 });
     }
-    window.saveTimeout = null;
-    pendingSaveRef.current = null;
-    spendGuardRef.current = false;
-    saveGenerationRef.current += 1;
-    optimisticTaps.current = 0;
-    optimisticBalance.current = 0;
-    optimisticSeason.current = 0;
-    optimisticEnergy.current = 500;
-    energyAnchorRef.current = { value: 500, at: Date.now() };
-    optimisticDaily.current = 0;
-    setBalance(0);
-    setSeasonShards(0);
-    setLifetimeTaps(0);
-    setDailyTaps(0);
-    setEnergy(500);
-    // Keep prior inventory until players row loads — clearing to {} wiped badges/boosts.
-    setStats((prev) => ({
-      frenzy_expires: null,
-      efficiency_expires: null,
-      energy_boost_expires: null,
-      limit_boost_amount: prev?.limit_boost_amount,
-      limit_boost_expires: prev?.limit_boost_expires,
-      ad_energy_boost: prev?.ad_energy_boost,
-      ad_energy_expires: prev?.ad_energy_expires,
-      inventory:
-        prev?.inventory && Object.keys(prev.inventory).length > 0
-          ? prev.inventory
-          : {},
-    }));
-    setBalances({ sol: 0, G2U: 0, G2Ushards: 0, usdc: 0 });
     try {
       const userId = playerId;
       const invisibleKey = vaultSaltFor(userId);
@@ -3019,7 +3031,7 @@ const GiftTapGame = () => {
         // Phrase stays empty until login password unlock (handleAuthenticated)
         // or explicit unlock when signing SOL. Prevents wallet drain if JWT leaks.
 
-        setIsDataLoaded(true);
+        if (myGen === syncGenRef.current) setIsDataLoaded(true);
         return;
       } 
       // ==========================================
@@ -3034,7 +3046,7 @@ const GiftTapGame = () => {
           if (result?.already_bound && result.publicKey) {
             setPlayerWallet(result.publicKey);
             setHasAccess(true);
-            setIsDataLoaded(true);
+            if (myGen === syncGenRef.current) setIsDataLoaded(true);
           } else if (result && result.publicKey) {
             // Vault set-once via Edge only (anon cannot read/write encrypted_vault)
             // Only store/show BIP39 12 words — never a raw base58 secret key
@@ -3059,14 +3071,17 @@ const GiftTapGame = () => {
                 .update({ has_beta_access: true })
                 .eq(DB_PLAYER_ID, userId);
             }
-            setIsDataLoaded(true);
+            if (myGen === syncGenRef.current) setIsDataLoaded(true);
           } else {
             console.error("Wallet generation failed.", result);
             setHasAccess(true);
+            // Still unlock HUD — avoid stuck dimmed gift / center loader after Home→Play
+            if (myGen === syncGenRef.current) setIsDataLoaded(true);
           }
         } catch (wErr) {
           console.error("Secure wallet create failed:", wErr?.message || wErr);
           setHasAccess(true);
+          if (myGen === syncGenRef.current) setIsDataLoaded(true);
         }
       }
       // No row for this session id → force re-auth (don't auto-create ghost accounts)
@@ -3077,13 +3092,13 @@ const GiftTapGame = () => {
         setPlayer({ id: '', username: '', first_name: '' });
       }
 
-      await fetchTopLeader();
+      if (myGen === syncGenRef.current) await fetchTopLeader();
     } catch (err) {
       console.error("Sync Error:", err.message);
     } finally {
-      setIsLoading(false);
+      if (myGen === syncGenRef.current) setIsLoading(false);
     }
-  }, [playerId, player.username, player.first_name, fetchTopLeader]);
+  }, [playerId, fetchTopLeader]);
 
   /** Called after beta code redeem — grant access; create wallet only if missing. */
   const initializeNewPlayer = async () => {
@@ -3472,24 +3487,32 @@ const GiftTapGame = () => {
 
 
   // 5. EFFECTS
-  useEffect(() => { syncPlayer(); }, [syncPlayer]);
+  useEffect(() => {
+    // Session already on device → background sync (no stuck center loader)
+    syncPlayer({ silent: !!playerId });
+  }, [syncPlayer, playerId]);
 
-  // Returning from main site / background must never leave "Loading Gift..." stuck
+  // Returning from main site / Play Gift Tap must never leave the center loader stuck
   useEffect(() => {
     if (!isLoading) return undefined;
     const watchdog = setTimeout(() => {
       console.warn('GiftTap load watchdog — clearing stuck spinner');
       setIsLoading(false);
-    }, 8000);
+      // If sync never marked data loaded, unlock the gift HUD anyway
+      if (!isDataLoadedRef.current) setIsDataLoaded(true);
+    }, 2500);
     return () => clearTimeout(watchdog);
   }, [isLoading]);
 
   useEffect(() => {
     const onReturn = () => {
       if (document.visibilityState && document.visibilityState !== 'visible') return;
-      // If the game shell is already authed, drop a leftover full-screen loader
-      if (isLoading && playerId && isAuthed) {
-        setIsLoading(false);
+      // Drop leftover full-screen loader from Home → Play / app resume
+      setIsLoading(false);
+      if (playerId && isAuthed) {
+        if (!isDataLoadedRef.current) setIsDataLoaded(true);
+        // Refresh in background without wiping the live HUD
+        syncPlayer({ silent: true });
       }
     };
     window.addEventListener('pageshow', onReturn);
@@ -3498,7 +3521,7 @@ const GiftTapGame = () => {
       window.removeEventListener('pageshow', onReturn);
       document.removeEventListener('visibilitychange', onReturn);
     };
-  }, [isLoading, playerId, isAuthed]);
+  }, [playerId, isAuthed, syncPlayer]);
 
   // Deep link from https://gift2u.fun/delete-account → /play?delete=1
   useEffect(() => {
@@ -7499,7 +7522,24 @@ const GiftTapGame = () => {
     );
   }
 
-  if (isLoading) return <div style={styles.container}>{t('loading_gift')}</div>;
+  if (isLoading) {
+    return (
+      <div style={styles.container}>
+        <div
+          style={{
+            margin: 'auto',
+            textAlign: 'center',
+            color: '#fbef43',
+            fontWeight: 'bold',
+            fontSize: 16,
+            padding: 24,
+          }}
+        >
+          {t('loading_gift')}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div style={{ backgroundColor: '#000', minHeight: '100vh', width: '100%' }}>
