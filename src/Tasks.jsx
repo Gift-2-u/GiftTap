@@ -6,7 +6,7 @@ import AppNotice from './AppNotice';
 import { IDEAS_EMAIL, openIdeasEmail, copyIdeasEmail } from './contactIdeas';
 import WeeklyQuests from './WeeklyQuests';
 import { hasSecureSession, secureTaskClaim } from './secureApi';
-import { SOCIAL_LINKS, SOCIAL_SURPRISE_EVENT } from './socialLinks';
+import { SOCIAL_LINKS, SOCIAL_SURPRISE_EVENT, onSocialClick } from './socialLinks';
 
 const DISCORD_URL =
   SOCIAL_LINKS.find((s) => s.id === 'discord')?.href ||
@@ -667,6 +667,7 @@ const Tasks = ({
               rel="noopener noreferrer"
               title={s.label}
               aria-label={s.label}
+              onClick={(e) => onSocialClick(e, s.href)}
               style={{
                 display: 'inline-flex',
                 alignItems: 'center',
@@ -832,7 +833,10 @@ const Tasks = ({
                   href={task.link || '#'}
                   target="_blank"
                   rel="noopener noreferrer"
-                  onClick={() => handleGo(task)}
+                  onClick={(e) => {
+                    onSocialClick(e, task.link);
+                    handleGo(task);
+                  }}
                   style={{
                     background: '#222',
                     color: '#fff',
