@@ -659,11 +659,11 @@ const Tasks = ({
         ) : (
           <div style={{ marginBottom: 10 }} />
         )}
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, touchAction: 'manipulation' }}>
           {SOCIAL_LINKS.map((s) => (
-            <button
+            <a
               key={s.id}
-              type="button"
+              href={s.href}
               title={s.label}
               aria-label={s.label}
               onClick={(e) => {
@@ -683,7 +683,9 @@ const Tasks = ({
                 color: s.color || '#fff',
                 cursor: 'pointer',
                 padding: 0,
+                textDecoration: 'none',
                 WebkitTapHighlightColor: 'transparent',
+                touchAction: 'manipulation',
               }}
             >
               <span
@@ -695,9 +697,10 @@ const Tasks = ({
                   backgroundColor: 'currentColor',
                   WebkitMask: `url(${s.icon}) center / contain no-repeat`,
                   mask: `url(${s.icon}) center / contain no-repeat`,
+                  pointerEvents: 'none',
                 }}
               />
-            </button>
+            </a>
           ))}
         </div>
       </div>

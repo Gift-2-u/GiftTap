@@ -1,20 +1,11 @@
 /**
- * Official Gift2U / Gift Tap socials — single source for game menu + main site.
- * Use real brand logos from /icons/social (not emoji + text labels in chrome).
+ * Official Gift2U / Gift Tap socials — single source for Menu + Tasks surprise gift.
  * Discord: set VITE_DISCORD_URL in .env if the invite differs.
  */
 
 /**
  * Optional timed surprise window for the Tasks social banner.
  * Leave null for default: “check them every day.”
- *
- * Example (uncomment / set when you run a drop):
- *   {
- *     startUtc: '2026-08-26T14:00:00Z',
- *     endUtc: '2026-08-26T18:00:00Z',
- *     liveMessage: 'Reward live — go check socials!',
- *     soonMessage: 'Surprise drop soon — get ready on socials.',
- *   }
  */
 export const SOCIAL_SURPRISE_EVENT = null;
 
@@ -45,49 +36,40 @@ export const SOCIAL_LINKS = [
 ];
 
 /**
- * Open an external social URL.
- * Seeker / Android WebView blocks window.open + target=_blank — use OPEN_URL bridge
- * (same as mailto in contactIdeas.js → native Linking.openURL).
+ * Open X / Telegram / Discord.
+ * APK WebView blocks window.open and target=_blank.
+ * Never return after only postMessage — that made buttons do nothing.
  */
 export function openSocial(href) {
   const url = String(href || '').trim();
   if (!url) return false;
 
-  // Native Gift2U / Seeker shell
-  try {
-    const bridge =
-      typeof window !== 'undefined' ? window.ReactNativeWebView : null;
-    if (bridge && typeof bridge.postMessage === 'function') {
-      bridge.postMessage(JSON.stringify({ type: 'OPEN_URL', url }));
-      return true;
+  const hasBridge =
+    typeof window !== 'undefined' &&
+    window.ReactNativeWebView &&
+    typeof window.ReactNativeWebView.postMessage === 'function';
+
+  // Ask native shell (does not guarantee open — always continue below)
+  if (hasBridge) {
+    try {
+      window.ReactNativeWebView.postMessage(
+        JSON.stringify({ type: 'OPEN_URL', url }),
+      );
+    } catch {
+      /* continue */
     }
-  } catch {
-    /* fall through */
   }
 
-  // Telegram Mini App (if ever embedded)
-  try {
-    if (window.Telegram?.WebApp?.openLink) {
-      window.Telegram.WebApp.openLink(url);
-      return true;
-    }
-  } catch {
-    /* fall through */
-  }
-
-  // Browser: try window.open, then <a> click
-  try {
-    const win = window.open(url, '_blank', 'noopener,noreferrer');
-    if (win) return true;
-  } catch {
-    /* fall through */
-  }
-
+  // Real click navigation (restores “button does something”)
+  // In APK: no target=_blank — same-window load; shell can open OS browser.
+  // In browser: new tab.
   try {
     const a = document.createElement('a');
     a.href = url;
-    a.target = '_blank';
-    a.rel = 'noopener noreferrer';
+    if (!hasBridge) {
+      a.target = '_blank';
+      a.rel = 'noopener noreferrer';
+    }
     a.style.display = 'none';
     document.body.appendChild(a);
     a.click();
@@ -104,7 +86,11 @@ export function openSocial(href) {
   }
 
   try {
-    window.location.assign(url);
+    if (hasBridge) {
+      window.location.assign(url);
+    } else {
+      window.open(url, '_blank', 'noopener,noreferrer');
+    }
     return true;
   } catch {
     return false;
