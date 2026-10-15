@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import AppNotice from './AppNotice';
 import { IDEAS_EMAIL, openIdeasEmail, copyIdeasEmail } from './contactIdeas';
-import { SOCIAL_LINKS, openSocial } from './socialLinks';
+import { SOCIAL_LINKS } from './socialLinks';
 
 // We store the massive arrays here to keep the main game file clean!
 const ALL_CURRENCIES = [
@@ -639,10 +639,6 @@ const Menu = ({
                       rel="noopener noreferrer"
                       title={s.label}
                       aria-label={s.label}
-                      onClick={(e) => {
-                        e.preventDefault();
-                        openSocial(s.href);
-                      }}
                       style={{
                         display: 'inline-flex',
                         alignItems: 'center',

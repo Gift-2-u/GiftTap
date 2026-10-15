@@ -6,7 +6,7 @@ import AppNotice from './AppNotice';
 import { IDEAS_EMAIL, openIdeasEmail, copyIdeasEmail } from './contactIdeas';
 import WeeklyQuests from './WeeklyQuests';
 import { hasSecureSession, secureTaskClaim } from './secureApi';
-import { SOCIAL_LINKS, SOCIAL_SURPRISE_EVENT, openSocial } from './socialLinks';
+import { SOCIAL_LINKS, SOCIAL_SURPRISE_EVENT } from './socialLinks';
 
 const DISCORD_URL =
   SOCIAL_LINKS.find((s) => s.id === 'discord')?.href ||
@@ -312,8 +312,7 @@ const Tasks = ({
   );
 
   const handleGo = (task) => {
-    if (task.type === 'social') {
-      openSocial(task.link);
+    if (task.type === 'social' && task.link) {
       setReadyToClaim((prev) => [...prev, task.id]);
     }
   };
@@ -659,18 +658,15 @@ const Tasks = ({
         ) : (
           <div style={{ marginBottom: 10 }} />
         )}
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, touchAction: 'manipulation' }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
           {SOCIAL_LINKS.map((s) => (
             <a
               key={s.id}
               href={s.href}
+              target="_blank"
+              rel="noopener noreferrer"
               title={s.label}
               aria-label={s.label}
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                openSocial(s.href);
-              }}
               style={{
                 display: 'inline-flex',
                 alignItems: 'center',
@@ -681,11 +677,7 @@ const Tasks = ({
                 border: '1px solid rgba(255,255,255,0.15)',
                 background: 'rgba(255,255,255,0.06)',
                 color: s.color || '#fff',
-                cursor: 'pointer',
-                padding: 0,
                 textDecoration: 'none',
-                WebkitTapHighlightColor: 'transparent',
-                touchAction: 'manipulation',
               }}
             >
               <span
@@ -836,8 +828,10 @@ const Tasks = ({
                   Pending
                 </button>
               ) : (
-                <button
-                  type="button"
+                <a
+                  href={task.link || '#'}
+                  target="_blank"
+                  rel="noopener noreferrer"
                   onClick={() => handleGo(task)}
                   style={{
                     background: '#222',
@@ -848,12 +842,12 @@ const Tasks = ({
                     fontSize: '12px',
                     fontWeight: 'bold',
                     cursor: 'pointer',
-                    outline: 'none',
-                    WebkitTapHighlightColor: 'transparent',
+                    textDecoration: 'none',
+                    display: 'inline-block',
                   }}
                 >
                   Go
-                </button>
+                </a>
               )}
             </div>
           );

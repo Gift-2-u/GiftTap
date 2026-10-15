@@ -1,12 +1,8 @@
 /**
- * Official Gift2U / Gift Tap socials — single source for Menu + Tasks surprise gift.
- * Discord: set VITE_DISCORD_URL in .env if the invite differs.
+ * Official Gift2U socials — Menu + Tasks surprise gift.
+ * Use plain <a href={…}> only.
  */
 
-/**
- * Optional timed surprise window for the Tasks social banner.
- * Leave null for default: “check them every day.”
- */
 export const SOCIAL_SURPRISE_EVENT = null;
 
 export const SOCIAL_LINKS = [
@@ -34,65 +30,3 @@ export const SOCIAL_LINKS = [
     color: '#5865F2',
   },
 ];
-
-/**
- * Open X / Telegram / Discord.
- * APK WebView blocks window.open and target=_blank.
- * Never return after only postMessage — that made buttons do nothing.
- */
-export function openSocial(href) {
-  const url = String(href || '').trim();
-  if (!url) return false;
-
-  const hasBridge =
-    typeof window !== 'undefined' &&
-    window.ReactNativeWebView &&
-    typeof window.ReactNativeWebView.postMessage === 'function';
-
-  // Ask native shell (does not guarantee open — always continue below)
-  if (hasBridge) {
-    try {
-      window.ReactNativeWebView.postMessage(
-        JSON.stringify({ type: 'OPEN_URL', url }),
-      );
-    } catch {
-      /* continue */
-    }
-  }
-
-  // Real click navigation (restores “button does something”)
-  // In APK: no target=_blank — same-window load; shell can open OS browser.
-  // In browser: new tab.
-  try {
-    const a = document.createElement('a');
-    a.href = url;
-    if (!hasBridge) {
-      a.target = '_blank';
-      a.rel = 'noopener noreferrer';
-    }
-    a.style.display = 'none';
-    document.body.appendChild(a);
-    a.click();
-    setTimeout(() => {
-      try {
-        document.body.removeChild(a);
-      } catch {
-        /* ignore */
-      }
-    }, 0);
-    return true;
-  } catch {
-    /* fall through */
-  }
-
-  try {
-    if (hasBridge) {
-      window.location.assign(url);
-    } else {
-      window.open(url, '_blank', 'noopener,noreferrer');
-    }
-    return true;
-  } catch {
-    return false;
-  }
-}
