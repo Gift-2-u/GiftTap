@@ -1,6 +1,6 @@
 /**
  * Fiat pricing helpers for game wallet.
- * SOL + USDC: CoinGecko. $G2U: DexScreener after launch. G2Ushards: in-game only.
+ * SOL + USDC: CoinGecko. $G2U: GeckoTerminal / Raydium (DexScreener often has no pairs). G2Ushards: in-game only.
  */
 
 import { MINT_ADDRESS } from './config';
@@ -13,8 +13,47 @@ export const FIAT_CURRENCIES = [
 
 const G2U_MINT = String(MINT_ADDRESS?.toBase58?.() || MINT_ADDRESS || '').trim();
 
-/** USD price of 1 $G2U from DexScreener (best liquidity pair). */
-async function fetchG2uUsdPrice() {
+/** Last good $G2U USD price — survives brief API blips within TTL. */
+let g2uUsdCache = { price: null, at: 0 };
+const G2U_CACHE_TTL_MS = 5 * 60 * 1000;
+
+function positiveUsd(n) {
+  const px = Number(n);
+  return Number.isFinite(px) && px > 0 ? px : null;
+}
+
+/** GeckoTerminal token endpoint — reliable for G2U mint. */
+async function fetchG2uFromGeckoTerminal() {
+  if (!G2U_MINT) return null;
+  try {
+    const res = await fetch(
+      `https://api.geckoterminal.com/api/v2/networks/solana/tokens/${G2U_MINT}`,
+    );
+    if (!res.ok) return null;
+    const data = await res.json();
+    return positiveUsd(data?.data?.attributes?.price_usd);
+  } catch {
+    return null;
+  }
+}
+
+/** Raydium mint price API. */
+async function fetchG2uFromRaydium() {
+  if (!G2U_MINT) return null;
+  try {
+    const res = await fetch(
+      `https://api-v3.raydium.io/mint/price?mints=${G2U_MINT}`,
+    );
+    if (!res.ok) return null;
+    const data = await res.json();
+    return positiveUsd(data?.data?.[G2U_MINT]);
+  } catch {
+    return null;
+  }
+}
+
+/** DexScreener — often returns pairs:null for this mint; kept as last resort. */
+async function fetchG2uFromDexScreener() {
   if (!G2U_MINT) return null;
   try {
     const res = await fetch(
@@ -30,11 +69,37 @@ async function fetchG2uUsdPrice() {
       if (bSol !== aSol) return bSol - aSol;
       return (Number(b?.liquidity?.usd) || 0) - (Number(a?.liquidity?.usd) || 0);
     });
-    const px = Number(ranked[0]?.priceUsd);
-    return Number.isFinite(px) && px > 0 ? px : null;
+    return positiveUsd(ranked[0]?.priceUsd);
   } catch {
     return null;
   }
+}
+
+/** USD price of 1 $G2U — GeckoTerminal → Raydium → DexScreener → short cache. */
+async function fetchG2uUsdPrice() {
+  if (!G2U_MINT) return null;
+
+  const sources = [
+    fetchG2uFromGeckoTerminal,
+    fetchG2uFromRaydium,
+    fetchG2uFromDexScreener,
+  ];
+
+  for (const source of sources) {
+    const px = await source();
+    if (px != null) {
+      g2uUsdCache = { price: px, at: Date.now() };
+      return px;
+    }
+  }
+
+  if (
+    g2uUsdCache.price != null &&
+    Date.now() - g2uUsdCache.at < G2U_CACHE_TTL_MS
+  ) {
+    return g2uUsdCache.price;
+  }
+  return null;
 }
 
 function usdToFiatMap(usdPrice, usdcRates) {
