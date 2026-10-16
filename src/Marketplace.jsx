@@ -2533,7 +2533,7 @@ Daily claim active · Pack → NFT to see it.`,
           const { data: row } = await supabase
             .from('players')
             .select(
-              'inventory, daily_usage, last_energy, energy_boost_expires, frenzy_expires, efficiency_expires',
+              'inventory, daily_usage, last_energy, energy_boost_expires, frenzy_expires, efficiency_expires, bot_expires',
             )
             .eq(DB_PLAYER_ID, String(user.id))
             .maybeSingle();
@@ -2576,6 +2576,9 @@ Daily claim active · Pack → NFT to see it.`,
                   cleaned,
                   weekId,
                 ),
+                ...(row.bot_expires != null
+                  ? { bot_expires: row.bot_expires }
+                  : {}),
                 daily_usage: du,
                 energy_boost_expires:
                   row.energy_boost_expires ?? prev.energy_boost_expires,

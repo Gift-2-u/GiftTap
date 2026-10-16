@@ -242,6 +242,7 @@ import {
   fetchPlayerState,
   secureSyncChainBalances,
   secureCommitTaps,
+  secureBotMine,
   secureWallClimb,
   secureLocksmithActivate,
   secureCreateUserWallet,
@@ -785,6 +786,9 @@ const GiftTapGame = () => {
   // Returning players (Home → Play): skip full-screen loader; sync fills HUD
   const [isLoading, setIsLoading] = useState(() => !getPlayerId());
   const [isDataLoaded, setIsDataLoaded] = useState(false);
+  /** Weekend Bot expiry ISO — live mining while app is open. */
+  const [botExpires, setBotExpires] = useState(null);
+  const botMineBusyRef = useRef(false);
   /** Bumps on each syncPlayer start — stale async finishes must not clear a newer load. */
   const syncGenRef = useRef(0);
   const isDataLoadedRef = useRef(false);
@@ -2906,125 +2910,92 @@ const GiftTapGame = () => {
         setEnergy(recoveredEnergy);
         optimisticEnergy.current = recoveredEnergy;
         
-        // Weekend Bot (Offline Mining) — use last login / last play for bot window
-        let offlineShardsEarned = 0;
-        const botExpiresMs = playerRow.bot_expires ? new Date(playerRow.bot_expires).getTime() : 0;
-        const botSinceMs = playerRow.last_updated
-          ? new Date(playerRow.last_updated).getTime()
-          : lastDate;
-        
-        // Ensure the bot was actually active at some point since they last played
-        if (botExpiresMs > botSinceMs) {
-            
-            const currentMaxLimit = Number(playerRow.max_daily_limit) || 1000;
-            const BOT_SHARDS_PER_SECOND = currentMaxLimit / 86400; // Takes 24h to mine 100% of limit
-            
-            const botEndMs = Math.min(now, botExpiresMs); // Stops calculating if bot expired
-            
-            let simDateMs = botSinceMs;
-            let simDailyTaps = Number(playerRow.daily_taps) || 0;
-            
-            // 1. Simulate day-by-day to perfectly handle midnight resets
-            while (simDateMs < botEndMs) {
-                // Find midnight of the current simulation day (UTC)
-                const simDateStr = new Date(simDateMs).toISOString().split('T')[0];
-                const nextMidnightMs = new Date(simDateStr + 'T00:00:00Z').getTime() + 86400000;
-                
-                // End this step either at the bot's end time, or at midnight
-                const stepEndMs = Math.min(botEndMs, nextMidnightMs);
-                const secondsInStep = (stepEndMs - simDateMs) / 1000;
-                
-                // Calculate shards for this step
-                const potentialShards = secondsInStep * BOT_SHARDS_PER_SECOND;
-                const remainingLimit = Math.max(0, currentMaxLimit - simDailyTaps);
-                
-                const earnedThisStep = Math.min(potentialShards, remainingLimit);
-                offlineShardsEarned += earnedThisStep;
-                simDailyTaps += earnedThisStep;
-                
-                // Advance the simulation clock
-                simDateMs = stepEndMs;
-                
-                // If the clock hit midnight, reset the daily taps for the next day's loop!
-                if (simDateMs === nextMidnightMs) {
-                    simDailyTaps = 0;
+        // Weekend Bot — catch up for time away (also mines live while app stays open).
+        // Rate: fill today's daily limit over 24h; each virtual tap pays tap power shards.
+        setBotExpires(playerRow.bot_expires || null);
+        const botExpiresMs = playerRow.bot_expires
+          ? new Date(playerRow.bot_expires).getTime()
+          : 0;
+        if (botExpiresMs > now) {
+          const invBot =
+            playerRow.inventory && typeof playerRow.inventory === 'object'
+              ? playerRow.inventory
+              : inv && typeof inv === 'object'
+                ? inv
+                : {};
+          const lastCreditMs = invBot.bot_last_credit_at
+            ? Date.parse(String(invBot.bot_last_credit_at))
+            : playerRow.last_updated
+              ? new Date(playerRow.last_updated).getTime()
+              : lastDate;
+          let secondsAway = Math.max(
+            0,
+            (Math.min(now, botExpiresMs) - (Number.isFinite(lastCreditMs) ? lastCreditMs : now)) /
+              1000,
+          );
+          // Cap one login catch-up at 24h (further time is covered by live ticks)
+          secondsAway = Math.min(86400, secondsAway);
+          let offlineShardsEarned = 0;
+          if (secondsAway >= 1) {
+            try {
+              await ensureSecureSession();
+              if (!hasSecureSession()) {
+                /* live ticks will retry once session is ready */
+              } else {
+              let left = secondsAway;
+              while (left >= 1) {
+                const chunk = Math.min(3600, left);
+                const batchId =
+                  crypto.randomUUID?.() ||
+                  `bot_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+                const data = await secureBotMine({ batchId, seconds: chunk });
+                if (data?.success && Number(data.shards) > 0) {
+                  offlineShardsEarned += Number(data.shards) || 0;
                 }
-            }
-            
-            offlineShardsEarned = Math.floor(offlineShardsEarned);
-            simDailyTaps = Math.floor(simDailyTaps); // 🚨 THE SURGICAL FIX: Locks the daily limit to whole numbers
-            
-            // 2. Format today's date for DB
-            const todayStr = new Date(now).toISOString().split('T')[0];
-            const botEndDateStr = new Date(botEndMs).toISOString().split('T')[0];
-            
-            // If the bot expired yesterday, today's bar should be totally empty when they log in!
-            if (botEndDateStr !== todayStr) {
-                simDailyTaps = 0;
-            }
-
-            // 🚨 SEASON SAFETY VALVE: Set to false since Beta is over
-            const isBetaActive = false;
-
-            if (offlineShardsEarned > 0) {
-                
-                // 1. Safely pull actual variables straight from your Supabase 'player' object
-                const currentLifetimeTaps = Number(playerRow.lifetime_taps) || 0;
-                const playerMaxLevel = playerRow.max_unlocked_level || 4;
-                let projectedLifetime = currentLifetimeTaps + offlineShardsEarned;
-                
-                // Open mining: wall does NOT stop bot shards. Level stays capped client-side.
-                if (calculateLevel(projectedLifetime) > playerMaxLevel) {
-                    console.log("Bot mining past wall threshold — shards still earned; level unlock optional.");
+                if (data?.player) {
+                  const p = data.player;
+                  if (Number.isFinite(Number(p.shard_balance))) {
+                    optimisticBalance.current = Number(p.shard_balance);
+                    setBalance(Number(p.shard_balance));
+                  }
+                  if (Number.isFinite(Number(p.lifetime_taps))) {
+                    optimisticTaps.current = Number(p.lifetime_taps);
+                    setLifetimeTaps(Number(p.lifetime_taps));
+                  }
+                  if (Number.isFinite(Number(p.season_shards))) {
+                    optimisticSeason.current = Number(p.season_shards);
+                    setSeasonShards(Number(p.season_shards));
+                  }
+                  if (Number.isFinite(Number(p.daily_taps))) {
+                    optimisticDaily.current = Number(p.daily_taps);
+                    setDailyTaps(Number(p.daily_taps));
+                  }
+                  if (Number.isFinite(Number(p.daily_shards))) {
+                    optimisticDailyShards.current = Number(p.daily_shards);
+                  }
+                  if (p.inventory) {
+                    inventoryRef.current = {
+                      ...(inventoryRef.current || {}),
+                      ...p.inventory,
+                    };
+                  }
                 }
-
-                if (offlineShardsEarned > 0) {
-                    // 1. Update React UI instantly (Balance, Limits, and Leaderboard Stats!)
-                    const botBal = Math.round((Number(optimisticBalance.current) + offlineShardsEarned) * 1000) / 1000;
-                    const botLife = Math.round((Number(optimisticTaps.current) + offlineShardsEarned) * 1000) / 1000;
-                    const botSeason = Math.round((Number(optimisticSeason.current) + offlineShardsEarned) * 1000) / 1000;
-                    optimisticBalance.current = botBal;
-                    optimisticTaps.current = botLife;
-                    optimisticSeason.current = botSeason;
-                    optimisticDaily.current = simDailyTaps;
-                    setBalance(botBal);
-                    setDailyTaps(simDailyTaps);
-                    setLifetimeTaps(botLife);
-                    setSeasonShards(botSeason);
-                    
-                    // Bot is a boost only — do NOT touch last_tap_date / current_streak /
-                    // last_updated (energy regen clock).
-                    if (!secureEconomyRef.current) {
-                      supabase
-                        .from('players')
-                        .update({ 
-                            shard_balance: Number(playerRow.shard_balance) + offlineShardsEarned,
-                            daily_taps: simDailyTaps,
-                            lifetime_taps: projectedLifetime,
-                            season_shards: Number(playerRow.season_shards) + offlineShardsEarned,
-                        })
-                        .eq(DB_PLAYER_ID, userId)
-                        .then(({ error }) => {
-                            if (error) console.error("Bot sync failed:", error);
-                        });
-                    }
-
-                    // Fire the welcome back popup!
-                    setTimeout(() => {
-                        notify(`🤖 Welcome back! Your Bot mined ${offlineShardsEarned.toLocaleString()} Shards while you were away!`);
-                        // Open mining: no auto climb popup after bot mining (use HUD Level up).
-                    }, 1000);
-                } else {
-                    // Bot active but mined 0 — no forced wall modal.
-                    // Secure economy: never client-write last_energy / last_updated
-                    // (commit-taps owns the regen clock).
-                }
-            } else {
-              // Bot active but mined 0 (limit maxed) — same: no energy-clock write.
+                if (data?.reason === 'daily_limit' || data?.reason === 'no_bot') break;
+                left -= chunk;
+              }
+              if (offlineShardsEarned > 0.0005) {
+                const earned = Math.round(offlineShardsEarned * 1000) / 1000;
+                setTimeout(() => {
+                  notify(
+                    `🤖 Welcome back! Your Bot mined ${earned.toLocaleString()} Shards while you were away!`,
+                  );
+                }, 800);
+              }
+              }
+            } catch (botErr) {
+              console.warn('Weekend Bot catch-up', botErr?.message || botErr);
             }
-        } else {
-            // No bot — do NOT heartbeat last_updated. Under secure economy that
-            // field is the battery regen clock owned by commit-taps only.
+          }
         }
 
         // HARD SECURITY: never auto-fetch ciphertext with JWT alone.
@@ -3542,6 +3513,85 @@ const GiftTapGame = () => {
       document.removeEventListener('visibilitychange', onReturn);
     };
   }, [playerId, isAuthed, syncPlayer]);
+
+  // Keep bot chip/timer in sync when activated from Shop / Pack
+  useEffect(() => {
+    if (stats?.bot_expires) setBotExpires(stats.bot_expires);
+  }, [stats?.bot_expires]);
+
+  // Weekend Bot — keep mining while the app stays open (daily limit / 24h × tap power)
+  useEffect(() => {
+    if (!isDataLoaded || !playerId || !isAuthed) return undefined;
+    const expMs = botExpires ? Date.parse(botExpires) : 0;
+    if (!(expMs > Date.now())) return undefined;
+
+    const TICK_SEC = 10;
+    let cancelled = false;
+
+    const applyBotPlayer = (p) => {
+      if (!p || typeof p !== 'object') return;
+      if (Number.isFinite(Number(p.shard_balance))) {
+        optimisticBalance.current = Number(p.shard_balance);
+        setBalance(Number(p.shard_balance));
+      }
+      if (Number.isFinite(Number(p.lifetime_taps))) {
+        optimisticTaps.current = Number(p.lifetime_taps);
+        setLifetimeTaps(Number(p.lifetime_taps));
+      }
+      if (Number.isFinite(Number(p.season_shards))) {
+        optimisticSeason.current = Number(p.season_shards);
+        setSeasonShards(Number(p.season_shards));
+      }
+      if (Number.isFinite(Number(p.daily_taps))) {
+        optimisticDaily.current = Number(p.daily_taps);
+        setDailyTaps(Number(p.daily_taps));
+      }
+      if (Number.isFinite(Number(p.daily_shards))) {
+        optimisticDailyShards.current = Number(p.daily_shards);
+      }
+      if (p.bot_expires !== undefined) setBotExpires(p.bot_expires || null);
+      if (p.inventory && typeof p.inventory === 'object') {
+        inventoryRef.current = {
+          ...(inventoryRef.current || {}),
+          ...p.inventory,
+        };
+      }
+    };
+
+    const tick = async () => {
+      if (cancelled || botMineBusyRef.current) return;
+      if (Date.now() >= expMs) {
+        setBotExpires(null);
+        return;
+      }
+      if (document.visibilityState === 'hidden') return;
+      botMineBusyRef.current = true;
+      try {
+        await ensureSecureSession();
+        if (!hasSecureSession()) return;
+        const batchId =
+          crypto.randomUUID?.() ||
+          `bot_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+        const data = await secureBotMine({ batchId, seconds: TICK_SEC });
+        if (cancelled) return;
+        if (data?.player) applyBotPlayer(data.player);
+        if (data?.reason === 'no_bot') setBotExpires(null);
+      } catch (e) {
+        console.warn('Weekend Bot tick', e?.message || e);
+      } finally {
+        botMineBusyRef.current = false;
+      }
+    };
+
+    const id = setInterval(tick, TICK_SEC * 1000);
+    // First tick shortly after open (catch-up already ran on sync)
+    const first = setTimeout(tick, 2500);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+      clearTimeout(first);
+    };
+  }, [isDataLoaded, playerId, isAuthed, botExpires, notify]);
 
   // Deep link from https://gift2u.fun/delete-account → /play?delete=1
   useEffect(() => {
@@ -9197,6 +9247,11 @@ const GiftTapGame = () => {
                         }} />
                      </div>
                      <div style={{ display: 'flex', justifyContent: 'center', gap: 4, flexWrap: 'wrap', minHeight: 14 }}>
+                       {botExpires && Date.now() < new Date(botExpires).getTime() ? (
+                         <span style={{ fontSize: 9, fontWeight: 800, color: '#c4b5fd', background: 'rgba(167,139,250,0.18)', border: '1px solid #a78bfa66', borderRadius: 999, padding: '1px 6px' }}>
+                           🤖 Bot mining
+                         </span>
+                       ) : null}
                        {stats?.frenzy_expires && Date.now() < new Date(stats.frenzy_expires).getTime() ? (
                          <span style={{ fontSize: 9, fontWeight: 800, color: '#fb923c', background: 'rgba(251,146,60,0.15)', border: '1px solid #fb923c55', borderRadius: 999, padding: '1px 6px' }}>
                            Frenzy 2× shards

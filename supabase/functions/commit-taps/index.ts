@@ -14,6 +14,7 @@ import {
   echoMultiplierFromInv,
   rollFateJackpot,
   effectiveDailyLimit,
+  computeTapPowerForPlayer,
   runReferralCredit,
   maybeGrantMs1NftVoucher,
 } from "../_shared/economy.ts";
@@ -161,19 +162,254 @@ serve(async (req) => {
     const playerId = String(claims.sub);
     const body = await req.json().catch(() => ({}));
     const batchId = String(body.batch_id || body.batchId || "").trim();
+    const isBotMine = body.bot_mine === true || body.botMine === true;
     const requestedTaps = Math.max(0, Math.floor(Number(body.taps) || 0));
 
     if (!batchId || batchId.length < 8) {
       throw new Error("batch_id required");
     }
-    if (requestedTaps <= 0) {
-      throw new Error("taps must be > 0");
-    }
-    if (requestedTaps > 500) {
-      throw new Error("taps batch too large (max 500)");
+    if (!isBotMine) {
+      if (requestedTaps <= 0) {
+        throw new Error("taps must be > 0");
+      }
+      if (requestedTaps > 500) {
+        throw new Error("taps batch too large (max 500)");
+      }
     }
 
     const sb = adminClient();
+
+    // -------------------------------------------------------------------------
+    // Weekend Bot — fill today's daily limit over 24h × tap power (no energy).
+    // Works while app is open (client ticks) and for offline catch-up.
+    // -------------------------------------------------------------------------
+    if (isBotMine) {
+      const seconds = Math.min(
+        3600,
+        Math.max(0, Number(body.seconds) || 0),
+      );
+      if (seconds < 0.25) {
+        throw new Error("bot seconds too small");
+      }
+
+      const { data: priorBot } = await sb
+        .from("tap_batches")
+        .select("taps, shards, energy_spent, result")
+        .eq("batch_id", batchId)
+        .maybeSingle();
+      if (priorBot) {
+        const { data: player } = await sb
+          .from("players")
+          .select(
+            "shard_balance, lifetime_taps, season_shards, weekly_shards, weekly_week_id, daily_taps, daily_shards, last_energy, last_tap_date, current_streak, max_unlocked_level, inventory, bot_expires, tap_power, max_daily_limit",
+          )
+          .eq("telegram_id", playerId)
+          .maybeSingle();
+        return jsonResponse({
+          success: true,
+          replay: true,
+          bot_mine: true,
+          batch_id: batchId,
+          taps: priorBot.taps,
+          shards: priorBot.shards,
+          energy_spent: 0,
+          player,
+        });
+      }
+
+      let { data: brow, error: bErr } = await sb
+        .from("players")
+        .select(
+          "telegram_id, username, shard_balance, lifetime_taps, season_shards, weekly_shards, weekly_week_id, daily_taps, daily_shards, last_energy, energy_at, last_updated, last_tap_date, current_streak, max_unlocked_level, max_daily_limit, inventory, frenzy_expires, energy_boost_expires, limit_boost_amount, limit_boost_expires, ad_energy_boost, ad_energy_expires, premium_multiplier, premium_multiplier_expires, bot_expires, tap_power",
+        )
+        .eq("telegram_id", playerId)
+        .maybeSingle();
+      if (bErr && /daily_shards|energy_at|bot_expires|tap_power/i.test(String(bErr.message || ""))) {
+        ({ data: brow, error: bErr } = await sb
+          .from("players")
+          .select(
+            "telegram_id, username, shard_balance, lifetime_taps, season_shards, weekly_shards, weekly_week_id, daily_taps, last_energy, last_updated, last_tap_date, current_streak, max_unlocked_level, max_daily_limit, inventory, premium_multiplier, premium_multiplier_expires, bot_expires",
+          )
+          .eq("telegram_id", playerId)
+          .maybeSingle());
+      }
+      if (bErr) throw bErr;
+      if (!brow) throw new Error("Player not found");
+
+      const now = new Date();
+      const today = utcTodayStr(now);
+      const botExpMs = brow.bot_expires
+        ? new Date(String(brow.bot_expires)).getTime()
+        : 0;
+      if (!(botExpMs > now.getTime())) {
+        return jsonResponse({
+          success: false,
+          reason: "no_bot",
+          message: "Weekend Bot is not active",
+          player: brow,
+        });
+      }
+
+      let inv = invObj(brow.inventory);
+      const prevLtd = brow.last_tap_date
+        ? String(brow.last_tap_date).slice(0, 10)
+        : "";
+      const lastUpdatedDay = brow.last_updated
+        ? String(brow.last_updated).slice(0, 10)
+        : "";
+      let dailyTaps = Number(brow.daily_taps) || 0;
+      let dailyShards = Number((brow as Record<string, unknown>).daily_shards) || 0;
+      if (
+        (prevLtd && prevLtd !== today) ||
+        (!prevLtd && lastUpdatedDay && lastUpdatedDay !== today)
+      ) {
+        try {
+          await sb.rpc("ensure_daily_leaderboard_rollover");
+        } catch (e) {
+          console.warn("ensure_daily_leaderboard_rollover", e);
+        }
+        dailyTaps = 0;
+        dailyShards = 0;
+      }
+
+      const maxLimit = effectiveDailyLimit(brow as Record<string, unknown>, now);
+      const remaining = Math.max(0, maxLimit - dailyTaps);
+      // Fill daily limit over 24h: taps/sec = limit/86400; shards = taps × tap power
+      const tapPower = Math.max(
+        1,
+        computeTapPowerForPlayer(brow as Record<string, unknown>, now),
+      );
+      const rawTaps = seconds * (maxLimit / 86400);
+      const tapCredit = Math.min(remaining, Math.round(rawTaps * 10000) / 10000);
+      const shardsEarned =
+        Math.round(tapCredit * tapPower * 1000) / 1000;
+
+      if (tapCredit <= 0 || shardsEarned <= 0) {
+        inv.bot_last_credit_at = now.toISOString();
+        await sb
+          .from("players")
+          .update({
+            inventory: inv,
+            max_daily_limit: maxLimit,
+            tap_power: tapPower,
+          })
+          .eq("telegram_id", playerId);
+        return jsonResponse({
+          success: true,
+          bot_mine: true,
+          taps: 0,
+          shards: 0,
+          reason: remaining <= 0 ? "daily_limit" : "too_small",
+          player: {
+            ...brow,
+            daily_taps: dailyTaps,
+            daily_shards: dailyShards,
+            max_daily_limit: maxLimit,
+            tap_power: tapPower,
+            inventory: inv,
+          },
+        });
+      }
+
+      const nextDaily = Math.round((dailyTaps + tapCredit) * 10000) / 10000;
+      const nextDailyShards =
+        Math.round((dailyShards + shardsEarned) * 1000) / 1000;
+      const nextLife =
+        Math.round((Number(brow.lifetime_taps) + shardsEarned) * 1000) / 1000;
+      const nextSeason =
+        Math.round((Number(brow.season_shards) + shardsEarned) * 1000) / 1000;
+      const nextBal =
+        Math.round((Number(brow.shard_balance) + shardsEarned) * 1000) / 1000;
+
+      const weeklyCredit = applyWeeklyEnergyCredit({
+        now,
+        prevWeekId: brow.weekly_week_id,
+        prevWeekly: Number(brow.weekly_shards) || 0,
+        energySpent: shardsEarned,
+        nextDaily,
+      });
+      const weekId = weeklyCredit.weekId;
+      const weeklyShards = weeklyCredit.weeklyShards;
+      inv.weekly_lb = { weekId, score: weeklyShards };
+      inv = applyWeeklyQuestDayProgress(inv, today, nextDaily, weekId);
+      drainActiveNfts(inv, shardsEarned);
+      inv.bot_last_credit_at = now.toISOString();
+
+      const nowIso = now.toISOString();
+      const botUpdates: Record<string, unknown> = {
+        shard_balance: nextBal,
+        lifetime_taps: nextLife,
+        season_shards: nextSeason,
+        weekly_shards: weeklyShards,
+        weekly_week_id: weekId,
+        daily_taps: nextDaily,
+        daily_shards: nextDailyShards,
+        max_daily_limit: maxLimit,
+        last_tap_date: today,
+        inventory: inv,
+        tap_power: tapPower,
+        // Do NOT touch last_energy / energy_at — bot spends no battery
+      };
+
+      let { error: upBotErr } = await sb
+        .from("players")
+        .update(botUpdates)
+        .eq("telegram_id", playerId);
+      if (upBotErr && /daily_shards|tap_power/i.test(String(upBotErr.message || ""))) {
+        const rest = { ...botUpdates };
+        if (/daily_shards/i.test(String(upBotErr.message || ""))) {
+          delete rest.daily_shards;
+        }
+        if (/tap_power/i.test(String(upBotErr.message || ""))) {
+          delete rest.tap_power;
+        }
+        ({ error: upBotErr } = await sb
+          .from("players")
+          .update(rest)
+          .eq("telegram_id", playerId));
+      }
+      if (upBotErr) throw upBotErr;
+
+      await sb.from("tap_batches").upsert(
+        {
+          batch_id: batchId,
+          telegram_id: playerId,
+          taps: tapCredit,
+          shards: shardsEarned,
+          energy_spent: 0,
+          result: { bot_mine: true, seconds, tap_power: tapPower },
+        },
+        { onConflict: "batch_id" },
+      );
+
+      logEconomy("commit-taps bot_mine", {
+        playerId,
+        seconds,
+        tapCredit,
+        shardsEarned,
+        tapPower,
+      });
+
+      const { data: playerOut } = await sb
+        .from("players")
+        .select(
+          "shard_balance, lifetime_taps, season_shards, weekly_shards, weekly_week_id, daily_taps, daily_shards, last_energy, energy_at, last_tap_date, current_streak, max_unlocked_level, max_daily_limit, inventory, bot_expires, tap_power",
+        )
+        .eq("telegram_id", playerId)
+        .maybeSingle();
+
+      return jsonResponse({
+        success: true,
+        bot_mine: true,
+        batch_id: batchId,
+        taps: tapCredit,
+        shards: shardsEarned,
+        energy_spent: 0,
+        seconds,
+        tap_power: tapPower,
+        player: playerOut,
+      });
+    }
 
     // Idempotent replay
     const { data: prior } = await sb
