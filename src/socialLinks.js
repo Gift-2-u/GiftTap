@@ -1,7 +1,6 @@
 /**
- * Official Gift2U socials — Menu + Tasks surprise gift.
- * Plain <a href>. In the Gift Tap APK only, open outside the WebView
- * (X/Telegram break when loaded inside the game browser).
+ * Official Gift2U socials — Menu + Tasks.
+ * Plain hrefs only: X → x.com, Telegram → t.me, Discord → discord.gg
  */
 
 export const SOCIAL_SURPRISE_EVENT = null;
@@ -9,7 +8,7 @@ export const SOCIAL_SURPRISE_EVENT = null;
 export const SOCIAL_LINKS = [
   {
     id: 'x',
-    label: 'X (Twitter)',
+    label: 'X',
     href: 'https://x.com/Gift2udev',
     icon: '/icons/social/x.svg',
     color: '#e7e9ea',
@@ -31,19 +30,3 @@ export const SOCIAL_LINKS = [
     color: '#5865F2',
   },
 ];
-
-/** APK only: open in system browser / app. Phone Chrome uses the normal href. */
-export function onSocialClick(e, href) {
-  const url = String(href || '').trim();
-  if (!url) return;
-  try {
-    if (window.ReactNativeWebView?.postMessage) {
-      e.preventDefault();
-      window.ReactNativeWebView.postMessage(
-        JSON.stringify({ type: 'OPEN_URL', url }),
-      );
-    }
-  } catch {
-    /* keep default <a href> */
-  }
-}
