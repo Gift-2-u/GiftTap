@@ -3,8 +3,14 @@ import { createPortal } from 'react-dom';
 import { Link } from 'react-router-dom';
 import GiftTapLaunchModal, {
   getGiftTapApkUrl,
+  getGiftTapOpenAppUrl,
   mustDownloadGiftTapApp,
 } from './GiftTapLaunchModal';
+
+function isAndroidPhone() {
+  if (typeof navigator === 'undefined') return false;
+  return /Android/i.test(String(navigator.userAgent || ''));
+}
 
 const navBtnReset = {
   background: 'transparent',
@@ -149,15 +155,43 @@ export default function GiftTapPlayButton({
               boxShadow: '0 12px 40px rgba(0,0,0,0.55)',
             }}
           >
-            <Link
-              to="/play"
-              role="menuitem"
-              onClick={() => setOpen(false)}
-              className="block w-full px-4 py-3 text-left text-sm font-bold text-slate-950 hover:brightness-110"
-              style={{ background: 'linear-gradient(90deg,#fbef43,#fbbf24)' }}
-            >
-              Play Gift Tap
-            </Link>
+            {isAndroidPhone() ? (
+              <a
+                href={getGiftTapOpenAppUrl()}
+                role="menuitem"
+                onClick={(e) => {
+                  setOpen(false);
+                  // Open installed Gift2U app at /play (same path as cold start)
+                  e.preventDefault();
+                  const url = getGiftTapOpenAppUrl();
+                  try {
+                    if (window.ReactNativeWebView?.postMessage) {
+                      window.ReactNativeWebView.postMessage(
+                        JSON.stringify({ type: 'OPEN_URL', url }),
+                      );
+                      return;
+                    }
+                  } catch {
+                    /* fall through */
+                  }
+                  window.location.href = url;
+                }}
+                className="block w-full px-4 py-3 text-left text-sm font-bold text-slate-950 hover:brightness-110"
+                style={{ background: 'linear-gradient(90deg,#fbef43,#fbbf24)' }}
+              >
+                Play Gift Tap
+              </a>
+            ) : (
+              <Link
+                to="/play"
+                role="menuitem"
+                onClick={() => setOpen(false)}
+                className="block w-full px-4 py-3 text-left text-sm font-bold text-slate-950 hover:brightness-110"
+                style={{ background: 'linear-gradient(90deg,#fbef43,#fbbf24)' }}
+              >
+                Play Gift Tap
+              </Link>
+            )}
             <a
               href={getGiftTapApkUrl()}
               download="Gift2U.apk"

@@ -106,17 +106,35 @@ export default function GiftTapLaunchModal({ open, onClose, forceAndroid = false
           the Android app. Same login = same stats.
         </p>
 
-        <Link
-          to="/play"
-          onClick={onClose}
-          className="mb-3 flex w-full items-center justify-center rounded-full px-5 py-3.5 text-base font-black"
-          style={{
-            background: 'linear-gradient(90deg,#fbef43,#fbbf24)',
-            color: '#042f2e',
-          }}
-        >
-          Play Gift Tap
-        </Link>
+        {androidOnly ? (
+          <a
+            href={getGiftTapOpenAppUrl()}
+            onClick={(e) => {
+              onClose();
+              e.preventDefault();
+              window.location.href = getGiftTapOpenAppUrl();
+            }}
+            className="mb-3 flex w-full items-center justify-center rounded-full px-5 py-3.5 text-base font-black"
+            style={{
+              background: 'linear-gradient(90deg,#fbef43,#fbbf24)',
+              color: '#042f2e',
+            }}
+          >
+            Play Gift Tap
+          </a>
+        ) : (
+          <Link
+            to="/play"
+            onClick={onClose}
+            className="mb-3 flex w-full items-center justify-center rounded-full px-5 py-3.5 text-base font-black"
+            style={{
+              background: 'linear-gradient(90deg,#fbef43,#fbbf24)',
+              color: '#042f2e',
+            }}
+          >
+            Play Gift Tap
+          </Link>
+        )}
 
         <a
           href={getGiftTapApkUrl()}
