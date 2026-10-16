@@ -135,6 +135,16 @@ export default function App() {
   /** First document only — Home (badges) → Play must not stick the yellow wheel. */
   const firstLoadDoneRef = useRef(false);
   const [canGoBack, setCanGoBack] = useState(false);
+
+  // Hard stop — never leave the yellow wheel up (Play Gift Tap stuck bug)
+  React.useEffect(() => {
+    if (!loading) return undefined;
+    const t = setTimeout(() => {
+      firstLoadDoneRef.current = true;
+      setLoading(false);
+    }, 2000);
+    return () => clearTimeout(t);
+  }, [loading]);
   const adBusyRef = useRef(false);
   const adsReadyRef = useRef(false);
   /** Preloaded rewarded instance (null = none ready). */
@@ -578,7 +588,7 @@ export default function App() {
           source={{ uri }}
           style={styles.flex}
           onLoadStart={() => {
-            if (!firstLoadDoneRef.current) setLoading(true);
+            // Never re-show full-screen wheel after first paint (Play Gift Tap stuck bug)
           }}
           onLoadEnd={() => {
             firstLoadDoneRef.current = true;
@@ -593,7 +603,7 @@ export default function App() {
           onNavigationStateChange={(nav) => {
             setCanGoBack(nav.canGoBack);
             if (nav?.url) handleWalletUrl(nav.url);
-            if (nav && nav.loading === false) setLoading(false);
+            setLoading(false);
           }}
           onShouldStartLoadWithRequest={(req) => {
             const u = String(req?.url || '');
@@ -620,7 +630,7 @@ export default function App() {
           thirdPartyCookiesEnabled
           sharedCookiesEnabled
         />
-        {loading ? (
+        {loading && !firstLoadDoneRef.current ? (
           <View style={styles.loader} pointerEvents="none">
             <ActivityIndicator size="large" color="#fbef43" />
           </View>

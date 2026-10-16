@@ -162,6 +162,16 @@ export default function App() {
     }
   }, [baseUri, webUri]);
 
+  // Hard stop — never leave the yellow wheel up (Play Gift Tap stuck bug)
+  React.useEffect(() => {
+    if (!loading) return undefined;
+    const t = setTimeout(() => {
+      firstLoadDoneRef.current = true;
+      setLoading(false);
+    }, 2000);
+    return () => clearTimeout(t);
+  }, [loading]);
+
   const refreshWeb = useCallback(() => {
     firstLoadDoneRef.current = false;
     setLoading(true);
@@ -602,8 +612,9 @@ export default function App() {
             source={{ uri: webUri }}
             style={styles.flex}
             onLoadStart={() => {
-              // Do not spin again on in-app Home → /play (badge burn → Play Gift Tap)
-              if (!firstLoadDoneRef.current) setLoading(true);
+              // Never show the full-screen wheel after first paint.
+              // Home → Gift Tap → Play Gift Tap was leaving it stuck forever
+              // (pointerEvents=none so the game still worked underneath).
             }}
             onLoadEnd={() => {
               firstLoadDoneRef.current = true;
@@ -618,7 +629,7 @@ export default function App() {
             onNavigationStateChange={(nav) => {
               setCanGoBack(nav.canGoBack);
               if (nav?.url) handleWalletUrl(nav.url);
-              if (nav && nav.loading === false) setLoading(false);
+              setLoading(false);
             }}
             onShouldStartLoadWithRequest={(req) => {
               const u = String(req?.url || '');
@@ -652,7 +663,8 @@ export default function App() {
               : {})}
           />
         ) : null}
-        {loading ? (
+        {/* Cold start only — never again after first onLoadEnd (Play Gift Tap must not stick this) */}
+        {loading && !firstLoadDoneRef.current ? (
           <View style={styles.loader} pointerEvents="none">
             <ActivityIndicator size="large" color="#fbef43" />
           </View>

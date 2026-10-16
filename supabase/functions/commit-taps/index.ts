@@ -373,7 +373,7 @@ serve(async (req) => {
       await sb.from("tap_batches").upsert(
         {
           batch_id: batchId,
-          telegram_id: playerId,
+          player_id: playerId,
           taps: tapCredit,
           shards: shardsEarned,
           energy_spent: 0,
