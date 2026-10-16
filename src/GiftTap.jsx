@@ -3492,6 +3492,19 @@ const GiftTapGame = () => {
     syncPlayer({ silent: !!playerId });
   }, [syncPlayer, playerId]);
 
+  // Tell Gift Tap APK to drop the yellow ActivityIndicator (Home badges → Play)
+  useEffect(() => {
+    if (isLoading) return undefined;
+    try {
+      window.ReactNativeWebView?.postMessage?.(
+        JSON.stringify({ type: 'LOADING_DONE' }),
+      );
+    } catch {
+      /* ignore */
+    }
+    return undefined;
+  }, [isLoading]);
+
   // Returning from main site / Play Gift Tap must never leave the center loader stuck
   useEffect(() => {
     if (!isLoading) return undefined;
@@ -3509,6 +3522,13 @@ const GiftTapGame = () => {
       if (document.visibilityState && document.visibilityState !== 'visible') return;
       // Drop leftover full-screen loader from Home → Play / app resume
       setIsLoading(false);
+      try {
+        window.ReactNativeWebView?.postMessage?.(
+          JSON.stringify({ type: 'LOADING_DONE' }),
+        );
+      } catch {
+        /* ignore */
+      }
       if (playerId && isAuthed) {
         if (!isDataLoadedRef.current) setIsDataLoaded(true);
         // Refresh in background without wiping the live HUD

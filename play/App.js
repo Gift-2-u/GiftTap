@@ -63,6 +63,52 @@ function mwaAddressToBase58(base64Address) {
   return new PublicKey(bytes).toBase58();
 }
 
+function parseWebMessageData(raw) {
+  if (raw == null) return null;
+  if (typeof raw === 'object') return raw;
+  if (typeof raw !== 'string') return null;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
+/** X / Telegram / Discord / Raydium must leave the WebView (popups disabled). */
+function shouldOpenExternally(url) {
+  const u = String(url || '').trim();
+  if (!u || u === 'about:blank') return false;
+  if (
+    u.startsWith('mailto:') ||
+    u.startsWith('tel:') ||
+    u.startsWith('sms:') ||
+    u.startsWith('tg:') ||
+    u.startsWith('twitter:') ||
+    u.startsWith('discord:')
+  ) {
+    return true;
+  }
+  if (!/^https?:\/\//i.test(u)) return false;
+  try {
+    const host = new URL(u).hostname.replace(/^www\./i, '').toLowerCase();
+    if (host === 'gift2u.fun' || host.endsWith('.gift2u.fun')) return false;
+    if (host === 'localhost' || host === '127.0.0.1' || host.endsWith('.local')) {
+      return false;
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function openExternalUrl(url) {
+  const u = String(url || '').trim();
+  if (!u) return;
+  Linking.openURL(u).catch((e) =>
+    console.warn('[Gift2U Seeker] openExternalUrl failed', u, e?.message || e),
+  );
+}
+
 /** Always use live rewarded unit unless app.json forces test mode. */
 const getRewardedUnitId = () => {
   const extra = Constants.expoConfig?.extra || Constants.manifest?.extra || {};
@@ -86,6 +132,8 @@ const useTestAds = () => {
 export default function App() {
   const webRef = useRef(null);
   const [loading, setLoading] = useState(true);
+  /** First document only — Home (badges) → Play must not stick the yellow wheel. */
+  const firstLoadDoneRef = useRef(false);
   const [canGoBack, setCanGoBack] = useState(false);
   const adBusyRef = useRef(false);
   const adsReadyRef = useRef(false);
@@ -457,12 +505,7 @@ export default function App() {
 
   const onWebMessage = useCallback(
     (event) => {
-      let data;
-      try {
-        data = JSON.parse(event.nativeEvent.data);
-      } catch {
-        return;
-      }
+      const data = parseWebMessageData(event?.nativeEvent?.data);
       if (!data || typeof data !== 'object') return;
 
       if (data.type === 'WATCH_REWARDED_AD' && data.requestId) {
@@ -492,12 +535,14 @@ export default function App() {
         return;
       }
 
-      // mailto: / external — open with OS (WebView cannot open mail apps alone)
       if (data.type === 'OPEN_URL' && data.url) {
-        const url = String(data.url);
-        Linking.openURL(url).catch((e) =>
-          console.warn('[Gift2U Seeker] OPEN_URL failed', url, e?.message || e),
-        );
+        openExternalUrl(data.url);
+        return;
+      }
+
+      if (data.type === 'LOADING_DONE' || data.type === 'PLAY_READY') {
+        firstLoadDoneRef.current = true;
+        setLoading(false);
       }
     },
     [injectAdResult, showRewardedAd, connectWalletNative],
@@ -532,8 +577,11 @@ export default function App() {
           ref={webRef}
           source={{ uri }}
           style={styles.flex}
-          onLoadStart={() => setLoading(true)}
+          onLoadStart={() => {
+            if (!firstLoadDoneRef.current) setLoading(true);
+          }}
           onLoadEnd={() => {
+            firstLoadDoneRef.current = true;
             setLoading(false);
             // Re-stamp shell flag after every navigation (SPA can drop ?seeker=1)
             try {
@@ -545,15 +593,14 @@ export default function App() {
           onNavigationStateChange={(nav) => {
             setCanGoBack(nav.canGoBack);
             if (nav?.url) handleWalletUrl(nav.url);
+            if (nav && nav.loading === false) setLoading(false);
           }}
           onShouldStartLoadWithRequest={(req) => {
             const u = String(req?.url || '');
             if (handleWalletUrl(u)) return false;
-            // Mail / phone — must leave WebView for the OS app
-            if (u.startsWith('mailto:') || u.startsWith('tel:') || u.startsWith('sms:')) {
-              Linking.openURL(u).catch((e) =>
-                console.warn('[Gift2U Seeker] mailto/tel failed', e?.message || e),
-              );
+            // X / Telegram / Discord / mail — leave WebView (window.open blocked)
+            if (shouldOpenExternally(u)) {
+              openExternalUrl(u);
               return false;
             }
             return true;
