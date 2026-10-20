@@ -786,9 +786,8 @@ const GiftTapGame = () => {
   // Returning players (Home → Play): skip full-screen loader; sync fills HUD
   const [isLoading, setIsLoading] = useState(() => !getPlayerId());
   const [isDataLoaded, setIsDataLoaded] = useState(false);
-  /** Weekend Bot expiry ISO — live mining while app is open. */
+  /** Weekend Bot expiry ISO — once/UTC-day claim while active (Shadow-style). */
   const [botExpires, setBotExpires] = useState(null);
-  const botMineBusyRef = useRef(false);
   /** Bumps on each syncPlayer start — stale async finishes must not clear a newer load. */
   const syncGenRef = useRef(0);
   const isDataLoadedRef = useRef(false);
@@ -2910,91 +2909,67 @@ const GiftTapGame = () => {
         setEnergy(recoveredEnergy);
         optimisticEnergy.current = recoveredEnergy;
         
-        // Weekend Bot — catch up for time away (also mines live while app stays open).
-        // Rate: fill today's daily limit over 24h; each virtual tap pays tap power shards.
+        // Weekend Bot — Shadow-style once/UTC-day claim from midnight (unused daily × tap power).
         setBotExpires(playerRow.bot_expires || null);
         const botExpiresMs = playerRow.bot_expires
           ? new Date(playerRow.bot_expires).getTime()
           : 0;
         if (botExpiresMs > now) {
-          const invBot =
-            playerRow.inventory && typeof playerRow.inventory === 'object'
-              ? playerRow.inventory
-              : inv && typeof inv === 'object'
-                ? inv
-                : {};
-          const lastCreditMs = invBot.bot_last_credit_at
-            ? Date.parse(String(invBot.bot_last_credit_at))
-            : playerRow.last_updated
-              ? new Date(playerRow.last_updated).getTime()
-              : lastDate;
-          let secondsAway = Math.max(
-            0,
-            (Math.min(now, botExpiresMs) - (Number.isFinite(lastCreditMs) ? lastCreditMs : now)) /
-              1000,
-          );
-          // Cap one login catch-up at 24h (further time is covered by live ticks)
-          secondsAway = Math.min(86400, secondsAway);
-          let offlineShardsEarned = 0;
-          if (secondsAway >= 1) {
-            try {
-              await ensureSecureSession();
-              if (!hasSecureSession()) {
-                /* live ticks will retry once session is ready */
-              } else {
-              let left = secondsAway;
-              while (left >= 1) {
-                const chunk = Math.min(3600, left);
-                const batchId =
-                  crypto.randomUUID?.() ||
-                  `bot_${Date.now()}_${Math.random().toString(36).slice(2)}`;
-                const data = await secureBotMine({ batchId, seconds: chunk });
-                if (data?.success && Number(data.shards) > 0) {
-                  offlineShardsEarned += Number(data.shards) || 0;
+          try {
+            await ensureSecureSession();
+            if (hasSecureSession()) {
+              const batchId =
+                crypto.randomUUID?.() ||
+                `bot_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+              const data = await secureBotMine({ batchId, seconds: 1 });
+              const earnedN = Number(data?.shards) || 0;
+              if (data?.player) {
+                const p = data.player;
+                if (Number.isFinite(Number(p.shard_balance))) {
+                  optimisticBalance.current = Number(p.shard_balance);
+                  setBalance(Number(p.shard_balance));
                 }
-                if (data?.player) {
-                  const p = data.player;
-                  if (Number.isFinite(Number(p.shard_balance))) {
-                    optimisticBalance.current = Number(p.shard_balance);
-                    setBalance(Number(p.shard_balance));
-                  }
-                  if (Number.isFinite(Number(p.lifetime_taps))) {
-                    optimisticTaps.current = Number(p.lifetime_taps);
-                    setLifetimeTaps(Number(p.lifetime_taps));
-                  }
-                  if (Number.isFinite(Number(p.season_shards))) {
-                    optimisticSeason.current = Number(p.season_shards);
-                    setSeasonShards(Number(p.season_shards));
-                  }
-                  if (Number.isFinite(Number(p.daily_taps))) {
-                    optimisticDaily.current = Number(p.daily_taps);
-                    setDailyTaps(Number(p.daily_taps));
-                  }
-                  if (Number.isFinite(Number(p.daily_shards))) {
-                    optimisticDailyShards.current = Number(p.daily_shards);
-                  }
-                  if (p.inventory) {
-                    inventoryRef.current = {
-                      ...(inventoryRef.current || {}),
-                      ...p.inventory,
-                    };
-                  }
+                if (Number.isFinite(Number(p.lifetime_taps))) {
+                  optimisticTaps.current = Number(p.lifetime_taps);
+                  setLifetimeTaps(Number(p.lifetime_taps));
                 }
-                if (data?.reason === 'daily_limit' || data?.reason === 'no_bot') break;
-                left -= chunk;
+                if (Number.isFinite(Number(p.season_shards))) {
+                  optimisticSeason.current = Number(p.season_shards);
+                  setSeasonShards(Number(p.season_shards));
+                }
+                if (Number.isFinite(Number(p.daily_taps))) {
+                  optimisticDaily.current = Number(p.daily_taps);
+                  setDailyTaps(Number(p.daily_taps));
+                }
+                if (Number.isFinite(Number(p.daily_shards))) {
+                  optimisticDailyShards.current = Number(p.daily_shards);
+                }
+                if (p.inventory) {
+                  inventoryRef.current = {
+                    ...(inventoryRef.current || {}),
+                    ...p.inventory,
+                  };
+                }
+                if (p.bot_expires !== undefined) {
+                  setBotExpires(p.bot_expires || null);
+                }
               }
-              if (offlineShardsEarned > 0.0005) {
-                const earned = Math.round(offlineShardsEarned * 1000) / 1000;
+              if (
+                data?.success &&
+                earnedN > 0.0005 &&
+                data?.reason !== 'already_claimed' &&
+                data?.replay !== true
+              ) {
+                const earned = Math.round(earnedN * 1000) / 1000;
                 setTimeout(() => {
                   notify(
-                    `🤖 Welcome back! Your Bot mined ${earned.toLocaleString()} Shards while you were away!`,
+                    `🤖 Weekend Bot claimed +${earned.toLocaleString()} shards (UTC day, unused daily × tap power)`,
                   );
                 }, 800);
               }
-              }
-            } catch (botErr) {
-              console.warn('Weekend Bot catch-up', botErr?.message || botErr);
             }
+          } catch (botErr) {
+            console.warn('Weekend Bot claim', botErr?.message || botErr);
           }
         }
 
@@ -3514,84 +3489,10 @@ const GiftTapGame = () => {
     };
   }, [playerId, isAuthed, syncPlayer]);
 
-  // Keep bot chip/timer in sync when activated from Shop / Pack
+  // Keep bot chip in sync when activated from Shop / Pack
   useEffect(() => {
     if (stats?.bot_expires) setBotExpires(stats.bot_expires);
   }, [stats?.bot_expires]);
-
-  // Weekend Bot — keep mining while the app stays open (daily limit / 24h × tap power)
-  useEffect(() => {
-    if (!isDataLoaded || !playerId || !isAuthed) return undefined;
-    const expMs = botExpires ? Date.parse(botExpires) : 0;
-    if (!(expMs > Date.now())) return undefined;
-
-    const TICK_SEC = 10;
-    let cancelled = false;
-
-    const applyBotPlayer = (p) => {
-      if (!p || typeof p !== 'object') return;
-      if (Number.isFinite(Number(p.shard_balance))) {
-        optimisticBalance.current = Number(p.shard_balance);
-        setBalance(Number(p.shard_balance));
-      }
-      if (Number.isFinite(Number(p.lifetime_taps))) {
-        optimisticTaps.current = Number(p.lifetime_taps);
-        setLifetimeTaps(Number(p.lifetime_taps));
-      }
-      if (Number.isFinite(Number(p.season_shards))) {
-        optimisticSeason.current = Number(p.season_shards);
-        setSeasonShards(Number(p.season_shards));
-      }
-      if (Number.isFinite(Number(p.daily_taps))) {
-        optimisticDaily.current = Number(p.daily_taps);
-        setDailyTaps(Number(p.daily_taps));
-      }
-      if (Number.isFinite(Number(p.daily_shards))) {
-        optimisticDailyShards.current = Number(p.daily_shards);
-      }
-      if (p.bot_expires !== undefined) setBotExpires(p.bot_expires || null);
-      if (p.inventory && typeof p.inventory === 'object') {
-        inventoryRef.current = {
-          ...(inventoryRef.current || {}),
-          ...p.inventory,
-        };
-      }
-    };
-
-    const tick = async () => {
-      if (cancelled || botMineBusyRef.current) return;
-      if (Date.now() >= expMs) {
-        setBotExpires(null);
-        return;
-      }
-      if (document.visibilityState === 'hidden') return;
-      botMineBusyRef.current = true;
-      try {
-        await ensureSecureSession();
-        if (!hasSecureSession()) return;
-        const batchId =
-          crypto.randomUUID?.() ||
-          `bot_${Date.now()}_${Math.random().toString(36).slice(2)}`;
-        const data = await secureBotMine({ batchId, seconds: TICK_SEC });
-        if (cancelled) return;
-        if (data?.player) applyBotPlayer(data.player);
-        if (data?.reason === 'no_bot') setBotExpires(null);
-      } catch (e) {
-        console.warn('Weekend Bot tick', e?.message || e);
-      } finally {
-        botMineBusyRef.current = false;
-      }
-    };
-
-    const id = setInterval(tick, TICK_SEC * 1000);
-    // First tick shortly after open (catch-up already ran on sync)
-    const first = setTimeout(tick, 2500);
-    return () => {
-      cancelled = true;
-      clearInterval(id);
-      clearTimeout(first);
-    };
-  }, [isDataLoaded, playerId, isAuthed, botExpires, notify]);
 
   // Deep link from https://gift2u.fun/delete-account → /play?delete=1
   useEffect(() => {
@@ -9249,7 +9150,7 @@ const GiftTapGame = () => {
                      <div style={{ display: 'flex', justifyContent: 'center', gap: 4, flexWrap: 'wrap', minHeight: 14 }}>
                        {botExpires && Date.now() < new Date(botExpires).getTime() ? (
                          <span style={{ fontSize: 9, fontWeight: 800, color: '#c4b5fd', background: 'rgba(167,139,250,0.18)', border: '1px solid #a78bfa66', borderRadius: 999, padding: '1px 6px' }}>
-                           🤖 Bot mining
+                           🤖 Bot active
                          </span>
                        ) : null}
                        {stats?.frenzy_expires && Date.now() < new Date(stats.frenzy_expires).getTime() ? (

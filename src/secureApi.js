@@ -304,7 +304,7 @@ export async function secureCommitTaps({ batchId, taps, frenzyTaps = 0 }) {
   });
 }
 
-/** Weekend Bot tick — fills daily limit over 24h × tap power (no energy). */
+/** Weekend Bot claim — once/UTC-day from midnight, unused daily × tap power (Shadow-style). */
 export async function secureBotMine({ batchId, seconds }) {
   return callSecureFunction('commit-taps', {
     batch_id: batchId,
