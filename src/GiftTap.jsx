@@ -786,7 +786,7 @@ const GiftTapGame = () => {
   // Returning players (Home → Play): skip full-screen loader; sync fills HUD
   const [isLoading, setIsLoading] = useState(() => !getPlayerId());
   const [isDataLoaded, setIsDataLoaded] = useState(false);
-  /** Weekend Bot expiry ISO — once/UTC-day claim while active (Shadow-style). */
+  /** Weekend Bot expiry ISO — AFK mining until daily full, while active (3 UTC days). */
   const [botExpires, setBotExpires] = useState(null);
   /** Bumps on each syncPlayer start — stale async finishes must not clear a newer load. */
   const syncGenRef = useRef(0);
@@ -2909,7 +2909,7 @@ const GiftTapGame = () => {
         setEnergy(recoveredEnergy);
         optimisticEnergy.current = recoveredEnergy;
         
-        // Weekend Bot — Shadow-style once/UTC-day claim from midnight (unused daily × tap power).
+        // Weekend Bot — continuous AFK while bot_expires (3d): credit time since last mine until daily full.
         setBotExpires(playerRow.bot_expires || null);
         const botExpiresMs = playerRow.bot_expires
           ? new Date(playerRow.bot_expires).getTime()
@@ -2954,22 +2954,17 @@ const GiftTapGame = () => {
                   setBotExpires(p.bot_expires || null);
                 }
               }
-              if (
-                data?.success &&
-                earnedN > 0.0005 &&
-                data?.reason !== 'already_claimed' &&
-                data?.replay !== true
-              ) {
+              if (data?.success && earnedN > 0.0005 && data?.replay !== true) {
                 const earned = Math.round(earnedN * 1000) / 1000;
                 setTimeout(() => {
                   notify(
-                    `🤖 Weekend Bot claimed +${earned.toLocaleString()} shards (UTC day, unused daily × tap power)`,
+                    `🤖 Weekend Bot mined +${earned.toLocaleString()} shards while you were away`,
                   );
                 }, 800);
               }
             }
           } catch (botErr) {
-            console.warn('Weekend Bot claim', botErr?.message || botErr);
+            console.warn('Weekend Bot catch-up', botErr?.message || botErr);
           }
         }
 

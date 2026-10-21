@@ -37,7 +37,7 @@ serve(async (req) => {
     const { data: row, error } = await sb
       .from("players")
       .select(
-        "inventory, shard_balance, season_shards, lifetime_taps, daily_taps, weekly_shards, weekly_week_id, last_tap_date, max_daily_limit, limit_boost_amount, limit_boost_expires, username",
+        "inventory, shard_balance, season_shards, lifetime_taps, daily_taps, daily_shards, weekly_shards, weekly_week_id, last_tap_date, max_daily_limit, limit_boost_amount, limit_boost_expires, username",
       )
       .eq("telegram_id", playerId)
       .maybeSingle();
@@ -81,8 +81,12 @@ serve(async (req) => {
 
     // Daily reset if new day
     let dailyTaps = Number(row.daily_taps) || 0;
+    let dailyShards = Number(row.daily_shards) || 0;
     const prevLtd = String(row.last_tap_date || "").slice(0, 10);
-    if (prevLtd && prevLtd !== today) dailyTaps = 0;
+    if (prevLtd && prevLtd !== today) {
+      dailyTaps = 0;
+      dailyShards = 0;
+    }
 
     // Accrue from UTC midnight → only hours that have actually passed (capped by NFT)
     const now = new Date();
@@ -118,6 +122,9 @@ serve(async (req) => {
     const nextLife =
       Math.round(((Number(row.lifetime_taps) || 0) + yieldAmt) * 1000) / 1000;
     const nextDaily = dailyTaps + yieldAmt;
+    // Daily board uses players.daily_shards — Shadow was only writing daily_taps.
+    const nextDailyShards =
+      Math.round((dailyShards + yieldAmt) * 1000) / 1000;
 
     const weeklyCredit = applyWeeklyEnergyCredit({
       prevWeekId: row.weekly_week_id,
@@ -143,6 +150,7 @@ serve(async (req) => {
       season_shards: nextSeason,
       lifetime_taps: nextLife,
       daily_taps: nextDaily,
+      daily_shards: nextDailyShards,
       weekly_shards: weeklyCredit.weeklyShards,
       weekly_week_id: weeklyCredit.weekId,
       last_tap_date: today,
@@ -150,10 +158,18 @@ serve(async (req) => {
       last_updated: new Date().toISOString(),
     };
 
-    const { error: upErr } = await sb
+    let { error: upErr } = await sb
       .from("players")
       .update(updates)
       .eq("telegram_id", playerId);
+    if (upErr && /daily_shards/i.test(String(upErr.message || ""))) {
+      const rest = { ...updates };
+      delete rest.daily_shards;
+      ({ error: upErr } = await sb
+        .from("players")
+        .update(rest)
+        .eq("telegram_id", playerId));
+    }
     if (upErr) throw upErr;
 
     try {
@@ -191,6 +207,7 @@ serve(async (req) => {
       effective_hours: Math.round(effectiveHours * 1000) / 1000,
       base_cap: baseCap,
       daily_taps: nextDaily,
+      daily_shards: nextDailyShards,
       inventory: inv,
       player: updates,
     });

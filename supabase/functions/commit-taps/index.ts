@@ -180,19 +180,18 @@ serve(async (req) => {
     const sb = adminClient();
 
     // -------------------------------------------------------------------------
-    // Weekend Bot — same model as Shadow claim:
-    // once per UTC day, accrue from UTC midnight (24h), unused daily room only,
-    // shards = taps × tap power. No energy. No live ticks.
+    // Weekend Bot — active for bot_expires (3 UTC days). Continuous AFK mining:
+    // each return credits time since bot_last_credit_at at (daily_limit/24h)×tap power
+    // until today's daily limit is full. New UTC day resets room and keeps mining.
     // -------------------------------------------------------------------------
     if (isBotMine) {
       const now = new Date();
       const today = utcTodayStr(now);
-      const claimBatchId = `bot_claim_${playerId}_${today}`;
 
       const { data: priorBot } = await sb
         .from("tap_batches")
         .select("taps, shards, energy_spent, result")
-        .eq("batch_id", claimBatchId)
+        .eq("batch_id", batchId)
         .maybeSingle();
       if (priorBot) {
         const { data: player } = await sb
@@ -206,11 +205,10 @@ serve(async (req) => {
           success: true,
           replay: true,
           bot_mine: true,
-          batch_id: claimBatchId,
+          batch_id: batchId,
           taps: priorBot.taps,
           shards: priorBot.shards,
           energy_spent: 0,
-          reason: "already_claimed",
           player,
         });
       }
@@ -247,21 +245,6 @@ serve(async (req) => {
       }
 
       let inv = invObj(brow.inventory);
-      const claimsMap =
-        inv.bot_claims && typeof inv.bot_claims === "object"
-          ? { ...(inv.bot_claims as Record<string, unknown>) }
-          : {};
-      if (claimsMap[today]) {
-        return jsonResponse({
-          success: true,
-          bot_mine: true,
-          taps: 0,
-          shards: 0,
-          reason: "already_claimed",
-          player: brow,
-        });
-      }
-
       const prevLtd = brow.last_tap_date
         ? String(brow.last_tap_date).slice(0, 10)
         : "";
@@ -270,10 +253,10 @@ serve(async (req) => {
         : "";
       let dailyTaps = Number(brow.daily_taps) || 0;
       let dailyShards = Number((brow as Record<string, unknown>).daily_shards) || 0;
-      if (
+      const dayRolled =
         (prevLtd && prevLtd !== today) ||
-        (!prevLtd && lastUpdatedDay && lastUpdatedDay !== today)
-      ) {
+        (!prevLtd && lastUpdatedDay && lastUpdatedDay !== today);
+      if (dayRolled) {
         try {
           await sb.rpc("ensure_daily_leaderboard_rollover");
         } catch (e) {
@@ -281,6 +264,8 @@ serve(async (req) => {
         }
         dailyTaps = 0;
         dailyShards = 0;
+        // New UTC day: start this day's AFK clock at midnight
+        inv.bot_last_credit_at = `${today}T00:00:00.000Z`;
       }
 
       const maxLimit = effectiveDailyLimit(brow as Record<string, unknown>, now);
@@ -290,28 +275,57 @@ serve(async (req) => {
         computeTapPowerForPlayer(brow as Record<string, unknown>, now),
       );
 
-      // Shadow-style: from UTC midnight, up to 24h, only unused daily room.
-      const utcMidnightMs = Date.UTC(
-        now.getUTCFullYear(),
-        now.getUTCMonth(),
-        now.getUTCDate(),
-      );
+      const dayStartMs = Date.parse(`${today}T00:00:00.000Z`);
+      const stamped = inv.bot_last_credit_at
+        ? Date.parse(String(inv.bot_last_credit_at))
+        : NaN;
+      let anchorMs =
+        Number.isFinite(stamped) && stamped > 0 ? stamped : dayStartMs;
       const endMs = Math.min(now.getTime(), botExpMs);
-      const elapsedHours = Math.max(0, (endMs - utcMidnightMs) / 3_600_000);
-      const effectiveHours = Math.min(24, elapsedHours);
-      const potential = Math.floor((effectiveHours / 24) * maxLimit);
-      const tapCredit = Math.min(potential, remaining);
+      if (anchorMs > endMs) anchorMs = endMs;
+      // Cap one catch-up at 24h of wall time
+      const seconds = Math.min(86400, Math.max(0, (endMs - anchorMs) / 1000));
+      const rawTaps = seconds * (maxLimit / 86400);
+      const tapCredit = Math.min(remaining, Math.round(rawTaps * 10000) / 10000);
       const shardsEarned =
         Math.round(tapCredit * tapPower * 1000) / 1000;
 
-      if (remaining <= 0 || tapCredit <= 0 || shardsEarned <= 0) {
+      if (remaining <= 0) {
+        inv.bot_last_credit_at = now.toISOString();
+        await sb
+          .from("players")
+          .update({
+            inventory: inv,
+            max_daily_limit: maxLimit,
+            tap_power: tapPower,
+          })
+          .eq("telegram_id", playerId);
         return jsonResponse({
           success: true,
           bot_mine: true,
           taps: 0,
           shards: 0,
-          reason: remaining <= 0 ? "daily_limit" : "too_small",
-          effective_hours: Math.round(effectiveHours * 1000) / 1000,
+          seconds,
+          reason: "daily_limit",
+          player: {
+            ...brow,
+            daily_taps: dailyTaps,
+            daily_shards: dailyShards,
+            max_daily_limit: maxLimit,
+            tap_power: tapPower,
+            inventory: inv,
+          },
+        });
+      }
+
+      if (tapCredit <= 0 || shardsEarned <= 0) {
+        return jsonResponse({
+          success: true,
+          bot_mine: true,
+          taps: 0,
+          shards: 0,
+          seconds,
+          reason: "too_small",
           player: {
             ...brow,
             daily_taps: dailyTaps,
@@ -345,17 +359,6 @@ serve(async (req) => {
       inv.weekly_lb = { weekId, score: weeklyShards };
       inv = applyWeeklyQuestDayProgress(inv, today, nextDaily, weekId);
       drainActiveNfts(inv, shardsEarned);
-      claimsMap[today] = {
-        taps: tapCredit,
-        shards: shardsEarned,
-        effective_hours: Math.round(effectiveHours * 1000) / 1000,
-        potential,
-        remaining_before: remaining,
-        max_limit: maxLimit,
-        tap_power: tapPower,
-        claimed_at: now.toISOString(),
-      };
-      inv.bot_claims = claimsMap;
       inv.bot_last_credit_at = now.toISOString();
 
       const botUpdates: Record<string, unknown> = {
@@ -393,14 +396,14 @@ serve(async (req) => {
 
       await sb.from("tap_batches").upsert(
         {
-          batch_id: claimBatchId,
+          batch_id: batchId,
           player_id: playerId,
           taps: tapCredit,
           shards: shardsEarned,
           energy_spent: 0,
           result: {
             bot_mine: true,
-            effective_hours: effectiveHours,
+            seconds,
             tap_power: tapPower,
           },
         },
@@ -409,10 +412,10 @@ serve(async (req) => {
 
       logEconomy("commit-taps bot_mine", {
         playerId,
+        seconds,
         tapCredit,
         shardsEarned,
         tapPower,
-        effectiveHours,
       });
 
       const { data: playerOut } = await sb
@@ -426,11 +429,11 @@ serve(async (req) => {
       return jsonResponse({
         success: true,
         bot_mine: true,
-        batch_id: claimBatchId,
+        batch_id: batchId,
         taps: tapCredit,
         shards: shardsEarned,
         energy_spent: 0,
-        effective_hours: Math.round(effectiveHours * 1000) / 1000,
+        seconds,
         tap_power: tapPower,
         player: playerOut,
       });

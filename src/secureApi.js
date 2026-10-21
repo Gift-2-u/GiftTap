@@ -304,7 +304,7 @@ export async function secureCommitTaps({ batchId, taps, frenzyTaps = 0 }) {
   });
 }
 
-/** Weekend Bot claim — once/UTC-day from midnight, unused daily × tap power (Shadow-style). */
+/** Weekend Bot catch-up — AFK time since last credit × (daily_limit/24h) × tap power. */
 export async function secureBotMine({ batchId, seconds }) {
   return callSecureFunction('commit-taps', {
     batch_id: batchId,
