@@ -304,7 +304,7 @@ export async function secureCommitTaps({ batchId, taps, frenzyTaps = 0 }) {
   });
 }
 
-/** Weekend Bot catch-up — fill toward today's max from UTC midnight (limit/24h × tap power). */
+/** Weekend Bot — fill unused daily from UTC midnight (same curve as Shadow). */
 export async function secureBotMine({ batchId, seconds }) {
   return callSecureFunction('commit-taps', {
     batch_id: batchId,

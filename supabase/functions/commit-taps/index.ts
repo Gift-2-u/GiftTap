@@ -180,38 +180,12 @@ serve(async (req) => {
     const sb = adminClient();
 
     // -------------------------------------------------------------------------
-    // Weekend Bot — active for bot_expires (3 UTC days). Continuous AFK mining:
-    // each return credits time since bot_last_credit_at at (daily_limit/24h)×tap power
-    // until today's daily limit is full. New UTC day resets room and keeps mining.
+    // Weekend Bot — while active, each UTC day fills unused daily from midnight
+    // toward max (same curve as Shadow). You tap some, bot fills the rest.
     // -------------------------------------------------------------------------
     if (isBotMine) {
       const now = new Date();
       const today = utcTodayStr(now);
-
-      const { data: priorBot } = await sb
-        .from("tap_batches")
-        .select("taps, shards, energy_spent, result")
-        .eq("batch_id", batchId)
-        .maybeSingle();
-      if (priorBot) {
-        const { data: player } = await sb
-          .from("players")
-          .select(
-            "shard_balance, lifetime_taps, season_shards, weekly_shards, weekly_week_id, daily_taps, daily_shards, last_energy, last_tap_date, current_streak, max_unlocked_level, inventory, bot_expires, tap_power, max_daily_limit",
-          )
-          .eq("telegram_id", playerId)
-          .maybeSingle();
-        return jsonResponse({
-          success: true,
-          replay: true,
-          bot_mine: true,
-          batch_id: batchId,
-          taps: priorBot.taps,
-          shards: priorBot.shards,
-          energy_spent: 0,
-          player,
-        });
-      }
 
       let { data: brow, error: bErr } = await sb
         .from("players")
@@ -229,7 +203,7 @@ serve(async (req) => {
           .eq("telegram_id", playerId)
           .maybeSingle());
       }
-      if (bErr) throw bErr;
+      if (bErr) throw new Error(bErr.message || "Player load failed");
       if (!brow) throw new Error("Player not found");
 
       const botExpMs = brow.bot_expires
@@ -237,9 +211,11 @@ serve(async (req) => {
         : 0;
       if (!(botExpMs > now.getTime())) {
         return jsonResponse({
-          success: false,
+          success: true,
+          bot_mine: true,
+          taps: 0,
+          shards: 0,
           reason: "no_bot",
-          message: "Weekend Bot is not active",
           player: brow,
         });
       }
@@ -269,71 +245,30 @@ serve(async (req) => {
         computeTapPowerForPlayer(brow as Record<string, unknown>, now),
       );
 
-      // Fill toward today's max at (limit/24h): expected taps since UTC midnight
-      // minus what's already on the bar. Ignores a stuck bot_last_credit_at=now
-      // which previously made every reopen pay 0 for the rest of the day.
-      const dayStartMs = Date.parse(`${today}T00:00:00.000Z`);
-      const endMs = Math.min(now.getTime(), botExpMs);
-      const seconds = Math.min(
-        86400,
-        Math.max(0, (endMs - dayStartMs) / 1000),
+      // Same curve as Shadow: fill unused daily from UTC midnight up to max.
+      // You at 500/1000 → later opens credit the rest until 1000/1000.
+      const utcMidnightMs = Date.UTC(
+        now.getUTCFullYear(),
+        now.getUTCMonth(),
+        now.getUTCDate(),
       );
-      const targetTaps =
-        Math.round(seconds * (maxLimit / 86400) * 10000) / 10000;
-      const behind = Math.max(0, targetTaps - dailyTaps);
-      const tapCredit = Math.min(remaining, behind);
+      const endMs = Math.min(now.getTime(), botExpMs);
+      const elapsedHours = Math.max(0, (endMs - utcMidnightMs) / 3_600_000);
+      const effectiveHours = Math.min(24, elapsedHours);
+      const targetTaps = Math.floor((effectiveHours / 24) * maxLimit);
+      const tapCredit = Math.min(remaining, Math.max(0, targetTaps - dailyTaps));
       const shardsEarned =
         Math.round(tapCredit * tapPower * 1000) / 1000;
 
-      if (remaining <= 0) {
-        inv.bot_last_credit_at = now.toISOString();
-        await sb
-          .from("players")
-          .update({
-            inventory: inv,
-            max_daily_limit: maxLimit,
-            tap_power: tapPower,
-            last_tap_date: today,
-          })
-          .eq("telegram_id", playerId);
+      if (remaining <= 0 || tapCredit <= 0 || shardsEarned <= 0) {
         return jsonResponse({
           success: true,
           bot_mine: true,
           taps: 0,
           shards: 0,
-          seconds,
+          reason: remaining <= 0 ? "daily_limit" : "too_small",
+          effective_hours: Math.round(effectiveHours * 1000) / 1000,
           target_taps: targetTaps,
-          reason: "daily_limit",
-          player: {
-            ...brow,
-            daily_taps: dailyTaps,
-            daily_shards: dailyShards,
-            max_daily_limit: maxLimit,
-            tap_power: tapPower,
-            last_tap_date: today,
-            inventory: inv,
-          },
-        });
-      }
-
-      if (tapCredit <= 0 || shardsEarned <= 0) {
-        inv.bot_last_credit_at = now.toISOString();
-        await sb
-          .from("players")
-          .update({
-            inventory: inv,
-            max_daily_limit: maxLimit,
-            tap_power: tapPower,
-          })
-          .eq("telegram_id", playerId);
-        return jsonResponse({
-          success: true,
-          bot_mine: true,
-          taps: 0,
-          shards: 0,
-          seconds,
-          target_taps: targetTaps,
-          reason: "too_small",
           player: {
             ...brow,
             daily_taps: dailyTaps,
@@ -365,9 +300,6 @@ serve(async (req) => {
       const weekId = weeklyCredit.weekId;
       const weeklyShards = weeklyCredit.weeklyShards;
       inv.weekly_lb = { weekId, score: weeklyShards };
-      inv = applyWeeklyQuestDayProgress(inv, today, nextDaily, weekId);
-      drainActiveNfts(inv, shardsEarned);
-      inv.bot_last_credit_at = now.toISOString();
 
       const botUpdates: Record<string, unknown> = {
         shard_balance: nextBal,
@@ -380,60 +312,33 @@ serve(async (req) => {
         max_daily_limit: maxLimit,
         last_tap_date: today,
         inventory: inv,
-        tap_power: tapPower,
+        last_updated: now.toISOString(),
       };
 
       let { error: upBotErr } = await sb
         .from("players")
         .update(botUpdates)
         .eq("telegram_id", playerId);
-      if (upBotErr && /daily_shards|tap_power/i.test(String(upBotErr.message || ""))) {
+      if (upBotErr && /daily_shards/i.test(String(upBotErr.message || ""))) {
         const rest = { ...botUpdates };
-        if (/daily_shards/i.test(String(upBotErr.message || ""))) {
-          delete rest.daily_shards;
-        }
-        if (/tap_power/i.test(String(upBotErr.message || ""))) {
-          delete rest.tap_power;
-        }
+        delete rest.daily_shards;
         ({ error: upBotErr } = await sb
           .from("players")
           .update(rest)
           .eq("telegram_id", playerId));
       }
-      if (upBotErr) throw upBotErr;
-
-      await sb.from("tap_batches").upsert(
-        {
-          batch_id: batchId,
-          player_id: playerId,
-          taps: tapCredit,
-          shards: shardsEarned,
-          energy_spent: 0,
-          result: {
-            bot_mine: true,
-            seconds,
-            tap_power: tapPower,
-          },
-        },
-        { onConflict: "batch_id" },
-      );
+      if (upBotErr) {
+        throw new Error(upBotErr.message || "Weekend Bot update failed");
+      }
 
       logEconomy("commit-taps bot_mine", {
         playerId,
-        seconds,
         targetTaps,
         tapCredit,
         shardsEarned,
         tapPower,
+        effectiveHours,
       });
-
-      const { data: playerOut } = await sb
-        .from("players")
-        .select(
-          "shard_balance, lifetime_taps, season_shards, weekly_shards, weekly_week_id, daily_taps, daily_shards, last_energy, energy_at, last_tap_date, current_streak, max_unlocked_level, max_daily_limit, inventory, bot_expires, tap_power",
-        )
-        .eq("telegram_id", playerId)
-        .maybeSingle();
 
       return jsonResponse({
         success: true,
@@ -442,10 +347,15 @@ serve(async (req) => {
         taps: tapCredit,
         shards: shardsEarned,
         energy_spent: 0,
-        seconds,
+        effective_hours: Math.round(effectiveHours * 1000) / 1000,
         target_taps: targetTaps,
         tap_power: tapPower,
-        player: playerOut,
+        player: {
+          ...brow,
+          ...botUpdates,
+          tap_power: tapPower,
+          bot_expires: brow.bot_expires,
+        },
       });
     }
 

@@ -2958,21 +2958,13 @@ const GiftTapGame = () => {
                 const earned = Math.round(earnedN * 1000) / 1000;
                 setTimeout(() => {
                   notify(
-                    `🤖 Weekend Bot mined +${earned.toLocaleString()} shards (toward today's daily max)`,
+                    `🤖 Weekend Bot mined +${earned.toLocaleString()} shards`,
                   );
                 }, 800);
               }
             }
           } catch (botErr) {
             console.warn('Weekend Bot catch-up', botErr?.message || botErr);
-            try {
-              notify(
-                `Weekend Bot error: ${botErr?.message || botErr}`,
-                false,
-              );
-            } catch {
-              /* ignore */
-            }
           }
         }
 
@@ -3496,53 +3488,6 @@ const GiftTapGame = () => {
   useEffect(() => {
     if (stats?.bot_expires) setBotExpires(stats.bot_expires);
   }, [stats?.bot_expires]);
-
-  // Weekend Bot safety net: if active and daily still empty after load, claim once more.
-  useEffect(() => {
-    if (!isDataLoaded || !playerId || !isAuthed) return undefined;
-    const expMs = botExpires ? Date.parse(botExpires) : 0;
-    if (!(expMs > Date.now())) return undefined;
-    if ((Number(optimisticDaily.current) || 0) > 0) return undefined;
-    if ((Number(dailyTaps) || 0) > 0) return undefined;
-    let cancelled = false;
-    const t = setTimeout(async () => {
-      try {
-        await ensureSecureSession();
-        if (cancelled || !hasSecureSession()) return;
-        const batchId =
-          crypto.randomUUID?.() ||
-          `bot_${Date.now()}_${Math.random().toString(36).slice(2)}`;
-        const data = await secureBotMine({ batchId, seconds: 1 });
-        if (cancelled) return;
-        const p = data?.player;
-        if (p) {
-          if (Number.isFinite(Number(p.daily_taps))) {
-            optimisticDaily.current = Number(p.daily_taps);
-            setDailyTaps(Number(p.daily_taps));
-          }
-          if (Number.isFinite(Number(p.daily_shards))) {
-            optimisticDailyShards.current = Number(p.daily_shards);
-          }
-          if (Number.isFinite(Number(p.shard_balance))) {
-            optimisticBalance.current = Number(p.shard_balance);
-            setBalance(Number(p.shard_balance));
-          }
-        }
-        const earnedN = Number(data?.shards) || 0;
-        if (data?.success && earnedN > 0.0005 && data?.replay !== true) {
-          notify(
-            `🤖 Weekend Bot mined +${Math.round(earnedN * 1000) / 1000} shards (toward today's daily max)`,
-          );
-        }
-      } catch (e) {
-        console.warn('Weekend Bot retry', e?.message || e);
-      }
-    }, 2000);
-    return () => {
-      cancelled = true;
-      clearTimeout(t);
-    };
-  }, [isDataLoaded, playerId, isAuthed, botExpires, dailyTaps, notify]);
 
   // Deep link from https://gift2u.fun/delete-account → /play?delete=1
   useEffect(() => {
