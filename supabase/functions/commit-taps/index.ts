@@ -250,10 +250,7 @@ serve(async (req) => {
         : "";
       let dailyTaps = Number(brow.daily_taps) || 0;
       let dailyShards = Number((brow as Record<string, unknown>).daily_shards) || 0;
-      // New UTC day if last play day isn't today (empty ltd counts as new day).
-      // Old check missed empty ltd + last_updated already stamped today, then a
-      // stale full daily bar hit remaining<=0 and stamped bot_last_credit_at=now
-      // with 0 pay — so the new day never started mining.
+      // New UTC day (empty last_tap_date counts as new day)
       const dayRolled = prevLtd !== today;
       if (dayRolled) {
         try {
@@ -272,42 +269,40 @@ serve(async (req) => {
         computeTapPowerForPlayer(brow as Record<string, unknown>, now),
       );
 
-      // Today's AFK clock never starts before UTC midnight (new day always mines).
+      // Fill toward today's max at (limit/24h): expected taps since UTC midnight
+      // minus what's already on the bar. Ignores a stuck bot_last_credit_at=now
+      // which previously made every reopen pay 0 for the rest of the day.
       const dayStartMs = Date.parse(`${today}T00:00:00.000Z`);
-      const stamped = inv.bot_last_credit_at
-        ? Date.parse(String(inv.bot_last_credit_at))
-        : NaN;
-      let anchorMs =
-        Number.isFinite(stamped) && stamped > 0 ? stamped : dayStartMs;
-      anchorMs = Math.max(anchorMs, dayStartMs);
       const endMs = Math.min(now.getTime(), botExpMs);
-      if (anchorMs > endMs) anchorMs = endMs;
-      // Cap one catch-up at 24h of wall time
-      const seconds = Math.min(86400, Math.max(0, (endMs - anchorMs) / 1000));
-      const rawTaps = seconds * (maxLimit / 86400);
-      const tapCredit = Math.min(remaining, Math.round(rawTaps * 10000) / 10000);
+      const seconds = Math.min(
+        86400,
+        Math.max(0, (endMs - dayStartMs) / 1000),
+      );
+      const targetTaps =
+        Math.round(seconds * (maxLimit / 86400) * 10000) / 10000;
+      const behind = Math.max(0, targetTaps - dailyTaps);
+      const tapCredit = Math.min(remaining, behind);
       const shardsEarned =
         Math.round(tapCredit * tapPower * 1000) / 1000;
 
       if (remaining <= 0) {
-        // Only park the clock when today is already full. Never on a missed day-roll.
-        if (!dayRolled) {
-          inv.bot_last_credit_at = now.toISOString();
-          await sb
-            .from("players")
-            .update({
-              inventory: inv,
-              max_daily_limit: maxLimit,
-              tap_power: tapPower,
-            })
-            .eq("telegram_id", playerId);
-        }
+        inv.bot_last_credit_at = now.toISOString();
+        await sb
+          .from("players")
+          .update({
+            inventory: inv,
+            max_daily_limit: maxLimit,
+            tap_power: tapPower,
+            last_tap_date: today,
+          })
+          .eq("telegram_id", playerId);
         return jsonResponse({
           success: true,
           bot_mine: true,
           taps: 0,
           shards: 0,
           seconds,
+          target_taps: targetTaps,
           reason: "daily_limit",
           player: {
             ...brow,
@@ -315,18 +310,29 @@ serve(async (req) => {
             daily_shards: dailyShards,
             max_daily_limit: maxLimit,
             tap_power: tapPower,
+            last_tap_date: today,
             inventory: inv,
           },
         });
       }
 
       if (tapCredit <= 0 || shardsEarned <= 0) {
+        inv.bot_last_credit_at = now.toISOString();
+        await sb
+          .from("players")
+          .update({
+            inventory: inv,
+            max_daily_limit: maxLimit,
+            tap_power: tapPower,
+          })
+          .eq("telegram_id", playerId);
         return jsonResponse({
           success: true,
           bot_mine: true,
           taps: 0,
           shards: 0,
           seconds,
+          target_taps: targetTaps,
           reason: "too_small",
           player: {
             ...brow,
@@ -415,6 +421,7 @@ serve(async (req) => {
       logEconomy("commit-taps bot_mine", {
         playerId,
         seconds,
+        targetTaps,
         tapCredit,
         shardsEarned,
         tapPower,
@@ -436,6 +443,7 @@ serve(async (req) => {
         shards: shardsEarned,
         energy_spent: 0,
         seconds,
+        target_taps: targetTaps,
         tap_power: tapPower,
         player: playerOut,
       });
