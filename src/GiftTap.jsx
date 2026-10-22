@@ -4276,8 +4276,12 @@ const GiftTapGame = () => {
         setEnergy(dayCap);
       }
       energyEpochRef.current = (energyEpochRef.current || 0) + 1;
-      // Local UI day-roll only — DB/inventory refresh on next login or real action
-      // (commit-taps / player-state), not an idle player-state pull.
+      // Pull server + Weekend Bot catch-up for the new UTC day (AFK from midnight).
+      try {
+        syncPlayer({ silent: true });
+      } catch {
+        /* ignore */
+      }
       return true;
     };
 
@@ -4316,7 +4320,7 @@ const GiftTapGame = () => {
       window.removeEventListener('focus', onWake);
       window.removeEventListener('pageshow', onWake);
     };
-  }, [isDataLoaded, playerId, applyEnergyCatchUp]);
+  }, [isDataLoaded, playerId, applyEnergyCatchUp, syncPlayer]);
 
   // Inside your main GiftTap component:
   useEffect(() => {

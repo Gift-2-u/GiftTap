@@ -248,14 +248,13 @@ serve(async (req) => {
       const prevLtd = brow.last_tap_date
         ? String(brow.last_tap_date).slice(0, 10)
         : "";
-      const lastUpdatedDay = brow.last_updated
-        ? String(brow.last_updated).slice(0, 10)
-        : "";
       let dailyTaps = Number(brow.daily_taps) || 0;
       let dailyShards = Number((brow as Record<string, unknown>).daily_shards) || 0;
-      const dayRolled =
-        (prevLtd && prevLtd !== today) ||
-        (!prevLtd && lastUpdatedDay && lastUpdatedDay !== today);
+      // New UTC day if last play day isn't today (empty ltd counts as new day).
+      // Old check missed empty ltd + last_updated already stamped today, then a
+      // stale full daily bar hit remaining<=0 and stamped bot_last_credit_at=now
+      // with 0 pay — so the new day never started mining.
+      const dayRolled = prevLtd !== today;
       if (dayRolled) {
         try {
           await sb.rpc("ensure_daily_leaderboard_rollover");
@@ -264,8 +263,6 @@ serve(async (req) => {
         }
         dailyTaps = 0;
         dailyShards = 0;
-        // New UTC day: start this day's AFK clock at midnight
-        inv.bot_last_credit_at = `${today}T00:00:00.000Z`;
       }
 
       const maxLimit = effectiveDailyLimit(brow as Record<string, unknown>, now);
@@ -275,12 +272,14 @@ serve(async (req) => {
         computeTapPowerForPlayer(brow as Record<string, unknown>, now),
       );
 
+      // Today's AFK clock never starts before UTC midnight (new day always mines).
       const dayStartMs = Date.parse(`${today}T00:00:00.000Z`);
       const stamped = inv.bot_last_credit_at
         ? Date.parse(String(inv.bot_last_credit_at))
         : NaN;
       let anchorMs =
         Number.isFinite(stamped) && stamped > 0 ? stamped : dayStartMs;
+      anchorMs = Math.max(anchorMs, dayStartMs);
       const endMs = Math.min(now.getTime(), botExpMs);
       if (anchorMs > endMs) anchorMs = endMs;
       // Cap one catch-up at 24h of wall time
@@ -291,15 +290,18 @@ serve(async (req) => {
         Math.round(tapCredit * tapPower * 1000) / 1000;
 
       if (remaining <= 0) {
-        inv.bot_last_credit_at = now.toISOString();
-        await sb
-          .from("players")
-          .update({
-            inventory: inv,
-            max_daily_limit: maxLimit,
-            tap_power: tapPower,
-          })
-          .eq("telegram_id", playerId);
+        // Only park the clock when today is already full. Never on a missed day-roll.
+        if (!dayRolled) {
+          inv.bot_last_credit_at = now.toISOString();
+          await sb
+            .from("players")
+            .update({
+              inventory: inv,
+              max_daily_limit: maxLimit,
+              tap_power: tapPower,
+            })
+            .eq("telegram_id", playerId);
+        }
         return jsonResponse({
           success: true,
           bot_mine: true,
