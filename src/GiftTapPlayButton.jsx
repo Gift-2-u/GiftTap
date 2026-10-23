@@ -1,6 +1,7 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Link } from 'react-router-dom';
+import { isSeekerShell } from './adService';
 import GiftTapLaunchModal, {
   getGiftTapApkUrl,
   getGiftTapOpenAppUrl,
@@ -10,6 +11,10 @@ import GiftTapLaunchModal, {
 function isAndroidPhone() {
   if (typeof navigator === 'undefined') return false;
   return /Android/i.test(String(navigator.userAgent || ''));
+}
+
+function openGiftTapApp() {
+  window.location.href = getGiftTapOpenAppUrl();
 }
 
 const navBtnReset = {
@@ -95,28 +100,24 @@ export default function GiftTapPlayButton({
     };
   }, [open, variant, forceApp]);
 
-  // Android phone browser: Open app + Download chooser (no web play)
+  // Android phone browser: link straight to the Gift2U app (APK fallback if missing)
   if (forceApp) {
     return (
-      <>
-        <button
-          type="button"
-          className={className}
-          style={
-            variant === 'modal'
-              ? { ...ctaBtnReset, ...style }
-              : { ...navBtnReset, ...style }
-          }
-          onClick={() => setOpen(true)}
-        >
-          {children}
-        </button>
-        <GiftTapLaunchModal
-          open={open}
-          onClose={() => setOpen(false)}
-          forceAndroid
-        />
-      </>
+      <a
+        href={getGiftTapOpenAppUrl()}
+        className={className}
+        style={
+          variant === 'modal'
+            ? { ...ctaBtnReset, ...style, display: 'inline-block', textDecoration: 'none' }
+            : { ...navBtnReset, ...style, display: 'inline-block', textDecoration: 'none' }
+        }
+        onClick={(e) => {
+          e.preventDefault();
+          openGiftTapApp();
+        }}
+      >
+        {children}
+      </a>
     );
   }
 
@@ -155,33 +156,7 @@ export default function GiftTapPlayButton({
               boxShadow: '0 12px 40px rgba(0,0,0,0.55)',
             }}
           >
-            {isAndroidPhone() ? (
-              <a
-                href={getGiftTapOpenAppUrl()}
-                role="menuitem"
-                onClick={(e) => {
-                  setOpen(false);
-                  // Open installed Gift2U app at /play (same path as cold start)
-                  e.preventDefault();
-                  const url = getGiftTapOpenAppUrl();
-                  try {
-                    if (window.ReactNativeWebView?.postMessage) {
-                      window.ReactNativeWebView.postMessage(
-                        JSON.stringify({ type: 'OPEN_URL', url }),
-                      );
-                      return;
-                    }
-                  } catch {
-                    /* fall through */
-                  }
-                  window.location.href = url;
-                }}
-                className="block w-full px-4 py-3 text-left text-sm font-bold text-slate-950 hover:brightness-110"
-                style={{ background: 'linear-gradient(90deg,#fbef43,#fbbf24)' }}
-              >
-                Play Gift Tap
-              </a>
-            ) : (
+            {isSeekerShell() || !isAndroidPhone() ? (
               <Link
                 to="/play"
                 role="menuitem"
@@ -191,6 +166,20 @@ export default function GiftTapPlayButton({
               >
                 Play Gift Tap
               </Link>
+            ) : (
+              <a
+                href={getGiftTapOpenAppUrl()}
+                role="menuitem"
+                onClick={(e) => {
+                  setOpen(false);
+                  e.preventDefault();
+                  openGiftTapApp();
+                }}
+                className="block w-full px-4 py-3 text-left text-sm font-bold text-slate-950 hover:brightness-110"
+                style={{ background: 'linear-gradient(90deg,#fbef43,#fbbf24)' }}
+              >
+                Play Gift Tap
+              </a>
             )}
             <a
               href={getGiftTapApkUrl()}

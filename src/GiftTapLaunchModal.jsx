@@ -18,13 +18,14 @@ export function getGiftTapApkUrl() {
 export const GIFT_TAP_APK_URL = 'https://gift2u.fun/Gift2U.apk';
 
 /**
- * Open installed Gift2U app (fun.gift2u.tap) to /play.
+ * Open installed Gift2U app (package fun.gift2u.tap).
+ * Uses the app's custom scheme (registered in AndroidManifest).
  * Falls back to APK download if the app is not installed.
  */
 export function getGiftTapOpenAppUrl() {
   const apk = encodeURIComponent(getGiftTapApkUrl());
   return (
-    'intent://gift2u.fun/play#Intent;scheme=https;package=fun.gift2u.tap;' +
+    'intent://play#Intent;scheme=fun.gift2u.tap;package=fun.gift2u.tap;' +
     `S.browser_fallback_url=${apk};end`
   );
 }
