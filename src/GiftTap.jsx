@@ -2372,8 +2372,8 @@ const GiftTapGame = () => {
   };
 
   const syncPlayer = useCallback(async (opts = {}) => {
-    // silent: Home → Play / app resume — keep game visible, no full-screen loader circle
-    const silent = opts?.silent === true;
+    // Returning session → never cover the gift with the full-screen loader.
+    const silent = opts?.silent === true || !!getPlayerId();
     if (!playerId) {
       setIsLoading(false);
       setIsDataLoaded(false);
@@ -3433,17 +3433,27 @@ const GiftTapGame = () => {
     syncPlayer({ silent: !!playerId });
   }, [syncPlayer, playerId]);
 
-  // Tell Gift Tap APK to drop the yellow ActivityIndicator (Home badges → Play)
+  // Tell Gift Tap APK to drop the yellow ActivityIndicator (Home → Play / deep link)
   useEffect(() => {
+    const ping = () => {
+      try {
+        window.ReactNativeWebView?.postMessage?.(
+          JSON.stringify({ type: 'LOADING_DONE' }),
+        );
+      } catch {
+        /* ignore */
+      }
+    };
+    ping();
     if (isLoading) return undefined;
-    try {
-      window.ReactNativeWebView?.postMessage?.(
-        JSON.stringify({ type: 'LOADING_DONE' }),
-      );
-    } catch {
-      /* ignore */
-    }
-    return undefined;
+    const t1 = setTimeout(ping, 100);
+    const t2 = setTimeout(ping, 500);
+    const t3 = setTimeout(ping, 1500);
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+      clearTimeout(t3);
+    };
   }, [isLoading]);
 
   // Returning from main site / Play Gift Tap must never leave the center loader stuck
@@ -7492,7 +7502,8 @@ const GiftTapGame = () => {
     );
   }
 
-  if (isLoading) {
+  // Never cover an already-live session (Play Gift Tap / resume left the loader up).
+  if (isLoading && !isDataLoaded && !getPlayerId()) {
     return (
       <div style={styles.container}>
         <div

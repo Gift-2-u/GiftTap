@@ -6,7 +6,6 @@
  */
 import React, { useCallback, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
   BackHandler,
   Linking,
   Platform,
@@ -630,11 +629,7 @@ export default function App() {
           thirdPartyCookiesEnabled
           sharedCookiesEnabled
         />
-        {loading && !firstLoadDoneRef.current ? (
-          <View style={styles.loader} pointerEvents="none">
-            <ActivityIndicator size="large" color="#fbef43" />
-          </View>
-        ) : null}
+        {/* No full-screen wheel — it stuck over the live game (Home → Play / deep link). */}
       </View>
     </SafeAreaView>
   );
