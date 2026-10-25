@@ -4795,10 +4795,24 @@ const GiftTapGame = () => {
             if (nowN - (mineBlockNotifiedRef.current || 0) > 20000) {
               mineBlockNotifiedRef.current = nowN;
               if (rejectReason === 'no_energy') {
-                notify(
-                  'Battery empty — wait for regen or use Refill / Expanded Battery. Taps only count when energy > 0.',
-                  false,
-                );
+                setAppNotice({
+                  show: true,
+                  message: 'Refill Extra Battery for 1,000 $G2U.',
+                  loading: false,
+                  success: false,
+                  title: 'Empty Battery',
+                  confirm: {
+                    confirmLabel: 'Refill — 1,000 $G2U',
+                    cancelLabel: 'OK',
+                    confirmDanger: false,
+                    resolve: (ok) => {
+                      if (ok) {
+                        setShopFocusTab('market');
+                        setCurrentPage('shop');
+                      }
+                    },
+                  },
+                });
               } else {
                 setAppNotice({
                   show: true,
