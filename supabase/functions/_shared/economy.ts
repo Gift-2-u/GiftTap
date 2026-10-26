@@ -44,8 +44,8 @@ export async function logEconomy(
       ref: row.ref ?? null,
       meta: row.meta ?? {},
     });
-  } catch (e) {
-    console.warn("economy_events log failed", e);
+  } catch {
+    /* quiet — hot path */
   }
 }
 

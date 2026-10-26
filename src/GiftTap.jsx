@@ -2278,8 +2278,8 @@ const GiftTapGame = () => {
     if (!hasSecureSession()) return;
     const force = !!opts.force;
     const now = Date.now();
-    // Normal poll: don't hammer Edge harder than ~5s. Force on deposit/spend.
-    if (!force && now - chainDbSyncAtRef.current < 5000) return;
+    // Normal poll: rare mirror to DB (force still immediate on deposit/spend).
+    if (!force && now - chainDbSyncAtRef.current < 30000) return;
     chainDbSyncAtRef.current = now;
     try {
       const data = await secureSyncChainBalances();
@@ -6803,13 +6803,13 @@ const GiftTapGame = () => {
     }
   }, [isModalOpen, playerWallet, isDataLoaded, fetchBalances, showSettings]);
 
-  // Deposit (Receive): poll live SOL quickly while open; refresh once on close
+  // Deposit (Receive): poll live SOL while open (slower → fewer player-state invokes)
   useEffect(() => {
     if (!isReceiveOpen || !playerWallet) return;
     fetchBalances();
     const id = setInterval(() => {
       fetchBalances();
-    }, 2500);
+    }, 10000);
     return () => {
       clearInterval(id);
       fetchBalances();

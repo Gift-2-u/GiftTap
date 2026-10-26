@@ -59,7 +59,7 @@ async function readChainBalances(walletAddress: string): Promise<{
     const lamports = await connection.getBalance(owner);
     sol = Math.round((lamports / 1e9) * 1e9) / 1e9;
   } catch (e) {
-    console.warn("readChainBalances sol", e);
+    /* quiet */
   }
 
   let g2u: number | null = null;
@@ -78,7 +78,7 @@ async function readChainBalances(walletAddress: string): Promise<{
       }
       g2u = total;
     } catch (e) {
-      console.warn("readChainBalances g2u", e);
+      /* quiet */
       g2u = 0;
     }
   }
@@ -360,7 +360,7 @@ serve(async (req) => {
           if (syncedRow) player = syncedRow;
         }
       } catch (e) {
-        console.warn("login chain g2u sync", e);
+        /* quiet */
       }
     }
 
@@ -411,12 +411,7 @@ serve(async (req) => {
         updated &&
         Math.abs(Number(updated.gft_token_balance) - gftOut) > 0.000001
       ) {
-        console.warn(
-          "gft_token_balance write did not stick",
-          updated.gft_token_balance,
-          "expected",
-          gftOut,
-        );
+        /* quiet */
       }
       return new Response(
         JSON.stringify({
@@ -498,7 +493,7 @@ serve(async (req) => {
         try {
           await supabase.rpc("ensure_daily_leaderboard_rollover");
         } catch (e) {
-          console.warn("ensure_daily_leaderboard_rollover", e);
+          /* quiet */
         }
         // Credit yesterday's taps into weekly quests BEFORE zeroing the bar
         const creditDay = prevTapDay || prevUpdatedDay;
@@ -554,13 +549,13 @@ serve(async (req) => {
             .select(PLAYER_SELECT)
             .maybeSingle();
           if (!err2 && touched2) player = touched2;
-          else console.warn("login stamp", err2?.message || touchErr.message);
+          /* quiet */
         } else {
-          console.warn("login stamp", touchErr.message);
+          /* quiet */
         }
       }
     } catch (e) {
-      console.warn("login stamp", e);
+      /* quiet */
     }
 
     // Secrets only as booleans — from player_secrets (never on players table)
@@ -613,7 +608,7 @@ serve(async (req) => {
         message: String((n as { message?: string }).message || ""),
       }));
     } catch (e) {
-      console.warn("player_notices", e);
+      /* quiet */
     }
 
     return new Response(

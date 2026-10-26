@@ -232,7 +232,7 @@ serve(async (req) => {
         try {
           await sb.rpc("ensure_daily_leaderboard_rollover");
         } catch (e) {
-          console.warn("ensure_daily_leaderboard_rollover", e);
+          /* quiet */
         }
         dailyTaps = 0;
         dailyShards = 0;
@@ -447,7 +447,7 @@ serve(async (req) => {
       try {
         await sb.rpc("ensure_daily_leaderboard_rollover");
       } catch (e) {
-        console.warn("ensure_daily_leaderboard_rollover", e);
+        /* quiet */
       }
       dailyTaps = 0;
       dailyShards = 0;
@@ -724,10 +724,10 @@ serve(async (req) => {
           .from("players")
           .update({ inventory: inv })
           .eq("telegram_id", playerId);
-        if (msErr) console.warn("milestone/voucher inventory", msErr);
+        /* quiet */
       }
     } catch (e) {
-      console.warn("milestone accrue after taps", e);
+      /* quiet */
     }
 
     // Referral payouts (service_role) — client save path no longer reaches tryPay*
@@ -740,7 +740,7 @@ serve(async (req) => {
         await runReferralCredit(sb, playerId, "lvl1");
       }
     } catch (e) {
-      console.warn("referral credit after taps", e);
+      /* quiet */
     }
 
     // Durable boards (GREATEST). Skip RPC when score did not move — same gameplay, less CPU.
@@ -758,7 +758,7 @@ serve(async (req) => {
           p_score: weeklyShards,
         });
       } catch (e) {
-        console.warn("upsert_weekly_score_ledger", e);
+        /* quiet */
       }
     }
     // Daily board = players.daily_shards only (no parallel score ledger).
@@ -772,7 +772,7 @@ serve(async (req) => {
           p_score: nextLife,
         });
       } catch (e) {
-        console.warn("upsert_lifetime_score_ledger", e);
+        /* quiet */
       }
     }
 
