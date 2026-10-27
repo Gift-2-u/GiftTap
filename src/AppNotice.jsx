@@ -52,17 +52,20 @@ export default function AppNotice({
             ? 'Notice'
             : 'Gift Tap');
 
-  const icon = loading
-    ? '⚙️ '
-    : isConfirm
-      ? confirmDanger
-        ? '🚪 '
-        : '❓ '
-      : success === true
-        ? '✅ '
-        : success === false
-          ? '⚠️ '
-          : 'ℹ️ ';
+  // Custom title already has its own emoji (e.g. 🎁 Mystery Gift) — don't prepend ❓
+  const icon = title
+    ? ''
+    : loading
+      ? '⚙️ '
+      : isConfirm
+        ? confirmDanger
+          ? '🚪 '
+          : '❓ '
+        : success === true
+          ? '✅ '
+          : success === false
+            ? '⚠️ '
+            : 'ℹ️ ';
 
   return (
     <div

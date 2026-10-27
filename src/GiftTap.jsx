@@ -3519,7 +3519,7 @@ const GiftTapGame = () => {
       message: `You have enough badges for a Mystery Gift (${labels}).`,
       loading: false,
       success: false,
-      title: 'Mystery Gift',
+      title: '🎁 Mystery Gift',
       confirm: {
         confirmLabel: 'Open Backpack',
         cancelLabel: 'OK',
