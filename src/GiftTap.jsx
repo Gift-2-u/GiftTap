@@ -220,6 +220,7 @@ import {
   rankOnWeeklyBoard,
   badgeTierForWeeklyRank,
   BADGE_TIERS,
+  canOpenMysteryWith,
   getWeeklyBoardFloor,
   getWeeklyBadgeFloor,
   getUtcIsoWeekDayNumber,
@@ -2544,16 +2545,12 @@ const GiftTapGame = () => {
         }
         
         setBalances({ 
-          // sol_balance in Supabase is stale by design — HUD uses live chain next
+          // Use last DB values until wallet is opened (avoids Helius on every login)
           sol: playerRow.sol_balance || 0, 
           G2U: playerRow.gft_token_balance || 0, 
           G2Ushards: Number(playerRow.shard_balance) || 0, 
           usdc: playerRow.usdc_balance || 0 
         });
-        // Immediate live SOL/USDC for Gift Tap chip (don't wait for Wallet open)
-        if (playerRow.wallet_address) {
-          syncBlockchainBalances(playerRow.wallet_address);
-        }
         const _bal = Number(playerRow.shard_balance) || 0;
         setBalance(_bal);
         optimisticBalance.current = _bal;
@@ -3498,6 +3495,44 @@ const GiftTapGame = () => {
   useEffect(() => {
     if (stats?.bot_expires) setBotExpires(stats.bot_expires);
   }, [stats?.bot_expires]);
+
+  // Enough badges to burn → popup with button to Backpack → Badges (does not change backpack buttons)
+  useEffect(() => {
+    if (!isDataLoaded || !isAuthed || !playerId) return;
+    const inv = inventoryRef.current || stats?.inventory || {};
+    const ready = ['diamond', 'gold', 'silver', 'bronze'].filter((t) =>
+      canOpenMysteryWith(inv, t),
+    );
+    if (!ready.length) return;
+    const key = `mystery_ready_${playerId}_${ready.join('-')}`;
+    try {
+      if (sessionStorage.getItem(key)) return;
+      sessionStorage.setItem(key, '1');
+    } catch {
+      /* ignore */
+    }
+    const labels = ready
+      .map((t) => BADGE_TIERS[t]?.name || t)
+      .join(', ');
+    setAppNotice({
+      show: true,
+      message: `You have enough badges for a Mystery Gift (${labels}).`,
+      loading: false,
+      success: false,
+      title: 'Mystery Gift',
+      confirm: {
+        confirmLabel: 'Open Backpack',
+        cancelLabel: 'OK',
+        confirmDanger: false,
+        resolve: (ok) => {
+          if (ok) {
+            setShopFocusTab('inventory');
+            setCurrentPage('shop');
+          }
+        },
+      },
+    });
+  }, [isDataLoaded, isAuthed, playerId, stats?.inventory]);
 
   // Deep link from https://gift2u.fun/delete-account → /play?delete=1
   useEffect(() => {
@@ -6782,28 +6817,29 @@ const GiftTapGame = () => {
         projectFee: 0.0005 // Your fixed Gift launch fee
       });
 
-      // Mirror into Supabase immediately when SOL changes (deposit/withdraw)
-      if (solChanged) {
-        chainDbSyncAtRef.current = 0;
-        pushChainBalancesToDb({ force: true });
-      } else {
-        pushChainBalancesToDb();
+      // Mirror to DB only while wallet/receive is open (or after buy/claim via force callers)
+      if (isModalOpen || isReceiveOpen) {
+        if (solChanged) {
+          chainDbSyncAtRef.current = 0;
+          pushChainBalancesToDb({ force: true });
+        } else {
+          pushChainBalancesToDb();
+        }
       }
       
     } catch (err) { 
       console.error("Balance/Fee fetch failed", err); 
     }
-  }, [playerWallet, connection, balance, playerId, pushChainBalancesToDb]);
+  }, [playerWallet, connection, balance, playerId, pushChainBalancesToDb, isModalOpen, isReceiveOpen]);
 
-  // --- BLOCKCHAIN-TO-DATABASE SYNC ---
+  // Chain sync only when wallet is selected — not on idle play
   useEffect(() => {
     if (isModalOpen && playerWallet && isDataLoaded && !showSettings) {
-      console.log("Wallet Dashboard opened: Syncing real balances...");
       fetchBalances();
     }
   }, [isModalOpen, playerWallet, isDataLoaded, fetchBalances, showSettings]);
 
-  // Deposit (Receive): poll live SOL while open (slower → fewer player-state invokes)
+  // Deposit (Receive): poll while receive is open
   useEffect(() => {
     if (!isReceiveOpen || !playerWallet) return;
     fetchBalances();
@@ -6815,12 +6851,6 @@ const GiftTapGame = () => {
       fetchBalances();
     };
   }, [isReceiveOpen, playerWallet, fetchBalances]);
-
-  // One balance read when game is ready — no idle 12s poll / focus spam (player-state IO)
-  useEffect(() => {
-    if (!playerWallet || !isDataLoaded) return;
-    fetchBalances();
-  }, [playerWallet, isDataLoaded, fetchBalances]);
 
   /** Phrase in RAM, or password → Edge unlock (JWT alone never drains). */
   const ensureWalletSecret = async (promptMsg) => {

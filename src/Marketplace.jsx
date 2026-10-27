@@ -301,10 +301,12 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, bumpEner
   const showBadgeShop = true;
   const [activeTab, setActiveTab] = useState(initialTab || 'home');
 
-  // Deep-link: Free badges tab, or Premium
+  // Deep-link: Free / Premium / Backpack (inventory)
   useEffect(() => {
     if (!initialTab) return;
-    setActiveTab(initialTab);
+    setActiveTab(
+      initialTab === 'backpack' ? 'inventory' : initialTab,
+    );
     if (typeof onInitialTabConsumed === 'function') onInitialTabConsumed();
   }, [initialTab, onInitialTabConsumed]);
   const [marketFilter, setMarketFilter] = useState('All');
@@ -327,6 +329,12 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, bumpEner
   const [localInventory, setLocalInventory] = useState(stats?.inventory || {});
   /** Backpack categories: boost | badges | nft */
   const [backpackCat, setBackpackCat] = useState('boost');
+  // Mystery Gift popup → Backpack Badges tab
+  useEffect(() => {
+    if (initialTab === 'inventory' || initialTab === 'backpack') {
+      setBackpackCat('badges');
+    }
+  }, [initialTab]);
   const [walletNftCount, setWalletNftCount] = useState(0);
   const [walletNftRefresh, setWalletNftRefresh] = useState(0);
   const [mysteryBusy, setMysteryBusy] = useState(false);
@@ -2702,6 +2710,8 @@ Daily claim active · Pack → NFT to see it.`,
     // Premium SOL Items
     if (item.id === 'bot') {
       dbUpdates.bot_expires = botExpireUtc.toISOString();
+      newInventory.bot_last_credit_at = new Date(now).toISOString();
+      dbUpdates.inventory = newInventory;
     }
 
     if (item.id === 'grinder') {
