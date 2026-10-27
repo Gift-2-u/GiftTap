@@ -8219,80 +8219,119 @@ const GiftTapGame = () => {
                 stats?.inventory || inventoryRef.current,
               );
               const rows = [levelRow, ...lifeRows];
+              const chasing = rows.filter(
+                (r) => r.status === 'progress' || r.status === 'ready',
+              );
+              const achieved = rows.filter(
+                (r) => r.status === 'claimed' || r.status === 'done',
+              );
               const statusColor = {
                 ready: '#fbef43',
                 claimed: '#4ade80',
                 progress: '#8eb4ff',
                 done: '#666',
               };
+              const renderRow = (r) => (
+                <div
+                  key={r.id}
+                  style={{
+                    background: '#131517',
+                    border: '1px solid #333',
+                    borderRadius: 12,
+                    padding: 12,
+                    marginBottom: 8,
+                    opacity: r.status === 'claimed' || r.status === 'done' ? 0.75 : 1,
+                  }}
+                >
+                  <div
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      gap: 8,
+                      marginBottom: 4,
+                    }}
+                  >
+                    <span style={{ color: '#fff', fontWeight: 700, fontSize: 13 }}>
+                      {r.label}
+                    </span>
+                    <span
+                      style={{
+                        color: statusColor[r.status] || '#aaa',
+                        fontSize: 11,
+                        fontWeight: 700,
+                        textTransform: 'uppercase',
+                      }}
+                    >
+                      {r.status === 'ready'
+                        ? 'Ready'
+                        : r.status === 'claimed'
+                          ? 'Done'
+                          : r.status === 'done'
+                            ? 'Max'
+                            : `${Math.floor((r.progress || 0) * 100)}%`}
+                    </span>
+                  </div>
+                  <div style={{ color: '#888', fontSize: 11, marginBottom: 8 }}>
+                    {r.detail}
+                  </div>
+                  <div
+                    style={{
+                      height: 4,
+                      borderRadius: 4,
+                      background: '#222',
+                      overflow: 'hidden',
+                    }}
+                  >
+                    <div
+                      style={{
+                        height: '100%',
+                        width: `${Math.min(100, Math.floor((r.progress || 0) * 100))}%`,
+                        background:
+                          r.status === 'claimed' || r.status === 'ready'
+                            ? 'linear-gradient(90deg,#fbef43,#fbbf24)'
+                            : 'linear-gradient(90deg,#3b82f6,#67e8f9)',
+                      }}
+                    />
+                  </div>
+                </div>
+              );
               return (
                 <>
                   <p style={{ color: '#aaa', fontSize: 11, margin: '0 0 10px' }}>
                     Lifetime: {Math.floor(taps).toLocaleString()}
                   </p>
-                  {rows.map((r) => (
-                    <div
-                      key={r.id}
-                      style={{
-                        background: '#131517',
-                        border: '1px solid #333',
-                        borderRadius: 12,
-                        padding: 12,
-                        marginBottom: 8,
-                      }}
-                    >
-                      <div
+                  {chasing.length > 0 && (
+                    <>
+                      <p
                         style={{
-                          display: 'flex',
-                          justifyContent: 'space-between',
-                          gap: 8,
-                          marginBottom: 4,
+                          color: '#fbef43',
+                          fontSize: 11,
+                          fontWeight: 700,
+                          margin: '0 0 8px',
+                          letterSpacing: 0.4,
                         }}
                       >
-                        <span style={{ color: '#fff', fontWeight: 700, fontSize: 13 }}>
-                          {r.label}
-                        </span>
-                        <span
-                          style={{
-                            color: statusColor[r.status] || '#aaa',
-                            fontSize: 11,
-                            fontWeight: 700,
-                            textTransform: 'uppercase',
-                          }}
-                        >
-                          {r.status === 'ready'
-                            ? 'Ready'
-                            : r.status === 'claimed'
-                              ? 'Done'
-                              : r.status === 'done'
-                                ? 'Max'
-                                : `${Math.floor((r.progress || 0) * 100)}%`}
-                        </span>
-                      </div>
-                      <div style={{ color: '#888', fontSize: 11, marginBottom: 8 }}>
-                        {r.detail}
-                      </div>
-                      <div
+                        NEXT / IN PROGRESS
+                      </p>
+                      {chasing.map(renderRow)}
+                    </>
+                  )}
+                  {achieved.length > 0 && (
+                    <>
+                      <p
                         style={{
-                          height: 4,
-                          borderRadius: 4,
-                          background: '#222',
-                          overflow: 'hidden',
+                          color: '#4ade80',
+                          fontSize: 11,
+                          fontWeight: 700,
+                          margin: '12px 0 8px',
+                          letterSpacing: 0.4,
                         }}
                       >
-                        <div
-                          style={{
-                            height: '100%',
-                            width: `${Math.min(100, Math.floor((r.progress || 0) * 100))}%`,
-                            background:
-                              r.status === 'claimed' || r.status === 'ready'
-                                ? 'linear-gradient(90deg,#fbef43,#fbbf24)'
-                                : 'linear-gradient(90deg,#3b82f6,#67e8f9)',
-                          }}
-                        />
-                      </div>
-                    </div>
-                  ))}
+                        ACHIEVED
+                      </p>
+                      {achieved.map(renderRow)}
+                    </>
+                  )}
                 </>
               );
             })()}
