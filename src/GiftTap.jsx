@@ -381,6 +381,35 @@ function clearSessionPhrase(pid) {
   }
 }
 
+/** Last HUD numbers for instant paint on open (before syncPlayer finishes). */
+function hudCacheKey(pid) {
+  return `gift2u_hud_v1_${String(pid || '').trim()}`;
+}
+function readHudCache(pid) {
+  try {
+    const id = String(pid || '').trim();
+    if (!id) return null;
+    const raw = localStorage.getItem(hudCacheKey(id));
+    if (!raw) return null;
+    const o = JSON.parse(raw);
+    if (!o || typeof o !== 'object') return null;
+    return o;
+  } catch {
+    return null;
+  }
+}
+function writeHudCache(pid, data) {
+  try {
+    const id = String(pid || '').trim();
+    if (!id || !data || typeof data !== 'object') return;
+    localStorage.setItem(
+      hudCacheKey(id),
+      JSON.stringify({ ...data, savedAt: Date.now() }),
+    );
+  } catch {
+    /* ignore quota / private mode */
+  }
+}
 const decryptWallet = (encryptedData, password) => {
   try {
     const bytes = CryptoJS.AES.decrypt(encryptedData, password);
@@ -778,17 +807,68 @@ const GiftTapGame = () => {
   const [showClaimAccount, setShowClaimAccount] = useState(false);
   const [showDeleteAccount, setShowDeleteAccount] = useState(false);
 
-  // 1. GAME STATE
-  const [balance, setBalance] = useState(0);
-  const [stats, setStats] = useState({ frenzy_expires: null, efficiency_expires: null, energy_boost_expires: null, inventory: {} });
-  const [energy, setEnergy] = useState(500);
+  // 1. GAME STATE — paint last HUD from localStorage so returning players see stats immediately
+  const hudBootRef = useRef(undefined);
+  if (hudBootRef.current === undefined) {
+    try {
+      const pid0 = getPlayerId();
+      hudBootRef.current = pid0 ? readHudCache(pid0) : null;
+    } catch {
+      hudBootRef.current = null;
+    }
+  }
+  const hb = hudBootRef.current;
+  const hbInv = hb?.inventory && typeof hb.inventory === 'object' ? hb.inventory : {};
+  const hbNow = Date.now();
+  const hbCap = energyCapFromInv(hbInv, hbNow);
+  const hbEnergyAt = Number(hb?.energyAt) || hbNow;
+  const hbEnergyRaw = Number(hb?.energy);
+  const hbEnergy = hb
+    ? energyFromAnchor(
+        Number.isFinite(hbEnergyRaw) ? hbEnergyRaw : hbCap,
+        hbEnergyAt,
+        hbNow,
+        hbCap,
+      )
+    : ENERGY_CAP_DEFAULT;
+  const hbToday = utcTodayStr();
+  const hbLtd = hb?.lastTapDate ? String(hb.lastTapDate).slice(0, 10) : '';
+  const hbDaily =
+    hb && hbLtd === hbToday ? Math.max(0, Number(hb.dailyTaps) || 0) : 0;
+  const hbBalance = hb ? Math.max(0, Number(hb.balance) || 0) : 0;
+  const hbLifetime = hb ? Math.max(0, Number(hb.lifetimeTaps) || 0) : 0;
+  const hbSeason = hb ? Math.max(0, Number(hb.seasonShards) || 0) : 0;
+  const hbMaxDaily = hb
+    ? Math.max(1000, Number(hb.maxDailyLimit) || 1000)
+    : 1000;
+  const hbMaxUnlocked = hb
+    ? migrateMaxUnlockedLevel(Number(hb.maxUnlockedLevel) || 4)
+    : 4;
+  const hbLevel = hb
+    ? effectiveLevel(hbLifetime, hbMaxUnlocked)
+    : 0;
+  const hbTapPower = hb ? Math.max(1, Number(hb.tapPower) || 1) : 1;
+  const hbStreak =
+    hb && hbLtd && hbLtd >= utcYesterdayStr()
+      ? Math.max(0, Number(hb.streak) || 0)
+      : 0;
+
+  const [balance, setBalance] = useState(hbBalance);
+  const [stats, setStats] = useState({
+    frenzy_expires: null,
+    efficiency_expires: null,
+    energy_boost_expires: null,
+    inventory: hbInv,
+  });
+  const [energy, setEnergy] = useState(hbEnergy);
   const [taps, setTaps] = useState([]);
   const [playerWallet, setPlayerWallet] = useState(null);
   // Returning players (Home → Play): skip full-screen loader; sync fills HUD
   const [isLoading, setIsLoading] = useState(() => !getPlayerId());
-  const [isDataLoaded, setIsDataLoaded] = useState(false);
+  // Cache hit → HUD ready immediately; silent sync still refreshes from server
+  const [isDataLoaded, setIsDataLoaded] = useState(() => !!hb);
   /** Weekend Bot expiry ISO — AFK mining until daily full, while active (3 UTC days). */
-  const [botExpires, setBotExpires] = useState(null);
+  const [botExpires, setBotExpires] = useState(() => hb?.botExpires || null);
   /** Bumps on each syncPlayer start — stale async finishes must not clear a newer load. */
   const syncGenRef = useRef(0);
   const isDataLoadedRef = useRef(false);
@@ -798,7 +878,12 @@ const GiftTapGame = () => {
   const [topLeader, setTopLeader] = useState({ name: '...', score: 0 });
   const [leaderboard, setLeaderboard] = useState([]); // Fixed: Added missing state
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [balances, setBalances] = useState({ sol: 0, G2U: 0, G2Ushards: 0, usdc: 0 });
+  const [balances, setBalances] = useState(() => ({
+    sol: Number(hb?.sol) || 0,
+    G2U: Number(hb?.g2u) || 0,
+    G2Ushards: hbBalance,
+    usdc: Number(hb?.usdc) || 0,
+  }));
   // Leaderboard page tab: always open on Season when navigating to Ranks
   const [leaderboardType, setLeaderboardType] = useState('Season');
   const [leaderboardLoading, setLeaderboardLoading] = useState(false);
@@ -817,8 +902,10 @@ const GiftTapGame = () => {
   const [dailyYouRank, setDailyYouRank] = useState(null);
   const [dailyEligibleCount, setDailyEligibleCount] = useState(0);
   const [dailyBoardFloor] = useState(() => getDailyBoardFloor());
-  const optimisticWeekly = useRef(0);
-  const optimisticDailyShards = useRef(0);
+  const optimisticWeekly = useRef(Math.max(0, Number(hb?.weeklyShards) || 0));
+  const optimisticDailyShards = useRef(
+    hb && hbLtd === hbToday ? Math.max(0, Number(hb.dailyShards) || 0) : 0,
+  );
   /** Keep ranks tab type for live weekly score patches while mining */
   const leaderboardTypeRef = useRef(leaderboardType);
   /** Per-tab board cache so Season→Weekly doesn't flash season rows / zeros */
@@ -844,21 +931,21 @@ const GiftTapGame = () => {
   const secureEconomyRef = useRef(true);
   /** Soft once-per-session notice if JWT missing (no password nag on every close/reopen) */
   const sessionWarnShownRef = useRef(false);
-  const [hasAccess, setHasAccess] = useState(false);
-  const [dailyTaps, setDailyTaps] = useState(0);
+  const [hasAccess, setHasAccess] = useState(() => !!hb);
+  const [dailyTaps, setDailyTaps] = useState(hbDaily);
   const [showMilestoneTip, setShowMilestoneTip] = useState(false);
   const [milestoneTipInfo, setMilestoneTipInfo] = useState(null);
   const [showMilestoneModal, setShowMilestoneModal] = useState(false);
   /** Help "?" tips — same root overlay pattern as Milestone / Wallet */
   const [helpTipKey, setHelpTipKey] = useState(null);
-  const [streak, setStreak] = useState(0);
+  const [streak, setStreak] = useState(hbStreak);
 
-  const [lastTapDate, setLastTapDate] = useState(''); // '' until DB load — never default to today
+  const [lastTapDate, setLastTapDate] = useState(hbLtd); // '' until DB/cache — never invent today
   const [isPressed, setIsPressed] = useState(false);
   const [isShopOpen, setIsShopOpen] = useState(false);
-  const [maxDailyLimit, setMaxDailyLimit] = useState(1000);
+  const [maxDailyLimit, setMaxDailyLimit] = useState(hbMaxDaily);
   const [seasonTimeLeft, setSeasonTimeLeft] = useState('');
-  const [tapPower, setTapPower] = useState(1);
+  const [tapPower, setTapPower] = useState(hbTapPower);
   /** On-chain elf asset ids for playerWallet — Echo power only if echo_active.asset_id is in here */
   const ownedElfAssetIdsRef = useRef(new Set());
   const [ownedElfTick, setOwnedElfTick] = useState(0);
@@ -887,8 +974,8 @@ const GiftTapGame = () => {
   const [isRevealed, setIsRevealed] = useState(false);
   const [mustBackup, setMustBackup] = useState(false);
   const [setupPwd, setSetupPwd] = useState('');
-  const [lifetimeTaps, setLifetimeTaps] = useState(0);
-  const [maxUnlockedLevel, setMaxUnlockedLevel] = useState(4);
+  const [lifetimeTaps, setLifetimeTaps] = useState(hbLifetime);
+  const [maxUnlockedLevel, setMaxUnlockedLevel] = useState(hbMaxUnlocked);
   const [showAscensionModal, setShowAscensionModal] = useState(false);
   /** Prevents double-tap paying wall climb twice (e.g. 2× 15k $G2U). */
   const [wallClimbBusy, setWallClimbBusy] = useState(false);
@@ -969,20 +1056,23 @@ const GiftTapGame = () => {
       });
     });
   }, []);
-  const [currentLevel, setCurrentLevel] = useState(0);
+  const [currentLevel, setCurrentLevel] = useState(hbLevel);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [itemToBuy, setItemToBuy] = useState(null);
   const touchLock = useRef(false);
   const touchLockTimerRef = useRef(null);
   /** pointerIds currently down that already scored (multi-finger safe) */
   const activeTapPointersRef = useRef(new Set());
-  const optimisticTaps = useRef(lifetimeTaps);
+  const optimisticTaps = useRef(hbLifetime);
   /** Shard balance / season — same instant-update pattern as lifetime (rapid multi-touch safe) */
-  const optimisticBalance = useRef(0);
-  const optimisticSeason = useRef(0);
-  const optimisticEnergy = useRef(500);
+  const optimisticBalance = useRef(hbBalance);
+  const optimisticSeason = useRef(hbSeason);
+  const optimisticEnergy = useRef(hbEnergy);
   /** Wall-clock anchor for 500-energy regen (survives phone sleep; ticker only +1 is useless). */
-  const energyAnchorRef = useRef({ value: 500, at: Date.now() });
+  const energyAnchorRef = useRef({
+    value: hbEnergy,
+    at: hb ? hbEnergyAt : Date.now(),
+  });
   /**
    * Bumped on Instant Refill / shop energy grants. In-flight commit-taps flushes
    * that started before the bump must not overwrite the new full bar.
@@ -997,23 +1087,23 @@ const GiftTapGame = () => {
     premiumExpires: null,
     premiumMult: 1,
   });
-  const optimisticDaily = useRef(0);
+  const optimisticDaily = useRef(hbDaily);
   const pendingSaveRef = useRef(null);
   /** Latest inventory (incl. weekly_quests) so debounced saves do not wipe quest progress */
-  const inventoryRef = useRef({});
+  const inventoryRef = useRef(hbInv);
   /** True after shop/swap spend — next cloud save must write the lower balance, not Math.max with server */
   const spendGuardRef = useRef(false);
   /** Sync streak / last play day for taps + offline bot (React state can lag). */
-  const lastTapDateRef = useRef('');
-  const streakRef = useRef(0);
+  const lastTapDateRef = useRef(hbLtd);
+  const streakRef = useRef(hbStreak);
   /** Bumped on logout / account switch — invalidates in-flight debounced saves */
   const saveGenerationRef = useRef(0);
   /** Last progress loaded from server (admin edits / other devices update this) */
   const serverProgressRef = useRef({
-    b: 0,
-    ltt: 0,
-    s: 0,
-    dt: 0,
+    b: hbBalance,
+    ltt: hbLifetime,
+    s: hbSeason,
+    dt: hbDaily,
   });
   /** Ignore our own save echo for a moment */
   const lastLocalSaveAtRef = useRef(0);
@@ -1071,7 +1161,7 @@ const GiftTapGame = () => {
   const [shardSwapBusy, setShardSwapBusy] = useState(false);
   const [isEstimating, setIsEstimating] = useState(false);
   const [userRank, setUserRank] = useState(null);
-  const [seasonShards, setSeasonShards] = useState(0);
+  const [seasonShards, setSeasonShards] = useState(hbSeason);
   const [isWatchingAd, setIsWatchingAd] = useState(false);
   const [isAdModalOpen, setIsAdModalOpen] = useState(false);
   /** Our own countdown while ad tab is open (null = not counting). */
@@ -2969,7 +3059,35 @@ const GiftTapGame = () => {
         // Phrase stays empty until login password unlock (handleAuthenticated)
         // or explicit unlock when signing SOL. Prevents wallet drain if JWT leaks.
 
-        if (myGen === syncGenRef.current) setIsDataLoaded(true);
+        if (myGen === syncGenRef.current) {
+          writeHudCache(userId, {
+            balance: Number(optimisticBalance.current) || 0,
+            energy: Number(optimisticEnergy.current) || 0,
+            energyAt: Number(energyAnchorRef.current?.at) || Date.now(),
+            dailyTaps: Number(optimisticDaily.current) || 0,
+            dailyShards: Number(optimisticDailyShards.current) || 0,
+            weeklyShards: Number(optimisticWeekly.current) || 0,
+            lifetimeTaps: Number(optimisticTaps.current) || 0,
+            seasonShards: Number(optimisticSeason.current) || 0,
+            maxDailyLimit: Math.max(
+              1000,
+              Number(playerRow.max_daily_limit) || 1000,
+            ),
+            maxUnlockedLevel: loadedMax,
+            tapPower: Number(playerRow.tap_power) || 1,
+            streak: loadedStreak,
+            lastTapDate: ltdAfter || '',
+            botExpires: playerRow.bot_expires || null,
+            sol: Number(playerRow.sol_balance) || 0,
+            g2u: Number(playerRow.gft_token_balance) || 0,
+            usdc: Number(playerRow.usdc_balance) || 0,
+            inventory: {
+              energy_cap_boost: inv?.energy_cap_boost || null,
+              task_limit_boost: inv?.task_limit_boost || null,
+            },
+          });
+          setIsDataLoaded(true);
+        }
         return;
       } 
       // ==========================================
@@ -4936,6 +5054,27 @@ const GiftTapGame = () => {
       }
     } finally {
       flushInFlightRef.current = false;
+      // Refresh open-game HUD cache from live refs only (no mining logic change).
+      if (playerId) {
+        const prevHud = readHudCache(playerId) || {};
+        writeHudCache(playerId, {
+          ...prevHud,
+          balance: Number(optimisticBalance.current) || 0,
+          energy: Number(optimisticEnergy.current) || 0,
+          energyAt: Number(energyAnchorRef.current?.at) || Date.now(),
+          dailyTaps: Number(optimisticDaily.current) || 0,
+          dailyShards: Number(optimisticDailyShards.current) || 0,
+          weeklyShards: Number(optimisticWeekly.current) || 0,
+          lifetimeTaps: Number(optimisticTaps.current) || 0,
+          seasonShards: Number(optimisticSeason.current) || 0,
+          streak: Number(streakRef.current) || 0,
+          lastTapDate: String(lastTapDateRef.current || '').slice(0, 10),
+          inventory: {
+            energy_cap_boost: inventoryRef.current?.energy_cap_boost || null,
+            task_limit_boost: inventoryRef.current?.task_limit_boost || null,
+          },
+        });
+      }
       if (flushAgainRef.current && (pendingTapsRef.current?.count || 0) > 0) {
         flushAgainRef.current = false;
         setTimeout(() => {
