@@ -4949,17 +4949,16 @@ const GiftTapGame = () => {
 
   const scheduleTapFlush = useCallback((delayMs) => {
     if (tapFlushTimerRef.current) clearTimeout(tapFlushTimerRef.current);
-    // Walk2u: HUD already counted 1:1 locally; Edge save is rare + large.
-    // Longer idle = far fewer commit-taps invokes (soft cap 500 still drains).
+    // Local HUD is instant; Edge save is rare (2–3 min) unless pause / battery empty / daily full.
     const pending = pendingTapsRef.current?.count || 0;
     const delay =
       Number.isFinite(Number(delayMs)) && Number(delayMs) >= 0
         ? Number(delayMs)
-        : pending >= 200
-          ? 10000
-          : pending >= 50
-            ? 11000
-            : 12000;
+        : pending >= 500
+          ? 120000
+          : pending >= 100
+            ? 150000
+            : 180000;
     tapFlushTimerRef.current = setTimeout(() => {
       flushPendingTaps();
     }, delay);
@@ -5359,20 +5358,16 @@ const GiftTapGame = () => {
       if (e && e.pointerId != null) {
         activeTapPointersRef.current.delete(e.pointerId);
       }
-      // All fingers up → Walk2u-style save (HUD already counted; one Edge batch)
+      // All fingers up → keep the rare timer (do not Edge-save on every lift)
       if (activeTapPointersRef.current.size === 0) {
-        if (tapFlushTimerRef.current) {
-          clearTimeout(tapFlushTimerRef.current);
-          tapFlushTimerRef.current = null;
-        }
         if ((pendingTapsRef.current?.count || 0) > 0) {
-          flushPendingTaps();
+          scheduleTapFlush();
         }
       }
     } catch {
       /* ignore */
     }
-  }, [flushPendingTaps]);
+  }, [flushPendingTaps, scheduleTapFlush]);
 
   const handleTap = (e) => {
       if (!isDataLoaded) return;
@@ -5783,19 +5778,20 @@ const GiftTapGame = () => {
               ? crypto.randomUUID()
               : `b_${Date.now()}_${Math.random().toString(36).slice(2)}`),
         };
-        // Empty battery → save now so server catches up before more optimistic taps
-        if (nextEnergy < costMultiplier) {
+        // Immediate save only when battery empty or daily bar full (server must catch up).
+        const dailyFull = nextDaily >= currentMaxLimit;
+        if (nextEnergy < costMultiplier || dailyFull) {
           if (tapFlushTimerRef.current) clearTimeout(tapFlushTimerRef.current);
           tapFlushTimerRef.current = null;
           flushPendingTaps();
-        } else if (pendingTapsRef.current.count >= 500) {
-          // Soft cap: drain a full server batch without waiting the idle timer
+        } else if (pendingTapsRef.current.count >= 2000) {
+          // Soft cap: huge burst → one Edge batch (raised so 2–3 min timer can work)
           if (tapFlushTimerRef.current) clearTimeout(tapFlushTimerRef.current);
           tapFlushTimerRef.current = null;
           flushPendingTaps();
         } else {
-          // Frenzy: sooner than idle so ×2 credits land; still batched for Edge cost
-          scheduleTapFlush(frenzyOn ? 4500 : undefined);
+          // Frenzy: a bit sooner than idle, still rare vs old 4.5s
+          scheduleTapFlush(frenzyOn ? 60000 : undefined);
         }
       }
       // Local UI sync only under secureLock (no last_updated heartbeat — that
