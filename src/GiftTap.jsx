@@ -2462,6 +2462,133 @@ const GiftTapGame = () => {
       }
   };
 
+  /** Put last-known HUD on screen for this player (login / open). */
+  const paintHudFromCache = useCallback((pid) => {
+    const c = readHudCache(pid);
+    if (!c) return false;
+    const now = Date.now();
+    const inv = c.inventory && typeof c.inventory === 'object' ? c.inventory : {};
+    const cap = energyCapFromInv(inv, now);
+    const energyAt = Number(c.energyAt) || now;
+    const energyRaw = Number(c.energy);
+    const en = energyFromAnchor(
+      Number.isFinite(energyRaw) ? energyRaw : cap,
+      energyAt,
+      now,
+      cap,
+    );
+    const today = utcTodayStr();
+    const ltd = c.lastTapDate ? String(c.lastTapDate).slice(0, 10) : '';
+    const daily = ltd === today ? Math.max(0, Number(c.dailyTaps) || 0) : 0;
+    const bal = Math.max(0, Number(c.balance) || 0);
+    const lt = Math.max(0, Number(c.lifetimeTaps) || 0);
+    const ss = Math.max(0, Number(c.seasonShards) || 0);
+    const maxDaily = Math.max(1000, Number(c.maxDailyLimit) || 1000);
+    const maxUn = migrateMaxUnlockedLevel(Number(c.maxUnlockedLevel) || 4);
+    optimisticBalance.current = bal;
+    optimisticTaps.current = lt;
+    optimisticSeason.current = ss;
+    optimisticEnergy.current = en;
+    energyAnchorRef.current = { value: en, at: energyAt };
+    optimisticDaily.current = daily;
+    optimisticDailyShards.current =
+      ltd === today ? Math.max(0, Number(c.dailyShards) || 0) : 0;
+    optimisticWeekly.current = Math.max(0, Number(c.weeklyShards) || 0);
+    inventoryRef.current = { ...(inventoryRef.current || {}), ...inv };
+    lastTapDateRef.current = ltd;
+    streakRef.current =
+      ltd && ltd >= utcYesterdayStr() ? Math.max(0, Number(c.streak) || 0) : 0;
+    serverProgressRef.current = { b: bal, ltt: lt, s: ss, dt: daily };
+    setBalance(bal);
+    setLifetimeTaps(lt);
+    setSeasonShards(ss);
+    setEnergy(en);
+    setDailyTaps(daily);
+    setMaxDailyLimit(maxDaily);
+    setMaxUnlockedLevel(maxUn);
+    setCurrentLevel(effectiveLevel(lt, maxUn));
+    setTapPower(Math.max(1, Number(c.tapPower) || 1));
+    setStreak(streakRef.current);
+    setLastTapDate(ltd);
+    if (c.botExpires) setBotExpires(c.botExpires);
+    setBalances({
+      sol: Number(c.sol) || 0,
+      G2U: Number(c.g2u) || 0,
+      G2Ushards: bal,
+      usdc: Number(c.usdc) || 0,
+    });
+    setStats((prev) => ({
+      ...prev,
+      inventory: { ...(prev?.inventory || {}), ...inv },
+    }));
+    setHasAccess(true);
+    setIsDataLoaded(true);
+    setIsLoading(false);
+    return true;
+  }, []);
+
+  /** Put players-row HUD on screen before vault / Edge waits. */
+  const paintHudFromPlayerRow = useCallback((row) => {
+    if (!row) return;
+    const now = Date.now();
+    const inv = row.inventory && typeof row.inventory === 'object' ? row.inventory : {};
+    const cap = energyCapFromInv(inv, now);
+    const enAtRaw = row.energy_at || row.last_updated;
+    const enAt = enAtRaw ? new Date(enAtRaw).getTime() : now;
+    const rawEn = Number(row.last_energy);
+    let en = Number.isFinite(rawEn)
+      ? Math.max(0, Math.min(cap, rawEn))
+      : cap;
+    en = energyFromAnchor(en, enAt, now, cap);
+    const today = utcTodayStr();
+    const ltd = row.last_tap_date ? String(row.last_tap_date).slice(0, 10) : '';
+    const daily = ltd === today ? Math.max(0, Number(row.daily_taps) || 0) : 0;
+    const bal = Math.max(0, Number(row.shard_balance) || 0);
+    const lt = Math.max(0, Number(row.lifetime_taps) || 0);
+    const ss = Math.max(0, Number(row.season_shards) || 0);
+    const maxUn = migrateMaxUnlockedLevel(row.max_unlocked_level || 4);
+    optimisticBalance.current = bal;
+    optimisticTaps.current = lt;
+    optimisticSeason.current = ss;
+    optimisticEnergy.current = en;
+    energyAnchorRef.current = { value: en, at: enAt };
+    optimisticDaily.current = daily;
+    optimisticDailyShards.current =
+      ltd === today ? Math.max(0, Number(row.daily_shards) || 0) : 0;
+    inventoryRef.current = inv;
+    lastTapDateRef.current = ltd;
+    serverProgressRef.current = { b: bal, ltt: lt, s: ss, dt: daily };
+    setBalance(bal);
+    setLifetimeTaps(lt);
+    setSeasonShards(ss);
+    setEnergy(en);
+    setDailyTaps(daily);
+    setMaxDailyLimit(Math.max(1000, Number(row.max_daily_limit) || 1000));
+    setMaxUnlockedLevel(maxUn);
+    setCurrentLevel(effectiveLevel(lt, maxUn));
+    setTapPower(Number(row.tap_power) || 1);
+    setLastTapDate(ltd);
+    setBotExpires(row.bot_expires || null);
+    setBalances({
+      sol: row.sol_balance || 0,
+      G2U: row.gft_token_balance || 0,
+      G2Ushards: bal,
+      usdc: row.usdc_balance || 0,
+    });
+    setStats((prev) => ({
+      ...prev,
+      inventory: inv,
+      frenzy_expires: row.frenzy_expires || null,
+      efficiency_expires: row.efficiency_expires || null,
+      energy_boost_expires: row.energy_boost_expires || null,
+      limit_boost_amount: row.limit_boost_amount || 0,
+      limit_boost_expires: row.limit_boost_expires || null,
+    }));
+    setHasAccess(true);
+    setIsDataLoaded(true);
+    setIsLoading(false);
+  }, []);
+
   const syncPlayer = useCallback(async (opts = {}) => {
     // Returning session → never cover the gift with the full-screen loader.
     const silent = opts?.silent === true || !!getPlayerId();
@@ -2471,9 +2598,11 @@ const GiftTapGame = () => {
       return;
     }
     const myGen = ++syncGenRef.current;
+    // Show this player's last HUD immediately (A→B), then refresh from DB.
+    paintHudFromCache(playerId);
     if (!silent) {
       setIsLoading(true);
-      setIsDataLoaded(false);
+      // Keep cache-painted stats visible — do not zero the HUD while loading.
       // Drop previous account's in-memory progress before loading this one
       // (same device: logout → login as someone else)
       try {
@@ -2485,32 +2614,6 @@ const GiftTapGame = () => {
       pendingSaveRef.current = null;
       spendGuardRef.current = false;
       saveGenerationRef.current += 1;
-      optimisticTaps.current = 0;
-      optimisticBalance.current = 0;
-      optimisticSeason.current = 0;
-      optimisticEnergy.current = 500;
-      energyAnchorRef.current = { value: 500, at: Date.now() };
-      optimisticDaily.current = 0;
-      setBalance(0);
-      setSeasonShards(0);
-      setLifetimeTaps(0);
-      setDailyTaps(0);
-      setEnergy(500);
-      // Keep prior inventory until players row loads — clearing to {} wiped badges/boosts.
-      setStats((prev) => ({
-        frenzy_expires: null,
-        efficiency_expires: null,
-        energy_boost_expires: null,
-        limit_boost_amount: prev?.limit_boost_amount,
-        limit_boost_expires: prev?.limit_boost_expires,
-        ad_energy_boost: prev?.ad_energy_boost,
-        ad_energy_expires: prev?.ad_energy_expires,
-        inventory:
-          prev?.inventory && Object.keys(prev.inventory).length > 0
-            ? prev.inventory
-            : {},
-      }));
-      setBalances({ sol: 0, G2U: 0, G2Ushards: 0, usdc: 0 });
     }
     try {
       const userId = playerId;
@@ -2544,6 +2647,8 @@ const GiftTapGame = () => {
             .catch(() => {});
         }
         setPlayerWallet(playerRow.wallet_address);
+        // Stats on screen now — before vault / player-state Edge
+        if (myGen === syncGenRef.current) paintHudFromPlayerRow(playerRow);
         // Restore unlock for this browser tab (after refresh) — no extra password on Buy
         if (!decryptedPhrase) {
           const cached = loadSessionPhrase(userId);
@@ -3154,7 +3259,7 @@ const GiftTapGame = () => {
     } finally {
       if (myGen === syncGenRef.current) setIsLoading(false);
     }
-  }, [playerId, fetchTopLeader]);
+  }, [playerId, fetchTopLeader, paintHudFromCache, paintHudFromPlayerRow]);
 
   /** Called after beta code redeem — grant access; create wallet only if missing. */
   const initializeNewPlayer = async () => {
@@ -3308,7 +3413,11 @@ const GiftTapGame = () => {
       });
       setPlayer(profile);
       setIsAuthed(true);
-      setIsDataLoaded(false);
+      if (!paintHudFromCache(String(row[DB_PLAYER_ID]))) {
+        setIsDataLoaded(false);
+      }
+      // players row already in hand — paint HUD now
+      paintHudFromPlayerRow(row);
 
       // Persist display name if DB was empty / generic
       if (!row.username || String(row.username).trim() === '' || String(row.username).toLowerCase() === 'player') {
@@ -3389,8 +3498,11 @@ const GiftTapGame = () => {
     });
     setPlayer(profile);
     setIsAuthed(true);
-    setIsLoading(true);
-    setIsDataLoaded(false);
+    // Stats on screen now for this account (cache), then syncPlayer refreshes from DB
+    if (!paintHudFromCache(pid)) {
+      setIsLoading(true);
+      setIsDataLoaded(false);
+    }
     if (walletAddress) setPlayerWallet(walletAddress);
     // New accounts: wallet already created at signup — force backup once (12 words only)
     if (isNew && mnemonic && String(mnemonic).trim().includes(' ')) {
