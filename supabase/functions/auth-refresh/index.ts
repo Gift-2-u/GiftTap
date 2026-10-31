@@ -11,11 +11,7 @@ import {
   verifySessionJwtForRefresh,
 } from "../_shared/sessionJwt.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.7";
-import {
-  assertIpAllowed,
-  assertPlayerAllowed,
-  clientIpHint,
-} from "../_shared/abuseGuard.ts";
+import { clientIpHint } from "../_shared/abuseGuard.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -53,8 +49,8 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_URL") ?? "",
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
     );
-    await assertIpAllowed(req, supabase);
-    await assertPlayerAllowed(playerId, supabase);
+    // Soft-ban: renew even if player/IP is on abuse_blocks so wallet-vault stays reachable.
+    // Claims / mining / quests still enforce bans via requirePlayerFromRequest().
 
     const minted = await mintSessionJwt(playerId, username);
 

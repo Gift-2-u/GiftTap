@@ -314,15 +314,17 @@ export async function secureBotMine({ batchId, seconds }) {
 }
 
 
+/** Weekly quest claim (incl. daily row). New name — old claim-weekly-* undeployed. */
 export async function secureClaimWeeklyQuest(questId, rewardAmount = 100) {
-  return callSecureFunction('claim-weekly-quest', {
+  return callSecureFunction('gt-claim-wq', {
     quest_id: questId,
     reward_amount: rewardAmount,
   });
 }
 
+/** Weekly prize claim. New name — old claim-weekly-prize undeployed. */
 export async function secureClaimWeeklyPrize() {
-  return callSecureFunction('claim-weekly-prize', {});
+  return callSecureFunction('gt-claim-wp', {});
 }
 
 

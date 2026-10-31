@@ -98,7 +98,8 @@ serve(async (req) => {
   }
 
   try {
-    const claims = await requirePlayerFromRequest(req);
+    // Soft-banned players (abuse_blocks) may still unlock / move wallet funds
+    const claims = await requirePlayerFromRequest(req, { allowBanned: true });
     const playerId = String(claims.sub || "").trim();
     if (!playerId) throw new Error("Not authenticated");
 

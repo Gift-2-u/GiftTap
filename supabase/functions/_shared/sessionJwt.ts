@@ -150,7 +150,18 @@ export function sessionTokenFromRequest(req: Request): string | null {
   return bearerFromRequest(req);
 }
 
-export async function requirePlayerFromRequest(req: Request): Promise<SessionClaims> {
+export type RequirePlayerOpts = {
+  /**
+   * Soft-ban bypass: verify JWT but skip IP / player abuse_blocks.
+   * Use only for wallet-vault (and session refresh) so banned players can still move funds.
+   */
+  allowBanned?: boolean;
+};
+
+export async function requirePlayerFromRequest(
+  req: Request,
+  opts: RequirePlayerOpts = {},
+): Promise<SessionClaims> {
   // Prefer x-gift-session — Authorization is often the Supabase anon key for gateway
   const custom =
     req.headers.get("x-gift-session") ||
@@ -167,6 +178,10 @@ export async function requirePlayerFromRequest(req: Request): Promise<SessionCla
     claims = await verifySessionJwt(bearer);
   }
   // Enforce bans on every secure Edge call (existing JWTs must not keep working)
+  // allowBanned: wallet path — claims/mining stay blocked via normal requirePlayerFromRequest()
+  if (opts.allowBanned === true) {
+    return claims;
+  }
   try {
     const { assertIpAllowed, assertPlayerAllowed } = await import(
       "./abuseGuard.ts"
