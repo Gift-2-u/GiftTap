@@ -340,30 +340,7 @@ serve(async (req) => {
 
     // Milestones: accrue only in commit-taps when a level is crossed (same as level-up).
 
-    // On every player-state load after launch: keep gft_token_balance = on-chain $G2U
-    // (fixes stale DB after Jupiter sells / external transfers).
-    if (!syncChain && g2uChainSyncEnabled()) {
-      try {
-        const wallet = String(player.wallet_address || "").trim();
-        if (wallet.length >= 32) {
-          const chain = await readChainBalances(wallet);
-          const patchLogin: Record<string, unknown> = {
-            sol_balance: chain.sol,
-          };
-          if (chain.g2u != null) patchLogin.gft_token_balance = chain.g2u;
-          const { data: syncedRow } = await supabase
-            .from("players")
-            .update(patchLogin)
-            .eq("telegram_id", playerId)
-            .select(PLAYER_SELECT)
-            .maybeSingle();
-          if (syncedRow) player = syncedRow;
-        }
-      } catch (e) {
-        /* quiet */
-      }
-    }
-
+    // Chain sync only when client asks (wallet open / buy / claim) — not on every load.
     // Lightweight: mirror chain → sol_balance (+ gft_token_balance after launch).
     // Does NOT stamp energy / last_updated (safe to call from deposit poll).
     if (syncChain) {

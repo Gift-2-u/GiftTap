@@ -352,13 +352,13 @@ export const MYSTERY_ODDS: Record<string, Record<string, number>> = {
     shards_bulk: 40,
   },
   gold: {
-    premium_boost: 45,
+    premium_boost: 50,
     free_boost: 35,
-    shards_bulk: 20,
+    shards_bulk: 15,
   },
   diamond: {
-    premium_boost: 75,
-    free_boost: 20,
+    premium_boost: 80,
+    free_boost: 15,
     shards_bulk: 5,
   },
 };
@@ -367,8 +367,8 @@ export const MYSTERY_ODDS: Record<string, Record<string, number>> = {
 export const MYSTERY_SHARD_AMOUNTS: Record<string, Record<string, number>> = {
   bronze: { shards_bulk: 5000 },
   silver: { shards_bulk: 10000 },
-  gold: { shards_bulk: 20000 },
-  diamond: { shards_bulk: 30000 },
+  gold: { shards_bulk: 30000 },
+  diamond: { shards_bulk: 50000 },
 };
 
 /** Free Boost sub-roll (~33.3% each) — Frenzy is Free, not Premium */
@@ -389,24 +389,23 @@ export const MYSTERY_PREMIUM_ITEMS: Array<{
   days?: 1 | 3 | 7;
 }> = [
   { itemId: "bot", label: "Weekend Bot", weight: 2.5 },
-  { itemId: "grinder", label: "+2K Daily Energy", weight: 6, days: 1 },
+  { itemId: "grinder", label: "+2K Daily Energy", weight: 8, days: 1 },
   { itemId: "grinder", label: "+2K Daily Energy", weight: 4, days: 3 },
   { itemId: "grinder", label: "+2K Daily Energy", weight: 2.5, days: 7 },
   { itemId: "whale", label: "+5K Daily Energy", weight: 4, days: 1 },
   { itemId: "whale", label: "+5K Daily Energy", weight: 2, days: 3 },
   { itemId: "whale", label: "+5K Daily Energy", weight: 0.5, days: 7 },
-  { itemId: "x2_boost", label: "Double Power", weight: 5.5, days: 1 },
+  { itemId: "x2_boost", label: "Double Power", weight: 6.5, days: 1 },
   { itemId: "x2_boost", label: "Double Power", weight: 3, days: 3 },
   { itemId: "x2_boost", label: "Double Power", weight: 1, days: 7 },
   { itemId: "x3_boost", label: "Triple Power", weight: 4, days: 1 },
   { itemId: "x3_boost", label: "Triple Power", weight: 1.5, days: 3 },
   { itemId: "x3_boost", label: "Triple Power", weight: 0.5, days: 7 },
-  { itemId: "expanded_energy", label: "Expanded Energy", weight: 15, days: 1 },
-  { itemId: "expanded_energy", label: "Expanded Energy", weight: 9, days: 3 },
-  { itemId: "expanded_energy", label: "Expanded Energy", weight: 6, days: 7 },
-  { itemId: "frenzy", label: "Frenzy Mode", weight: 9 },
-  { itemId: "daily_plus_1000", label: "+1000 Max Daily", weight: 9 },
-  { itemId: "refill", label: "Instant Refill", weight: 15 },
+  { itemId: "expanded_energy", label: "Expanded Energy", weight: 16, days: 1 },
+  { itemId: "expanded_energy", label: "Expanded Energy", weight: 10, days: 3 },
+  { itemId: "expanded_energy", label: "Expanded Energy", weight: 7, days: 7 },
+  { itemId: "frenzy", label: "Frenzy Mode", weight: 11 },
+  { itemId: "daily_plus_1000", label: "+1000 Max Daily", weight: 16 },
 ];
 
 function weightedPick<T extends { weight: number }>(
@@ -984,4 +983,71 @@ export function maybeGrantMs1NftVoucher(
   };
   inv.nft_voucher_ms1_granted = true;
   return { inv, granted: true };
+}
+
+/** Per-isolate hit counter — caps claim spam on a warm Edge instance. */
+const weeklyClaimHitMap = new Map<string, { n: number; resetAt: number }>();
+
+/**
+ * Rate-limit weekly claim Edge hits per player (and optional quest id).
+ * Default: 6 calls / 10 minutes. Throws a soft error for 429 mapping.
+ */
+export function assertWeeklyClaimRateLimit(
+  playerId: string,
+  scope: string,
+  max = 6,
+  windowMs = 10 * 60 * 1000,
+): void {
+  const id = String(playerId || "").trim();
+  if (!id) return;
+  const key = `${id}:${String(scope || "claim")}`;
+  const now = Date.now();
+  let entry = weeklyClaimHitMap.get(key);
+  if (!entry || now >= entry.resetAt) {
+    entry = { n: 0, resetAt: now + windowMs };
+    weeklyClaimHitMap.set(key, entry);
+  }
+  entry.n += 1;
+  if (entry.n > max) {
+    throw new Error("Too many claim attempts. Try again later.");
+  }
+}
+
+function asInvObject(raw: unknown): Record<string, unknown> {
+  if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+    return raw as Record<string, unknown>;
+  }
+  return {};
+}
+
+function textInJsonArray(arr: unknown, needle: string): boolean {
+  if (!Array.isArray(arr)) return false;
+  const n = String(needle || "");
+  for (const x of arr) {
+    if (String(x) === n) return true;
+  }
+  return false;
+}
+
+/**
+ * True when this UTC week already has the quest/prize claimed in inventory.
+ * Used to skip RPC + last_updated bump on repeat hits.
+ */
+export function inventoryHasWeeklyClaim(
+  inventory: unknown,
+  questId: string,
+  weekId = utcIsoWeekId(),
+): boolean {
+  const inv = asInvObject(inventory);
+  const qid = String(questId || "").trim();
+  if (!qid) return false;
+  const week = String(weekId || utcIsoWeekId());
+  const wq = asInvObject(inv.weekly_quests);
+  const wqWeek = String(wq.weekId || wq.week_id || "");
+  if (wqWeek === week && textInJsonArray(wq.claimed, qid)) return true;
+  const claimKey = `${week}:${qid}`;
+  if (textInJsonArray(inv.weekly_claim_keys, claimKey)) return true;
+  const globalClaim = `weekly:${week}:${qid}`;
+  if (textInJsonArray(inv.claim_log, globalClaim)) return true;
+  return false;
 }

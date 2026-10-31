@@ -10,6 +10,9 @@ import {
   jsonResponse,
   logEconomy,
   effectiveDailyLimit,
+  utcIsoWeekId,
+  assertWeeklyClaimRateLimit,
+  inventoryHasWeeklyClaim,
 } from "../_shared/economy.ts";
 
 /** Canonical weekly quest rewards (shards / flags). Client cannot override. */
@@ -39,6 +42,14 @@ serve(async (req) => {
     const questId = String(body.quest_id || body.questId || "").trim();
     if (!questId) throw new Error("quest_id required");
 
+    // Cap spam per quest id (stops RPC / last_updated thrash on repeats)
+    assertWeeklyClaimRateLimit(
+      playerId,
+      `weekly-quest:${questId}`,
+      6,
+      10 * 60 * 1000,
+    );
+
     // IGNORE client reward_amount entirely
     const rewardAmount =
       WEEKLY_QUEST_REWARDS[questId] !== undefined
@@ -48,6 +59,29 @@ serve(async (req) => {
     const safeReward = Math.max(0, Math.min(500, Number(rewardAmount) || 0));
 
     const sb = adminClient();
+    const weekId = utcIsoWeekId();
+
+    // Already claimed this week → cheap return, no RPC, no max_daily rewrite
+    {
+      const { data: row, error: selErr } = await sb
+        .from("players")
+        .select("inventory")
+        .eq("telegram_id", playerId)
+        .maybeSingle();
+      if (selErr) throw selErr;
+      if (inventoryHasWeeklyClaim(row?.inventory, questId, weekId)) {
+        return jsonResponse({
+          success: true,
+          ok: true,
+          already: true,
+          week_id: weekId,
+          quest_id: questId,
+          reward_amount: safeReward,
+          inventory: row?.inventory ?? {},
+        });
+      }
+    }
+
     const { data, error } = await sb.rpc("claim_weekly_quest", {
       p_telegram_id: playerId,
       p_quest_id: questId,
@@ -106,6 +140,8 @@ serve(async (req) => {
       message,
     )
       ? 401
+      : /Too many claim attempts/i.test(message)
+      ? 429
       : 400;
     return jsonResponse({ error: message }, status);
   }

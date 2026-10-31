@@ -220,6 +220,8 @@ serve(async (req) => {
       updates.energy_at = new Date(now).toISOString();
     } else if (itemId === "bot") {
       updates.bot_expires = endOfUtcDay(2);
+      inv.bot_last_credit_at = new Date(now).toISOString();
+      updates.inventory = inv;
     } else if (itemId === "grinder") {
       const days = popPremiumDuration(inv, itemId);
       updates.limit_boost_amount = 2000;
