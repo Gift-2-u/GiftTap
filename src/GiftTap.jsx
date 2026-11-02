@@ -1015,6 +1015,8 @@ const GiftTapGame = () => {
   const [ageConsentBusy, setAgeConsentBusy] = useState(false);
   const [showFeeConsent, setShowFeeConsent] = useState(false);
   const [feeConsentBusy, setFeeConsentBusy] = useState(false);
+  /** True after players-row inventory applied — avoids 18+/fee flash on cache-first open */
+  const playersInventoryReadyRef = useRef(false);
   const notify = useCallback((message, opts = {}) => {
     // Accept notify(msg, true|false) from older callers, or notify(msg, { success, … })
     const o =
@@ -2575,6 +2577,7 @@ const GiftTapGame = () => {
       G2Ushards: bal,
       usdc: row.usdc_balance || 0,
     });
+    playersInventoryReadyRef.current = true;
     setStats((prev) => ({
       ...prev,
       inventory: inv,
@@ -3608,6 +3611,9 @@ const GiftTapGame = () => {
     wallAutoPromptRef.current = null;
     wallCrossPrevTapsRef.current = null;
     setTapPower(1);
+    playersInventoryReadyRef.current = false;
+    setShowAgeConsent(false);
+    setShowFeeConsent(false);
     setStats({
       frenzy_expires: null,
       efficiency_expires: null,
@@ -4122,6 +4128,11 @@ const GiftTapGame = () => {
   // Age 18+: block play until inventory.age_majority_consent is saved
   useEffect(() => {
     if (!isDataLoaded || !playerId || !hasSecureSession()) return;
+    // Cache-first HUD sets isDataLoaded before full inventory — wait for players row
+    if (!playersInventoryReadyRef.current) {
+      setShowAgeConsent(false);
+      return;
+    }
     if (showAscensionModal || showRulesNotice || showBoostTokenNotice || showApkNotice) return;
     const inv = stats?.inventory || inventoryRef.current || {};
     const ok =
@@ -4160,6 +4171,10 @@ const GiftTapGame = () => {
   // Fee popup: show until inventory.fee_micro_consent is saved (after age gate)
   useEffect(() => {
     if (!isDataLoaded || !playerId || !hasSecureSession()) return;
+    if (!playersInventoryReadyRef.current) {
+      setShowFeeConsent(false);
+      return;
+    }
     if (showAscensionModal || showRulesNotice || showBoostTokenNotice || showApkNotice) return;
     if (showAgeConsent) {
       setShowFeeConsent(false);
