@@ -555,24 +555,24 @@ const MYSTERY_SHARD_AMOUNTS = {
 
 export const MYSTERY_ODDS_BY_TIER = {
   bronze: {
-    premium_boost: 20,
-    free_boost: 35,
-    shards_bulk: 45,
-  },
-  silver: {
     premium_boost: 25,
     free_boost: 35,
     shards_bulk: 40,
   },
-  gold: {
-    premium_boost: 45,
+  silver: {
+    premium_boost: 40,
     free_boost: 35,
-    shards_bulk: 20,
+    shards_bulk: 25,
+  },
+  gold: {
+    premium_boost:65,
+    free_boost: 30,
+    shards_bulk: 5,
   },
   diamond: {
-    premium_boost: 75,
-    free_boost: 20,
-    shards_bulk: 5,
+    premium_boost: 85,
+    free_boost: 13,
+    shards_bulk: 2,
   },
 };
 

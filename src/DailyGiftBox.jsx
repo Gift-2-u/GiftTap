@@ -1,6 +1,16 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
+import {
+  Connection,
+  PublicKey,
+  Keypair,
+  Transaction,
+  SystemProgram,
+  ComputeBudgetProgram,
+  sendAndConfirmTransaction,
+} from '@solana/web3.js';
+import bs58 from 'bs58';
 import giftLogo from './components/Gift2u_logo.png';
 import { getPlayerId, isLoggedIn } from './playerIdentity';
 import {
@@ -16,6 +26,73 @@ import {
   canOpenMysteryWith,
 } from './weeklyBadges';
 import { applyServerInventoryAuthority, getUtcWeekId } from './weeklyQuestLogic';
+import { keypairFromMnemonic } from './solanaWallet';
+import { PREMIUM_PROJECT_FEE_SOL } from './premiumDuration';
+import { RPC_URL } from './rpc';
+
+const PROJECT_FEE_TREASURY = '8G7uEcPS6dwA5wW9bGoqi98EzBunF8trjbbFJkgkvBPm';
+
+function loadUnlockedWalletSecret(playerId) {
+  try {
+    const id = String(playerId || '').trim();
+    if (!id) return '';
+    const key = `gift2u_wallet_key_${id}`;
+    let v = localStorage.getItem(key) || '';
+    if (!v) {
+      v = sessionStorage.getItem(`gift2u_session_phrase_${id}`) || '';
+      if (v) {
+        try {
+          localStorage.setItem(key, v);
+        } catch {
+          /* ignore */
+        }
+      }
+    }
+    return v;
+  } catch {
+    return '';
+  }
+}
+
+/** Same 0.0005 SOL fee as Premium Shop → treasury. */
+async function payMysteryProjectFee(secret, expectedWallet) {
+  const stored = String(secret || '').trim();
+  if (!stored) {
+    throw new Error(
+      'Unlock your game wallet in Gift Tap first (needed for the 0.0005 SOL fee).',
+    );
+  }
+  let playerKeypair;
+  if (stored.includes(' ')) {
+    playerKeypair = keypairFromMnemonic(stored);
+  } else {
+    playerKeypair = Keypair.fromSecretKey(bs58.decode(stored));
+  }
+  const expected = expectedWallet ? String(expectedWallet).trim() : '';
+  if (expected && playerKeypair.publicKey.toBase58() !== expected) {
+    throw new Error('Unlocked wallet does not match your game wallet');
+  }
+  const connection = new Connection(RPC_URL, 'confirmed');
+  const feeLamports = Math.floor(PREMIUM_PROJECT_FEE_SOL * 1e9);
+  const solBal = await connection.getBalance(playerKeypair.publicKey);
+  if (solBal < 5_000_000 + feeLamports) {
+    throw new Error(
+      `Need a little SOL in your game wallet for network + ${PREMIUM_PROJECT_FEE_SOL} SOL fee.`,
+    );
+  }
+  const tx = new Transaction().add(
+    ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 100_000 }),
+    SystemProgram.transfer({
+      fromPubkey: playerKeypair.publicKey,
+      toPubkey: new PublicKey(PROJECT_FEE_TREASURY),
+      lamports: feeLamports,
+    }),
+  );
+  const latest = await connection.getLatestBlockhash('confirmed');
+  tx.recentBlockhash = latest.blockhash;
+  tx.feePayer = playerKeypair.publicKey;
+  return sendAndConfirmTransaction(connection, tx, [playerKeypair]);
+}
 
 /**
  * Homepage hero gift — Mystery Gift ceremony (not mining taps).
@@ -30,6 +107,7 @@ const DailyGiftBox = () => {
   const [selectedTier, setSelectedTier] = useState(null);
   const [reveal, setReveal] = useState(null);
   const [isPressed, setIsPressed] = useState(false);
+  const [playerWallet, setPlayerWallet] = useState('');
 
   const loggedIn = isLoggedIn() && !!getPlayerId();
   const sessionOk = hasSecureSession();
@@ -46,6 +124,7 @@ const DailyGiftBox = () => {
   const refreshInventory = useCallback(async () => {
     if (!getPlayerId()) {
       setInventory({});
+      setPlayerWallet('');
       return;
     }
     setLoadingInv(true);
@@ -55,6 +134,12 @@ const DailyGiftBox = () => {
       const data = await fetchPlayerState();
       const inv = data?.player?.inventory || data?.inventory || {};
       setInventory(inv && typeof inv === 'object' ? inv : {});
+      const w =
+        data?.player?.wallet_address ||
+        data?.wallet_address ||
+        data?.player?.walletAddress ||
+        '';
+      setPlayerWallet(w ? String(w).trim() : '');
     } catch (e) {
       console.warn('mystery home inv', e);
       setError(e?.message || 'Could not load badges');
@@ -107,11 +192,13 @@ const DailyGiftBox = () => {
     setPhase('shaking');
     try {
       await ensureSecureSession();
-      // Let shake play ~1.1s then reveal
-      const [data] = await Promise.all([
-        secureMysteryOpen(tier),
-        new Promise((r) => setTimeout(r, 1100)),
-      ]);
+      const pid = getPlayerId();
+      const secret = loadUnlockedWalletSecret(pid);
+      const feePromise = payMysteryProjectFee(secret, playerWallet);
+      const shakePromise = new Promise((r) => setTimeout(r, 1100));
+      const feeSig = await feePromise;
+      const data = await secureMysteryOpen(tier, feeSig);
+      await shakePromise;
       const reward = data?.reward || {};
       const dest = reward.dest || data?.dest || 'backpack';
       const destLine =
@@ -356,6 +443,8 @@ const DailyGiftBox = () => {
                   </h3>
                   <p className="text-slate-400 text-xs mb-4">
                     Choose which badge tier to burn. Better badges = better odds.
+                    Each open also sends {PREMIUM_PROJECT_FEE_SOL} SOL project fee
+                    (same fee you accepted in Gift Tap).
                   </p>
                   {loadingInv ? (
                     <p className="text-slate-400 text-sm py-6">Loading badges…</p>

@@ -227,9 +227,16 @@ export async function secureShopBuy(itemId) {
   return callSecureFunction('shop-buy', { item_id: itemId });
 }
 
-/** Secure mystery gift open (requires JWT). */
-export async function secureMysteryOpen(tier) {
-  return callSecureFunction('mystery-open', { tier });
+/** Secure mystery gift open (requires JWT + 0.0005 SOL fee tx). */
+export async function secureMysteryOpen(tier, txSignature) {
+  const sig = String(txSignature || '').trim();
+  if (!sig) {
+    throw new Error('Fee transaction required (0.0005 SOL project fee).');
+  }
+  return callSecureFunction('mystery-open', {
+    tier,
+    tx_signature: sig,
+  });
 }
 
 /** Claim personal daily-shard milestone $G2U (off-chain credit). */

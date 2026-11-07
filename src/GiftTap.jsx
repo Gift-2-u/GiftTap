@@ -927,6 +927,30 @@ const GiftTapGame = () => {
   /** Throttle 'why shards stopped' notices (no_energy / daily_limit) */
   const mineBlockNotifiedRef = useRef(0);
   const flushErrorNotifiedRef = useRef(false);
+  /** Empty Battery → Refill notice (local empty tap + flush no_energy). */
+  const showEmptyBatteryNotice = useCallback(() => {
+    const nowN = Date.now();
+    if (nowN - (mineBlockNotifiedRef.current || 0) <= 20000) return;
+    mineBlockNotifiedRef.current = nowN;
+    setAppNotice({
+      show: true,
+      message: 'Refill Extra Battery for 1,000 $G2U.',
+      loading: false,
+      success: false,
+      title: 'Empty Battery',
+      confirm: {
+        confirmLabel: 'Refill — 1,000 $G2U',
+        cancelLabel: 'OK',
+        confirmDanger: false,
+        resolve: (ok) => {
+          if (ok) {
+            setShopFocusTab('market');
+            setCurrentPage('shop');
+          }
+        },
+      },
+    });
+  }, []);
   /** When true, only commit-taps (service_role) can change daily_taps / balances */
   const secureEconomyRef = useRef(true);
   /** Soft once-per-session notice if JWT missing (no password nag on every close/reopen) */
@@ -5071,29 +5095,12 @@ const GiftTapGame = () => {
           }
           // Tell the player WHY shards stopped (common report: tapping + last_tap today, shards flat)
           if (credited === 0 && (rejectReason === 'no_energy' || rejectReason === 'daily_limit')) {
-            const nowN = Date.now();
-            if (nowN - (mineBlockNotifiedRef.current || 0) > 20000) {
-              mineBlockNotifiedRef.current = nowN;
-              if (rejectReason === 'no_energy') {
-                setAppNotice({
-                  show: true,
-                  message: 'Refill Extra Battery for 1,000 $G2U.',
-                  loading: false,
-                  success: false,
-                  title: 'Empty Battery',
-                  confirm: {
-                    confirmLabel: 'Refill — 1,000 $G2U',
-                    cancelLabel: 'OK',
-                    confirmDanger: false,
-                    resolve: (ok) => {
-                      if (ok) {
-                        setShopFocusTab('market');
-                        setCurrentPage('shop');
-                      }
-                    },
-                  },
-                });
-              } else {
+            if (rejectReason === 'no_energy') {
+              showEmptyBatteryNotice();
+            } else {
+              const nowN = Date.now();
+              if (nowN - (mineBlockNotifiedRef.current || 0) > 20000) {
+                mineBlockNotifiedRef.current = nowN;
                 setAppNotice({
                   show: true,
                   message:
@@ -5767,7 +5774,11 @@ const GiftTapGame = () => {
         optimisticEnergy.current = caught.value;
         if (caught.value !== Number(energy)) setEnergy(caught.value);
       }
-      if ((Number(optimisticEnergy.current) || 0) <= 0 || !isDataLoaded) return;
+      if (!isDataLoaded) return;
+      if ((Number(optimisticEnergy.current) || 0) <= 0) {
+        showEmptyBatteryNotice();
+        return;
+      }
 
       // 🚨 FIX: Use the synchronous Ref to prevent rapid-click bypasses
       const safeLifetimeTaps = Number(optimisticTaps.current) || 0;
@@ -5799,6 +5810,7 @@ const GiftTapGame = () => {
         // Hard stop at empty battery — do not animate progress
         if (liveEnergy < costMultiplier) {
           setEnergy(liveEnergy);
+          showEmptyBatteryNotice();
           return;
         }
         // Still credit weekly quests (500/day + full drain) when blocked by energy/limit

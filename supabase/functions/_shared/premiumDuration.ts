@@ -20,11 +20,11 @@ export const PREMIUM_DURATION_G2U: Record<
   Record<PremiumDurationDays, number>
 > = {
   // Doubled vs prior rebalance (+1000 Max Daily = 1000 $G2U)
-  grinder: { 1: 2_000, 3: 5_000, 7: 11_000 },
-  whale: { 1: 5_000, 3: 13_000, 7: 28_000 },
-  x2_boost: { 1: 4_000, 3: 10_000, 7: 22_000 },
-  x3_boost: { 1: 7_000, 3: 18_000, 7: 38_000 },
-  expanded_energy: { 1: 400, 3: 1_000, 7: 2_000 },
+  grinder: { 1: 1_000, 3: 2_500, 7: 6_000 },
+  whale: { 1: 3_000, 3: 8_000, 7: 18_000 },
+  x2_boost: { 1: 2_000, 3: 5_000, 7: 10_000 },
+  x3_boost: { 1: 3_000, 3: 8_000, 7: 18_000 },
+  expanded_energy: { 1: 200, 3: 500, 7: 1000 },
 };
 
 /** Flat project fee on every premium buy (SOL → treasury) */

@@ -342,33 +342,33 @@ export const MYSTERY_COSTS: Record<string, number> = {
  */
 export const MYSTERY_ODDS: Record<string, Record<string, number>> = {
   bronze: {
-    premium_boost: 20,
-    free_boost: 35,
-    shards_bulk: 45,
-  },
-  silver: {
     premium_boost: 25,
     free_boost: 35,
     shards_bulk: 40,
   },
-  gold: {
-    premium_boost: 50,
+  silver: {
+    premium_boost: 40,
     free_boost: 35,
-    shards_bulk: 15,
+    shards_bulk: 25,
+  },
+  gold: {
+    premium_boost:65,
+    free_boost: 30,
+    shards_bulk: 5,
   },
   diamond: {
-    premium_boost: 80,
-    free_boost: 15,
-    shards_bulk: 5,
+    premium_boost: 85,
+    free_boost: 13,
+    shards_bulk: 2,
   },
 };
 
 /** G2Ushards bulk → shard_balance only */
 export const MYSTERY_SHARD_AMOUNTS: Record<string, Record<string, number>> = {
-  bronze: { shards_bulk: 5000 },
-  silver: { shards_bulk: 10000 },
-  gold: { shards_bulk: 30000 },
-  diamond: { shards_bulk: 50000 },
+  bronze: { shards_bulk: 10000 },
+  silver: { shards_bulk: 25000 },
+  gold: { shards_bulk: 50000 },
+  diamond: { shards_bulk: 75000 },
 };
 
 /** Free Boost sub-roll (~33.3% each) — Frenzy is Free, not Premium */
@@ -389,18 +389,18 @@ export const MYSTERY_PREMIUM_ITEMS: Array<{
   days?: 1 | 3 | 7;
 }> = [
   { itemId: "bot", label: "Weekend Bot", weight: 2.5 },
-  { itemId: "grinder", label: "+2K Daily Energy", weight: 8, days: 1 },
-  { itemId: "grinder", label: "+2K Daily Energy", weight: 4, days: 3 },
-  { itemId: "grinder", label: "+2K Daily Energy", weight: 2.5, days: 7 },
-  { itemId: "whale", label: "+5K Daily Energy", weight: 4, days: 1 },
-  { itemId: "whale", label: "+5K Daily Energy", weight: 2, days: 3 },
+  { itemId: "grinder", label: "+2K Daily Energy", weight: 9.5, days: 1 },
+  { itemId: "grinder", label: "+2K Daily Energy", weight: 3.5, days: 3 },
+  { itemId: "grinder", label: "+2K Daily Energy", weight: 2, days: 7 },
+  { itemId: "whale", label: "+5K Daily Energy", weight: 5, days: 1 },
+  { itemId: "whale", label: "+5K Daily Energy", weight: 1, days: 3 },
   { itemId: "whale", label: "+5K Daily Energy", weight: 0.5, days: 7 },
-  { itemId: "x2_boost", label: "Double Power", weight: 6.5, days: 1 },
-  { itemId: "x2_boost", label: "Double Power", weight: 3, days: 3 },
-  { itemId: "x2_boost", label: "Double Power", weight: 1, days: 7 },
-  { itemId: "x3_boost", label: "Triple Power", weight: 4, days: 1 },
-  { itemId: "x3_boost", label: "Triple Power", weight: 1.5, days: 3 },
-  { itemId: "x3_boost", label: "Triple Power", weight: 0.5, days: 7 },
+  { itemId: "x2_boost", label: "Double Power", weight: 8, days: 1 },
+  { itemId: "x2_boost", label: "Double Power", weight: 2, days: 3 },
+  { itemId: "x2_boost", label: "Double Power", weight: 0.5, days: 7 },
+  { itemId: "x3_boost", label: "Triple Power", weight: 4.75, days: 1 },
+  { itemId: "x3_boost", label: "Triple Power", weight: 1, days: 3 },
+  { itemId: "x3_boost", label: "Triple Power", weight: 0.25, days: 7 },
   { itemId: "expanded_energy", label: "Expanded Energy", weight: 16, days: 1 },
   { itemId: "expanded_energy", label: "Expanded Energy", weight: 10, days: 3 },
   { itemId: "expanded_energy", label: "Expanded Energy", weight: 7, days: 7 },

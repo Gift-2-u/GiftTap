@@ -795,8 +795,8 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, bumpEner
       rarity: 'Rare',
       boost: 'Fills 500 to your Battery · use anytime (no free-day lock)',
       duration: 'Instant',
-      price: 1000 / G2U_PER_SOL,
-      priceG2uFixed: 1000,
+      price: 500 / G2U_PER_SOL,
+      priceG2uFixed: 500,
       currency: 'SOL',
       iconFrom: '#4ade80',
       iconTo: '#14532d',
@@ -810,8 +810,8 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, bumpEner
       rarity: 'Epic',
       boost: '2× shards per energy for 30 seconds',
       duration: '30 Seconds · activate 1× / UTC day',
-      price: 1000 / G2U_PER_SOL,
-      priceG2uFixed: 1000,
+      price: 500 / G2U_PER_SOL,
+      priceG2uFixed: 500,
       currency: 'SOL',
       iconFrom: '#ff6b35',
       iconTo: '#7c1d12',
@@ -825,8 +825,8 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, bumpEner
       rarity: 'Epic',
       boost: '+1,000 max daily taps (not battery) until UTC midnight',
       duration: 'Until UTC midnight · activate 1× / UTC day',
-      price: 1000 / G2U_PER_SOL,
-      priceG2uFixed: 1000,
+      price: 500 / G2U_PER_SOL,
+      priceG2uFixed: 500,
       currency: 'SOL',
       iconFrom: '#60a5fa',
       iconTo: '#1e3a8a',
@@ -2789,7 +2789,7 @@ Daily claim active · Pack → NFT to see it.`,
   };
 
 
-  // --- Mystery Gift: burn badges → server roll → auto-credit backpack / wallet ---
+  // --- Mystery Gift: 0.0005 SOL fee → burn badges → server roll ---
   const handleOpenMystery = async (tier) => {
     if (!user?.id) return;
     if (!canOpenMysteryWith(localInventory, tier)) {
@@ -2805,7 +2805,12 @@ Daily claim active · Pack → NFT to see it.`,
     }
     setMysteryBusy(true);
     setMysteryReveal(null);
-    setTxStatus({ show: true, loading: true, message: 'Opening Mystery Gift...', success: false });
+    setTxStatus({
+      show: true,
+      loading: true,
+      message: `Paying ${PREMIUM_PROJECT_FEE_SOL} SOL fee…`,
+      success: false,
+    });
     try {
       try {
         await ensureSecureSession();
@@ -2815,7 +2820,56 @@ Daily claim active · Pack → NFT to see it.`,
       if (!hasSecureSession()) {
         throw new Error('Log in again to open Mystery Gift (secure session required).');
       }
-      const data = await secureMysteryOpen(tier);
+      const storedSecret = decryptedPhrase;
+      if (!storedSecret) {
+        throw new Error(
+          'Unlock your game wallet first (needed for the 0.0005 SOL Mystery fee).',
+        );
+      }
+      const connection = new Connection(RPC_URL, 'confirmed');
+      let playerKeypair;
+      if (String(storedSecret).includes(' ')) {
+        playerKeypair = keypairFromMnemonic(String(storedSecret).trim());
+      } else {
+        playerKeypair = Keypair.fromSecretKey(bs58.decode(String(storedSecret).trim()));
+      }
+      if (
+        playerWallet &&
+        playerKeypair.publicKey.toBase58() !== String(playerWallet).trim()
+      ) {
+        throw new Error('Unlocked wallet does not match your game wallet');
+      }
+      const treasuryWallet = new PublicKey(
+        '8G7uEcPS6dwA5wW9bGoqi98EzBunF8trjbbFJkgkvBPm',
+      );
+      const projectFeeLamports = Math.floor(PREMIUM_PROJECT_FEE_SOL * 1e9);
+      const solBal = await connection.getBalance(playerKeypair.publicKey);
+      if (solBal < 5_000_000 + projectFeeLamports) {
+        throw new Error(
+          `Need a little SOL in your game wallet for network + ${PREMIUM_PROJECT_FEE_SOL} SOL fee.`,
+        );
+      }
+      const feeTx = new Transaction().add(
+        ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 100_000 }),
+        SystemProgram.transfer({
+          fromPubkey: playerKeypair.publicKey,
+          toPubkey: treasuryWallet,
+          lamports: projectFeeLamports,
+        }),
+      );
+      const latest = await connection.getLatestBlockhash('confirmed');
+      feeTx.recentBlockhash = latest.blockhash;
+      feeTx.feePayer = playerKeypair.publicKey;
+      const feeSig = await sendAndConfirmTransaction(connection, feeTx, [
+        playerKeypair,
+      ]);
+      setTxStatus({
+        show: true,
+        loading: true,
+        message: 'Opening Mystery Gift...',
+        success: false,
+      });
+      const data = await secureMysteryOpen(tier, feeSig);
       const inv = data.inventory || {};
       const weekId = getUtcWeekId();
       // Server snapshot wins for badge burns — empty prev so deleted badge keys stay gone
