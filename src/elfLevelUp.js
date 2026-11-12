@@ -13,7 +13,8 @@ export const ELF_LEVEL_UP_SOL = {
 };
 
 /** Fate · Echo · Rush · Shadow — L1→2 … L4→5 fixed $G2U (all rarities) */
-export const ELF_LEVEL_UP_G2U = [75_000, 150_000, 225_000, 300_000];
+/** Fate · Echo · Rush · Shadow — each step L1→2 … L4→5 = 100k $G2U */
+export const ELF_LEVEL_UP_G2U = [100_000, 100_000, 100_000, 100_000];
 
 /** Locksmith L1→2 … L4→5 (legacy SOL; payment uses fixed $G2U) */
 export const LOCKSMITH_LEVEL_UP_SOL = [0.2, 0.35, 0.6, 1.5];

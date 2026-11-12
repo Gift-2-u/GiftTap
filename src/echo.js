@@ -8,10 +8,10 @@ export const ECHO_COLLECTION = LOCKSMITH_COLLECTION;
 
 /** Echo tap multiplier: level 1..5 per rarity */
 export const ECHO_MULTI = {
-  common: [1.1, 1.2, 1.3, 1.4, 1.5],
-  rare: [1.6, 1.7, 1.8, 1.9, 2.0],
-  epic: [2.1, 2.2, 2.3, 2.4, 2.5],
-  legendary: [2.6, 2.7, 2.8, 2.9, 3.0],
+  common: [1.2, 1.4, 1.6, 1.8, 2.0],
+  rare: [2.2, 2.4, 2.6, 2.8, 3.0],
+  epic: [3.2, 3.4, 3.6, 3.8, 4.0],
+  legendary: [4.2, 4.4, 4.6, 4.8, 5.0],
 };
 
 export function echoMultiplier(rarityKey, level = 1) {
@@ -28,7 +28,7 @@ export const ECHO_WAVE1 = {
   common: {
     key: 'common',
     label: 'Common',
-    priceSol: 0.05,
+    priceSol: 0.02,
     itemsAvailable: 5250,
     maxSupply: 17500,
     border: '#C0C0C0',
@@ -40,7 +40,7 @@ export const ECHO_WAVE1 = {
   rare: {
     key: 'rare',
     label: 'Rare',
-    priceSol: 0.3,
+    priceSol: 0.1,
     itemsAvailable: 1575,
     maxSupply: 5250,
     border: '#3B82F6',
@@ -52,7 +52,7 @@ export const ECHO_WAVE1 = {
   epic: {
     key: 'epic',
     label: 'Epic',
-    priceSol: 0.75,
+    priceSol: 0.25,
     itemsAvailable: 525,
     maxSupply: 1750,
     border: '#A855F7',
@@ -64,7 +64,7 @@ export const ECHO_WAVE1 = {
   legendary: {
     key: 'legendary',
     label: 'Legendary',
-    priceSol: 1.5,
+    priceSol: 0.4,
     itemsAvailable: 150,
     maxSupply: 500,
     border: '#EAB308',

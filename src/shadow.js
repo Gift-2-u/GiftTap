@@ -65,7 +65,7 @@ export const SHADOW_WAVE1 = {
   common: {
     key: 'common',
     label: 'Common',
-    priceSol: 0.05,
+    priceSol: 0.02,
     itemsAvailable: 5250,
     maxSupply: 17500,
     border: '#C0C0C0',
@@ -77,7 +77,7 @@ export const SHADOW_WAVE1 = {
   rare: {
     key: 'rare',
     label: 'Rare',
-    priceSol: 0.3,
+    priceSol: 0.1,
     itemsAvailable: 1575,
     maxSupply: 5250,
     border: '#3B82F6',
@@ -89,7 +89,7 @@ export const SHADOW_WAVE1 = {
   epic: {
     key: 'epic',
     label: 'Epic',
-    priceSol: 0.75,
+    priceSol: 0.25,
     itemsAvailable: 525,
     maxSupply: 1750,
     border: '#A855F7',
@@ -101,7 +101,7 @@ export const SHADOW_WAVE1 = {
   legendary: {
     key: 'legendary',
     label: 'Legendary',
-    priceSol: 1.5,
+    priceSol: 0.4,
     itemsAvailable: 150,
     maxSupply: 500,
     border: '#EAB308',
