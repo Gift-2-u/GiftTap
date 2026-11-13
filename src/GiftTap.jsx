@@ -268,6 +268,7 @@ import {
   milestoneLevelFromTaps,
   getClaimedLifetimeMilestones,
   listAllMilestones,
+  holidayMilestoneMultiplier,
 } from './personalMilestone';
 import { isTokenLaunched } from './tokenLaunch';
 import { syncAllGiftNftOwnership } from './nftOwnershipSync';
@@ -1035,6 +1036,10 @@ const GiftTapGame = () => {
   /** One-time: announce Android APK download (skip Seeker shell) */
   const [showApkNotice, setShowApkNotice] = useState(false);
   const APK_NOTICE_KEY = 'gift2u_android_apk_notice_v1';
+  /** Holiday Special: 2× milestone claims through Dec 31 — Close; optional Never show again */
+  const [showHolidayNotice, setShowHolidayNotice] = useState(false);
+  const [holidayNeverAgain, setHolidayNeverAgain] = useState(false);
+  const HOLIDAY_NOTICE_KEY = 'gift2u_holiday_milestones_2026_v1';
   const [showAgeConsent, setShowAgeConsent] = useState(false);
   const [ageConsentBusy, setAgeConsentBusy] = useState(false);
   const [showFeeConsent, setShowFeeConsent] = useState(false);
@@ -3975,6 +3980,7 @@ const GiftTapGame = () => {
       showRulesNotice ||
       showBoostTokenNotice ||
       showApkNotice ||
+      showHolidayNotice ||
       showAgeConsent ||
       showFeeConsent ||
       appNotice.show
@@ -4034,6 +4040,7 @@ const GiftTapGame = () => {
     showRulesNotice,
     showBoostTokenNotice,
     showApkNotice,
+    showHolidayNotice,
     showAgeConsent,
     showFeeConsent,
     appNotice.show,
@@ -4200,6 +4207,7 @@ const GiftTapGame = () => {
       return;
     }
     if (showAscensionModal || showRulesNotice || showBoostTokenNotice || showApkNotice) return;
+    if (showHolidayNotice) return;
     if (showAgeConsent) {
       setShowFeeConsent(false);
       return;
@@ -4221,6 +4229,7 @@ const GiftTapGame = () => {
     showRulesNotice,
     showBoostTokenNotice,
     showApkNotice,
+    showHolidayNotice,
     showAgeConsent,
     stats?.inventory?.age_majority_consent?.accepted_at,
     stats?.inventory?.fee_micro_consent?.accepted_at,
@@ -4244,6 +4253,62 @@ const GiftTapGame = () => {
       setFeeConsentBusy(false);
     }
   }, [feeConsentBusy, notify]);
+
+  // Holiday Special: 2× milestone claims through Dec 31 — stays until Close; Never show again optional
+  // (no claim fee — only waits on other overlays so popups do not stack)
+  useEffect(() => {
+    if (!isDataLoaded || !playerId || showAscensionModal) return undefined;
+    if (holidayMilestoneMultiplier() < 2) return undefined;
+    if (
+      showRulesNotice ||
+      showBoostTokenNotice ||
+      showApkNotice ||
+      showAgeConsent ||
+      appNotice.show
+    ) {
+      return undefined;
+    }
+    const key = `${HOLIDAY_NOTICE_KEY}_${playerId}`;
+    try {
+      if (localStorage.getItem(key) === '1') return undefined;
+    } catch {
+      /* ignore */
+    }
+    const t = setTimeout(() => {
+      if (
+        !showAscensionModal &&
+        !showRulesNotice &&
+        !showBoostTokenNotice &&
+        !showApkNotice &&
+        !showAgeConsent &&
+        !appNotice.show
+      ) {
+        setShowHolidayNotice(true);
+      }
+    }, 1600);
+    return () => clearTimeout(t);
+  }, [
+    isDataLoaded,
+    playerId,
+    showAscensionModal,
+    showRulesNotice,
+    showBoostTokenNotice,
+    showApkNotice,
+    showAgeConsent,
+    appNotice.show,
+  ]);
+
+  const dismissHolidayNotice = useCallback(() => {
+    if (holidayNeverAgain) {
+      try {
+        localStorage.setItem(`${HOLIDAY_NOTICE_KEY}_${playerId}`, '1');
+      } catch {
+        /* ignore */
+      }
+    }
+    setShowHolidayNotice(false);
+    setHolidayNeverAgain(false);
+  }, [holidayNeverAgain, playerId]);
 
   // Claim tip: only when Wallet opens — no idle 2-min poll (Disk IO)
   const checkAirdropTip = useCallback(async () => {
@@ -8125,11 +8190,105 @@ const GiftTapGame = () => {
         </div>
       )}
 
+      {showHolidayNotice &&
+        !showAscensionModal &&
+        !showRulesNotice &&
+        !showBoostTokenNotice &&
+        !showApkNotice &&
+        !showAgeConsent &&
+        !appNotice.show && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,0.88)',
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center',
+            zIndex: 195500,
+            padding: 16,
+            boxSizing: 'border-box',
+          }}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="gift2u-holiday-notice-title"
+        >
+          <div
+            style={{
+              background: '#1c1e22',
+              padding: 22,
+              borderRadius: 16,
+              border: '2px solid #fbef43',
+              width: '100%',
+              maxWidth: 360,
+              boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
+              textAlign: 'left',
+            }}
+          >
+            <h3
+              id="gift2u-holiday-notice-title"
+              style={{
+                color: '#fbef43',
+                margin: '0 0 10px',
+                fontSize: 18,
+                textAlign: 'center',
+              }}
+            >
+              ✨ HOLIDAY SPECIAL IS LIVE
+            </h3>
+            <p style={{ color: '#ccc', fontSize: 13, lineHeight: 1.45, margin: '0 0 12px' }}>
+              Until <strong style={{ color: '#fff' }}>December 31</strong>, every personal milestone pays <strong style={{ color: '#fbef43' }}>double $G2U</strong> when
+              you claim.
+            </p>
+            <p style={{ color: '#aaa', fontSize: 12, lineHeight: 1.5, margin: '0 0 16px' }}>
+              Double the grind. Double the payout.
+            </p>
+            <button
+              type="button"
+              onClick={dismissHolidayNotice}
+              style={{
+                width: '100%',
+                background: 'linear-gradient(90deg,#fbef43,#fbbf24)',
+                color: '#000',
+                border: 'none',
+                padding: 12,
+                borderRadius: 10,
+                fontWeight: 'bold',
+                cursor: 'pointer',
+                marginBottom: 12,
+              }}
+            >
+              Close
+            </button>
+            <label
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                color: '#888',
+                fontSize: 12,
+                cursor: 'pointer',
+                userSelect: 'none',
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={holidayNeverAgain}
+                onChange={(e) => setHolidayNeverAgain(!!e.target.checked)}
+                style={{ width: 16, height: 16, accentColor: '#fbef43' }}
+              />
+              Never show again
+            </label>
+          </div>
+        </div>
+      )}
+
       {showFeeConsent &&
         !showAscensionModal &&
         !showRulesNotice &&
         !showBoostTokenNotice &&
         !showApkNotice &&
+        !showHolidayNotice &&
         !showAgeConsent &&
         !appNotice.show && (
         <div

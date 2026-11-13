@@ -7,6 +7,20 @@
 
 export const MILESTONE_G2U_PER_1000_SHARDS = 250;
 
+/** Holiday Special: 2× personal + lifetime milestone $G2U through end of Dec 31 UTC. */
+export const HOLIDAY_MILESTONE_END_MS = Date.parse('2027-01-01T00:00:00.000Z');
+export const HOLIDAY_MILESTONE_MULT = 2;
+
+export function holidayMilestoneMultiplier(nowMs = Date.now()) {
+  return nowMs < HOLIDAY_MILESTONE_END_MS ? HOLIDAY_MILESTONE_MULT : 1;
+}
+
+export function applyHolidayMilestoneG2u(amount, nowMs = Date.now()) {
+  const base = Math.max(0, Math.floor(Number(amount) || 0));
+  const mult = holidayMilestoneMultiplier(nowMs);
+  return Math.floor(base * mult);
+}
+
 /** Extra $G2U at lifetime tap thresholds (on top of per-level rewards). */
 export const LIFETIME_G2U_MILESTONES = [
   { taps: 50000, g2u: 2500, label: '50K lifetime' },
@@ -40,11 +54,14 @@ export function xpForLevel(level) {
   return 0;
 }
 
-/** $G2U for completing one level (reaching level+1). */
-export function g2uForLevel(level) {
+/** $G2U for completing one level (reaching level+1). Holiday Special may 2×. */
+export function g2uForLevel(level, nowMs = Date.now()) {
   const xp = xpForLevel(level);
   if (xp <= 0) return 0;
-  return Math.floor(xp / 1000) * MILESTONE_G2U_PER_1000_SHARDS;
+  return applyHolidayMilestoneG2u(
+    Math.floor(xp / 1000) * MILESTONE_G2U_PER_1000_SHARDS,
+    nowMs,
+  );
 }
 
 /** Level from lifetime taps only (ignore wall). Same math as GiftTap.calculateLevel. */
@@ -142,8 +159,9 @@ export function milestoneG2uProgress(lifetimeTaps, inventory) {
   const taps = Math.max(0, Number(lifetimeTaps) || 0);
   const start = tapsToReachLevel(info.claimedLevel);
   const into = Math.max(0, Math.min(info.xp || 0, taps - start));
-  const accrued =
-    Math.floor(into / 1000) * MILESTONE_G2U_PER_1000_SHARDS;
+  const accrued = applyHolidayMilestoneG2u(
+    Math.floor(into / 1000) * MILESTONE_G2U_PER_1000_SHARDS,
+  );
   return {
     ...info,
     into,
@@ -192,13 +210,14 @@ export function listAllMilestones(lifetimeTaps, inventory) {
   const lifeRows = LIFETIME_G2U_MILESTONES.map((m) => {
     const claimed = claimedLife.has(m.taps);
     const reached = taps >= m.taps;
+    const g2u = applyHolidayMilestoneG2u(m.g2u);
     return {
       id: `life_${m.taps}`,
       kind: 'lifetime',
       label: m.label,
-      detail: `${m.taps.toLocaleString()} lifetime · ${m.g2u.toLocaleString()} $G2U`,
+      detail: `${m.taps.toLocaleString()} lifetime · ${g2u.toLocaleString()} $G2U`,
       need: m.taps,
-      g2u: m.g2u,
+      g2u,
       progress: Math.min(1, taps / m.taps),
       status: claimed ? 'claimed' : reached ? 'ready' : 'progress',
     };

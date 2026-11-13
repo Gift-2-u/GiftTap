@@ -5,6 +5,23 @@
 
 export const MILESTONE_G2U_PER_1000_SHARDS = 250;
 
+/** Holiday Special: 2× personal + lifetime milestone $G2U through end of Dec 31 UTC. */
+export const HOLIDAY_MILESTONE_END_MS = Date.parse("2027-01-01T00:00:00.000Z");
+export const HOLIDAY_MILESTONE_MULT = 2;
+
+export function holidayMilestoneMultiplier(nowMs = Date.now()): number {
+  return nowMs < HOLIDAY_MILESTONE_END_MS ? HOLIDAY_MILESTONE_MULT : 1;
+}
+
+export function applyHolidayMilestoneG2u(
+  amount: number,
+  nowMs = Date.now(),
+): number {
+  const base = Math.max(0, Math.floor(Number(amount) || 0));
+  const mult = holidayMilestoneMultiplier(nowMs);
+  return Math.floor(base * mult);
+}
+
 /** Extra $G2U at lifetime tap thresholds (on top of per-level rewards). */
 export const LIFETIME_G2U_MILESTONES: Array<{ taps: number; g2u: number }> = [
   { taps: 50000, g2u: 2500 },
@@ -37,10 +54,13 @@ export function xpForLevel(level: number): number {
   return 0;
 }
 
-export function g2uForLevel(level: number): number {
+export function g2uForLevel(level: number, nowMs = Date.now()): number {
   const xp = xpForLevel(level);
   if (xp <= 0) return 0;
-  return Math.floor(xp / 1000) * MILESTONE_G2U_PER_1000_SHARDS;
+  return applyHolidayMilestoneG2u(
+    Math.floor(xp / 1000) * MILESTONE_G2U_PER_1000_SHARDS,
+    nowMs,
+  );
 }
 
 export function milestoneLevelFromTaps(taps: number): number {
@@ -215,6 +235,7 @@ export async function accruePersonalMilestones(
       level: next.nextLevel,
       amount: next.amount,
       lifetime_taps: lifetimeTaps,
+      holiday_mult: holidayMilestoneMultiplier(),
       queued: true,
     });
     inv.personal_milestone_claims = prevLog.slice(-120);
@@ -224,7 +245,8 @@ export async function accruePersonalMilestones(
   for (const m of LIFETIME_G2U_MILESTONES) {
     if (lifetimeTaps < m.taps) continue;
     if (claimedLife.has(m.taps)) continue;
-    granted += m.g2u;
+    const lifeAmt = applyHolidayMilestoneG2u(m.g2u);
+    granted += lifeAmt;
     lifetimeGranted.push(m.taps);
     claimedLife.add(m.taps);
     const prevLog = Array.isArray(inv.personal_milestone_claims)
@@ -234,8 +256,9 @@ export async function accruePersonalMilestones(
       at: new Date().toISOString(),
       kind: "lifetime",
       taps: m.taps,
-      amount: m.g2u,
+      amount: lifeAmt,
       lifetime_taps: lifetimeTaps,
+      holiday_mult: holidayMilestoneMultiplier(),
       queued: true,
     });
     inv.personal_milestone_claims = prevLog.slice(-120);
