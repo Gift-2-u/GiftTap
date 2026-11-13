@@ -94,3 +94,63 @@ export function pushPremiumDuration(inv, itemId, days) {
   root[id] = prev;
   inv[QUEUE_KEY] = root;
 }
+
+/** Peek next queued duration without popping (Backpack UI). */
+export function peekPremiumDuration(inv, itemId, fallback = 7) {
+  const id = String(itemId || '').toLowerCase();
+  const root = inv?.[QUEUE_KEY];
+  if (root && typeof root === 'object' && Array.isArray(root[id]) && root[id].length) {
+    return parsePremiumDurationDays(root[id][0], fallback);
+  }
+  return parsePremiumDurationDays(fallback, 7);
+}
+
+/** All queued durations for one item, e.g. [3, 7]. */
+export function listPremiumDurations(inv, itemId) {
+  const id = String(itemId || '').toLowerCase();
+  const root = inv?.[QUEUE_KEY];
+  if (!root || typeof root !== 'object' || !Array.isArray(root[id])) return [];
+  return root[id].map((d) => parsePremiumDurationDays(d, 7));
+}
+
+/** Remember which pack length is currently running (Backpack label). */
+export function stampPremiumBoostActive(inv, itemId, days, expiresIso) {
+  if (!inv || typeof inv !== 'object') return;
+  const id = String(itemId || '').toLowerCase();
+  if (!PREMIUM_DURATION_CHOICE_IDS.has(id)) return;
+  const prev =
+    inv.premium_boost_active && typeof inv.premium_boost_active === 'object'
+      ? { ...inv.premium_boost_active }
+      : {};
+  prev[id] = {
+    days: parsePremiumDurationDays(days, 7),
+    expires: String(expiresIso || ''),
+  };
+  inv.premium_boost_active = prev;
+}
+
+export function readPremiumBoostActive(inv, itemId) {
+  const id = String(itemId || '').toLowerCase();
+  const row = inv?.premium_boost_active?.[id];
+  if (!row || typeof row !== 'object') return null;
+  const expires = String(row.expires || '');
+  if (!expires) return null;
+  if (Date.now() >= new Date(expires).getTime()) return null;
+  return {
+    days: parsePremiumDurationDays(row.days, 7),
+    expires,
+  };
+}
+
+/** Human remaining time from an ISO expiry. */
+export function formatTimeLeft(expiresIso) {
+  const ms = new Date(String(expiresIso || '')).getTime() - Date.now();
+  if (!Number.isFinite(ms) || ms <= 0) return '';
+  const mins = Math.ceil(ms / 60000);
+  if (mins < 60) return `${mins}m left`;
+  const hours = Math.ceil(ms / 3600000);
+  if (hours < 48) return `${hours}h left`;
+  const days = Math.floor(hours / 24);
+  const remH = hours % 24;
+  return remH > 0 ? `${days}d ${remH}h left` : `${days}d left`;
+}

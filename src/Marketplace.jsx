@@ -133,6 +133,12 @@ import {
   PREMIUM_PROJECT_FEE_SOL,
   utcDayOffsetForDuration,
   parsePremiumDurationDays,
+  durationLabel,
+  listPremiumDurations,
+  peekPremiumDuration,
+  readPremiumBoostActive,
+  stampPremiumBoostActive,
+  formatTimeLeft,
 } from './premiumDuration';
 
 /**
@@ -2717,28 +2723,59 @@ Daily claim active · Pack → NFT to see it.`,
     if (item.id === 'grinder') {
       dbUpdates.limit_boost_amount = 2000;
       dbUpdates.limit_boost_expires = timedExpireUtc.toISOString();
+      stampPremiumBoostActive(
+        newInventory,
+        item.id,
+        activateDays,
+        dbUpdates.limit_boost_expires,
+      );
       dbUpdates.inventory = newInventory;
     }
     if (item.id === 'whale') {
       dbUpdates.limit_boost_amount = 5000;
       dbUpdates.limit_boost_expires = timedExpireUtc.toISOString();
+      stampPremiumBoostActive(
+        newInventory,
+        item.id,
+        activateDays,
+        dbUpdates.limit_boost_expires,
+      );
       dbUpdates.inventory = newInventory;
     }
     if (item.id === 'x2_boost') {
       dbUpdates.premium_multiplier = 2;
       dbUpdates.premium_multiplier_expires = timedExpireUtc.toISOString();
+      stampPremiumBoostActive(
+        newInventory,
+        item.id,
+        activateDays,
+        dbUpdates.premium_multiplier_expires,
+      );
       dbUpdates.inventory = newInventory;
     }
     if (item.id === 'x3_boost') {
       dbUpdates.premium_multiplier = 3;
       dbUpdates.premium_multiplier_expires = timedExpireUtc.toISOString();
+      stampPremiumBoostActive(
+        newInventory,
+        item.id,
+        activateDays,
+        dbUpdates.premium_multiplier_expires,
+      );
       dbUpdates.inventory = newInventory;
     }
     if (item.id === 'expanded_energy') {
       newInventory.energy_cap_boost = {
         cap: 1000,
         expires: timedExpireUtc.toISOString(),
+        days: activateDays,
       };
+      stampPremiumBoostActive(
+        newInventory,
+        item.id,
+        activateDays,
+        timedExpireUtc.toISOString(),
+      );
       dbUpdates.inventory = newInventory;
     }
 
@@ -3801,6 +3838,54 @@ Daily claim active · Pack → NFT to see it.`,
                         : item.id === 'refill'
                           ? dailyUsage.refill === currentTodayStr
                           : dailyUsage[item.id] === currentTodayStr;
+                    const queuedDays = isDurationChoiceItem(item.id)
+                      ? listPremiumDurations(localInventory, item.id)
+                      : [];
+                    const activeMeta = isDurationChoiceItem(item.id)
+                      ? readPremiumBoostActive(localInventory, item.id)
+                      : null;
+                    let liveExpires = activeMeta?.expires || '';
+                    if (item.id === 'grinder' || item.id === 'whale') {
+                      const exp = stats?.limit_boost_expires;
+                      if (exp && new Date(exp).getTime() > Date.now()) {
+                        liveExpires = String(exp);
+                      }
+                    } else if (item.id === 'x2_boost' || item.id === 'x3_boost') {
+                      const exp = stats?.premium_multiplier_expires;
+                      if (exp && new Date(exp).getTime() > Date.now()) {
+                        liveExpires = String(exp);
+                      }
+                    } else if (item.id === 'expanded_energy') {
+                      const exp = localInventory?.energy_cap_boost?.expires;
+                      if (exp && new Date(exp).getTime() > Date.now()) {
+                        liveExpires = String(exp);
+                      }
+                    } else if (item.id === 'bot') {
+                      const exp = stats?.bot_expires;
+                      if (exp && new Date(exp).getTime() > Date.now()) {
+                        liveExpires = String(exp);
+                      }
+                    }
+                    const left = liveExpires ? formatTimeLeft(liveExpires) : '';
+                    const packDays =
+                      activeMeta?.days ||
+                      (queuedDays.length ? queuedDays[0] : 0);
+                    const durationLine = (() => {
+                      if (left && packDays) {
+                        return `Active · ${durationLabel(packDays)} · ${left}`;
+                      }
+                      if (left) return `Active · ${left}`;
+                      if (queuedDays.length > 1) {
+                        return `Next: ${queuedDays.map((d) => durationLabel(d)).join(', ')}`;
+                      }
+                      if (queuedDays.length === 1) {
+                        return `Next use: ${durationLabel(queuedDays[0])}`;
+                      }
+                      if (isDurationChoiceItem(item.id)) {
+                        return `Next use: ${durationLabel(peekPremiumDuration(localInventory, item.id, 7))}`;
+                      }
+                      return item.duration ? `⏱️ ${item.duration}` : '';
+                    })();
                     return (
                       <div
                         key={item.id}
@@ -3823,6 +3908,18 @@ Daily claim active · Pack → NFT to see it.`,
                           <span style={{ color: '#888', fontSize: 11, fontWeight: 'bold' }}>
                             Owned: {localInventory[item.id]}
                           </span>
+                          {durationLine ? (
+                            <div
+                              style={{
+                                color: left ? '#4ade80' : '#a5b4fc',
+                                fontSize: 10,
+                                marginTop: 4,
+                                fontWeight: 'bold',
+                              }}
+                            >
+                              {durationLine}
+                            </div>
+                          ) : null}
                           {isActiveToday && (
                             <div style={{ color: '#fbef43', fontSize: 10, marginTop: 4 }}>
                               Active today (UTC)
