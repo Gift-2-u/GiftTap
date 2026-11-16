@@ -35,14 +35,16 @@ function utcDayStr(ms: number): string {
   return new Date(ms).toISOString().slice(0, 10);
 }
 
-/** Active Expanded Battery (inventory.energy_cap_boost) → 1000 until UTC expiry; else 500. */
+/** Active energy_cap_boost → stored cap (HUD expand) or legacy 1000; else 500. */
 function energyCapFromInv(inv: Record<string, unknown>, nowMs = Date.now()): number {
   const b = inv?.energy_cap_boost as { cap?: number; expires?: string } | undefined;
   if (!b?.expires) return ENERGY_CAP_DEFAULT;
   if (new Date(String(b.expires)).getTime() <= nowMs) return ENERGY_CAP_DEFAULT;
-  // While boost is active the bar is always 1000 (do not require cap>=1000 —
-  // a missing/stale cap field used to clamp last_energy 1000→500 and only
-  // credit ~500+regen ≈ 750 daily for a full Expanded Battery drain).
+  const cap = Math.floor(Number(b.cap) || 0);
+  if (cap >= ENERGY_CAP_DEFAULT + 500) {
+    return Math.min(5500, Math.max(ENERGY_CAP_DEFAULT, cap));
+  }
+  // Legacy Expanded Battery rows without a valid cap field
   return 1000;
 }
 

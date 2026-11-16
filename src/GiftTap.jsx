@@ -37,7 +37,11 @@ function energyCapFromInv(inv, nowMs = Date.now()) {
   const b = inv?.energy_cap_boost;
   if (!b?.expires) return ENERGY_CAP_DEFAULT;
   if (new Date(b.expires).getTime() <= nowMs) return ENERGY_CAP_DEFAULT;
-  // Active Expanded Battery is always a 1000 bar (1 energy = 1 daily tap).
+  const cap = Math.floor(Number(b.cap) || 0);
+  // HUD expand / Expanded Battery: honor stored cap; legacy rows → 1000
+  if (cap >= ENERGY_CAP_DEFAULT + 500) {
+    return Math.min(5500, Math.max(ENERGY_CAP_DEFAULT, cap));
+  }
   return 1000;
 }
 
@@ -256,7 +260,19 @@ import {
   secureAcceptFeeConsent,
   secureAcceptAgeConsent,
   secureAckWallClimbApology,
+  secureHudBoostBuy,
 } from './secureApi';
+import { PREMIUM_PROJECT_FEE_SOL } from './premiumDuration';
+import {
+  HUD_REFILL_UNITS_MAX,
+  HUD_EXPAND_UNITS_MAX,
+  hudRefillPriceG2u,
+  hudRefillAmount,
+  hudExpandPriceG2u,
+  hudExpandExtra,
+  hudExpandCap,
+  hudDailyPriceG2u,
+} from './hudBoost';
 import { AGE_CONSENT_TITLE, AGE_CONSENT_BODY } from './legalContent';
 import {
   shadowClaimEstimate,
@@ -928,29 +944,13 @@ const GiftTapGame = () => {
   /** Throttle 'why shards stopped' notices (no_energy / daily_limit) */
   const mineBlockNotifiedRef = useRef(0);
   const flushErrorNotifiedRef = useRef(false);
-  /** Empty Battery → Refill notice (local empty tap + flush no_energy). */
+  /** Empty battery → main-page Refill/Expand popup. */
   const showEmptyBatteryNotice = useCallback(() => {
     const nowN = Date.now();
     if (nowN - (mineBlockNotifiedRef.current || 0) <= 20000) return;
     mineBlockNotifiedRef.current = nowN;
-    setAppNotice({
-      show: true,
-      message: 'Refill Extra Battery for 1,000 $G2U.',
-      loading: false,
-      success: false,
-      title: 'Empty Battery',
-      confirm: {
-        confirmLabel: 'Refill — 1,000 $G2U',
-        cancelLabel: 'OK',
-        confirmDanger: false,
-        resolve: (ok) => {
-          if (ok) {
-            setShopFocusTab('market');
-            setCurrentPage('shop');
-          }
-        },
-      },
-    });
+    setHudBatteryTab('refill');
+    setHudBoostModal('battery');
   }, []);
   /** When true, only commit-taps (service_role) can change daily_taps / balances */
   const secureEconomyRef = useRef(true);
@@ -1040,6 +1040,14 @@ const GiftTapGame = () => {
   const [showHolidayNotice, setShowHolidayNotice] = useState(false);
   const [holidayNeverAgain, setHolidayNeverAgain] = useState(false);
   const HOLIDAY_NOTICE_KEY = 'gift2u_holiday_milestones_2026_v1';
+  /** Main-page battery / daily boost popups */
+  const [hudBoostModal, setHudBoostModal] = useState(null); // 'battery' | 'daily' | null
+  const [hudBatteryTab, setHudBatteryTab] = useState('refill'); // 'refill' | 'expand'
+  const [hudRefillUnits, setHudRefillUnits] = useState(1);
+  const [hudExpandUnits, setHudExpandUnits] = useState(1);
+  const [hudDailyAmount, setHudDailyAmount] = useState(1000);
+  const [hudDailyDays, setHudDailyDays] = useState(1);
+  const [hudBoostBusy, setHudBoostBusy] = useState(false);
   const [showAgeConsent, setShowAgeConsent] = useState(false);
   const [ageConsentBusy, setAgeConsentBusy] = useState(false);
   const [showFeeConsent, setShowFeeConsent] = useState(false);
@@ -4309,6 +4317,176 @@ const GiftTapGame = () => {
     setShowHolidayNotice(false);
     setHolidayNeverAgain(false);
   }, [holidayNeverAgain, playerId]);
+
+  const buyHudBoost = useCallback(async () => {
+    if (hudBoostBusy) return;
+    if (!hasSecureSession()) {
+      notify('Log in again to buy with $G2U', false);
+      return;
+    }
+    if (!decryptedPhrase) {
+      notify('Unlock your wallet in Settings first', false);
+      return;
+    }
+
+    let kind = 'refill';
+    let units;
+    let amount;
+    let days;
+    let priceG2u = 0;
+    let label = '';
+
+    if (hudBoostModal === 'battery') {
+      if (hudBatteryTab === 'expand') {
+        kind = 'expand';
+        units = hudExpandUnits;
+        amount = hudExpandExtra(units);
+        priceG2u = hudExpandPriceG2u(units);
+        label = `Expand +${amount} (cap ${hudExpandCap(units)})`;
+      } else {
+        kind = 'refill';
+        units = hudRefillUnits;
+        amount = hudRefillAmount(units);
+        priceG2u = hudRefillPriceG2u(units);
+        label = `Refill +${amount}`;
+      }
+    } else if (hudBoostModal === 'daily') {
+      kind = 'daily';
+      amount = hudDailyAmount;
+      days = hudDailyDays;
+      priceG2u = hudDailyPriceG2u(amount, days);
+      label = `+${amount.toLocaleString()} daily × ${days}d`;
+    } else {
+      return;
+    }
+    if (priceG2u <= 0) {
+      notify('Invalid selection', false);
+      return;
+    }
+
+    setHudBoostBusy(true);
+    try {
+      await ensureSecureSession();
+      const connection = new Connection(RPC_URL, 'confirmed');
+      let playerKeypair;
+      if (String(decryptedPhrase).includes(' ')) {
+        playerKeypair = keypairFromMnemonic(String(decryptedPhrase).trim());
+      } else {
+        playerKeypair = Keypair.fromSecretKey(bs58.decode(String(decryptedPhrase)));
+      }
+      if (
+        playerWallet &&
+        playerKeypair.publicKey.toBase58() !== String(playerWallet).trim()
+      ) {
+        throw new Error('Unlocked wallet does not match your game wallet');
+      }
+
+      const masterWallet = new PublicKey(
+        'D4GufPTvp6tnzkaYGfombFLs48UjDANsxjMFJnSYz4Gh',
+      );
+      const treasuryWallet = new PublicKey(
+        '8G7uEcPS6dwA5wW9bGoqi98EzBunF8trjbbFJkgkvBPm',
+      );
+      const G2U_DECIMALS = 9;
+      const amountRaw = BigInt(priceG2u) * 10n ** BigInt(G2U_DECIMALS);
+      const projectFeeLamports = Math.floor(PREMIUM_PROJECT_FEE_SOL * 1e9);
+      const fromAta = getAssociatedTokenAddressSync(
+        MINT_ADDRESS,
+        playerKeypair.publicKey,
+      );
+      const toAta = getAssociatedTokenAddressSync(MINT_ADDRESS, masterWallet);
+      const solBal = await connection.getBalance(playerKeypair.publicKey);
+      if (solBal < 5_000_000 + projectFeeLamports) {
+        throw new Error(
+          `Need a little SOL for network + ${PREMIUM_PROJECT_FEE_SOL} SOL fee`,
+        );
+      }
+
+      notify(`Sending ${priceG2u.toLocaleString()} $G2U…`, true);
+      const g2uTx = new Transaction().add(
+        ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 100_000 }),
+        createAssociatedTokenAccountIdempotentInstruction(
+          playerKeypair.publicKey,
+          toAta,
+          masterWallet,
+          MINT_ADDRESS,
+          TOKEN_PROGRAM_ID,
+          ASSOCIATED_TOKEN_PROGRAM_ID,
+        ),
+        createTransferCheckedInstruction(
+          fromAta,
+          MINT_ADDRESS,
+          toAta,
+          playerKeypair.publicKey,
+          amountRaw,
+          G2U_DECIMALS,
+        ),
+        SystemProgram.transfer({
+          fromPubkey: playerKeypair.publicKey,
+          toPubkey: treasuryWallet,
+          lamports: projectFeeLamports,
+        }),
+      );
+      const latest = await connection.getLatestBlockhash('confirmed');
+      g2uTx.recentBlockhash = latest.blockhash;
+      g2uTx.feePayer = playerKeypair.publicKey;
+      const g2uSig = await sendAndConfirmTransaction(connection, g2uTx, [
+        playerKeypair,
+      ]);
+
+      const data = await secureHudBoostBuy({
+        kind,
+        units,
+        amount,
+        days,
+        tx_signature: g2uSig,
+      });
+
+      if (data?.inventory && typeof data.inventory === 'object') {
+        inventoryRef.current = data.inventory;
+        setStats((prev) => ({
+          ...(prev || {}),
+          inventory: data.inventory,
+          ...(data.max_daily_limit != null
+            ? { max_daily_limit: data.max_daily_limit }
+            : {}),
+          ...(data.limit_boost_amount != null
+            ? { limit_boost_amount: data.limit_boost_amount }
+            : {}),
+          ...(data.limit_boost_expires != null
+            ? { limit_boost_expires: data.limit_boost_expires }
+            : {}),
+        }));
+      }
+      if (data?.last_energy != null) {
+        bumpEnergyEpoch();
+        setEnergySyncedForShop(Number(data.last_energy));
+      }
+      if (data?.max_daily_limit != null) {
+        setMaxDailyLimit(Math.max(1000, Number(data.max_daily_limit) || 1000));
+      }
+
+      notify(`✅ ${label} — ${priceG2u.toLocaleString()} $G2U`, true);
+      setHudBoostModal(null);
+    } catch (e) {
+      notify(e?.message || 'Purchase failed', false);
+    } finally {
+      setHudBoostBusy(false);
+    }
+  }, [
+    hudBoostBusy,
+    hudBoostModal,
+    hudBatteryTab,
+    hudRefillUnits,
+    hudExpandUnits,
+    hudDailyAmount,
+    hudDailyDays,
+    decryptedPhrase,
+    playerWallet,
+    notify,
+    bumpEnergyEpoch,
+    setEnergySyncedForShop,
+  ]);
 
   // Claim tip: only when Wallet opens — no idle 2-min poll (Disk IO)
   const checkAirdropTip = useCallback(async () => {
@@ -8190,6 +8368,443 @@ const GiftTapGame = () => {
         </div>
       )}
 
+      {hudBoostModal && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,0.88)',
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center',
+            zIndex: 196500,
+            padding: 16,
+            boxSizing: 'border-box',
+          }}
+          role="dialog"
+          aria-modal="true"
+          onClick={(e) => {
+            if (e.target === e.currentTarget && !hudBoostBusy) setHudBoostModal(null);
+          }}
+        >
+          <div
+            style={{
+              background: '#1c1e22',
+              padding: 18,
+              borderRadius: 14,
+              border: '2px solid #38bdf8',
+              width: '100%',
+              maxWidth: 340,
+              boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {hudBoostModal === 'battery' ? (
+              <>
+                <h3 style={{ color: '#7dd3fc', margin: '0 0 10px', fontSize: 16, textAlign: 'center' }}>
+                  Battery boost
+                </h3>
+                <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+                  {['refill', 'expand'].map((tab) => (
+                    <button
+                      key={tab}
+                      type="button"
+                      onClick={() => setHudBatteryTab(tab)}
+                      style={{
+                        flex: 1,
+                        padding: 8,
+                        borderRadius: 8,
+                        border:
+                          hudBatteryTab === tab
+                            ? '1px solid #38bdf8'
+                            : '1px solid #444',
+                        background:
+                          hudBatteryTab === tab
+                            ? 'rgba(56,189,248,0.2)'
+                            : '#111',
+                        color: '#fff',
+                        fontWeight: 700,
+                        fontSize: 12,
+                        cursor: 'pointer',
+                        textTransform: 'capitalize',
+                      }}
+                    >
+                      {tab}
+                    </button>
+                  ))}
+                </div>
+                {hudBatteryTab === 'refill' ? (
+                  <>
+                    <p style={{ color: '#aaa', fontSize: 12, margin: '0 0 10px', lineHeight: 1.4 }}>
+                      200 $G2U per +500 energy.
+                    </p>
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: 12,
+                        marginBottom: 12,
+                      }}
+                    >
+                      <button
+                        type="button"
+                        aria-label="Decrease refill"
+                        disabled={hudRefillUnits <= 1}
+                        onClick={() =>
+                          setHudRefillUnits((u) => Math.max(1, Math.floor(Number(u) || 1) - 1))
+                        }
+                        style={{
+                          width: 40,
+                          height: 40,
+                          borderRadius: 10,
+                          border: '1px solid #555',
+                          background: '#111',
+                          color: '#fff',
+                          fontSize: 24,
+                          fontWeight: 800,
+                          lineHeight: 1,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          cursor: hudRefillUnits <= 1 ? 'default' : 'pointer',
+                          opacity: hudRefillUnits <= 1 ? 0.4 : 1,
+                        }}
+                      >
+                        −
+                      </button>
+                      <div style={{ textAlign: 'center', minWidth: 100 }}>
+                        <div style={{ color: '#fff', fontSize: 22, fontWeight: 900 }}>
+                          {hudRefillAmount(hudRefillUnits).toLocaleString()}
+                        </div>
+                        <div style={{ color: '#888', fontSize: 10, marginTop: 2 }}>
+                          energy
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        aria-label="Increase refill"
+                        disabled={hudRefillUnits >= HUD_REFILL_UNITS_MAX}
+                        onClick={() =>
+                          setHudRefillUnits((u) =>
+                            Math.min(HUD_REFILL_UNITS_MAX, Math.floor(Number(u) || 1) + 1),
+                          )
+                        }
+                        style={{
+                          width: 40,
+                          height: 40,
+                          borderRadius: 10,
+                          border: '1px solid #555',
+                          background: '#111',
+                          color: '#fff',
+                          fontSize: 24,
+                          fontWeight: 800,
+                          lineHeight: 1,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          cursor:
+                            hudRefillUnits >= HUD_REFILL_UNITS_MAX ? 'default' : 'pointer',
+                          opacity: hudRefillUnits >= HUD_REFILL_UNITS_MAX ? 0.4 : 1,
+                        }}
+                      >
+                        +
+                      </button>
+                    </div>
+                    <p style={{ color: '#fbef43', fontSize: 13, fontWeight: 800, margin: '0 0 12px', textAlign: 'center' }}>
+                      Cost: {hudRefillPriceG2u(hudRefillUnits).toLocaleString()} $G2U
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <p style={{ color: '#aaa', fontSize: 12, margin: '0 0 10px', lineHeight: 1.4 }}>
+                      100 $G2U per +500 battery cap (until UTC midnight). Fills to new cap.
+                    </p>
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: 12,
+                        marginBottom: 12,
+                      }}
+                    >
+                      <button
+                        type="button"
+                        aria-label="Decrease expand"
+                        disabled={hudExpandUnits <= 1}
+                        onClick={() =>
+                          setHudExpandUnits((u) => Math.max(1, Math.floor(Number(u) || 1) - 1))
+                        }
+                        style={{
+                          width: 40,
+                          height: 40,
+                          borderRadius: 10,
+                          border: '1px solid #555',
+                          background: '#111',
+                          color: '#fff',
+                          fontSize: 24,
+                          fontWeight: 800,
+                          lineHeight: 1,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          cursor: hudExpandUnits <= 1 ? 'default' : 'pointer',
+                          opacity: hudExpandUnits <= 1 ? 0.4 : 1,
+                        }}
+                      >
+                        −
+                      </button>
+                      <div style={{ textAlign: 'center', minWidth: 110 }}>
+                        <div style={{ color: '#fff', fontSize: 20, fontWeight: 900 }}>
+                          {hudExpandExtra(hudExpandUnits).toLocaleString()}
+                        </div>
+                        <div style={{ color: '#888', fontSize: 10, marginTop: 2 }}>
+                          cap → {hudExpandCap(hudExpandUnits).toLocaleString()}
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        aria-label="Increase expand"
+                        disabled={hudExpandUnits >= HUD_EXPAND_UNITS_MAX}
+                        onClick={() =>
+                          setHudExpandUnits((u) =>
+                            Math.min(HUD_EXPAND_UNITS_MAX, Math.floor(Number(u) || 1) + 1),
+                          )
+                        }
+                        style={{
+                          width: 40,
+                          height: 40,
+                          borderRadius: 10,
+                          border: '1px solid #555',
+                          background: '#111',
+                          color: '#fff',
+                          fontSize: 24,
+                          fontWeight: 800,
+                          lineHeight: 1,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          cursor:
+                            hudExpandUnits >= HUD_EXPAND_UNITS_MAX ? 'default' : 'pointer',
+                          opacity: hudExpandUnits >= HUD_EXPAND_UNITS_MAX ? 0.4 : 1,
+                        }}
+                      >
+                        +
+                      </button>
+                    </div>
+                    <p style={{ color: '#fbef43', fontSize: 13, fontWeight: 800, margin: '0 0 12px', textAlign: 'center' }}>
+                      Cost: {hudExpandPriceG2u(hudExpandUnits).toLocaleString()} $G2U
+                    </p>
+                  </>
+                )}
+              </>
+            ) : (
+              <>
+                <h3 style={{ color: '#86efac', margin: '0 0 10px', fontSize: 16, textAlign: 'center' }}>
+                  Max daily boost
+                </h3>
+                <p style={{ color: '#aaa', fontSize: 12, margin: '0 0 12px', lineHeight: 1.4 }}>
+                  500 $G2U per +1k max daily per day.
+                </p>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginBottom: 12 }}>
+                  <div>
+                    <p style={{ color: '#888', fontSize: 11, margin: '0 0 8px', fontWeight: 700, textAlign: 'center' }}>
+                      Amount
+                    </p>
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: 12,
+                      }}
+                    >
+                      <button
+                        type="button"
+                        aria-label="Decrease daily amount"
+                        disabled={hudDailyAmount <= 1000}
+                        onClick={() =>
+                          setHudDailyAmount((a) =>
+                            Math.max(1000, Math.floor(Number(a) || 1000) - 1000),
+                          )
+                        }
+                        style={{
+                          width: 40,
+                          height: 40,
+                          borderRadius: 10,
+                          border: '1px solid #555',
+                          background: '#111',
+                          color: '#fff',
+                          fontSize: 24,
+                          fontWeight: 800,
+                          lineHeight: 1,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          cursor: hudDailyAmount <= 1000 ? 'default' : 'pointer',
+                          opacity: hudDailyAmount <= 1000 ? 0.4 : 1,
+                        }}
+                      >
+                        −
+                      </button>
+                      <div style={{ color: '#fff', fontSize: 22, fontWeight: 900, minWidth: 72, textAlign: 'center' }}>
+                        {(hudDailyAmount / 1000).toLocaleString()}k
+                      </div>
+                      <button
+                        type="button"
+                        aria-label="Increase daily amount"
+                        disabled={hudDailyAmount >= 5000}
+                        onClick={() =>
+                          setHudDailyAmount((a) =>
+                            Math.min(5000, Math.floor(Number(a) || 1000) + 1000),
+                          )
+                        }
+                        style={{
+                          width: 40,
+                          height: 40,
+                          borderRadius: 10,
+                          border: '1px solid #555',
+                          background: '#111',
+                          color: '#fff',
+                          fontSize: 24,
+                          fontWeight: 800,
+                          lineHeight: 1,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          cursor: hudDailyAmount >= 5000 ? 'default' : 'pointer',
+                          opacity: hudDailyAmount >= 5000 ? 0.4 : 1,
+                        }}
+                      >
+                        +
+                      </button>
+                    </div>
+                  </div>
+                  <div>
+                    <p style={{ color: '#888', fontSize: 11, margin: '0 0 8px', fontWeight: 700, textAlign: 'center' }}>
+                      Days
+                    </p>
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: 12,
+                      }}
+                    >
+                      <button
+                        type="button"
+                        aria-label="Decrease days"
+                        disabled={hudDailyDays <= 1}
+                        onClick={() =>
+                          setHudDailyDays((d) =>
+                            Math.max(1, Math.floor(Number(d) || 1) - 1),
+                          )
+                        }
+                        style={{
+                          width: 40,
+                          height: 40,
+                          borderRadius: 10,
+                          border: '1px solid #555',
+                          background: '#111',
+                          color: '#fff',
+                          fontSize: 24,
+                          fontWeight: 800,
+                          lineHeight: 1,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          cursor: hudDailyDays <= 1 ? 'default' : 'pointer',
+                          opacity: hudDailyDays <= 1 ? 0.4 : 1,
+                        }}
+                      >
+                        −
+                      </button>
+                      <div style={{ color: '#fff', fontSize: 22, fontWeight: 900, minWidth: 72, textAlign: 'center' }}>
+                        {hudDailyDays}
+                      </div>
+                      <button
+                        type="button"
+                        aria-label="Increase days"
+                        disabled={hudDailyDays >= 7}
+                        onClick={() =>
+                          setHudDailyDays((d) =>
+                            Math.min(7, Math.floor(Number(d) || 1) + 1),
+                          )
+                        }
+                        style={{
+                          width: 40,
+                          height: 40,
+                          borderRadius: 10,
+                          border: '1px solid #555',
+                          background: '#111',
+                          color: '#fff',
+                          fontSize: 24,
+                          fontWeight: 800,
+                          lineHeight: 1,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          cursor: hudDailyDays >= 7 ? 'default' : 'pointer',
+                          opacity: hudDailyDays >= 7 ? 0.4 : 1,
+                        }}
+                      >
+                        +
+                      </button>
+                    </div>
+                  </div>
+                </div>
+                <p style={{ color: '#fbef43', fontSize: 13, fontWeight: 800, margin: '0 0 12px', textAlign: 'center' }}>
+                  Cost:{' '}
+                  {hudDailyPriceG2u(hudDailyAmount, hudDailyDays).toLocaleString()} $G2U
+                </p>
+              </>
+            )}
+            <p style={{ color: '#666', fontSize: 10, margin: '0 0 10px' }}>
+              + {PREMIUM_PROJECT_FEE_SOL} SOL project fee on-chain
+            </p>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button
+                type="button"
+                disabled={hudBoostBusy}
+                onClick={() => setHudBoostModal(null)}
+                style={{
+                  flex: 1,
+                  padding: 11,
+                  borderRadius: 10,
+                  border: '1px solid #555',
+                  background: '#111',
+                  color: '#ccc',
+                  fontWeight: 700,
+                  cursor: hudBoostBusy ? 'wait' : 'pointer',
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={hudBoostBusy}
+                onClick={buyHudBoost}
+                style={{
+                  flex: 1,
+                  padding: 11,
+                  borderRadius: 10,
+                  border: 'none',
+                  background: 'linear-gradient(90deg,#fbef43,#fbbf24)',
+                  color: '#000',
+                  fontWeight: 800,
+                  cursor: hudBoostBusy ? 'wait' : 'pointer',
+                  opacity: hudBoostBusy ? 0.7 : 1,
+                }}
+              >
+                {hudBoostBusy ? 'Buying…' : 'Buy'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showHolidayNotice &&
         !showAscensionModal &&
         !showRulesNotice &&
@@ -9657,12 +10272,33 @@ const GiftTapGame = () => {
                 {/* 3. BOTTOM ZONE: ENERGY & AD BUTTON */}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', width: '100%', padding: '0 20px 110px 20px', boxSizing: 'border-box', zIndex: 10, position: 'relative' }}>
                    
-                   <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', width: '45%', maxWidth: '160px' }}>
-                     <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+                   <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', width: '45%', maxWidth: '180px' }}>
+                     <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 6 }}>
                        <p style={{ ...styles.energy, margin: '0', fontSize: '12px', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: 5, justifyContent: 'center' }}>
                          ⚡ {energy} / {dynamicEnergyCap}
                          <HelpTip tipKey="energy_daily" size={14} onOpen={setHelpTipKey} />
                        </p>
+                       <button
+                         type="button"
+                         onClick={(e) => {
+                           e.stopPropagation();
+                           setHudBatteryTab('refill');
+                           setHudBoostModal('battery');
+                         }}
+                         style={{
+                           fontSize: 9,
+                           fontWeight: 800,
+                           padding: '2px 7px',
+                           borderRadius: 999,
+                           border: '1px solid #38bdf8',
+                           background: 'rgba(56,189,248,0.18)',
+                           color: '#7dd3fc',
+                           cursor: 'pointer',
+                           whiteSpace: 'nowrap',
+                         }}
+                       >
+                         Refill/Expand
+                       </button>
                      </div>
                      {/* Battery bar (500 pool) — separate from daily limit */}
                      <div style={{ width: '100%', height: '6px', background: 'rgba(0, 0, 0, 0.6)', borderRadius: '4px', overflow: 'hidden', border: '1px solid #444' }}>
@@ -9698,10 +10334,30 @@ const GiftTapGame = () => {
                           transition: 'width 0.05s linear'
                         }} />
                      </div>
-                     <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+                     <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 6 }}>
                      <p style={{ color: '#888', fontSize: '10px', margin: '0', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: 4, justifyContent: 'center' }}>
                        {t('daily_limit')}: {dailyTaps}/{dynamicMaxLimit}
                      </p>
+                       <button
+                         type="button"
+                         onClick={(e) => {
+                           e.stopPropagation();
+                           setHudBoostModal('daily');
+                         }}
+                         style={{
+                           fontSize: 9,
+                           fontWeight: 800,
+                           padding: '2px 7px',
+                           borderRadius: 999,
+                           border: '1px solid #4ade80',
+                           background: 'rgba(74,222,128,0.15)',
+                           color: '#86efac',
+                           cursor: 'pointer',
+                           whiteSpace: 'nowrap',
+                         }}
+                       >
+                         Add
+                       </button>
                      </div>
                    </div>
                    

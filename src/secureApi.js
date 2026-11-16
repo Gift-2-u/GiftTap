@@ -430,6 +430,25 @@ export async function securePremiumGrant(itemId, txSignature, opts = {}) {
   return callSecureFunction('premium-grant', body);
 }
 
+/** Main-page battery refill/expand or daily max boost (on-chain $G2U). */
+export async function secureHudBoostBuy({
+  kind,
+  units,
+  amount,
+  days,
+  tx_signature,
+  signature,
+} = {}) {
+  const tx = tx_signature || signature;
+  return callSecureFunction('hud-boost-buy', {
+    kind,
+    ...(units != null ? { units: Math.floor(Number(units) || 0) } : {}),
+    ...(amount != null ? { amount: Math.floor(Number(amount) || 0) } : {}),
+    ...(days != null ? { days: Math.floor(Number(days) || 0) } : {}),
+    ...(tx ? { tx_signature: tx } : {}),
+  });
+}
+
 /** Reload Echo/Fate/Rush/Shadow durability with on-chain $G2U (post-launch). */
 export async function secureNftDurabilityTopUp({
   kind,
