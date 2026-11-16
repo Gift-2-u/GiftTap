@@ -191,3 +191,155 @@ export async function sealAssetRoyalties(
     message: "Sealed 5% royalties + creator on asset",
   };
 }
+
+const ELF_KINDS = new Set([
+  "fate",
+  "echo",
+  "rush",
+  "shadow",
+  "locksmith",
+  "star",
+]);
+const ELF_RARITIES = new Set(["common", "rare", "epic", "legendary"]);
+
+function isBogusAssetId(assetId: string): boolean {
+  const id = String(assetId || "").trim();
+  if (id.length < 32 || id.length > 64) return true;
+  if (/fakemint/i.test(id)) return true;
+  if (/^1{20,}$/.test(id)) return true;
+  if (!/^[1-9A-HJ-NP-Za-km-z]+$/.test(id)) return true;
+  return false;
+}
+
+function attrsOf(asset: Record<string, unknown>): Array<Record<string, unknown>> {
+  const content = asset.content as
+    | { metadata?: { attributes?: unknown } }
+    | undefined;
+  const raw = content?.metadata?.attributes;
+  if (!Array.isArray(raw)) return [];
+  return raw.filter((a) => a && typeof a === "object") as Array<
+    Record<string, unknown>
+  >;
+}
+
+function attrValue(
+  attrs: Array<Record<string, unknown>>,
+  names: string[],
+): string {
+  const want = names.map((n) => n.toLowerCase());
+  for (const a of attrs) {
+    const t = String(a.trait_type || a.traitType || "").toLowerCase();
+    if (want.includes(t)) return String(a.value ?? "").trim();
+  }
+  return "";
+}
+
+function normKind(raw: string): string {
+  const s = String(raw || "")
+    .toLowerCase()
+    .replace(/\s+/g, "");
+  if (s.includes("locksmith") || s === "giftlocksmith") return "locksmith";
+  if (s.includes("fate")) return "fate";
+  if (s.includes("echo")) return "echo";
+  if (s.includes("rush")) return "rush";
+  if (s.includes("shadow")) return "shadow";
+  if (s.includes("star")) return "star";
+  return s;
+}
+
+function normRarity(raw: string): string {
+  const s = String(raw || "")
+    .toLowerCase()
+    .replace(/\s+/g, "");
+  if (ELF_RARITIES.has(s)) return s;
+  return "";
+}
+
+export type OwnedElfProof = {
+  assetId: string;
+  owner: string;
+  kind: string;
+  rarity: string;
+  onChainLevel: number;
+};
+
+/**
+ * HARD SECURITY: activate / level-up must prove the player wallet owns a real
+ * Gift2u Elves asset. Rejects FakeMint / forged client rarity+level.
+ */
+export async function assertPlayerOwnsElfAsset(opts: {
+  assetId: string;
+  playerWallet: string;
+  expectedKind?: string;
+}): Promise<OwnedElfProof> {
+  const assetId = String(opts.assetId || "").trim();
+  const playerWallet = String(opts.playerWallet || "").trim();
+  if (!playerWallet || playerWallet.length < 32) {
+    throw new Error("Game wallet required to activate an Elf NFT");
+  }
+  if (isBogusAssetId(assetId)) {
+    throw new Error("Invalid NFT asset_id");
+  }
+
+  const asset = await dasGetAsset(assetId);
+  if (!asset || typeof asset !== "object") {
+    throw new Error("NFT not found on-chain");
+  }
+
+  const ownership = asset.ownership as { owner?: string } | undefined;
+  const owner = String(ownership?.owner || "").trim();
+  if (!owner || owner !== playerWallet) {
+    throw new Error("You do not own this NFT in your game wallet");
+  }
+
+  const collection = collectionIdOf(asset);
+  if (collection && collection !== ELVES_COLLECTION) {
+    throw new Error("NFT is not in the Gift2u Elves collection");
+  }
+
+  const attrs = attrsOf(asset);
+  const kindFromChain = normKind(
+    attrValue(attrs, ["class", "elf", "type", "kind"]) ||
+      String(
+        (asset.content as { metadata?: { name?: string } } | undefined)
+          ?.metadata?.name || "",
+      ),
+  );
+  const rarityFromChain = normRarity(
+    attrValue(attrs, ["rarity", "tier"]),
+  );
+  const levelRaw = attrValue(attrs, ["level", "lvl", "lv"]);
+  let onChainLevel = Math.floor(Number(levelRaw) || 1);
+  if (onChainLevel < 1) onChainLevel = 1;
+  if (onChainLevel > 5) onChainLevel = 5;
+
+  const expected = normKind(String(opts.expectedKind || ""));
+  let kind = kindFromChain;
+  if (expected && ELF_KINDS.has(expected)) {
+    if (kind && kind !== expected && !String(
+      (asset.content as { metadata?: { name?: string } } | undefined)
+        ?.metadata?.name || "",
+    ).toLowerCase().includes(expected)) {
+      throw new Error(`NFT is not a ${expected} Elf`);
+    }
+    kind = expected;
+  }
+  if (!kind || !ELF_KINDS.has(kind)) {
+    // Name fallback already tried; still require expectedKind from caller
+    if (expected && ELF_KINDS.has(expected)) kind = expected;
+    else throw new Error("Could not determine Elf class from NFT");
+  }
+
+  const rarity = rarityFromChain || "common";
+  if (!ELF_RARITIES.has(rarity)) {
+    throw new Error("Could not determine NFT rarity on-chain");
+  }
+
+  return {
+    assetId,
+    owner,
+    kind,
+    rarity,
+    onChainLevel,
+  };
+}

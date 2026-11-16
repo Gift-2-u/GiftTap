@@ -17,6 +17,7 @@ import {
 import {
   popPremiumDuration,
   utcDayOffsetForDuration,
+  stampPremiumBoostActive,
 } from "../_shared/premiumDuration.ts";
 
 const ENERGY_CAP_DEFAULT = 500;
@@ -226,6 +227,7 @@ serve(async (req) => {
       const days = popPremiumDuration(inv, itemId);
       updates.limit_boost_amount = 2000;
       updates.limit_boost_expires = endOfUtcDay(utcDayOffsetForDuration(days));
+      stampPremiumBoostActive(inv, itemId, days, updates.limit_boost_expires);
       updates.inventory = inv;
       updates.max_daily_limit = effectiveDailyLimit(
         {
@@ -240,6 +242,7 @@ serve(async (req) => {
       const days = popPremiumDuration(inv, itemId);
       updates.limit_boost_amount = 5000;
       updates.limit_boost_expires = endOfUtcDay(utcDayOffsetForDuration(days));
+      stampPremiumBoostActive(inv, itemId, days, updates.limit_boost_expires);
       updates.inventory = inv;
       updates.max_daily_limit = effectiveDailyLimit(
         {
@@ -257,6 +260,12 @@ serve(async (req) => {
       const days = popPremiumDuration(inv, itemId);
       updates.premium_multiplier = 2;
       updates.premium_multiplier_expires = endOfUtcDay(utcDayOffsetForDuration(days));
+      stampPremiumBoostActive(
+        inv,
+        itemId,
+        days,
+        updates.premium_multiplier_expires,
+      );
       updates.inventory = inv;
       updates.tap_power = computeTapPowerForPlayer({
         ...row,
@@ -268,6 +277,12 @@ serve(async (req) => {
       const days = popPremiumDuration(inv, itemId);
       updates.premium_multiplier = 3;
       updates.premium_multiplier_expires = endOfUtcDay(utcDayOffsetForDuration(days));
+      stampPremiumBoostActive(
+        inv,
+        itemId,
+        days,
+        updates.premium_multiplier_expires,
+      );
       updates.inventory = inv;
       updates.tap_power = computeTapPowerForPlayer({
         ...row,
@@ -278,11 +293,14 @@ serve(async (req) => {
     } else if (itemId === "expanded_energy") {
       const days = popPremiumDuration(inv, itemId);
       // Expanded Battery only: 1000/1000 for 1/3/7 days (everyone else stays 500)
+      const expIso = endOfUtcDay(utcDayOffsetForDuration(days));
       inv.energy_cap_boost = {
         cap: 1000,
-        expires: endOfUtcDay(utcDayOffsetForDuration(days)),
+        expires: expIso,
         filled_to_cap: true,
+        days,
       };
+      stampPremiumBoostActive(inv, itemId, days, expIso);
       updates.inventory = inv;
       last_energy = 1000;
       updates.last_energy = 1000;

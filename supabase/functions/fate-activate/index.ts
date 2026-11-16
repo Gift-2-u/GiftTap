@@ -23,9 +23,10 @@ import {
   instantEconomyPatch,
 } from "../_shared/economy.ts";
 import { ensureNftDurabilityOnActivate } from "../_shared/nftDurability.ts";
-import { sealAssetRoyalties } from "../_shared/nftRoyalties.ts";
-
-const RARITIES = new Set(Object.keys(FATE_JACKPOT));
+import {
+  sealAssetRoyalties,
+  assertPlayerOwnsElfAsset,
+} from "../_shared/nftRoyalties.ts";
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -39,7 +40,7 @@ serve(async (req) => {
     const sb = adminClient();
     const { data: row, error } = await sb
       .from("players")
-      .select(PLAYER_ECONOMY_SELECT)
+      .select(`${PLAYER_ECONOMY_SELECT}, wallet_address`)
       .eq("telegram_id", playerId)
       .maybeSingle();
     if (error) throw error;
@@ -49,30 +50,31 @@ serve(async (req) => {
 
     if (body.clear === true || body.unequip === true) {
       delete inv.fate_power;
+      delete inv.fate_active;
     } else {
-      const rarity = String(body.rarity || body.rarityKey || "")
-        .toLowerCase()
-        .trim();
-      if (!RARITIES.has(rarity)) {
-        throw new Error("rarity must be common|rare|epic|legendary");
-      }
-      let level = Math.floor(Number(body.level) || 1);
-      if (level < 1) level = 1;
-      if (level > 5) level = 5;
-      const assetId = String(body.asset_id || body.assetId || "").trim() || null;
-      if (assetId) {
-        const map = inv.elf_levels;
-        if (map && typeof map === "object") {
-          const fromMap = Math.floor(
-            Number((map as Record<string, unknown>)[assetId]) || 0,
-          );
-          if (fromMap >= 1) level = Math.max(level, Math.min(5, fromMap));
-        }
+      const assetId = String(body.asset_id || body.assetId || "").trim();
+      if (!assetId) throw new Error("asset_id required");
+      const proof = await assertPlayerOwnsElfAsset({
+        assetId,
+        playerWallet: String(
+          (row as { wallet_address?: string }).wallet_address || "",
+        ),
+        expectedKind: "fate",
+      });
+      const rarity = proof.rarity;
+      let level = proof.onChainLevel;
+      const map = inv.elf_levels;
+      if (map && typeof map === "object") {
+        const fromMap = Math.floor(
+          Number((map as Record<string, unknown>)[assetId]) || 0,
+        );
+        if (fromMap >= 1) level = Math.max(level, Math.min(5, fromMap));
       }
       const prev =
         inv.fate_power && typeof inv.fate_power === "object"
           ? (inv.fate_power as Record<string, unknown>)
           : null;
+      inv.fate_active = assetId;
       inv.fate_power = ensureNftDurabilityOnActivate(
         {
           rarity,

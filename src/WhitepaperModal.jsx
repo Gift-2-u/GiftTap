@@ -62,7 +62,7 @@ const WhitepaperModal = ({ isWhitepaperOpen, setIsWhitepaperOpen, onClose }) => 
         "FATE · Luck\n" +
         "━━━━━━━━━━━━━━━━━━━━\n" +
         "Role: jackpot chance on tap G2Ushards.\n" +
-        "Wave 1 prices: Common 0.05 · Rare 0.30 · Epic 0.75 · Legendary 1.50 SOL.\n" +
+        "Wave 1 prices: Common 0.02 · Rare 0.10 · Epic 0.25 · Legendary 0.40 SOL.\n" +
         "You get:\n" +
         "• Fate in wallet — each tap can hit one jackpot (replaces Frenzy on that tap; Echo still stacks)\n" +
         "• Level N unlocks luck rungs 1→N (higher rung checked first)\n" +
@@ -84,7 +84,7 @@ const WhitepaperModal = ({ isWhitepaperOpen, setIsWhitepaperOpen, onClose }) => 
         "ECHO · Power\n" +
         "━━━━━━━━━━━━━━━━━━━━\n" +
         "Role: always-on tap multiplier.\n" +
-        "Wave 1 prices: Common 0.05 · Rare 0.30 · Epic 0.75 · Legendary 1.50 SOL.\n" +
+        "Wave 1 prices: Common 0.02 · Rare 0.10 · Epic 0.25 · Legendary 0.40 SOL.\n" +
         "You get (tap multi by rarity × level 1→5):\n" +
         "• Common      1.10× → 1.50×\n" +
         "• Rare        1.60× → 2.00×\n" +
@@ -95,7 +95,7 @@ const WhitepaperModal = ({ isWhitepaperOpen, setIsWhitepaperOpen, onClose }) => 
         "RUSH · Energy (daily cap)\n" +
         "━━━━━━━━━━━━━━━━━━━━\n" +
         "Role: raises max daily taps (replaces base 1,000).\n" +
-        "Wave 1 prices: Common 0.05 · Rare 0.30 · Epic 0.75 · Legendary 1.50 SOL.\n" +
+        "Wave 1 prices: Common 0.02 · Rare 0.10 · Epic 0.25 · Legendary 0.40 SOL.\n" +
         "You get (max daily taps by rarity × level 1→5):\n" +
         "• Common      1,100 → 1,500\n" +
         "• Rare        1,600 → 2,000\n" +
@@ -107,7 +107,7 @@ const WhitepaperModal = ({ isWhitepaperOpen, setIsWhitepaperOpen, onClose }) => 
         "SHADOW · Night (daily claim)\n" +
         "━━━━━━━━━━━━━━━━━━━━\n" +
         "Role: claim shards once per UTC day without tapping.\n" +
-        "Wave 1 prices: Common 0.05 · Rare 0.30 · Epic 0.75 · Legendary 1.50 SOL.\n" +
+        "Wave 1 prices: Common 0.02 · Rare 0.10 · Epic 0.25 · Legendary 0.40 SOL.\n" +
         "You get (claim hours ÷ 24 of base daily cap — Rush or 1,000; boosts not included):\n" +
         "• Common      2h → 6h\n" +
         "• Rare        8h → 12h\n" +
@@ -119,8 +119,8 @@ const WhitepaperModal = ({ isWhitepaperOpen, setIsWhitepaperOpen, onClose }) => 
         "━━━━━━━━━━━━━━━━━━━━\n" +
         "Raise elf level in Backpack → NFT (max L5) with $G2U.\n\n" +
         "Fate · Echo · Rush · Shadow — same $G2U for every rarity:\n" +
-        "• L1→2 75,000 · L2→3 150,000 · L3→4 225,000 · L4→5 300,000 $G2U\n" +
-        "  (total 750,000 $G2U L1→5)\n\n" +
+        "• L1→2 100,000 · L2→3 100,000 · L3→4 100,000 · L4→5 100,000 $G2U\n" +
+        "  (total 400,000 $G2U L1→5)\n\n" +
         "GiftLocksmith (mint 0.10 = L1) — fixed $G2U ladder:\n" +
         "• L1→2 250,000 · L2→3 750,000 · L3→4 1,500,000 · L4→5 2,500,000 $G2U\n\n" +
         "Star Badge (one Star · all rarities; mint 0.10):\n" +

@@ -109,3 +109,25 @@ export function popPremiumDuration(
   else delete inv[QUEUE_KEY];
   return days;
 }
+
+/** Stamp pack length + expiry so Backpack can show “3 Days · 41h left”. */
+export function stampPremiumBoostActive(
+  inv: Record<string, unknown>,
+  itemId: string,
+  days: PremiumDurationDays,
+  expiresIso: string,
+): void {
+  const id = String(itemId || "").toLowerCase();
+  if (!PREMIUM_DURATION_CHOICE_IDS.has(id)) return;
+  const prev =
+    inv.premium_boost_active &&
+      typeof inv.premium_boost_active === "object" &&
+      !Array.isArray(inv.premium_boost_active)
+      ? { ...(inv.premium_boost_active as Record<string, unknown>) }
+      : {};
+  prev[id] = {
+    days: parsePremiumDurationDays(days, 7),
+    expires: String(expiresIso || ""),
+  };
+  inv.premium_boost_active = prev;
+}

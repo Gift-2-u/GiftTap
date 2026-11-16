@@ -103,7 +103,7 @@ export const HELP_TIPS = {
     title: 'Gift2u Elves',
     body:
       'Wave 1 LIVE in Shop → NFTs.\n\n' +
-      'Mint W1: Common 0.05 · Rare 0.30 · Epic 0.75 · Legendary 1.50 SOL ' +
+      'Mint W1: Common 0.02 · Rare 0.10 · Epic 0.25 · Legendary 0.40 SOL ' +
       '(Locksmith 0.10).\n\n' +
       '• Locksmith — free walls by level · shoe on walls 5 / 30 / 50\n' +
       '• Fate — luck jackpots on taps\n' +
@@ -111,7 +111,7 @@ export const HELP_TIPS = {
       '• Rush — higher max daily taps (up to 3,000)\n' +
       '• Shadow — daily claim without tapping (share of Rush + Premium max daily; not quest)\n\n' +
       'Level up in Backpack → NFT ($G2U):\n' +
-      '• Fate/Echo/Rush/Shadow (all rarities): L2 75k · L3 150k · L4 225k · L5 300k\n' +
+      '• Fate/Echo/Rush/Shadow (all rarities): each step L2–L5 = 100k $G2U\n' +
       '• Locksmith: L2 250k · L3 750k · L4 1.5M · L5 2.5M\n' +
       'Durability (Echo/Fate/Rush/Shadow): 1% / 2,000 mining shards · reload 50 $G2U per 1%.\n\n' +
       'Full boards + prices: Menu → Game Guide → Gift2u Elves NFTs.',

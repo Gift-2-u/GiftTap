@@ -607,12 +607,12 @@ export function effectiveDailyLimit(
   return Math.max(1000, Math.floor(n));
 }
 
-/** Echo (Power) tap multipliers — level 1..5 per rarity */
+/** Echo (Power) tap multipliers — level 1..5 per rarity (keep in sync with src/echo.js) */
 export const ECHO_MULTI: Record<string, number[]> = {
-  common: [1.1, 1.2, 1.3, 1.4, 1.5],
-  rare: [1.6, 1.7, 1.8, 1.9, 2.0],
-  epic: [2.1, 2.2, 2.3, 2.4, 2.5],
-  legendary: [2.6, 2.7, 2.8, 2.9, 3.0],
+  common: [1.2, 1.4, 1.6, 1.8, 2.0],
+  rare: [2.2, 2.4, 2.6, 2.8, 3.0],
+  epic: [3.2, 3.4, 3.6, 3.8, 4.0],
+  legendary: [4.2, 4.4, 4.6, 4.8, 5.0],
 };
 
 export function echoMultiplier(rarityKey: string, level = 1): number {
@@ -850,12 +850,12 @@ export function rollFateJackpot(
   return null;
 }
 
-/** Rush (Energy) max daily taps — level 1..5 per rarity. Base without Rush = 1000. */
+/** Rush (Energy) max daily taps — level 1..5 per rarity. Base without Rush = 1000. (sync src/rush.js) */
 export const RUSH_DAILY_LIMIT: Record<string, number[]> = {
-  common: [1100, 1200, 1300, 1400, 1500],
-  rare: [1600, 1700, 1800, 1900, 2000],
-  epic: [2100, 2200, 2300, 2400, 2500],
-  legendary: [2600, 2700, 2800, 2900, 3000],
+  common: [1200, 1400, 1600, 1800, 2000],
+  rare: [2200, 2200, 2400, 2800, 3000],
+  epic: [3200, 3400, 3600, 3800, 4000],
+  legendary: [4200, 4400, 4600, 4800, 5000],
 };
 
 export function rushDailyLimit(rarityKey: string, level = 1): number {

@@ -19,6 +19,7 @@ import {
   g2uShopEnabled,
 } from "../_shared/economy.ts";
 import { ensureNftDurabilityOnActivate } from "../_shared/nftDurability.ts";
+import { assertPlayerOwnsElfAsset } from "../_shared/nftRoyalties.ts";
 
 const ELF_LEVEL_UP_SOL: Record<string, number[]> = {
   // Legacy SOL — Fate/Echo/Rush/Shadow pay fixed ELF_LEVEL_UP_G2U
@@ -27,8 +28,8 @@ const ELF_LEVEL_UP_SOL: Record<string, number[]> = {
   epic: [0.15, 0.25, 0.35, 0.5],
   legendary: [0.5, 0.8, 1.2, 2.0],
 };
-/** Fate · Echo · Rush · Shadow — L1→2 … L4→5 fixed $G2U (all rarities) */
-const ELF_LEVEL_UP_G2U = [75_000, 150_000, 225_000, 300_000];
+/** Fate · Echo · Rush · Shadow — each step L1→2 … L4→5 = 100k $G2U */
+const ELF_LEVEL_UP_G2U = [100_000, 100_000, 100_000, 100_000];
 /** Locksmith L1→2 … L4→5 (legacy SOL; payment uses fixed $G2U) */
 const LOCKSMITH_LEVEL_UP_SOL = [0.2, 0.35, 0.6, 1.5];
 /** Locksmith L1→2 … L4→5 fixed $G2U */
@@ -138,9 +139,10 @@ function syncActiveLevel(
     }
   } else if (kind === "locksmith") {
     inv.locksmith_active = {
-      level,
+      level: Math.min(MAX_LEVEL, Math.max(1, level)),
       asset_id: assetId,
-      activated_at: now};
+      activated_at: now,
+    };
   }
 }
 
@@ -237,18 +239,30 @@ serve(async (req) => {
 
     const { data: row, error } = await sb
       .from("players")
-      .select(`${PLAYER_ECONOMY_SELECT}, gft_token_balance`)
+      .select(`${PLAYER_ECONOMY_SELECT}, gft_token_balance, wallet_address`)
       .eq("telegram_id", playerId)
       .maybeSingle();
     if (error) throw error;
     if (!row) throw new Error("Player not found");
+
+    const proof = await assertPlayerOwnsElfAsset({
+      assetId,
+      playerWallet: String(
+        (row as { wallet_address?: string }).wallet_address || "",
+      ),
+      expectedKind: kind,
+    });
+    // Never trust client rarity — use on-chain (or fail)
+    const safeRarity = proof.rarity || rarity;
 
     const inv = invObj(row.inventory);
     const fromLevel = readLevel(inv, assetId);
     if (fromLevel >= MAX_LEVEL) throw new Error("Already max level (L5)");
 
     const ladder =
-      kind === "locksmith" ? LOCKSMITH_LEVEL_UP_SOL : ELF_LEVEL_UP_SOL[rarity];
+      kind === "locksmith"
+        ? LOCKSMITH_LEVEL_UP_SOL
+        : ELF_LEVEL_UP_SOL[safeRarity];
     const costSol = ladder[fromLevel - 1];
     const costG2u =
       kind === "locksmith"
@@ -268,7 +282,7 @@ serve(async (req) => {
         : {};
     levels[assetId] = toLevel;
     inv.elf_levels = levels;
-    syncActiveLevel(inv, kind, assetId, rarity, toLevel);
+    syncActiveLevel(inv, kind, assetId, safeRarity, toLevel);
 
     const patch = instantEconomyPatch(row as Record<string, unknown>, inv);
     // G2U is paid on-chain to master — do not silently debit gft_token_balance
@@ -298,7 +312,7 @@ serve(async (req) => {
       meta: {
         nft_kind: kind,
         asset_id: assetId,
-        rarity,
+        rarity: safeRarity,
         from_level: fromLevel,
         to_level: toLevel,
         cost_sol: costSol,
@@ -314,7 +328,7 @@ serve(async (req) => {
       success: true,
       asset_id: assetId,
       kind,
-      rarity,
+      rarity: safeRarity,
       from_level: fromLevel,
       to_level: toLevel,
       cost_sol: costSol,
