@@ -8936,7 +8936,7 @@ const GiftTapGame = () => {
                   Max daily boost
                 </h3>
                 <p style={{ color: '#aaa', fontSize: 12, margin: '0 0 12px', lineHeight: 1.4 }}>
-                  500 $G2U per +1k max daily per day.
+                  500 $G2U per +1000 max daily per day.
                 </p>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginBottom: 12 }}>
                   <div>
@@ -8979,8 +8979,8 @@ const GiftTapGame = () => {
                       >
                         −
                       </button>
-                      <div style={{ color: '#fff', fontSize: 22, fontWeight: 900, minWidth: 72, textAlign: 'center' }}>
-                        {(hudDailyAmount / 1000).toLocaleString()}k
+                      <div style={{ color: '#fff', fontSize: 22, fontWeight: 900, minWidth: 88, textAlign: 'center' }}>
+                        +{hudDailyAmount.toLocaleString()}
                       </div>
                       <button
                         type="button"
