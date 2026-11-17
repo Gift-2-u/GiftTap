@@ -944,14 +944,6 @@ const GiftTapGame = () => {
   /** Throttle 'why shards stopped' notices (no_energy / daily_limit) */
   const mineBlockNotifiedRef = useRef(0);
   const flushErrorNotifiedRef = useRef(false);
-  /** Empty battery → main-page Refill/Expand popup. */
-  const showEmptyBatteryNotice = useCallback(() => {
-    const nowN = Date.now();
-    if (nowN - (mineBlockNotifiedRef.current || 0) <= 20000) return;
-    mineBlockNotifiedRef.current = nowN;
-    setHudBatteryTab('refill');
-    setHudBoostModal('battery');
-  }, []);
   /** When true, only commit-taps (service_role) can change daily_taps / balances */
   const secureEconomyRef = useRef(true);
   /** Soft once-per-session notice if JWT missing (no password nag on every close/reopen) */
@@ -1048,6 +1040,34 @@ const GiftTapGame = () => {
   const [hudDailyAmount, setHudDailyAmount] = useState(1000);
   const [hudDailyDays, setHudDailyDays] = useState(1);
   const [hudBoostBusy, setHudBoostBusy] = useState(false);
+  /** First-time coach: arrow on Refill/Expand, then Add */
+  const [hudCoachStep, setHudCoachStep] = useState(null); // 'battery' | 'daily' | null
+  const [hudCoachRect, setHudCoachRect] = useState(null);
+  const HUD_COACH_KEY = 'gift2u_hud_boost_coach_v1';
+  const hudBatteryBtnRef = useRef(null);
+  const hudDailyBtnRef = useRef(null);
+  /** Empty battery / max daily notice — Refill/Expand or Add opens the existing buy popup */
+  const [hudLimitNotice, setHudLimitNotice] = useState(null); // 'battery' | 'daily' | null
+  const showEmptyBatteryNotice = useCallback(() => {
+    const nowN = Date.now();
+    if (nowN - (mineBlockNotifiedRef.current || 0) <= 20000) return;
+    mineBlockNotifiedRef.current = nowN;
+    // Never open the buy sheet here — only the Empty Battery tip
+    setHudBoostModal(null);
+    setHudLimitNotice('battery');
+  }, []);
+  const showDailyLimitNotice = useCallback(() => {
+    const nowN = Date.now();
+    if (nowN - (mineBlockNotifiedRef.current || 0) <= 20000) return;
+    mineBlockNotifiedRef.current = nowN;
+    setHudBoostModal(null);
+    setHudLimitNotice('daily');
+  }, []);
+  // flushPendingTaps is memoized — always call latest notice helpers
+  const showEmptyBatteryNoticeRef = useRef(showEmptyBatteryNotice);
+  const showDailyLimitNoticeRef = useRef(showDailyLimitNotice);
+  showEmptyBatteryNoticeRef.current = showEmptyBatteryNotice;
+  showDailyLimitNoticeRef.current = showDailyLimitNotice;
   const [showAgeConsent, setShowAgeConsent] = useState(false);
   const [ageConsentBusy, setAgeConsentBusy] = useState(false);
   const [showFeeConsent, setShowFeeConsent] = useState(false);
@@ -4318,6 +4338,108 @@ const GiftTapGame = () => {
     setHolidayNeverAgain(false);
   }, [holidayNeverAgain, playerId]);
 
+  // First-time education: arrow → Refill/Expand, then arrow → Add
+  useEffect(() => {
+    if (!isDataLoaded || !playerId || showAscensionModal) return undefined;
+    if (currentPage !== 'home') return undefined;
+    if (
+      showRulesNotice ||
+      showBoostTokenNotice ||
+      showApkNotice ||
+      showAgeConsent ||
+      showFeeConsent ||
+      showHolidayNotice ||
+      appNotice.show ||
+      hudBoostModal ||
+      hudCoachStep
+    ) {
+      return undefined;
+    }
+    const key = `${HUD_COACH_KEY}_${playerId}`;
+    try {
+      if (localStorage.getItem(key) === '1') return undefined;
+    } catch {
+      /* ignore */
+    }
+    const t = setTimeout(() => {
+      if (
+        !showAscensionModal &&
+        !showRulesNotice &&
+        !showBoostTokenNotice &&
+        !showApkNotice &&
+        !showAgeConsent &&
+        !showFeeConsent &&
+        !showHolidayNotice &&
+        !appNotice.show &&
+        !hudBoostModal
+      ) {
+        setHudCoachStep('battery');
+      }
+    }, 2200);
+    return () => clearTimeout(t);
+  }, [
+    isDataLoaded,
+    playerId,
+    currentPage,
+    showAscensionModal,
+    showRulesNotice,
+    showBoostTokenNotice,
+    showApkNotice,
+    showAgeConsent,
+    showFeeConsent,
+    showHolidayNotice,
+    appNotice.show,
+    hudBoostModal,
+    hudCoachStep,
+  ]);
+
+  useEffect(() => {
+    if (!hudCoachStep) {
+      setHudCoachRect(null);
+      return undefined;
+    }
+    const measure = () => {
+      const el =
+        hudCoachStep === 'battery'
+          ? hudBatteryBtnRef.current
+          : hudDailyBtnRef.current;
+      if (!el) {
+        setHudCoachRect(null);
+        return;
+      }
+      const r = el.getBoundingClientRect();
+      setHudCoachRect({
+        top: r.top,
+        left: r.left,
+        width: r.width,
+        height: r.height,
+      });
+    };
+    measure();
+    const t = setTimeout(measure, 80);
+    window.addEventListener('resize', measure);
+    window.addEventListener('scroll', measure, true);
+    return () => {
+      clearTimeout(t);
+      window.removeEventListener('resize', measure);
+      window.removeEventListener('scroll', measure, true);
+    };
+  }, [hudCoachStep]);
+
+  const advanceHudCoach = useCallback(() => {
+    if (hudCoachStep === 'battery') {
+      setHudCoachStep('daily');
+      return;
+    }
+    try {
+      localStorage.setItem(`${HUD_COACH_KEY}_${playerId}`, '1');
+    } catch {
+      /* ignore */
+    }
+    setHudCoachStep(null);
+    setHudCoachRect(null);
+  }, [hudCoachStep, playerId]);
+
   const buyHudBoost = useCallback(async () => {
     if (hudBoostBusy) return;
     if (!hasSecureSession()) {
@@ -5339,32 +5461,9 @@ const GiftTapGame = () => {
           // Tell the player WHY shards stopped (common report: tapping + last_tap today, shards flat)
           if (credited === 0 && (rejectReason === 'no_energy' || rejectReason === 'daily_limit')) {
             if (rejectReason === 'no_energy') {
-              showEmptyBatteryNotice();
+              showEmptyBatteryNoticeRef.current();
             } else {
-              const nowN = Date.now();
-              if (nowN - (mineBlockNotifiedRef.current || 0) > 20000) {
-                mineBlockNotifiedRef.current = nowN;
-                setAppNotice({
-                  show: true,
-                  message:
-                    "Daily limit reached for this UTC day.\n\n" +
-                    "Want to keep playing? Watch a Free Energy ad, or go to Premium for boosts.",
-                  loading: false,
-                  success: false,
-                  title: "Daily limit reached",
-                  confirm: {
-                    confirmLabel: "Open Premium",
-                    cancelLabel: "OK",
-                    confirmDanger: false,
-                    resolve: (ok) => {
-                      if (ok) {
-                        setShopFocusTab("market");
-                        setCurrentPage("shop");
-                      }
-                    },
-                  },
-                });
-              }
+              showDailyLimitNoticeRef.current();
             }
           }
           // Partial credit: energy was snapped to server above. Keep unpaid only
@@ -5967,26 +6066,7 @@ const GiftTapGame = () => {
           currentMaxLimit,
           now,
         );
-        setAppNotice({
-          show: true,
-          message:
-            "Daily limit reached for this UTC day.\n\n" +
-            "Want to keep playing? Watch a Free Energy ad, or go to Premium for boosts.",
-          loading: false,
-          success: false,
-          title: "Daily limit reached",
-          confirm: {
-            confirmLabel: "Open Premium",
-            cancelLabel: "OK",
-            confirmDanger: false,
-            resolve: (ok) => {
-              if (ok) {
-                setShopFocusTab("market");
-                setCurrentPage("shop");
-              }
-            },
-          },
-        });
+        showDailyLimitNoticeRef.current();
         return;
       }
 
@@ -6019,7 +6099,7 @@ const GiftTapGame = () => {
       }
       if (!isDataLoaded) return;
       if ((Number(optimisticEnergy.current) || 0) <= 0) {
-        showEmptyBatteryNotice();
+        showEmptyBatteryNoticeRef.current();
         return;
       }
 
@@ -6053,7 +6133,7 @@ const GiftTapGame = () => {
         // Hard stop at empty battery — do not animate progress
         if (liveEnergy < costMultiplier) {
           setEnergy(liveEnergy);
-          showEmptyBatteryNotice();
+          showEmptyBatteryNoticeRef.current();
           return;
         }
         // Still credit weekly quests (500/day + full drain) when blocked by energy/limit
@@ -6061,26 +6141,7 @@ const GiftTapGame = () => {
           recordWeeklyDailyProgress(dailyUsed, currentMaxLimit, now);
         }
         if (isDailyLimitDrained(dailyUsed, currentMaxLimit)) {
-          setAppNotice({
-            show: true,
-            message:
-              "Daily limit reached for this UTC day.\n\n" +
-              "Want to keep playing? Watch a Free Energy ad, or go to Premium for boosts.",
-            loading: false,
-            success: false,
-            title: "Daily limit reached",
-            confirm: {
-              confirmLabel: "Open Premium",
-              cancelLabel: "OK",
-              confirmDanger: false,
-              resolve: (ok) => {
-                if (ok) {
-                  setShopFocusTab("market");
-                  setCurrentPage("shop");
-                }
-              },
-            },
-          });
+          showDailyLimitNoticeRef.current();
         }
         return;
       }
@@ -8368,6 +8429,276 @@ const GiftTapGame = () => {
         </div>
       )}
 
+      {hudCoachStep && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 197000,
+            background: 'rgba(0,0,0,0.72)',
+            pointerEvents: 'auto',
+          }}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="gift2u-hud-coach-title"
+        >
+          {hudCoachRect ? (
+            <>
+              <div
+                style={{
+                  position: 'fixed',
+                  top: Math.max(8, hudCoachRect.top - 118),
+                  left: Math.min(
+                    Math.max(12, hudCoachRect.left + hudCoachRect.width / 2 - 140),
+                    (typeof window !== 'undefined' ? window.innerWidth : 360) - 292,
+                  ),
+                  width: 280,
+                  background: '#1c1e22',
+                  border: '2px solid #fbef43',
+                  borderRadius: 14,
+                  padding: '14px 14px 12px',
+                  boxShadow: '0 8px 28px rgba(0,0,0,0.55)',
+                  zIndex: 197020,
+                }}
+              >
+                <h3
+                  id="gift2u-hud-coach-title"
+                  style={{
+                    color: '#fbef43',
+                    margin: '0 0 8px',
+                    fontSize: 15,
+                    textAlign: 'center',
+                  }}
+                >
+                  {hudCoachStep === 'battery'
+                    ? 'New: Refill / Expand'
+                    : 'New: Add max daily'}
+                </h3>
+                <p
+                  style={{
+                    color: '#ccc',
+                    fontSize: 12,
+                    lineHeight: 1.45,
+                    margin: '0 0 12px',
+                    textAlign: 'center',
+                  }}
+                >
+                  {hudCoachStep === 'battery'
+                    ? 'When your battery runs low, tap Refill/Expand here. Refill adds energy (200 $G2U per 500). Expand raises the battery cap (100 $G2U per 500) until UTC midnight.'
+                    : 'When you hit the daily tap limit, tap Add here. Choose +1k to +5k and 1–7 days — 500 $G2U per 1k per day.'}
+                </p>
+                <button
+                  type="button"
+                  onClick={advanceHudCoach}
+                  style={{
+                    width: '100%',
+                    background: 'linear-gradient(90deg,#fbef43,#fbbf24)',
+                    color: '#000',
+                    border: 'none',
+                    padding: 11,
+                    borderRadius: 10,
+                    fontWeight: 800,
+                    cursor: 'pointer',
+                  }}
+                >
+                  {hudCoachStep === 'battery' ? 'Got it — next' : 'Got it'}
+                </button>
+                <div
+                  style={{
+                    position: 'absolute',
+                    left: '50%',
+                    bottom: -18,
+                    transform: 'translateX(-50%)',
+                    width: 0,
+                    height: 0,
+                    borderLeft: '12px solid transparent',
+                    borderRight: '12px solid transparent',
+                    borderTop: '16px solid #fbef43',
+                  }}
+                  aria-hidden
+                />
+              </div>
+              <div
+                style={{
+                  position: 'fixed',
+                  top: hudCoachRect.top - 28,
+                  left: hudCoachRect.left + hudCoachRect.width / 2 - 10,
+                  width: 20,
+                  textAlign: 'center',
+                  color: '#fbef43',
+                  fontSize: 22,
+                  fontWeight: 900,
+                  zIndex: 197030,
+                  textShadow: '0 2px 8px rgba(0,0,0,0.8)',
+                  animation: 'gift2uHudCoachBounce 1s ease-in-out infinite',
+                  pointerEvents: 'none',
+                }}
+                aria-hidden
+              >
+                ▼
+              </div>
+            </>
+          ) : (
+            <div
+              style={{
+                position: 'fixed',
+                left: 16,
+                right: 16,
+                bottom: 140,
+                background: '#1c1e22',
+                border: '2px solid #fbef43',
+                borderRadius: 14,
+                padding: 14,
+                zIndex: 197020,
+              }}
+            >
+              <p style={{ color: '#ccc', fontSize: 13, margin: '0 0 10px', textAlign: 'center' }}>
+                Look at the new buttons next to your battery and daily bars.
+              </p>
+              <button
+                type="button"
+                onClick={advanceHudCoach}
+                style={{
+                  width: '100%',
+                  background: 'linear-gradient(90deg,#fbef43,#fbbf24)',
+                  color: '#000',
+                  border: 'none',
+                  padding: 11,
+                  borderRadius: 10,
+                  fontWeight: 800,
+                  cursor: 'pointer',
+                }}
+              >
+                Got it
+              </button>
+            </div>
+          )}
+          <style>{`
+            @keyframes gift2uHudCoachBounce {
+              0%, 100% { transform: translateY(0); }
+              50% { transform: translateY(6px); }
+            }
+          `}</style>
+        </div>
+      )}
+
+      {hudLimitNotice && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,0.88)',
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center',
+            zIndex: 196600,
+            padding: 16,
+            boxSizing: 'border-box',
+          }}
+          role="dialog"
+          aria-modal="true"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setHudLimitNotice(null);
+          }}
+        >
+          <div
+            style={{
+              background: '#1c1e22',
+              padding: 20,
+              borderRadius: 14,
+              border:
+                hudLimitNotice === 'battery'
+                  ? '2px solid #38bdf8'
+                  : '2px solid #4ade80',
+              width: '100%',
+              maxWidth: 320,
+              boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
+              textAlign: 'center',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3
+              style={{
+                color: hudLimitNotice === 'battery' ? '#7dd3fc' : '#86efac',
+                margin: '0 0 10px',
+                fontSize: 17,
+              }}
+            >
+              {hudLimitNotice === 'battery'
+                ? 'Empty Battery'
+                : 'Max daily energy reached'}
+            </h3>
+            <p style={{ color: '#aaa', fontSize: 12, lineHeight: 1.45, margin: '0 0 16px' }}>
+              {hudLimitNotice === 'battery'
+                ? 'Your battery is empty. Refill energy or expand the battery bar to keep tapping.'
+                : 'You hit today’s tap limit. Add more max daily to keep playing.'}
+            </p>
+            {hudLimitNotice === 'battery' ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setHudLimitNotice(null);
+                  setHudBatteryTab('refill');
+                  setHudBoostModal('battery');
+                }}
+                style={{
+                  fontSize: 13,
+                  fontWeight: 800,
+                  padding: '10px 18px',
+                  borderRadius: 999,
+                  border: '1px solid #38bdf8',
+                  background: 'rgba(56,189,248,0.18)',
+                  color: '#7dd3fc',
+                  cursor: 'pointer',
+                  width: '100%',
+                  marginBottom: 10,
+                }}
+              >
+                Refill/Expand
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => {
+                  setHudLimitNotice(null);
+                  setHudBoostModal('daily');
+                }}
+                style={{
+                  fontSize: 13,
+                  fontWeight: 800,
+                  padding: '10px 18px',
+                  borderRadius: 999,
+                  border: '1px solid #4ade80',
+                  background: 'rgba(74,222,128,0.15)',
+                  color: '#86efac',
+                  cursor: 'pointer',
+                  width: '100%',
+                  marginBottom: 10,
+                }}
+              >
+                Add
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => setHudLimitNotice(null)}
+              style={{
+                width: '100%',
+                padding: 10,
+                borderRadius: 10,
+                border: '1px solid #555',
+                background: '#111',
+                color: '#ccc',
+                fontWeight: 700,
+                cursor: 'pointer',
+              }}
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
+
       {hudBoostModal && (
         <div
           style={{
@@ -10279,6 +10610,7 @@ const GiftTapGame = () => {
                          <HelpTip tipKey="energy_daily" size={14} onOpen={setHelpTipKey} />
                        </p>
                        <button
+                         ref={hudBatteryBtnRef}
                          type="button"
                          onClick={(e) => {
                            e.stopPropagation();
@@ -10295,6 +10627,12 @@ const GiftTapGame = () => {
                            color: '#7dd3fc',
                            cursor: 'pointer',
                            whiteSpace: 'nowrap',
+                           boxShadow:
+                             hudCoachStep === 'battery'
+                               ? '0 0 0 3px #fbef43, 0 0 18px rgba(251,239,67,0.55)'
+                               : undefined,
+                           position: 'relative',
+                           zIndex: hudCoachStep === 'battery' ? 197100 : undefined,
                          }}
                        >
                          Refill/Expand
@@ -10339,6 +10677,7 @@ const GiftTapGame = () => {
                        {t('daily_limit')}: {dailyTaps}/{dynamicMaxLimit}
                      </p>
                        <button
+                         ref={hudDailyBtnRef}
                          type="button"
                          onClick={(e) => {
                            e.stopPropagation();
@@ -10354,6 +10693,12 @@ const GiftTapGame = () => {
                            color: '#86efac',
                            cursor: 'pointer',
                            whiteSpace: 'nowrap',
+                           boxShadow:
+                             hudCoachStep === 'daily'
+                               ? '0 0 0 3px #fbef43, 0 0 18px rgba(251,239,67,0.55)'
+                               : undefined,
+                           position: 'relative',
+                           zIndex: hudCoachStep === 'daily' ? 197100 : undefined,
                          }}
                        >
                          Add

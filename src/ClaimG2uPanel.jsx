@@ -16,6 +16,7 @@ import {
 } from './tokenLaunch';
 import { keypairFromMnemonic } from './solanaWallet';
 import { RPC_URL } from './rpc';
+import { holidayMilestoneMultiplier } from './personalMilestone';
 
 /** Mystery queue from inventory */
 export function mysteryG2uPending(inventory) {
@@ -25,9 +26,22 @@ export function mysteryG2uPending(inventory) {
 const PLAY_URL = 'https://gift2u.fun/play';
 
 /** Optional public X post — never auto-opens; player must tap Share. */
-function buildClaimShareText(label, amount) {
+function buildClaimShareText(label, amount, opts = {}) {
   const amt = Math.max(0, Number(amount) || 0).toLocaleString();
   const what = String(label || 'a milestone').trim();
+  const source = String(opts.source || '').toLowerCase();
+  const isMilestone =
+    source === 'milestone' ||
+    /milestone|level|lifetime|personal/i.test(what);
+  // Holiday Special: double milestone share while promo is live
+  if (isMilestone && holidayMilestoneMultiplier() >= 2) {
+    return (
+      `Just claimed my Holiday 2× milestone on GiftTap — ${amt} $G2U ` +
+      `(double rewards through Dec 31)! ✨🎁\n\n` +
+      `Tap in: ${PLAY_URL}\n` +
+      `#GiftTap #G2U #SolanaGaming #HolidaySpecial`
+    );
+  }
   return `I just claimed ${what} on Gift Tap and got ${amt} $G2U! 🎁\n\nPlay: ${PLAY_URL}\n#Gift2U #GiftTap #Solana`;
 }
 
@@ -269,10 +283,12 @@ export default function ClaimG2uPanel({
           true,
         );
         if (amt > 0) {
+          const source =
+            row.source || confirmed?.source || prepared?.source || '';
           setXShareOffer({
             label,
             amount: amt,
-            text: buildClaimShareText(label, amt),
+            text: buildClaimShareText(label, amt, { source }),
           });
         }
       }

@@ -697,7 +697,11 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, bumpEner
   /** LP rate: 20 SOL / 100M G2U = 5M G2U per SOL — keep in sync with premium-grant G2U_PER_SOL */
   const G2U_PER_SOL = Number(import.meta.env.VITE_G2U_PER_SOL) || 5_000_000;
 
-  /** Premium boosts — SOL pre-launch, $G2U when flag on (not NFTs) */
+  /**
+   * Premium shop UI only. Battery refill / Expanded Battery / daily energy
+   * (+2k / +5k / +1000) buy on the main-page bars — still awarded by Mystery
+   * Gift and still activatable from Backpack (Edge + MYSTERY_PREMIUM_ITEMS unchanged).
+   */
   const premiumListingsRaw = [
     {
       id: 'bot',
@@ -713,38 +717,6 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, bumpEner
       iconTo: '#4c1d95',
       iconRing: 'rgba(167,139,250,0.5)',
       iconGlow: 'rgba(153,69,255,0.3)',
-    },
-    {
-      id: 'grinder',
-      name: '+2K Daily Energy',
-      type: 'Power',
-      rarity: 'Rare',
-      boost: '+2,000 daily max energy (3,000 total)',
-      duration: '1 / 3 / 7 Days',
-      price: premiumPriceSolForDays('grinder', 7, G2U_PER_SOL),
-      priceG2uFixed: premiumPriceG2uForDays('grinder', 7),
-      durationChoice: true,
-      currency: 'SOL',
-      iconFrom: '#60a5fa',
-      iconTo: '#1e3a8a',
-      iconRing: 'rgba(96,165,250,0.45)',
-      iconGlow: 'rgba(59,130,246,0.25)',
-    },
-    {
-      id: 'whale',
-      name: '+5K Daily Energy',
-      type: 'Power',
-      rarity: 'Legendary',
-      boost: '+5,000 daily max energy (6,000 total)',
-      duration: '1 / 3 / 7 Days',
-      price: premiumPriceSolForDays('whale', 7, G2U_PER_SOL),
-      priceG2uFixed: premiumPriceG2uForDays('whale', 7),
-      durationChoice: true,
-      currency: 'SOL',
-      iconFrom: '#38bdf8',
-      iconTo: '#0c4a6e',
-      iconRing: 'rgba(56,189,248,0.5)',
-      iconGlow: 'rgba(14,165,233,0.3)',
     },
     {
       id: 'x2_boost',
@@ -779,37 +751,6 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, bumpEner
       iconGlow: 'rgba(168,85,247,0.35)',
     },
     {
-      id: 'expanded_energy',
-      name: 'Expanded Battery',
-      type: 'Power',
-      rarity: 'Epic',
-      boost: 'Battery 500 → 1000',
-      duration: '1 / 3 / 7 Days',
-      price: premiumPriceSolForDays('expanded_energy', 7, G2U_PER_SOL),
-      priceG2uFixed: premiumPriceG2uForDays('expanded_energy', 7),
-      durationChoice: true,
-      currency: 'SOL',
-      iconFrom: '#4ade80',
-      iconTo: '#166534',
-      iconRing: 'rgba(74,222,128,0.5)',
-      iconGlow: 'rgba(34,197,94,0.3)',
-    },
-    {
-      id: 'refill_extra',
-      name: 'Extra Battery Refill',
-      type: 'Power',
-      rarity: 'Rare',
-      boost: 'Fills 500 to your Battery · use anytime (no free-day lock)',
-      duration: 'Instant',
-      price: 500 / G2U_PER_SOL,
-      priceG2uFixed: 500,
-      currency: 'SOL',
-      iconFrom: '#4ade80',
-      iconTo: '#14532d',
-      iconRing: 'rgba(74,222,128,0.5)',
-      iconGlow: 'rgba(34,197,94,0.3)',
-    },
-    {
       id: 'frenzy_60',
       name: '30-Second Frenzy',
       type: 'Power',
@@ -823,21 +764,6 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, bumpEner
       iconTo: '#7c1d12',
       iconRing: 'rgba(255,107,53,0.55)',
       iconGlow: 'rgba(255,107,53,0.3)',
-    },
-    {
-      id: 'daily_plus_1000',
-      name: '+1000 Max Daily',
-      type: 'Power',
-      rarity: 'Epic',
-      boost: '+1,000 max daily taps (not battery) until UTC midnight',
-      duration: 'Until UTC midnight · activate 1× / UTC day',
-      price: 500 / G2U_PER_SOL,
-      priceG2uFixed: 500,
-      currency: 'SOL',
-      iconFrom: '#60a5fa',
-      iconTo: '#1e3a8a',
-      iconRing: 'rgba(96,165,250,0.55)',
-      iconGlow: 'rgba(59,130,246,0.3)',
     },
   ];
 
