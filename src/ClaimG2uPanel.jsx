@@ -276,19 +276,28 @@ export default function ClaimG2uPanel({
       const amt = Number(confirmed?.amount) || Number(prepared.amount) || 0;
       if (confirmed?.already) ping('Already claimed', true);
       else {
+        const source =
+          row.source || confirmed?.source || prepared?.source || '';
         const label =
           row.label || confirmed?.source || prepared.source || 'milestone';
+        const holidayOn =
+          String(source).toLowerCase() === 'milestone' &&
+          holidayMilestoneMultiplier() >= 2;
         ping(
-          `✅ ${label}: ${amt.toLocaleString()} $G2U → ${shortWallet} (you paid the network fee)`,
+          holidayOn
+            ? `✅ Holiday 2× milestone: ${amt.toLocaleString()} $G2U → ${shortWallet}`
+            : `✅ ${label}: ${amt.toLocaleString()} $G2U → ${shortWallet} (you paid the network fee)`,
           true,
         );
         if (amt > 0) {
-          const source =
-            row.source || confirmed?.source || prepared?.source || '';
           setXShareOffer({
-            label,
+            label: holidayOn ? 'Holiday 2× milestone' : label,
             amount: amt,
-            text: buildClaimShareText(label, amt, { source }),
+            text: buildClaimShareText(
+              holidayOn ? 'Holiday 2× milestone' : label,
+              amt,
+              { source },
+            ),
           });
         }
       }
@@ -383,14 +392,23 @@ export default function ClaimG2uPanel({
           },
         ]
       : []),
-    ...airdropRows.map((r) => ({
-      id: r.id,
-      label: r.label || r.source,
-      detail: r.detail || r.period_id,
-      amount: Number(r.amount) || 0,
-      kind: 'airdrop',
-      vault_ready: r.vault_ready,
-    })),
+    ...airdropRows.map((r) => {
+      const source = String(r.source || '').toLowerCase();
+      const holidayOn = source === 'milestone' && holidayMilestoneMultiplier() >= 2;
+      return {
+        id: r.id,
+        label: holidayOn
+          ? `✨ Holiday 2× · ${r.label || 'Personal milestone'}`
+          : r.label || r.source,
+        detail: holidayOn
+          ? 'Holiday Special: double $G2U through Dec 31 · stacked into one claim'
+          : r.detail || r.period_id,
+        amount: Number(r.amount) || 0,
+        kind: 'airdrop',
+        source,
+        vault_ready: r.vault_ready,
+      };
+    }),
   ];
 
   return (

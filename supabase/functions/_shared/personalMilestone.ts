@@ -273,7 +273,7 @@ export async function accruePersonalMilestones(
 
   const { data: openRow, error: selErr } = await sb
     .from("airdrop_allocations")
-    .select("id, amount")
+    .select("id, amount, meta")
     .eq("telegram_id", playerId)
     .eq("source", MILESTONE_ALLOC_SOURCE)
     .eq("period_id", MILESTONE_ALLOC_PERIOD)
@@ -281,17 +281,24 @@ export async function accruePersonalMilestones(
     .maybeSingle();
   if (selErr) throw selErr;
 
+  const holidayMult = holidayMilestoneMultiplier();
   if (openRow?.id) {
     const nextAmt =
       Math.round(((Number(openRow.amount) || 0) + granted) * 1000) / 1000;
+    const prevMeta =
+      openRow.meta && typeof openRow.meta === "object"
+        ? (openRow.meta as Record<string, unknown>)
+        : {};
     const { error: upErr } = await sb
       .from("airdrop_allocations")
       .update({
         amount: nextAmt,
         meta: {
+          ...prevMeta,
           stacked: true,
           last_levels: levels,
           last_lifetime: lifetimeGranted,
+          holiday_mult: holidayMult,
           updated_at: new Date().toISOString(),
         },
       })
@@ -309,6 +316,7 @@ export async function accruePersonalMilestones(
       meta: {
         levels,
         lifetime: lifetimeGranted,
+        holiday_mult: holidayMult,
         created_at: new Date().toISOString(),
       },
     });

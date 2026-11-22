@@ -9783,7 +9783,9 @@ const GiftTapGame = () => {
                 textAlign: 'center',
               }}
             >
-              🎯 Milestone ready
+              {holidayMilestoneMultiplier() >= 2
+                ? '✨ Holiday 2× Milestone ready'
+                : '🎯 Milestone ready'}
             </h3>
             <p
               style={{
@@ -9793,16 +9795,34 @@ const GiftTapGame = () => {
                 margin: '0 0 16px',
               }}
             >
-              You have{' '}
-              <strong style={{ color: '#fbef43' }}>
-                {Number(milestoneTipInfo.amount || 0).toLocaleString()} $G2U
-              </strong>
-              {milestoneTipInfo.nextLevel != null
-                ? ` from level milestones (through L${milestoneTipInfo.nextLevel})`
-                : ' from personal milestones'}
-              . Claim in{' '}
-              <strong style={{ color: '#fff' }}>Wallet → Claim $G2U</strong>
-              {' '}(same as weekly / season — stacked into one claim).
+              {holidayMilestoneMultiplier() >= 2 ? (
+                <>
+                  Holiday Special — you earned{' '}
+                  <strong style={{ color: '#fbef43' }}>
+                    {Number(milestoneTipInfo.amount || 0).toLocaleString()} $G2U
+                  </strong>{' '}
+                  <strong style={{ color: '#fbef43' }}>(2× through Dec 31)</strong>
+                  {milestoneTipInfo.nextLevel != null
+                    ? ` from level milestones (through L${milestoneTipInfo.nextLevel})`
+                    : ' from personal milestones'}
+                  . Claim in{' '}
+                  <strong style={{ color: '#fff' }}>Wallet → Claim $G2U</strong>
+                  {' '}(stacked into one claim).
+                </>
+              ) : (
+                <>
+                  You have{' '}
+                  <strong style={{ color: '#fbef43' }}>
+                    {Number(milestoneTipInfo.amount || 0).toLocaleString()} $G2U
+                  </strong>
+                  {milestoneTipInfo.nextLevel != null
+                    ? ` from level milestones (through L${milestoneTipInfo.nextLevel})`
+                    : ' from personal milestones'}
+                  . Claim in{' '}
+                  <strong style={{ color: '#fff' }}>Wallet → Claim $G2U</strong>
+                  {' '}(same as weekly / season — stacked into one claim).
+                </>
+              )}
             </p>
             <button
               type="button"

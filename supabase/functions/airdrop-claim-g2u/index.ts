@@ -23,6 +23,7 @@ import {
   verifyAirdropClaimTx,
   type AirdropSource,
 } from "../_shared/airdropVault.ts";
+import { holidayMilestoneMultiplier } from "../_shared/personalMilestone.ts";
 
 const TOKEN_LAUNCH_AT = Date.parse("2026-09-01T00:00:00Z");
 
@@ -97,8 +98,33 @@ serve(async (req) => {
       throw new Error(`${vault.label} vault not ready — try again later`);
     }
 
-    const amount = Number(row.amount) || 0;
+    let amount = Number(row.amount) || 0;
     if (amount <= 0) throw new Error("Invalid amount");
+
+    // Holiday Special: if milestone vault was accrued at 1× before Edge deploy, 2× once on prepare
+    const rowMeta =
+      row.meta && typeof row.meta === "object"
+        ? { ...(row.meta as Record<string, unknown>) }
+        : {};
+    if (
+      action === "prepare" &&
+      source === "milestone" &&
+      holidayMilestoneMultiplier() >= 2 &&
+      Number(rowMeta.holiday_mult) !== 2 &&
+      !rowMeta.holiday_claim_boosted
+    ) {
+      amount = Math.floor(amount * 2);
+      rowMeta.holiday_mult = 2;
+      rowMeta.holiday_claim_boosted = true;
+      rowMeta.holiday_boosted_at = new Date().toISOString();
+      const { error: boostErr } = await sb
+        .from("airdrop_allocations")
+        .update({ amount, meta: rowMeta })
+        .eq("id", allocationId)
+        .eq("telegram_id", playerId)
+        .is("claimed_at", null);
+      if (boostErr) throw boostErr;
+    }
 
     // ——— CONFIRM (user already paid fee on-chain) ———
     if (action === "confirm") {
