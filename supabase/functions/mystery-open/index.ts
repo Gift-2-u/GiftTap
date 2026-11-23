@@ -17,6 +17,7 @@ import {
   corsHeaders,
   jsonResponse,
   logEconomy,
+  logPlayerActivity,
   MYSTERY_COSTS,
   MYSTERY_ODDS,
   BADGE_ITEM,
@@ -243,6 +244,16 @@ serve(async (req) => {
         treasury: TREASURY_SOL,
         tier,
       },
+    });
+    await logPlayerActivity(sb, {
+      kind: "mystery_gift",
+      playerId,
+      itemId: tier,
+      amountG2u: null,
+      feeSol: PREMIUM_PROJECT_FEE_SOL,
+      currency: "badges",
+      signature: txSignature,
+      meta: { cost, reward, dest, tier },
     });
 
     return jsonResponse({

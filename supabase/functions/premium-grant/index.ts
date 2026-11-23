@@ -11,6 +11,7 @@ import {
   corsHeaders,
   jsonResponse,
   logEconomy,
+  logPlayerActivity,
   invObj,
   utcIsoWeekId,
   g2uPerSol,
@@ -125,7 +126,7 @@ function g2uPremiumEnabled(): boolean {
   return g2uShopEnabled();
 }
 
-/** Buy: unlimited. Activate: once per UTC day (backpack-activate + UI "Active"). */
+/** Buy: unlimited. Activate: once per UTC day for timed boosts (refills: no day lock). */
 function bumpWeeklyBoost(inv: Record<string, unknown>) {
   const weekId = utcIsoWeekId();
   const wq =
@@ -295,6 +296,17 @@ serve(async (req) => {
           master: MASTER,
         },
       });
+      await logPlayerActivity(sb, {
+        kind: "premium_boost",
+        playerId,
+        itemId,
+        amountG2u: priceG2u,
+        feeSol: PREMIUM_PROJECT_FEE_SOL,
+        currency: "g2u",
+        days: durationDays,
+        signature: txSignature,
+        meta: { item_id: itemId, currency: "g2u_onchain" },
+      });
 
       return jsonResponse({
         success: true,
@@ -415,6 +427,17 @@ serve(async (req) => {
         fee_sol: PREMIUM_PROJECT_FEE_SOL,
         master: MASTER,
       },
+    });
+    await logPlayerActivity(sb, {
+      kind: "premium_boost",
+      playerId,
+      itemId,
+      amountG2u: null,
+      feeSol: PREMIUM_PROJECT_FEE_SOL,
+      currency: "sol",
+      days: durationDays,
+      signature: txSignature,
+      meta: { item_id: itemId, currency: "sol", priceSol },
     });
 
     return jsonResponse({

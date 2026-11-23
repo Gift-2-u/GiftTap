@@ -88,6 +88,64 @@ export async function logNftMintSale(
   }
 }
 
+export type PlayerActivityKind =
+  | "premium_boost"
+  | "hud_boost"
+  | "milestone_claim"
+  | "mystery_gift";
+
+/**
+ * Durable player_activity table (never pruned — unlike economy_events).
+ * Supabase → Table Editor → player_activity.
+ */
+export async function logPlayerActivity(
+  sb: SupabaseClient,
+  opts: {
+    kind: PlayerActivityKind;
+    playerId: string;
+    username?: string | null;
+    itemId?: string | null;
+    amountG2u?: number | null;
+    feeSol?: number | null;
+    currency?: string | null;
+    days?: number | null;
+    signature?: string | null;
+    meta?: Record<string, unknown>;
+  },
+) {
+  const playerId = String(opts.playerId || "").trim();
+  if (!playerId || !opts.kind) return;
+  try {
+    const row: Record<string, unknown> = {
+      kind: opts.kind,
+      player_id: playerId,
+      username: opts.username ? String(opts.username) : null,
+      item_id: opts.itemId != null ? String(opts.itemId) : null,
+      amount_g2u: opts.amountG2u != null ? Number(opts.amountG2u) : null,
+      fee_sol: opts.feeSol != null ? Number(opts.feeSol) : null,
+      currency: opts.currency != null ? String(opts.currency) : null,
+      days: opts.days != null ? Math.floor(Number(opts.days)) : null,
+      signature: opts.signature ? String(opts.signature) : null,
+      meta: opts.meta && typeof opts.meta === "object" ? opts.meta : {},
+    };
+    const sig = row.signature ? String(row.signature) : "";
+    if (sig.length >= 32) {
+      const { data: prior } = await sb
+        .from("player_activity")
+        .select("id")
+        .eq("signature", sig)
+        .maybeSingle();
+      if (prior?.id) return;
+    }
+    const { error } = await sb.from("player_activity").insert(row);
+    if (error && !/duplicate|unique/i.test(String(error.message || ""))) {
+      console.warn("player_activity insert failed", error.message || error);
+    }
+  } catch (e) {
+    console.warn("player_activity log failed", e);
+  }
+}
+
 /** Max invitees that can credit one referrer (anti multi-account farm). */
 export const MAX_REFERRALS = 5;
 

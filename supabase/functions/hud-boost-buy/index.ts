@@ -9,6 +9,7 @@ import {
   corsHeaders,
   jsonResponse,
   logEconomy,
+  logPlayerActivity,
   invObj,
   effectiveDailyLimit,
   g2uShopEnabled,
@@ -207,6 +208,22 @@ serve(async (req) => {
         master: MASTER,
         energy_cap: quote.energyCap,
         max_daily_limit: updates.max_daily_limit ?? null,
+      },
+    });
+    await logPlayerActivity(sb, {
+      kind: "hud_boost",
+      playerId,
+      itemId: quote.kind,
+      amountG2u: quote.priceG2u,
+      feeSol: PREMIUM_PROJECT_FEE_SOL,
+      currency: "g2u",
+      days: quote.days,
+      signature: txSignature,
+      meta: {
+        boost_kind: quote.kind,
+        units: quote.units,
+        amount: quote.amount,
+        energy_cap: quote.energyCap,
       },
     });
 

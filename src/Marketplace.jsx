@@ -623,7 +623,7 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, bumpEner
     {
       id: 'refill',
       name: 'Battery Refill',
-      desc: 'Fills 500 to your Battery · 1× free / UTC day after launch',
+      desc: 'Fills 500 to your Battery · activate anytime from Backpack',
       duration: 'Instant',
       cost: 300,
       iconFrom: '#4ade80',
@@ -698,9 +698,7 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, bumpEner
   const G2U_PER_SOL = Number(import.meta.env.VITE_G2U_PER_SOL) || 5_000_000;
 
   /**
-   * Premium shop UI only. Battery refill / Expanded Battery / daily energy
-   * (+2k / +5k / +1000) buy on the main-page bars — still awarded by Mystery
-   * Gift and still activatable from Backpack (Edge + MYSTERY_PREMIUM_ITEMS unchanged).
+   * Premium shop UI only (sold). Battery / daily energy buy on main-page bars.
    */
   const premiumListingsRaw = [
     {
@@ -764,6 +762,91 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, bumpEner
       iconTo: '#7c1d12',
       iconRing: 'rgba(255,107,53,0.55)',
       iconGlow: 'rgba(255,107,53,0.3)',
+    },
+  ];
+
+  /**
+   * Not sold in Premium (HUD bars instead) — MUST stay in allItems so Mystery
+   * Gift / leftover charges still show and activate in Backpack.
+   */
+  const mysteryBackpackCatalog = [
+    {
+      id: 'grinder',
+      name: '+2K Daily Energy',
+      type: 'Power',
+      rarity: 'Rare',
+      boost: '+2,000 daily max energy (3,000 total)',
+      duration: '1 / 3 / 7 Days',
+      price: premiumPriceSolForDays('grinder', 7, G2U_PER_SOL),
+      priceG2uFixed: premiumPriceG2uForDays('grinder', 7),
+      durationChoice: true,
+      currency: 'SOL',
+      iconFrom: '#60a5fa',
+      iconTo: '#1e3a8a',
+      iconRing: 'rgba(96,165,250,0.45)',
+      iconGlow: 'rgba(59,130,246,0.25)',
+    },
+    {
+      id: 'whale',
+      name: '+5K Daily Energy',
+      type: 'Power',
+      rarity: 'Legendary',
+      boost: '+5,000 daily max energy (6,000 total)',
+      duration: '1 / 3 / 7 Days',
+      price: premiumPriceSolForDays('whale', 7, G2U_PER_SOL),
+      priceG2uFixed: premiumPriceG2uForDays('whale', 7),
+      durationChoice: true,
+      currency: 'SOL',
+      iconFrom: '#38bdf8',
+      iconTo: '#0c4a6e',
+      iconRing: 'rgba(56,189,248,0.5)',
+      iconGlow: 'rgba(14,165,233,0.3)',
+    },
+    {
+      id: 'expanded_energy',
+      name: 'Expanded Battery',
+      type: 'Power',
+      rarity: 'Epic',
+      boost: 'Battery 500 → 1000',
+      duration: '1 / 3 / 7 Days',
+      price: premiumPriceSolForDays('expanded_energy', 7, G2U_PER_SOL),
+      priceG2uFixed: premiumPriceG2uForDays('expanded_energy', 7),
+      durationChoice: true,
+      currency: 'SOL',
+      iconFrom: '#4ade80',
+      iconTo: '#166534',
+      iconRing: 'rgba(74,222,128,0.5)',
+      iconGlow: 'rgba(34,197,94,0.3)',
+    },
+    {
+      id: 'refill_extra',
+      name: 'Extra Battery Refill',
+      type: 'Power',
+      rarity: 'Rare',
+      boost: 'Fills 500 to your Battery · use anytime',
+      duration: 'Instant',
+      price: 500 / G2U_PER_SOL,
+      priceG2uFixed: 500,
+      currency: 'SOL',
+      iconFrom: '#4ade80',
+      iconTo: '#14532d',
+      iconRing: 'rgba(74,222,128,0.5)',
+      iconGlow: 'rgba(34,197,94,0.3)',
+    },
+    {
+      id: 'daily_plus_1000',
+      name: '+1000 Max Daily',
+      type: 'Power',
+      rarity: 'Epic',
+      boost: '+1,000 max daily taps (not battery) until UTC midnight',
+      duration: 'Until UTC midnight · activate 1× / UTC day',
+      price: 500 / G2U_PER_SOL,
+      priceG2uFixed: 500,
+      currency: 'SOL',
+      iconFrom: '#60a5fa',
+      iconTo: '#1e3a8a',
+      iconRing: 'rgba(96,165,250,0.55)',
+      iconGlow: 'rgba(59,130,246,0.3)',
     },
   ];
 
@@ -1135,8 +1218,13 @@ const Marketplace = ({ balance, setBalance, stats, setStats, setEnergy, bumpEner
     sort: nftSort,
   });
 
-  // Always include freeBoostCatalog so Mystery / leftover Frenzy·Battery·Refill show in Backpack
-  const allItems = [...freeBoostCatalog, ...premiumListings];
+  // freeBoost + mysteryBackpackCatalog so Mystery prizes still show in Backpack
+  // even when those SKUs are not sold in Premium shop (HUD bars instead).
+  const allItems = [
+    ...freeBoostCatalog,
+    ...premiumListings,
+    ...mysteryBackpackCatalog,
+  ];
   const filteredListings = premiumListings.filter(item => marketFilter === 'All' || item.type === marketFilter);
 
   // --- 1. BUYING WITH SHARDS (Goes to Backpack) ---
@@ -2312,27 +2400,18 @@ Daily claim active · Pack → NFT to see it.`,
   const handleUseItem = async (item) => {
     if (!localInventory[item.id] || localInventory[item.id] <= 0) return;
 
-    // NEW: Check if this item has already been used today UTC
+    // Check if this item has already been used today UTC (refills: no day lock)
     const todayStr = getTodayUTCString();
-    // Free Battery Refill: 1× / UTC day after launch. Extra Battery Refill: no day lock.
-    const afterLaunch = Date.now() >= Date.parse('2026-09-01T00:00:00Z');
-    const isFreeRefill = item.id === 'refill';
-    const isExtraRefill = item.id === 'refill_extra';
-    const blockRefill =
-      isFreeRefill && afterLaunch && dailyUsage.refill === todayStr;
+    const isAnyRefill = item.id === 'refill' || item.id === 'refill_extra';
     if (
-      (dailyUsage[item.id] === todayStr &&
-        !isFreeRefill &&
-        !isExtraRefill &&
-        item.id !== 'crate') ||
-      blockRefill
+      dailyUsage[item.id] === todayStr &&
+      !isAnyRefill &&
+      item.id !== 'crate'
     ) {
       setTxStatus({
         show: true,
         loading: false,
-        message: blockRefill
-          ? '❌ Battery Refill already used today (UTC). Use Extra Battery Refill from Premium, or wait until midnight UTC.'
-          : `❌ ${item.name} is already active today. Wait until UTC midnight.`,
+        message: `❌ ${item.name} is already active today. Wait until UTC midnight.`,
         success: false,
       });
       setTimeout(() => setTxStatus((prev) => ({ ...prev, show: false })), 3000);
@@ -2398,16 +2477,14 @@ Daily claim active · Pack → NFT to see it.`,
         }
 
         const todayUse = getTodayUTCString();
-        // Free Battery Refill stamps day lock; Extra does not
+        // Refills: no UTC-day stamp. Other boosts: stamp today.
         const nextDailyUsage = {
           ...(data.daily_usage || dailyUsage || {}),
-          ...(item.id === 'refill' && afterLaunch
-            ? { refill: todayUse }
-            : item.id !== 'refill' &&
-                item.id !== 'refill_extra' &&
-                item.id !== 'crate'
-              ? { [item.id]: todayUse }
-              : {}),
+          ...(item.id !== 'refill' &&
+          item.id !== 'refill_extra' &&
+          item.id !== 'crate'
+            ? { [item.id]: todayUse }
+            : {}),
         };
         authInv.daily_usage = nextDailyUsage;
 
@@ -3756,14 +3833,11 @@ Daily claim active · Pack → NFT to see it.`,
                   </div>
                 ) : (
                   backpackItems.map((item) => {
-                    // Free Battery Refill: 1×/day. Extra Battery Refill: never day-locked.
-                    // Buy unlimited; activate once per UTC day (server + UI).
+                    // Refills: no UTC-day lock. Other boosts: once per UTC day.
                     const isActiveToday =
-                      item.id === 'refill_extra'
+                      item.id === 'refill' || item.id === 'refill_extra'
                         ? false
-                        : item.id === 'refill'
-                          ? dailyUsage.refill === currentTodayStr
-                          : dailyUsage[item.id] === currentTodayStr;
+                        : dailyUsage[item.id] === currentTodayStr;
                     const queuedDays = isDurationChoiceItem(item.id)
                       ? listPremiumDurations(localInventory, item.id)
                       : [];

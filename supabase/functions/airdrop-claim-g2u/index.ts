@@ -15,6 +15,7 @@ import {
   corsHeaders,
   jsonResponse,
   logEconomy,
+  logPlayerActivity,
 } from "../_shared/economy.ts";
 import { verifyTurnstileToken } from "../_shared/turnstile.ts";
 import {
@@ -175,6 +176,22 @@ serve(async (req) => {
           fee_payer: wallet,
         },
       });
+      if (source === "milestone") {
+        await logPlayerActivity(sb, {
+          kind: "milestone_claim",
+          playerId,
+          itemId: "milestone",
+          amountG2u: amount,
+          feeSol: null,
+          currency: "g2u",
+          signature: txSignature,
+          meta: {
+            allocation_id: allocationId,
+            period_id: row.period_id,
+            to_wallet: wallet,
+          },
+        });
+      }
 
       return jsonResponse({
         success: true,

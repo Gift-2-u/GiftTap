@@ -108,11 +108,8 @@ serve(async (req) => {
       };
     }
     const today = utcToday();
-    const TOKEN_LAUNCH_AT = Date.parse("2026-09-01T00:00:00Z");
-    const afterLaunch = Date.now() >= TOKEN_LAUNCH_AT;
-    // Free Battery Refill: 1× / UTC day after launch. Extra Battery Refill: no day lock.
-    const refillOncePerDay = itemId === "refill" && afterLaunch;
-    const isExtraRefill = itemId === "refill_extra";
+    // Battery refill (free or extra): no UTC-day lock — players buy/activate as needed.
+    const isAnyRefillItem = itemId === "refill" || itemId === "refill_extra";
 
     // Repair: paid for +1000 Max Daily today but boost never stuck on tap (old path).
     // Allow one free re-apply without a backpack charge if bought today and not yet on ad_energy.
@@ -134,15 +131,9 @@ serve(async (req) => {
     if (
       dailyUsage[itemId] === today &&
       itemId !== "crate" &&
-      !isExtraRefill &&
-      !repairDailyPlus &&
-      (itemId !== "refill" || refillOncePerDay)
+      !isAnyRefillItem &&
+      !repairDailyPlus
     ) {
-      if (refillOncePerDay) {
-        throw new Error(
-          "Battery Refill already used today (UTC). Use Extra Battery Refill from Premium, or wait until midnight UTC.",
-        );
-      }
       throw new Error(`Already used ${itemId} today (UTC). Wait until midnight.`);
     }
 
@@ -156,11 +147,7 @@ serve(async (req) => {
       }
     }
 
-    if (
-      itemId !== "crate" &&
-      !isExtraRefill &&
-      (itemId !== "refill" || refillOncePerDay)
-    ) {
+    if (itemId !== "crate" && !isAnyRefillItem) {
       dailyUsage[itemId] = today;
     }
     inv.daily_usage = dailyUsage;
@@ -357,9 +344,6 @@ serve(async (req) => {
     }
     if (itemId !== "refill" && itemId !== "refill_extra" && itemId !== "crate") {
       outDaily[itemId] = today;
-    }
-    if (itemId === "refill" && refillOncePerDay) {
-      outDaily.refill = today;
     }
     outInv.daily_usage = outDaily;
     // Never return a ghost charge for the item just activated
