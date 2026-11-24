@@ -282,9 +282,14 @@ import {
   needsMilestoneSeed,
   needsLifetimeMilestoneSeed,
   milestoneLevelFromTaps,
+  getClaimedMilestoneLevel,
   getClaimedLifetimeMilestones,
   listAllMilestones,
   holidayMilestoneMultiplier,
+  applyHolidayMilestoneG2u,
+  LIFETIME_G2U_MILESTONES,
+  g2uForLevel,
+  tapsToReachLevel,
 } from './personalMilestone';
 import { isTokenLaunched } from './tokenLaunch';
 import { syncAllGiftNftOwnership } from './nftOwnershipSync';
@@ -4700,6 +4705,8 @@ const GiftTapGame = () => {
     [playerId, milestoneTipInfo],
   );
 
+  const localMilestoneTipRef = useRef({ at: 0, amount: 0 });
+
   // All Gift2u NFTs (5 elves + Star equip): prove ownership before clear; activate when owned.
   useEffect(() => {
     let cancelled = false;
@@ -5370,7 +5377,7 @@ const GiftTapGame = () => {
               true,
             );
           }
-          // Milestone tip when this flush crossed a level (queued in commit-taps)
+          // Milestone tip when flush queues a grant (skip if local tip already showed)
           const msGranted = Math.max(0, Number(data?.milestone_granted) || 0);
           if (msGranted > 0 && playerId) {
             const levels = Array.isArray(data?.milestone_levels)
@@ -5385,7 +5392,12 @@ const GiftTapGame = () => {
             } catch {
               seen = [];
             }
-            if (!seen.includes(id)) {
+            const localRecent =
+              Date.now() - (localMilestoneTipRef.current?.at || 0) < 180000 &&
+              Math.abs(
+                (localMilestoneTipRef.current?.amount || 0) - msGranted,
+              ) < 0.5;
+            if (!seen.includes(id) && !localRecent) {
               setMilestoneTipInfo({
                 amount: msGranted,
                 nextLevel: levels.slice(-1)[0] || null,
@@ -5561,6 +5573,81 @@ const GiftTapGame = () => {
       }
     }
   }, [playerId, notify, bumpWeeklyLiveUi]);
+
+  /** Instant tip when local taps cross a milestone — do not wait minutes for flush. */
+  const maybeShowLocalMilestoneTip = useCallback(
+    (prevLife, nextLife) => {
+      const prev = Math.max(0, Number(prevLife) || 0);
+      const next = Math.max(0, Number(nextLife) || 0);
+      if (!playerId || next <= prev) return;
+      if (showAscensionModal || showMilestoneTip || showMilestoneModal) return;
+
+      const inv = inventoryRef.current || {};
+      let amount = 0;
+      let nextLevel = null;
+      const tipKeys = [];
+
+      const claimedLife = new Set(getClaimedLifetimeMilestones(inv, next));
+      for (const m of LIFETIME_G2U_MILESTONES) {
+        if (prev < m.taps && next >= m.taps && !claimedLife.has(m.taps)) {
+          amount += applyHolidayMilestoneG2u(m.g2u);
+          tipKeys.push(`life_${m.taps}`);
+        }
+      }
+
+      let claimedLv = getClaimedMilestoneLevel(inv, next);
+      while (claimedLv < 100) {
+        const need = tapsToReachLevel(claimedLv + 1);
+        if (next < need) break;
+        if (prev < need) {
+          amount += g2uForLevel(claimedLv);
+          nextLevel = claimedLv + 1;
+          tipKeys.push(`level_${claimedLv + 1}`);
+        }
+        claimedLv += 1;
+      }
+
+      if (amount <= 0 || tipKeys.length === 0) return;
+
+      const id = `ms_instant_${tipKeys.join('-')}_${amount}`;
+      const seenKey = `gift2u_milestone_claim_seen_${playerId}`;
+      try {
+        const raw = JSON.parse(localStorage.getItem(seenKey) || '[]');
+        const seen = Array.isArray(raw) ? raw.map(String) : [];
+        if (seen.includes(id)) return;
+        const nextSeen = new Set(seen);
+        nextSeen.add(id);
+        localStorage.setItem(
+          seenKey,
+          JSON.stringify([...nextSeen].slice(-80)),
+        );
+      } catch {
+        /* ignore */
+      }
+
+      localMilestoneTipRef.current = { at: Date.now(), amount };
+      setMilestoneTipInfo({
+        amount,
+        nextLevel,
+        allocationId: id,
+      });
+      setShowMilestoneTip(true);
+      try {
+        if (tapFlushTimerRef.current) clearTimeout(tapFlushTimerRef.current);
+        tapFlushTimerRef.current = null;
+        flushPendingTaps();
+      } catch {
+        /* ignore */
+      }
+    },
+    [
+      playerId,
+      showAscensionModal,
+      showMilestoneTip,
+      showMilestoneModal,
+      flushPendingTaps,
+    ],
+  );
 
   const scheduleTapFlush = useCallback((delayMs) => {
     if (tapFlushTimerRef.current) clearTimeout(tapFlushTimerRef.current);
@@ -6261,6 +6348,7 @@ const GiftTapGame = () => {
       // Instant refs so multi-touch / rapid taps never use stale React state in saves
       optimisticTaps.current = Math.round((safeLifetimeTaps + shardsEarned) * 1000) / 1000;
       const nextLifetimeTaps = optimisticTaps.current;
+      maybeShowLocalMilestoneTip(safeLifetimeTaps, nextLifetimeTaps);
 
       const safeBal = Number(optimisticBalance.current);
       optimisticBalance.current = Math.round((safeBal + shardsEarned) * 1000) / 1000;
